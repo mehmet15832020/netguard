@@ -1,0 +1,9 @@
+{
+  "recommendations": [
+    "ms-python.python",
+    "ms-python.pylance",
+    "eamodio.gitlens",
+    "mhutchie.git-graph",
+    "rangav.vscode-thunder-client"
+  ]
+}
