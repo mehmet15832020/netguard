@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NetGuard Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #1a1d27;
+      border-bottom: 1px solid #2d3148;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    header h1 {
+      font-size: 20px;
+      font-weight: 600;
+      color: #7c8cff;
+      letter-spacing: 0.5px;
+    }
+
+    #server-status {
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      background: #1e2535;
+      border: 1px solid #2d3148;
+    }
+
+    #server-status.ok   { color: #4ade80; border-color: #4ade80; }
+    #server-status.err  { color: #f87171; border-color: #f87171; }
+
+    .container { padding: 24px; max-width: 1400px; margin: 0 auto; }
+
+    /* Agent seçici */
+    #agent-bar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .agent-btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: 1px solid #2d3148;
+      background: #1a1d27;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+
+    .agent-btn:hover  { border-color: #7c8cff; color: #e2e8f0; }
+    .agent-btn.active { border-color: #7c8cff; background: #2d3148; color: #fff; }
+
+    /* Stat kartları */
+    .stat-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .stat-card .label {
+      font-size: 12px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 8px;
+    }
+
+    .stat-card .value {
+      font-size: 32px;
+      font-weight: 700;
+      line-height: 1;
+    }
+
+    .stat-card .sub {
+      font-size: 12px;
+      color: #64748b;
+      margin-top: 6px;
+    }
+
+    .val-cpu    { color: #7c8cff; }
+    .val-ram    { color: #34d399; }
+    .val-disk   { color: #fb923c; }
+    .val-status { color: #4ade80; }
+
+    /* Grafik kartları */
+    .chart-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(460px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .chart-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    .chart-card h3 {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .chart-card canvas { width: 100% !important; }
+
+    /* Ağ arayüzleri tablosu */
+    .table-card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+
+    .table-card h3 {
+      font-size: 13px;
+      color: #94a3b8;
+      margin-bottom: 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th { color: #64748b; text-align: left; padding: 8px 12px; border-bottom: 1px solid #2d3148; font-weight: 500; }
+    td { padding: 10px 12px; border-bottom: 1px solid #1e2535; color: #cbd5e1; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: #1e2535; }
+
+    /* Boş / yükleniyor durumu */
+    #empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #475569;
+    }
+
+    #empty-state .icon { font-size: 48px; margin-bottom: 16px; }
+    #empty-state p { font-size: 15px; }
+
+    .hidden { display: none !important; }
+
+    /* Güncelleme zamanı */
+    #last-update {
+      font-size: 12px;
+      color: #475569;
+      text-align: right;
+      margin-bottom: 16px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>⬡ NetGuard</h1>
+  <span id="server-status">Bağlanıyor...</span>
+</header>
+
+<div class="container">
+
+  <div id="agent-bar"></div>
+  <div id="last-update"></div>
+
+  <!-- Boş durum -->
+  <div id="empty-state">
+    <div class="icon">📡</div>
+    <p>Agent bekleniyor — server çalışıyor mu?</p>
+  </div>
+
+  <!-- Ana içerik (agent seçilince görünür) -->
+  <div id="main-content" class="hidden">
+
+    <!-- Anlık metrikler -->
+    <div class="stat-grid">
+      <div class="stat-card">
+        <div class="label">CPU Kullanımı</div>
+        <div class="value val-cpu" id="val-cpu">—</div>
+        <div class="sub" id="sub-cpu">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">RAM Kullanımı</div>
+        <div class="value val-ram" id="val-ram">—</div>
+        <div class="sub" id="sub-ram">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Disk ( / )</div>
+        <div class="value val-disk" id="val-disk">—</div>
+        <div class="sub" id="sub-disk">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Agent Durumu</div>
+        <div class="value val-status" id="val-status">—</div>
+        <div class="sub" id="sub-status">—</div>
+      </div>
+    </div>
+
+    <!-- Grafikler -->
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h3>CPU Geçmişi (%)</h3>
+        <canvas id="chart-cpu" height="120"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>RAM Geçmişi (%)</h3>
+        <canvas id="chart-ram" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- Ağ arayüzleri -->
+    <div class="table-card">
+      <h3>Ağ Arayüzleri</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Arayüz</th>
+            <th>Alınan (MB)</th>
+            <th>Gönderilen (MB)</th>
+            <th>Paket Alınan</th>
+            <th>Paket Gönderilen</th>
+            <th>Hata Giriş</th>
+            <th>Hata Çıkış</th>
+          </tr>
+        </thead>
+        <tbody id="net-table-body">
+        </tbody>
+      </table>
+    </div>
+
+  </div><!-- /main-content -->
+</div><!-- /container -->
+
+<script>
+const API = 'http://localhost:8000/api/v1'
+const REFRESH_MS = 10000   // 10 saniyede bir güncelle
+const HISTORY_POINTS = 30  // Grafikte kaç nokta göster
+
+let selectedAgentId = null
+let cpuChart = null
+let ramChart = null
+
+// ─── Yardımcı fonksiyonlar ───────────────────────────────────────
+
+function formatBytes(bytes) {
+  if (bytes >= 1e9) return (bytes / 1e9).toFixed(1) + ' GB'
+  if (bytes >= 1e6) return (bytes / 1e6).toFixed(1) + ' MB'
+  if (bytes >= 1e3) return (bytes / 1e3).toFixed(1) + ' KB'
+  return bytes + ' B'
+}
+
+function formatTime(isoStr) {
+  return new Date(isoStr).toLocaleTimeString('tr-TR')
+}
+
+function makeChartConfig(label, color) {
+  return {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label,
+        data: [],
+        borderColor: color,
+        backgroundColor: color + '22',
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: { ticks: { color: '#475569', maxTicksLimit: 6 }, grid: { color: '#1e2535' } },
+        y: {
+          min: 0, max: 100,
+          ticks: { color: '#475569', callback: v => v + '%' },
+          grid: { color: '#1e2535' }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  }
+}
+
+// ─── Chart başlatma ───────────────────────────────────────────────
+
+function initCharts() {
+  if (cpuChart) cpuChart.destroy()
+  if (ramChart) ramChart.destroy()
+  cpuChart = new Chart(document.getElementById('chart-cpu'), makeChartConfig('CPU %', '#7c8cff'))
+  ramChart = new Chart(document.getElementById('chart-ram'), makeChartConfig('RAM %', '#34d399'))
+}
+
+function updateCharts(snapshots) {
+  const labels = snapshots.map(s => formatTime(s.collected_at))
+  const cpuData = snapshots.map(s => s.cpu.usage_percent)
+  const ramData = snapshots.map(s => {
+    const m = s.memory
+    return m.total_bytes > 0
+      ? +((m.used_bytes / m.total_bytes) * 100).toFixed(1)
+      : 0
+  })
+
+  cpuChart.data.labels = labels
+  cpuChart.data.datasets[0].data = cpuData
+  cpuChart.update()
+
+  ramChart.data.labels = labels
+  ramChart.data.datasets[0].data = ramData
+  ramChart.update()
+}
+
+// ─── UI güncelleme ────────────────────────────────────────────────
+
+function updateStatCards(snapshot) {
+  const cpu = snapshot.cpu
+  const mem = snapshot.memory
+  const ramPct = mem.total_bytes > 0
+    ? ((mem.used_bytes / mem.total_bytes) * 100).toFixed(1)
+    : 0
+
+  document.getElementById('val-cpu').textContent = cpu.usage_percent.toFixed(1) + '%'
+  document.getElementById('sub-cpu').textContent =
+    `${cpu.core_count} çekirdek · yük: ${cpu.load_avg_1m}`
+
+  document.getElementById('val-ram').textContent = ramPct + '%'
+  document.getElementById('sub-ram').textContent =
+    `${formatBytes(mem.used_bytes)} / ${formatBytes(mem.total_bytes)}`
+
+  const rootDisk = snapshot.disks.find(d => d.mount_point === '/') || snapshot.disks[0]
+  if (rootDisk) {
+    document.getElementById('val-disk').textContent = rootDisk.usage_percent.toFixed(1) + '%'
+    document.getElementById('sub-disk').textContent =
+      `${formatBytes(rootDisk.free_bytes)} boş / ${formatBytes(rootDisk.total_bytes)}`
+  }
+
+  document.getElementById('val-status').textContent =
+    snapshot.status === 'online' ? 'ONLINE' : snapshot.status.toUpperCase()
+  document.getElementById('sub-status').textContent =
+    `Son güncelleme: ${formatTime(snapshot.collected_at)}`
+}
+
+function updateNetworkTable(interfaces) {
+  const tbody = document.getElementById('net-table-body')
+  tbody.innerHTML = interfaces.map(iface => `
+    <tr>
+      <td><strong>${iface.interface_name}</strong></td>
+      <td>${(iface.bytes_recv / 1e6).toFixed(1)}</td>
+      <td>${(iface.bytes_sent / 1e6).toFixed(1)}</td>
+      <td>${iface.packets_recv.toLocaleString()}</td>
+      <td>${iface.packets_sent.toLocaleString()}</td>
+      <td>${iface.errors_in}</td>
+      <td>${iface.errors_out}</td>
+    </tr>
+  `).join('')
+}
+
+function updateAgentBar(agents) {
+  const bar = document.getElementById('agent-bar')
+  bar.innerHTML = agents.map(a => `
+    <button class="agent-btn ${a.agent_id === selectedAgentId ? 'active' : ''}"
+            onclick="selectAgent('${a.agent_id}', '${a.hostname}')">
+      ${a.hostname}
+      <span style="color:#475569;margin-left:6px;font-size:11px">${a.snapshot_count} snap</span>
+    </button>
+  `).join('')
+}
+
+// ─── Veri çekme ───────────────────────────────────────────────────
+
+async function fetchAgents() {
+  const res = await fetch(`${API}/agents`)
+  if (!res.ok) throw new Error('agents fetch failed')
+  return (await res.json()).agents
+}
+
+async function fetchHistory(agentId) {
+  const res = await fetch(`${API}/agents/${agentId}/history?limit=${HISTORY_POINTS}`)
+  if (!res.ok) throw new Error('history fetch failed')
+  return (await res.json()).snapshots
+}
+
+function selectAgent(agentId, hostname) {
+  selectedAgentId = agentId
+  document.getElementById('empty-state').classList.add('hidden')
+  document.getElementById('main-content').classList.remove('hidden')
+  initCharts()
+  refresh()
+}
+
+async function refresh() {
+  // Server durumu
+  try {
+    const health = await fetch(`${API}/health`)
+    const hdata = await health.json()
+    const el = document.getElementById('server-status')
+    el.textContent = '● Server OK · ' + hdata.registered_agents + ' agent'
+    el.className = 'ok'
+  } catch {
+    document.getElementById('server-status').textContent = '● Server bağlantısı yok'
+    document.getElementById('server-status').className = 'err'
+  }
+
+  // Agent listesi
+  try {
+    const agents = await fetchAgents()
+    updateAgentBar(agents)
+
+    if (agents.length > 0 && !selectedAgentId) {
+      selectAgent(agents[0].agent_id, agents[0].hostname)
+      return
+    }
+  } catch { return }
+
+  if (!selectedAgentId) return
+
+  // Seçili agent'ın verisi
+  try {
+    const snapshots = await fetchHistory(selectedAgentId)
+    if (snapshots.length === 0) return
+
+    const latest = snapshots[snapshots.length - 1]
+    updateStatCards(latest)
+    updateCharts(snapshots)
+    updateNetworkTable(latest.network_interfaces)
+
+    document.getElementById('last-update').textContent =
+      'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR')
+  } catch (e) {
+    console.error('Veri çekme hatası:', e)
+  }
+}
+
+// ─── Başlat ───────────────────────────────────────────────────────
+
+refresh()
+setInterval(refresh, REFRESH_MS)
+</script>
+</body>
+</html>

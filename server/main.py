@@ -1,13 +1,11 @@
 """
 NetGuard Server — Ana uygulama
-
-FastAPI uygulamasını başlatır, router'ları bağlar,
-startup/shutdown olaylarını yönetir.
 """
 
 import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from server.routes import agents, health
 from shared.protocol import API_VERSION
 
@@ -21,7 +19,6 @@ logger = logging.getLogger("netguard.server")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Server başlangıç ve kapanış olayları."""
     logger.info("=" * 50)
     logger.info("NetGuard Server başlatılıyor...")
     logger.info(f"API versiyonu: {API_VERSION}")
@@ -37,7 +34,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Router'ları bağla
+# CORS — dashboard'un farklı port'tan API'ye erişmesine izin ver
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
+
 api_prefix = f"/api/{API_VERSION}"
 app.include_router(health.router, prefix=api_prefix, tags=["health"])
 app.include_router(agents.router, prefix=api_prefix, tags=["agents"])

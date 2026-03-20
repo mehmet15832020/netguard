@@ -6,11 +6,13 @@ Yapılandırmayı ortam değişkenlerinden okur.
 Ana döngüyü yönetir.
 """
 
+
+
 import logging
 import os
 import platform
-import sys
 import time
+from datetime import timezone
 
 from agent.collector import collect_snapshot, _get_agent_id
 from agent.sender import MetricSender

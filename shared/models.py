@@ -10,6 +10,12 @@ from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
 
+import logging
+import os
+import platform
+import time
+from datetime import timezone
+
 
 class AgentStatus(str, Enum):
     """Agent'ın o anki durumu."""
@@ -86,4 +92,4 @@ class AgentRegistration(BaseModel):
     os_version: str = Field(description="OS sürümü")
     python_version: str
     netguard_version: str = Field(default="0.1.0")
-registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
