@@ -73,8 +73,7 @@ class MetricSnapshot(BaseModel):
     disks: list[DiskMetrics] = Field(default_factory=list)
     network_interfaces: list[NetworkInterfaceMetrics] = Field(default_factory=list)
 
-    model_config = {"json_encoders": {datetime: lambda v: v.isoformat()}}
-
+model_config = {"ser_json_timedelta": "iso8601"}
 
 class AgentRegistration(BaseModel):
     """
