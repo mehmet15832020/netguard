@@ -52,13 +52,30 @@ def _collect_memory() -> MemoryMetrics:
     )
 
 
+# Atlanacak dosya sistemi tipleri — bunlar sanal/read-only sistemler
+_SKIP_FSTYPES = frozenset({
+    "squashfs",  # snap paketleri
+    "tmpfs",     # geçici bellek dosya sistemi
+    "devtmpfs",  # cihaz dosyaları
+    "overlay",   # Docker katmanları
+    "nsfs",      # namespace dosya sistemi
+})
+
+
 def _collect_disks() -> list[DiskMetrics]:
     """
-    Tüm fiziksel disk bölümlerini toplar.
-    Sanal/geçici dosya sistemlerini atlar (tmpfs, devfs vb.)
+    Fiziksel disk bölümlerini toplar.
+    Sanal/read-only dosya sistemlerini filtreler.
     """
     disks = []
     for partition in psutil.disk_partitions(all=False):
+        # Sanal dosya sistemlerini atla
+        if partition.fstype in _SKIP_FSTYPES:
+            continue
+        # Snap mount noktalarını atla
+        if partition.mountpoint.startswith("/snap/"):
+            continue
+
         try:
             usage = psutil.disk_usage(partition.mountpoint)
             disks.append(DiskMetrics(
@@ -69,7 +86,6 @@ def _collect_disks() -> list[DiskMetrics]:
                 usage_percent=usage.percent,
             ))
         except PermissionError:
-            # Bazı mount point'lere erişim izni olmayabilir, geç
             continue
 
     return disks[:MAX_DISK_ENTRIES]
