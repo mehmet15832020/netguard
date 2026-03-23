@@ -252,7 +252,16 @@
         </tbody>
       </table>
     </div>
-
+    <!-- Alert paneli -->
+    <div class="table-card" id="alert-panel">
+      <h3 style="display:flex;align-items:center;justify-content:space-between">
+        <span>Aktif Alertler</span>
+        <span id="alert-badge" style="font-size:11px;padding:2px 10px;border-radius:20px;background:#1e2535;color:#64748b">0</span>
+      </h3>
+      <div id="alert-list">
+        <p style="color:#475569;font-size:13px;padding:8px 0">Aktif alert yok.</p>
+      </div>
+    </div>
   </div><!-- /main-content -->
 </div><!-- /container -->
 
@@ -454,9 +463,71 @@ async function refresh() {
 
     document.getElementById('last-update').textContent =
       'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR')
+
+      // Alert'leri güncelle
+    try {
+      const alerts = await fetchAlerts()
+      renderAlerts(alerts)
+    } catch (e) {
+      console.error('Alert çekme hatası:', e)
+    }
   } catch (e) {
     console.error('Veri çekme hatası:', e)
   }
+}
+
+// ─── Alert fonksiyonları ─────────────────────────────────────────
+
+const SEVERITY_COLOR = {
+  critical: { bg: '#2d1a1a', border: '#f87171', text: '#f87171' },
+  warning:  { bg: '#2d2510', border: '#fb923c', text: '#fb923c' },
+  info:     { bg: '#1a2535', border: '#7c8cff', text: '#7c8cff' },
+}
+
+async function fetchAlerts() {
+  const res = await fetch(`${API}/alerts?status=active&limit=20`)
+  if (!res.ok) return []
+  return (await res.json()).alerts
+}
+
+function renderAlerts(alerts) {
+  const badge = document.getElementById('alert-badge')
+  const list = document.getElementById('alert-list')
+
+  badge.textContent = alerts.length
+  badge.style.background = alerts.length > 0 ? '#7f1d1d' : '#1e2535'
+  badge.style.color = alerts.length > 0 ? '#f87171' : '#64748b'
+
+  if (alerts.length === 0) {
+    list.innerHTML = '<p style="color:#475569;font-size:13px;padding:8px 0">Aktif alert yok.</p>'
+    return
+  }
+
+  list.innerHTML = alerts.map(a => {
+    const c = SEVERITY_COLOR[a.severity] || SEVERITY_COLOR.info
+    const time = new Date(a.triggered_at).toLocaleTimeString('tr-TR')
+    return `
+      <div style="
+        border-left: 3px solid ${c.border};
+        background: ${c.bg};
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin-bottom: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      ">
+        <div>
+          <span style="color:${c.text};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px">
+            ${a.severity}
+          </span>
+          <span style="color:#94a3b8;font-size:12px;margin-left:10px">${a.hostname}</span>
+          <div style="color:#e2e8f0;font-size:13px;margin-top:4px">${a.message}</div>
+        </div>
+        <div style="color:#475569;font-size:11px;white-space:nowrap;margin-left:16px">${time}</div>
+      </div>
+    `
+  }).join('')
 }
 
 // ─── Başlat ───────────────────────────────────────────────────────

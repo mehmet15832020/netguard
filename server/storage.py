@@ -14,6 +14,7 @@ from threading import Lock
 from typing import Optional
 
 from shared.models import AgentRegistration, MetricSnapshot
+from shared.models import AgentRegistration, Alert, AlertStatus, MetricSnapshot
 
 # Agent başına tutulacak maksimum snapshot sayısı
 MAX_SNAPSHOTS_PER_AGENT = 360  # 10 saniyelik aralıkla 1 saatlik veri
@@ -38,6 +39,7 @@ class InMemoryStorage:
 
     def __init__(self):
         self._agents: dict[str, AgentRecord] = {}
+        self._alerts: list[Alert] = []    # ← bunu ekle
         self._lock = Lock()
 
     def register_agent(self, registration: AgentRegistration) -> None:
@@ -101,6 +103,34 @@ class InMemoryStorage:
                 return []
             snapshots = list(record.snapshots)
             return snapshots[-limit:]
+
+
+    def store_alert(self, alert: Alert) -> None:
+        """Alert'i kaydet veya güncelle."""
+        with self._lock:
+            if alert.status == AlertStatus.RESOLVED:
+                # Mevcut alert'i resolve et
+                for existing in self._alerts:
+                    if existing.alert_id == alert.alert_id:
+                        existing.status = AlertStatus.RESOLVED
+                        existing.resolved_at = alert.resolved_at
+                        return
+            else:
+                self._alerts.append(alert)
+
+    def get_alerts(
+        self,
+        status: Optional[str] = None,
+        limit: int = 100
+    ) -> list[Alert]:
+        """Alert listesini döndür. Status filtresi opsiyonel."""
+        with self._lock:
+            alerts = list(self._alerts)
+            if status:
+                alerts = [a for a in alerts if a.status == status]
+            # En yeni önce
+            alerts.sort(key=lambda a: a.triggered_at, reverse=True)
+            return alerts[:limit]
 
     @property
     def agent_count(self) -> int:

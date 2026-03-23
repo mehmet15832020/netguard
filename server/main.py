@@ -45,7 +45,7 @@ app.add_middleware(
 api_prefix = f"/api/{API_VERSION}"
 app.include_router(health.router, prefix=api_prefix, tags=["health"])
 app.include_router(agents.router, prefix=api_prefix, tags=["agents"])
-
+app.include_router(alerts.router, prefix=api_prefix, tags=["alerts"])
 
 @app.get("/")
 def root():
