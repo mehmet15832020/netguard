@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from shared.models import AgentRegistration, MetricSnapshot
 from server.storage import storage
+from server.alert_engine import alert_engine
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -27,15 +28,15 @@ def register_agent(registration: AgentRegistration):
 
 @router.post("/agents/metrics", status_code=202)
 def receive_metrics(snapshot: MetricSnapshot):
-    """Agent'tan gelen snapshot'ı depola."""
+    """Agent'tan gelen snapshot'ı depola ve alert kontrolü yap."""
     storage.store_snapshot(snapshot)
-    logger.debug(
-        f"Snapshot alındı: {snapshot.hostname} | "
-        f"CPU: {snapshot.cpu.usage_percent:.1f}% | "
-        f"RAM: {snapshot.memory.usage_percent:.1f}%"
-    )
-    return {"status": "accepted"}
 
+    # Alert Engine'i çalıştır
+    alerts = alert_engine.evaluate(snapshot)
+    for alert in alerts:
+        storage.store_alert(alert)
+
+    return {"status": "accepted", "alerts_triggered": len(alerts)}
 
 @router.get("/agents")
 def list_agents():

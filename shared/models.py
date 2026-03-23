@@ -5,16 +5,12 @@ Agent ile server arasındaki veri sözleşmesi (contract) burada tanımlanır.
 Her iki taraf da bu modelleri import eder — hiçbir zaman kopyalanmaz.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 from pydantic import BaseModel, Field
 
-import logging
-import os
-import platform
-import time
-from datetime import timezone
+
 
 
 class AgentStatus(str, Enum):
@@ -93,3 +89,30 @@ class AgentRegistration(BaseModel):
     python_version: str
     netguard_version: str = Field(default="0.1.0")
     registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class AlertSeverity(str, Enum):
+    """Alert öncelik seviyesi."""
+    INFO = "info"
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AlertStatus(str, Enum):
+    """Alert durumu."""
+    ACTIVE = "active"       # Hâlâ devam ediyor
+    RESOLVED = "resolved"   # Çözüldü
+
+
+class Alert(BaseModel):
+    """Tek bir alert kaydı."""
+    alert_id: str = Field(description="Benzersiz alert ID")
+    agent_id: str
+    hostname: str
+    severity: AlertSeverity
+    status: AlertStatus = AlertStatus.ACTIVE
+    metric: str = Field(description="Hangi metrik tetikledi, örn: 'cpu'")
+    message: str = Field(description="İnsan okunabilir açıklama")
+    value: float = Field(description="Tetikleyen değer")
+    threshold: float = Field(description="Aşılan eşik")
+    triggered_at: datetime
+    resolved_at: Optional[datetime] = None

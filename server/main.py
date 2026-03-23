@@ -6,8 +6,8 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from server.routes import agents, health
 from shared.protocol import API_VERSION
+from server.routes import agents, alerts, health
 
 logging.basicConfig(
     level=logging.INFO,
