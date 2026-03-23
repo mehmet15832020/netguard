@@ -33,7 +33,7 @@ class AlertRule:
 
 
 def _cpu_check(snapshot: MetricSnapshot) -> tuple[bool, float, float]:
-    threshold = 40.0
+    threshold = 80.0
     value = snapshot.cpu.usage_percent
     return value > threshold, value, threshold
 
