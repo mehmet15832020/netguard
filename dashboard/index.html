@@ -114,6 +114,10 @@
       margin-bottom: 24px;
     }
 
+
+    
+    
+
     .chart-card {
       background: #1a1d27;
       border: 1px solid #2d3148;
@@ -233,6 +237,44 @@
       </div>
     </div>
 
+
+<!-- Network bant genişliği grafikleri -->
+    <div class="chart-grid" id="network-charts-section">
+      <div class="chart-card">
+        <h3>Alım Hızı (KB/s)</h3>
+        <canvas id="chart-net-recv" height="120"></canvas>
+      </div>
+      <div class="chart-card">
+        <h3>Gönderim Hızı (KB/s)</h3>
+        <canvas id="chart-net-sent" height="120"></canvas>
+      </div>
+    </div>
+
+    <!-- Bağlantı istatistikleri -->
+    <div class="stat-grid" id="conn-stats-section">
+      <div class="stat-card">
+        <div class="label">Toplam Bağlantı</div>
+        <div class="value val-cpu" id="val-conn-total">—</div>
+        <div class="sub">Aktif soketler</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Kurulu Bağlantı</div>
+        <div class="value val-ram" id="val-conn-established">—</div>
+        <div class="sub">ESTABLISHED</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Dinlenen Port</div>
+        <div class="value val-status" id="val-conn-listen">—</div>
+        <div class="sub">LISTEN</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">TIME_WAIT</div>
+        <div class="value val-disk" id="val-conn-timewait">—</div>
+        <div class="sub">Kapanan bağlantılar</div>
+      </div>
+    </div>
+
+
     <!-- Ağ arayüzleri -->
     <div class="table-card">
       <h3>Ağ Arayüzleri</h3>
@@ -326,7 +368,10 @@ function initCharts() {
   if (ramChart) ramChart.destroy()
   cpuChart = new Chart(document.getElementById('chart-cpu'), makeChartConfig('CPU %', '#7c8cff'))
   ramChart = new Chart(document.getElementById('chart-ram'), makeChartConfig('RAM %', '#34d399'))
+  initNetworkCharts()   // ← bunu ekle
 }
+
+
 
 function updateCharts(snapshots) {
   const labels = snapshots.map(s => formatTime(s.collected_at))
@@ -457,8 +502,9 @@ async function refresh() {
     if (snapshots.length === 0) return
 
     const latest = snapshots[snapshots.length - 1]
-    updateStatCards(latest)
     updateCharts(snapshots)
+    updateNetworkCharts(snapshots)   // ← bunu ekle
+    updateConnectionStats(latest)    // ← bunu ekle
     updateNetworkTable(latest.network_interfaces)
 
     document.getElementById('last-update').textContent =
@@ -475,6 +521,90 @@ async function refresh() {
     console.error('Veri çekme hatası:', e)
   }
 }
+
+
+// ─── Network Monitor ─────────────────────────────────────────────
+
+let netRecvChart = null
+let netSentChart = null
+
+function initNetworkCharts() {
+  if (netRecvChart) netRecvChart.destroy()
+  if (netSentChart) netSentChart.destroy()
+
+  const makeNet = (label, color) => ({
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label,
+        data: [],
+        borderColor: color,
+        backgroundColor: color + '22',
+        borderWidth: 2,
+        pointRadius: 2,
+        tension: 0.3,
+        fill: true,
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: { ticks: { color: '#475569', maxTicksLimit: 6 }, grid: { color: '#1e2535' } },
+        y: {
+          min: 0,
+          ticks: { color: '#475569', callback: v => v + ' KB/s' },
+          grid: { color: '#1e2535' }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  })
+
+  netRecvChart = new Chart(document.getElementById('chart-net-recv'), makeNet('Alım KB/s', '#34d399'))
+  netSentChart = new Chart(document.getElementById('chart-net-sent'), makeNet('Gönderim KB/s', '#7c8cff'))
+}
+
+function updateNetworkCharts(snapshots) {
+  const labels = snapshots.map(s => formatTime(s.collected_at))
+
+  // Ana arayüzü bul (lo hariç en yüksek trafikli)
+  const getMainIface = (snap) => {
+    if (!snap.network_snapshot || !snap.network_snapshot.bandwidth) return null
+    return snap.network_snapshot.bandwidth
+      .filter(b => b.interface_name !== 'lo')
+      .sort((a, b) => (b.bytes_recv_per_sec + b.bytes_sent_per_sec) - (a.bytes_recv_per_sec + a.bytes_sent_per_sec))[0]
+  }
+
+  const recvData = snapshots.map(s => {
+    const iface = getMainIface(s)
+    return iface ? +(iface.bytes_recv_per_sec / 1024).toFixed(2) : 0
+  })
+
+  const sentData = snapshots.map(s => {
+    const iface = getMainIface(s)
+    return iface ? +(iface.bytes_sent_per_sec / 1024).toFixed(2) : 0
+  })
+
+  netRecvChart.data.labels = labels
+  netRecvChart.data.datasets[0].data = recvData
+  netRecvChart.update()
+
+  netSentChart.data.labels = labels
+  netSentChart.data.datasets[0].data = sentData
+  netSentChart.update()
+}
+
+function updateConnectionStats(snapshot) {
+  if (!snapshot.network_snapshot) return
+  const c = snapshot.network_snapshot.connections
+  document.getElementById('val-conn-total').textContent = c.total
+  document.getElementById('val-conn-established').textContent = c.established
+  document.getElementById('val-conn-listen').textContent = c.listen
+  document.getElementById('val-conn-timewait').textContent = c.time_wait
+}
+
 
 // ─── Alert fonksiyonları ─────────────────────────────────────────
 
