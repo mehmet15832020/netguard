@@ -173,8 +173,8 @@ def capture_traffic(interface: str = None, duration: int = CAPTURE_DURATION_SEC)
         total_packets=total_packets,
         total_bytes=analysis["total_bytes"],
         protocols=_build_protocol_stats(analysis, total_packets),
-        top_src_ips=list(analysis["src_ips"].most_common(5)),
-        top_dst_ips=list(analysis["dst_ips"].most_common(5)),
+        top_src_ips=[ip for ip, _ in analysis["src_ips"].most_common(5)],
+        top_dst_ips=[ip for ip, _ in analysis["dst_ips"].most_common(5)],
         captured_at=datetime.now(timezone.utc),
         suspicious_packet_count=analysis["suspicious"],
     )
