@@ -55,13 +55,8 @@ class InMemoryStorage:
                 )
 
     def store_snapshot(self, snapshot: MetricSnapshot) -> None:
-        """
-        Snapshot'ı ilgili agent'ın kuyruğuna ekle.
-        Agent kayıtlı değilse otomatik kaydet (agent kaydı opsiyonel).
-        """
         with self._lock:
             if snapshot.agent_id not in self._agents:
-                # Agent register olmadan metrik gönderdiyse otomatik ekle
                 self._agents[snapshot.agent_id] = AgentRecord(
                     registration=AgentRegistration(
                         agent_id=snapshot.agent_id,
@@ -72,6 +67,13 @@ class InMemoryStorage:
                     )
                 )
             record = self._agents[snapshot.agent_id]
+            
+            # Traffic summary varsa sakla, yoksa öncekini koru
+            if snapshot.traffic_summary is None and record.snapshots:
+                last = record.snapshots[-1]
+                if last.traffic_summary is not None:
+                    snapshot.traffic_summary = last.traffic_summary
+            
             record.snapshots.append(snapshot)
             record.last_seen = snapshot.collected_at
 
