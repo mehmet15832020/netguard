@@ -294,6 +294,33 @@
         </tbody>
       </table>
     </div>
+
+    <!-- Traffic Analyzer paneli -->
+    <div class="table-card" id="traffic-panel">
+      <h3 style="display:flex;align-items:center;justify-content:space-between">
+        <span>Trafik Analizi</span>
+        <span id="traffic-meta" style="font-size:11px;color:#64748b"></span>
+      </h3>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div>
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Protokol Dağılımı</div>
+          <div id="protocol-list"></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">En Çok Trafik Alan IP'ler</div>
+          <div id="ip-list"></div>
+        </div>
+      </div>
+      <div style="display:flex;gap:24px">
+        <div style="font-size:13px;color:#94a3b8">
+          Toplam: <span id="traffic-total" style="color:#e2e8f0;font-weight:600">—</span>
+        </div>
+        <div style="font-size:13px;color:#94a3b8">
+          Şüpheli: <span id="traffic-suspicious" style="color:#f87171;font-weight:600">—</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Alert paneli -->
     <div class="table-card" id="alert-panel">
       <h3 style="display:flex;align-items:center;justify-content:space-between">
@@ -510,6 +537,14 @@ async function refresh() {
     document.getElementById('last-update').textContent =
       'Son güncelleme: ' + new Date().toLocaleTimeString('tr-TR')
 
+    // Traffic verisini güncelle
+    try {
+      const traffic = await fetchTraffic(selectedAgentId)
+      renderTraffic(traffic)
+    } catch (e) {
+      console.error('Traffic çekme hatası:', e)
+    }
+
       // Alert'leri güncelle
     try {
       const alerts = await fetchAlerts()
@@ -603,6 +638,72 @@ function updateConnectionStats(snapshot) {
   document.getElementById('val-conn-established').textContent = c.established
   document.getElementById('val-conn-listen').textContent = c.listen
   document.getElementById('val-conn-timewait').textContent = c.time_wait
+}
+
+
+// ─── Traffic Analyzer ────────────────────────────────────────────
+
+const PROTO_COLORS = {
+  'TCP':       '#7c8cff',
+  'UDP':       '#34d399',
+  'TLS/HTTPS': '#fb923c',
+  'HTTP':      '#f59e0b',
+  'DNS':       '#a78bfa',
+  'ICMP':      '#64748b',
+  'ARP':       '#94a3b8',
+  'OTHER':     '#475569',
+}
+
+async function fetchTraffic(agentId) {
+  try {
+    const res = await fetch(`${API}/agents/${agentId}/traffic`)
+    if (!res.ok) return null
+    return await res.json()
+  } catch { return null }
+}
+
+function renderTraffic(traffic) {
+  if (!traffic) {
+    document.getElementById('traffic-meta').textContent = 'Veri bekleniyor...'
+    document.getElementById('protocol-list').innerHTML =
+      '<p style="color:#475569;font-size:13px">Henüz trafik verisi yok.</p>'
+    return
+  }
+
+  // Meta bilgi
+  const time = new Date(traffic.captured_at).toLocaleTimeString('tr-TR')
+  document.getElementById('traffic-meta').textContent =
+    `${traffic.interface} · ${traffic.duration_sec}s · ${time}`
+
+  // Toplam ve şüpheli
+  document.getElementById('traffic-total').textContent =
+    `${traffic.total_packets} paket / ${(traffic.total_bytes / 1024).toFixed(1)} KB`
+  const suspEl = document.getElementById('traffic-suspicious')
+  suspEl.textContent = traffic.suspicious_packet_count
+  suspEl.style.color = traffic.suspicious_packet_count > 0 ? '#f87171' : '#4ade80'
+
+  // Protokol listesi
+  document.getElementById('protocol-list').innerHTML = traffic.protocols.map(p => {
+    const color = PROTO_COLORS[p.protocol] || PROTO_COLORS['OTHER']
+    return `
+      <div style="margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+          <span style="color:${color}">${p.protocol}</span>
+          <span style="color:#94a3b8">${p.packet_count} pkt (${p.percentage}%)</span>
+        </div>
+        <div style="background:#1e2535;border-radius:4px;height:4px">
+          <div style="background:${color};width:${p.percentage}%;height:4px;border-radius:4px"></div>
+        </div>
+      </div>
+    `
+  }).join('')
+
+  // IP listesi
+  document.getElementById('ip-list').innerHTML = traffic.top_dst_ips.map(ip => `
+    <div style="font-size:12px;color:#94a3b8;padding:4px 0;border-bottom:1px solid #1e2535">
+      ${ip}
+    </div>
+  `).join('')
 }
 
 
