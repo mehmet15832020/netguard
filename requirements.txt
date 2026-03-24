@@ -1,5 +1,6 @@
 annotated-types==0.7.0
 anyio==4.12.1
+appdirs==1.4.4
 certifi==2026.2.25
 click==8.3.1
 fastapi==0.115.0
@@ -8,14 +9,17 @@ httpcore==1.0.9
 httpx==0.27.2
 idna==3.11
 iniconfig==2.3.0
+lxml==6.0.2
 packaging==26.0
 pluggy==1.6.0
 psutil==6.0.0
 pydantic==2.8.2
 pydantic_core==2.20.1
+pyshark==0.6
 pytest==8.3.2
 python-dotenv==1.0.1
 sniffio==1.3.1
 starlette==0.38.6
+termcolor==3.3.0
 typing_extensions==4.15.0
 uvicorn==0.30.6
