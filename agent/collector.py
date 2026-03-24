@@ -13,14 +13,21 @@ import uuid
 import psutil
 
 from datetime import datetime, timezone
+
+import time
+
 from shared.models import (
     AgentStatus,
     CPUMetrics,
     DiskMetrics,
     MemoryMetrics,
     MetricSnapshot,
+    NetworkBandwidth,
     NetworkInterfaceMetrics,
+    NetworkSnapshot,
+    ConnectionStats,
 )
+
 from shared.protocol import MAX_DISK_ENTRIES, MAX_INTERFACE_ENTRIES
 
 
@@ -113,6 +120,67 @@ def _collect_network() -> list[NetworkInterfaceMetrics]:
     return interfaces[:MAX_INTERFACE_ENTRIES]
 
 
+# Önceki ölçüm — hız hesabı için saklanır
+_prev_net_io: dict = {}
+_prev_net_time: float = 0.0
+
+
+def _collect_bandwidth() -> list[NetworkBandwidth]:
+    """
+    Önceki ölçümle karşılaştırarak anlık bant genişliği hesaplar.
+    İlk çağrıda boş liste döner — referans nokta yok.
+    """
+    global _prev_net_io, _prev_net_time
+
+    now = time.time()
+    current = psutil.net_io_counters(pernic=True)
+
+    if not _prev_net_io:
+        # İlk ölçüm — referans kaydet, sonuç yok
+        _prev_net_io = {k: v for k, v in current.items()}
+        _prev_net_time = now
+        return []
+
+    elapsed = now - _prev_net_time
+    if elapsed < 0.1:
+        return []
+
+    bandwidth = []
+    for name, stats in current.items():
+        if name not in _prev_net_io:
+            continue
+        prev = _prev_net_io[name]
+        bandwidth.append(NetworkBandwidth(
+            interface_name=name,
+            bytes_sent_per_sec=max(0, (stats.bytes_sent - prev.bytes_sent) / elapsed),
+            bytes_recv_per_sec=max(0, (stats.bytes_recv - prev.bytes_recv) / elapsed),
+            packets_sent_per_sec=max(0, (stats.packets_sent - prev.packets_sent) / elapsed),
+            packets_recv_per_sec=max(0, (stats.packets_recv - prev.packets_recv) / elapsed),
+        ))
+
+    _prev_net_io = {k: v for k, v in current.items()}
+    _prev_net_time = now
+
+    return bandwidth[:MAX_INTERFACE_ENTRIES]
+
+
+def _collect_connections() -> ConnectionStats:
+    """Aktif TCP bağlantı istatistiklerini toplar."""
+    try:
+        conns = psutil.net_connections(kind="inet")
+        stats = {"ESTABLISHED": 0, "TIME_WAIT": 0, "LISTEN": 0}
+        for c in conns:
+            if c.status in stats:
+                stats[c.status] += 1
+        return ConnectionStats(
+            total=len(conns),
+            established=stats["ESTABLISHED"],
+            time_wait=stats["TIME_WAIT"],
+            listen=stats["LISTEN"],
+        )
+    except psutil.AccessDenied:
+        return ConnectionStats(total=0, established=0, time_wait=0, listen=0)
+
 def collect_snapshot() -> MetricSnapshot:
     """
     Tek entry point. Tüm metrikleri toplar, MetricSnapshot döndürür.
@@ -135,6 +203,18 @@ def collect_snapshot() -> MetricSnapshot:
         network = []
         status = AgentStatus.DEGRADED
 
+    try:
+        bandwidth = _collect_bandwidth()
+        connections = _collect_connections()
+        network_snapshot = NetworkSnapshot(
+            bandwidth=bandwidth,
+            connections=connections,
+            captured_at=datetime.now(timezone.utc),
+        )
+    except Exception:
+        network_snapshot = None
+        status = AgentStatus.DEGRADED
+
     return MetricSnapshot(
         agent_id=_get_agent_id(),
         hostname=socket.gethostname(),
@@ -144,4 +224,5 @@ def collect_snapshot() -> MetricSnapshot:
         memory=memory,
         disks=disks,
         network_interfaces=network,
+        network_snapshot=network_snapshot,
     )

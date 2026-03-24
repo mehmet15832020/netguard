@@ -52,6 +52,17 @@ def _disk_check(snapshot: MetricSnapshot) -> tuple[bool, float, float]:
         return False, 0.0, threshold
     return root.usage_percent > threshold, root.usage_percent, threshold
 
+def _bandwidth_check(snapshot: MetricSnapshot) -> tuple[bool, float, float]:
+    """Toplam inbound trafik 100 Mbps'i geçerse alert."""
+    threshold = 100.0  # Mbps
+    if not snapshot.network_snapshot:
+        return False, 0.0, threshold
+    total_mbps = sum(
+        b.bytes_recv_per_sec / 1_000_000
+        for b in snapshot.network_snapshot.bandwidth
+        if b.interface_name not in ("lo",)
+    )
+    return total_mbps > threshold, round(total_mbps, 2), threshold
 
 # Tüm aktif kurallar — yeni kural eklemek için buraya ekle
 _RULES: list[AlertRule] = [
@@ -75,6 +86,13 @@ _RULES: list[AlertRule] = [
         severity=AlertSeverity.CRITICAL,
         message_template="Disk dolmak üzere: {value:.1f}% (eşik: {threshold:.0f}%)",
         check_fn=_disk_check,
+    ),
+    AlertRule(
+        rule_id="bandwidth_high",
+        metric="network",
+        severity=AlertSeverity.WARNING,
+        message_template="Yüksek ağ trafiği: {value:.1f} Mbps (eşik: {threshold:.0f} Mbps)",
+        check_fn=_bandwidth_check,
     ),
 ]
 

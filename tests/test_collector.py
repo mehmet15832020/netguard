@@ -68,3 +68,11 @@ class TestCollectSnapshot:
         snapshot = collect_snapshot()
         assert len(snapshot.disks) >= 1
         assert len(snapshot.network_interfaces) >= 1
+
+    def test_network_snapshot_present(self):
+        """İkinci çağrıda network_snapshot dolu olmalı."""
+        collect_snapshot()  # ilk çağrı — referans nokta
+        import time; time.sleep(1)
+        snapshot = collect_snapshot()  # ikinci çağrı — bant genişliği hesaplı
+        assert snapshot.network_snapshot is not None
+        assert snapshot.network_snapshot.connections.total >= 0
