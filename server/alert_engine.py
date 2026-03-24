@@ -64,6 +64,13 @@ def _bandwidth_check(snapshot: MetricSnapshot) -> tuple[bool, float, float]:
     )
     return total_mbps > threshold, round(total_mbps, 2), threshold
 
+def _suspicious_traffic_check(snapshot: MetricSnapshot) -> tuple[bool, float, float]:
+    threshold = 10.0
+    if not snapshot.traffic_summary:
+        return False, 0.0, threshold
+    value = float(snapshot.traffic_summary.suspicious_packet_count)
+    return value > threshold, value, threshold
+
 # Tüm aktif kurallar — yeni kural eklemek için buraya ekle
 _RULES: list[AlertRule] = [
     AlertRule(
@@ -93,6 +100,13 @@ _RULES: list[AlertRule] = [
         severity=AlertSeverity.WARNING,
         message_template="Yüksek ağ trafiği: {value:.1f} Mbps (eşik: {threshold:.0f} Mbps)",
         check_fn=_bandwidth_check,
+    ),
+    AlertRule(
+        rule_id="suspicious_traffic",
+        metric="traffic",
+        severity=AlertSeverity.CRITICAL,
+        message_template="Şüpheli trafik tespit edildi: {value:.0f} paket (eşik: {threshold:.0f})",
+        check_fn=_suspicious_traffic_check,
     ),
 ]
 

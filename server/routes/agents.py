@@ -84,3 +84,16 @@ def get_snapshot_history(agent_id: str, limit: int = 60):
         "count": len(snapshots),
         "snapshots": snapshots,
     }
+
+@router.get("/agents/{agent_id}/traffic")
+def get_traffic_summary(agent_id: str):
+    """Agent'ın en son trafik özetini döndür."""
+    snapshot = storage.get_latest_snapshot(agent_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Agent bulunamadı: {agent_id}")
+    if snapshot.traffic_summary is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Henüz trafik verisi yok — agent başlatıldıktan 30 saniye sonra tekrar dene"
+        )
+    return snapshot.traffic_summary

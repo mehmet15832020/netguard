@@ -94,6 +94,26 @@ class NetworkSnapshot(BaseModel):
     bandwidth: list[NetworkBandwidth] = Field(default_factory=list)
     connections: ConnectionStats
     captured_at: datetime
+class ProtocolStats(BaseModel):
+    """Tek bir protokolün trafik istatistikleri."""
+    protocol: str = Field(description="Protokol adı: TCP, UDP, DNS, HTTP...")
+    packet_count: int = Field(ge=0)
+    byte_count: int = Field(ge=0)
+    percentage: float = Field(ge=0.0, le=100.0)
+class TrafficSummary(BaseModel):
+    """
+    Belirli bir zaman aralığında yakalanan trafiğin özeti.
+    Agent tarafından üretilir, server'a gönderilir.
+    """
+    interface: str = Field(description="Hangi arayüzde yakalandı")
+    duration_sec: float = Field(ge=0.0, description="Yakalama süresi")
+    total_packets: int = Field(ge=0)
+    total_bytes: int = Field(ge=0)
+    protocols: list[ProtocolStats] = Field(default_factory=list)
+    top_src_ips: list[str] = Field(default_factory=list, description="En çok trafik üreten kaynak IP'ler")
+    top_dst_ips: list[str] = Field(default_factory=list, description="En çok trafik alan hedef IP'ler")
+    captured_at: datetime
+    suspicious_packet_count: int = Field(default=0, ge=0)
 
 class MetricSnapshot(BaseModel):
     """
@@ -110,6 +130,7 @@ class MetricSnapshot(BaseModel):
     disks: list[DiskMetrics] = Field(default_factory=list)
     network_interfaces: list[NetworkInterfaceMetrics] = Field(default_factory=list)
     network_snapshot: Optional[NetworkSnapshot] = None
+    traffic_summary: Optional[TrafficSummary] = None
     
 model_config = {"ser_json_timedelta": "iso8601"}
 
@@ -152,6 +173,9 @@ class Alert(BaseModel):
     threshold: float = Field(description="Aşılan eşik")
     triggered_at: datetime
     resolved_at: Optional[datetime] = None
+
+
+
 
 
 
