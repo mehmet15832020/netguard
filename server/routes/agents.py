@@ -13,6 +13,8 @@ from fastapi import APIRouter, HTTPException
 from shared.models import AgentRegistration, MetricSnapshot
 from server.storage import storage
 from server.alert_engine import alert_engine
+from server.influx_writer import influx_writer
+
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -30,6 +32,9 @@ def register_agent(registration: AgentRegistration):
 def receive_metrics(snapshot: MetricSnapshot):
     """Agent'tan gelen snapshot'ı depola ve alert kontrolü yap."""
     storage.store_snapshot(snapshot)
+
+    # InfluxDB'ye yaz
+    influx_writer.write_snapshot(snapshot)
 
     # Alert Engine'i çalıştır
     alerts = alert_engine.evaluate(snapshot)

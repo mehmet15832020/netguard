@@ -7,7 +7,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.protocol import API_VERSION
+from server.influx_writer import influx_writer
 from server.routes import agents, alerts, health
+from dotenv import load_dotenv
+load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,7 +26,9 @@ async def lifespan(app: FastAPI):
     logger.info("NetGuard Server başlatılıyor...")
     logger.info(f"API versiyonu: {API_VERSION}")
     logger.info("=" * 50)
+    influx_writer.connect()
     yield
+    influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
 
 
