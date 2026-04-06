@@ -4,12 +4,16 @@ NetGuard Server — Ana uygulama
 
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from shared.protocol import API_VERSION
-from server.influx_writer import influx_writer
-from server.routes import agents, alerts, health
 from dotenv import load_dotenv
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from server.influx_writer import influx_writer
+from server.routes import agents, alerts, auth, health
+from shared.protocol import API_VERSION
+
 load_dotenv()
 
 logging.basicConfig(
@@ -18,6 +22,9 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("netguard.server")
+
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 
 @asynccontextmanager
@@ -39,18 +46,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS — dashboard'un farklı port'tan API'ye erişmesine izin ver
+# Rate limiter middleware
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
     allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
 api_prefix = f"/api/{API_VERSION}"
 app.include_router(health.router, prefix=api_prefix, tags=["health"])
+app.include_router(auth.router, prefix=api_prefix, tags=["auth"])
 app.include_router(agents.router, prefix=api_prefix, tags=["agents"])
 app.include_router(alerts.router, prefix=api_prefix, tags=["alerts"])
+
 
 @app.get("/")
 def root():
