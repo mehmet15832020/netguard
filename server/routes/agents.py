@@ -14,6 +14,7 @@ from shared.models import AgentRegistration, MetricSnapshot
 from server.storage import storage
 from server.alert_engine import alert_engine
 from server.influx_writer import influx_writer
+from server.notifier import notifier
 
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,8 @@ def register_agent(registration: AgentRegistration):
     return {"status": "registered", "agent_id": registration.agent_id}
 
 
+
+
 @router.post("/agents/metrics", status_code=202)
 def receive_metrics(snapshot: MetricSnapshot):
     """Agent'tan gelen snapshot'ı depola ve alert kontrolü yap."""
@@ -40,7 +43,7 @@ def receive_metrics(snapshot: MetricSnapshot):
     alerts = alert_engine.evaluate(snapshot)
     for alert in alerts:
         storage.store_alert(alert)
-
+        notifier.notify(alert)
     return {"status": "accepted", "alerts_triggered": len(alerts)}
 
 @router.get("/agents")
