@@ -76,3 +76,20 @@ class TestCollectSnapshot:
         snapshot = collect_snapshot()  # ikinci çağrı — bant genişliği hesaplı
         assert snapshot.network_snapshot is not None
         assert snapshot.network_snapshot.connections.total >= 0
+
+class TestProcessCollector:
+    def test_process_snapshot_collected(self):
+        from agent.collector import _collect_processes
+        ps = _collect_processes()
+        assert ps.total_processes > 0
+        assert len(ps.top_cpu) <= 10
+        assert len(ps.top_memory) <= 10
+
+    def test_process_snapshot_in_full_snapshot(self):
+        snapshot = collect_snapshot()
+        # İkinci çağrıda process_snapshot dolu olmalı
+        import time; time.sleep(1)
+        snapshot2 = collect_snapshot()
+        assert snapshot2.process_snapshot is not None
+        assert snapshot2.process_snapshot.total_processes > 0
+    

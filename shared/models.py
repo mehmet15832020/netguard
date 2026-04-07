@@ -114,6 +114,25 @@ class TrafficSummary(BaseModel):
     top_dst_ips: list[str] = Field(default_factory=list, description="En çok trafik alan hedef IP'ler")
     captured_at: datetime
     suspicious_packet_count: int = Field(default=0, ge=0)
+class ProcessInfo(BaseModel):
+    """Tek bir process'in anlık bilgisi."""
+    pid: int
+    name: str
+    cpu_percent: float = Field(ge=0.0)
+    memory_percent: float = Field(ge=0.0, le=100.0)
+    memory_rss_bytes: int = Field(ge=0)
+    status: str
+    username: str = ""
+
+
+class ProcessSnapshot(BaseModel):
+    """Sistemdeki process listesinin özeti."""
+    total_processes: int = Field(ge=0)
+    running: int = Field(ge=0)
+    sleeping: int = Field(ge=0)
+    top_cpu: list[ProcessInfo] = Field(default_factory=list)
+    top_memory: list[ProcessInfo] = Field(default_factory=list)
+    captured_at: datetime
 
 class MetricSnapshot(BaseModel):
     """
@@ -130,10 +149,10 @@ class MetricSnapshot(BaseModel):
     disks: list[DiskMetrics] = Field(default_factory=list)
     network_interfaces: list[NetworkInterfaceMetrics] = Field(default_factory=list)
     network_snapshot: Optional[NetworkSnapshot] = None
+    process_snapshot: Optional[ProcessSnapshot] = None
     traffic_summary: Optional[TrafficSummary] = None
     
 model_config = {"ser_json_timedelta": "iso8601"}
-
 class AgentRegistration(BaseModel):
     """
     Agent ilk başladığında server'a kendini tanıtır.
@@ -173,7 +192,6 @@ class Alert(BaseModel):
     threshold: float = Field(description="Aşılan eşik")
     triggered_at: datetime
     resolved_at: Optional[datetime] = None
-
 
 
 

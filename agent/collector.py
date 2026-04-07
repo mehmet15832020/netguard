@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 import time
 
+
 from shared.models import (
     AgentStatus,
     CPUMetrics,
@@ -26,7 +27,10 @@ from shared.models import (
     NetworkInterfaceMetrics,
     NetworkSnapshot,
     ConnectionStats,
+    ProcessInfo,
+    ProcessSnapshot,
 )
+
 
 from shared.protocol import MAX_DISK_ENTRIES, MAX_INTERFACE_ENTRIES
 
@@ -181,6 +185,50 @@ def _collect_connections() -> ConnectionStats:
     except psutil.AccessDenied:
         return ConnectionStats(total=0, established=0, time_wait=0, listen=0)
 
+def _collect_processes() -> ProcessSnapshot:
+    """
+    Sistemdeki process listesini toplar.
+    CPU ve RAM'e göre ilk 10'ar process döndürür.
+    """
+    processes = []
+
+    for proc in psutil.process_iter([
+        'pid', 'name', 'cpu_percent', 'memory_percent',
+        'memory_info', 'status', 'username'
+    ]):
+        try:
+            info = proc.info
+            processes.append(ProcessInfo(
+                pid=info['pid'],
+                name=info['name'] or 'unknown',
+                cpu_percent=round(info['cpu_percent'] or 0.0, 2),
+                memory_percent=round(info['memory_percent'] or 0.0, 2),
+                memory_rss_bytes=info['memory_info'].rss if info['memory_info'] else 0,
+                status=info['status'] or 'unknown',
+                username=info['username'] or '',
+            ))
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+
+    # Durum sayıları
+    running = sum(1 for p in processes if p.status == 'running')
+    sleeping = sum(1 for p in processes if p.status == 'sleeping')
+
+    # En çok CPU kullanan 10 process
+    top_cpu = sorted(processes, key=lambda p: p.cpu_percent, reverse=True)[:10]
+
+    # En çok RAM kullanan 10 process
+    top_mem = sorted(processes, key=lambda p: p.memory_percent, reverse=True)[:10]
+
+    return ProcessSnapshot(
+        total_processes=len(processes),
+        running=running,
+        sleeping=sleeping,
+        top_cpu=top_cpu,
+        top_memory=top_mem,
+        captured_at=datetime.now(timezone.utc),
+    )
+
 def collect_snapshot() -> MetricSnapshot:
     """
     Tek entry point. Tüm metrikleri toplar, MetricSnapshot döndürür.
@@ -214,6 +262,26 @@ def collect_snapshot() -> MetricSnapshot:
     except Exception:
         network_snapshot = None
         status = AgentStatus.DEGRADED
+
+
+    try:
+        process_snapshot = _collect_processes()
+    except Exception:
+        process_snapshot = None
+        status = AgentStatus.DEGRADED
+
+    return MetricSnapshot(
+        agent_id=_get_agent_id(),
+        hostname=socket.gethostname(),
+        collected_at=datetime.now(timezone.utc),
+        status=status,
+        cpu=cpu,
+        memory=memory,
+        disks=disks,
+        network_interfaces=network,
+        network_snapshot=network_snapshot,
+        process_snapshot=process_snapshot,
+    )
 
     return MetricSnapshot(
         agent_id=_get_agent_id(),

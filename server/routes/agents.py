@@ -105,3 +105,13 @@ def get_traffic_summary(agent_id: str):
             detail="Henüz trafik verisi yok — agent başlatıldıktan 30 saniye sonra tekrar dene"
         )
     return snapshot.traffic_summary
+
+@router.get("/agents/{agent_id}/processes")
+def get_processes(agent_id: str):
+    """Agent'ın en son process listesini döndür."""
+    snapshot = storage.get_latest_snapshot(agent_id)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"Agent bulunamadı: {agent_id}")
+    if snapshot.process_snapshot is None:
+        raise HTTPException(status_code=404, detail="Henüz process verisi yok")
+    return snapshot.process_snapshot

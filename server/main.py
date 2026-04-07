@@ -13,6 +13,8 @@ from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
 from server.routes import agents, alerts, auth, health
 from shared.protocol import API_VERSION
+from server.routes import agents, alerts, auth, health, snmp
+
 
 load_dotenv()
 
@@ -25,6 +27,8 @@ logger = logging.getLogger("netguard.server")
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
+
+
 
 
 @asynccontextmanager
@@ -73,3 +77,5 @@ def root():
         "api": api_prefix,
         "docs": "/docs",
     }
+
+app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])
