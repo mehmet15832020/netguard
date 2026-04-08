@@ -282,15 +282,3 @@ def collect_snapshot() -> MetricSnapshot:
         network_snapshot=network_snapshot,
         process_snapshot=process_snapshot,
     )
-
-    return MetricSnapshot(
-        agent_id=_get_agent_id(),
-        hostname=socket.gethostname(),
-        collected_at=datetime.now(timezone.utc),
-        status=status,
-        cpu=cpu,
-        memory=memory,
-        disks=disks,
-        network_interfaces=network,
-        network_snapshot=network_snapshot,
-    )

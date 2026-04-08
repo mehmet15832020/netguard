@@ -11,9 +11,8 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health
-from shared.protocol import API_VERSION
 from server.routes import agents, alerts, auth, health, snmp
+from shared.protocol import API_VERSION
 
 
 load_dotenv()
@@ -57,7 +56,14 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://192.168.203.134:3000",  # VM1 - NetGuard Server
+        "http://192.168.203.142:3000",  # VM2 - Agent
+        "http://192.168.1.113:3000",    # Ana makine
+        "http://192.168.203.1:3000",    # VMware ağı gateway
+    ],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
@@ -67,6 +73,7 @@ app.include_router(health.router, prefix=api_prefix, tags=["health"])
 app.include_router(auth.router, prefix=api_prefix, tags=["auth"])
 app.include_router(agents.router, prefix=api_prefix, tags=["agents"])
 app.include_router(alerts.router, prefix=api_prefix, tags=["alerts"])
+app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])
 
 
 @app.get("/")
@@ -77,5 +84,3 @@ def root():
         "api": api_prefix,
         "docs": "/docs",
     }
-
-app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])

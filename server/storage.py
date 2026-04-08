@@ -13,7 +13,6 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Optional
 
-from shared.models import AgentRegistration, MetricSnapshot
 from shared.models import AgentRegistration, Alert, AlertStatus, MetricSnapshot
 
 # Agent başına tutulacak maksimum snapshot sayısı
@@ -39,7 +38,7 @@ class InMemoryStorage:
 
     def __init__(self):
         self._agents: dict[str, AgentRecord] = {}
-        self._alerts: list[Alert] = []    # ← bunu ekle
+        self._alerts: deque = deque(maxlen=1000)
         self._lock = Lock()
 
     def register_agent(self, registration: AgentRegistration) -> None:

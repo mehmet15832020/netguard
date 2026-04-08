@@ -151,8 +151,9 @@ class MetricSnapshot(BaseModel):
     network_snapshot: Optional[NetworkSnapshot] = None
     process_snapshot: Optional[ProcessSnapshot] = None
     traffic_summary: Optional[TrafficSummary] = None
-    
-model_config = {"ser_json_timedelta": "iso8601"}
+    model_config = {"ser_json_timedelta": "iso8601"}
+
+
 class AgentRegistration(BaseModel):
     """
     Agent ilk başladığında server'a kendini tanıtır.
