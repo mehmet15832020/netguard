@@ -2,7 +2,10 @@
 NetGuard Server — Ana uygulama
 """
 
+import asyncio
 import logging
+import os
+import socket
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -11,8 +14,28 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp
+from server.routes import agents, alerts, auth, health, snmp, security
 from shared.protocol import API_VERSION
+
+SECURITY_SCAN_INTERVAL = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))  # saniye
+
+
+async def _security_scan_loop():
+    """Her SECURITY_SCAN_INTERVAL saniyede bir güvenlik taraması yap."""
+    from server.security_log_parser import parse_auth_log
+    from server.port_monitor import port_monitor
+    from server.config_monitor import config_monitor
+
+    agent_id = os.getenv("AGENT_ID", socket.gethostname())
+
+    while True:
+        await asyncio.sleep(SECURITY_SCAN_INTERVAL)
+        try:
+            parse_auth_log(agent_id=agent_id)
+            port_monitor.check(agent_id=agent_id)
+            config_monitor.check(agent_id=agent_id)
+        except Exception as exc:
+            logger.error(f"Güvenlik tarama hatası: {exc}")
 
 
 load_dotenv()
@@ -37,7 +60,10 @@ async def lifespan(app: FastAPI):
     logger.info(f"API versiyonu: {API_VERSION}")
     logger.info("=" * 50)
     influx_writer.connect()
+    scan_task = asyncio.create_task(_security_scan_loop())
+    logger.info(f"Güvenlik tarama döngüsü başlatıldı (her {SECURITY_SCAN_INTERVAL}s)")
     yield
+    scan_task.cancel()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
 
@@ -74,6 +100,7 @@ app.include_router(auth.router, prefix=api_prefix, tags=["auth"])
 app.include_router(agents.router, prefix=api_prefix, tags=["agents"])
 app.include_router(alerts.router, prefix=api_prefix, tags=["alerts"])
 app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])
+app.include_router(security.router, prefix=api_prefix, tags=["security"])
 
 
 @app.get("/")

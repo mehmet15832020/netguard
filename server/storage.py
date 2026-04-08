@@ -14,6 +14,7 @@ from threading import Lock
 from typing import Optional
 
 from shared.models import AgentRegistration, Alert, AlertStatus, MetricSnapshot
+from server.database import db
 
 # Agent başına tutulacak maksimum snapshot sayısı
 MAX_SNAPSHOTS_PER_AGENT = 360  # 10 saniyelik aralıkla 1 saatlik veri
@@ -107,10 +108,10 @@ class InMemoryStorage:
 
 
     def store_alert(self, alert: Alert) -> None:
-        """Alert'i kaydet veya güncelle."""
+        """Alert'i RAM cache'e ve SQLite'a yazar."""
+        db.save_alert(alert)  # kalıcı depolama
         with self._lock:
             if alert.status == AlertStatus.RESOLVED:
-                # Mevcut alert'i resolve et
                 for existing in self._alerts:
                     if existing.alert_id == alert.alert_id:
                         existing.status = AlertStatus.RESOLVED

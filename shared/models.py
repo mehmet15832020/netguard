@@ -167,6 +167,32 @@ class AgentRegistration(BaseModel):
     netguard_version: str = Field(default="0.1.0")
     registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+class SecurityEventType(str, Enum):
+    """Güvenlik olayının türü."""
+    BRUTE_FORCE      = "brute_force"       # Çok sayıda başarısız login
+    SSH_FAILURE      = "ssh_failure"       # Tek başarısız SSH girişi
+    SSH_SUCCESS      = "ssh_success"       # Başarılı SSH girişi
+    SUDO_USAGE       = "sudo_usage"        # sudo komutu kullanımı
+    PORT_OPENED      = "port_opened"       # Yeni port açıldı
+    PORT_CLOSED      = "port_closed"       # Port kapandı
+    CHECKSUM_CHANGED = "checksum_changed"  # Kritik dosya değişti
+
+
+class SecurityEvent(BaseModel):
+    """Tek bir güvenlik olayı kaydı."""
+    event_id: str = Field(description="Benzersiz olay ID")
+    agent_id: str
+    hostname: str
+    event_type: SecurityEventType
+    severity: str = Field(description="info | warning | critical")
+    source_ip: Optional[str] = None
+    username: Optional[str] = None
+    message: str
+    raw_data: Optional[str] = None        # Ham log satırı veya JSON
+    occurred_at: datetime
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AlertSeverity(str, Enum):
     """Alert öncelik seviyesi."""
     INFO = "info"
