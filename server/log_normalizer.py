@@ -9,7 +9,8 @@ Pipeline:
   2. Kaynak tipi tespit edilir (identify_source)
   3. Kaynağa uygun parser çağrılır
   4. NormalizedLog üretilir
-  5. Ham log + normalize log DB'ye yazılır
+  5. Log timestamp NTP validator ile doğrulanır — anormal ise tag eklenir
+  6. Ham log + normalize log DB'ye yazılır
 """
 
 import json
@@ -20,6 +21,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from server.database import db
+from server.ntp_validator import ntp_validator
 from shared.models import (
     LogCategory,
     LogSourceType,
@@ -301,6 +303,16 @@ def normalize(raw_content: str, source_host: str) -> Optional[NormalizedLog]:
     if parsed is None:
         logger.debug(f"Parse başarısız: {source_host} / {source_type.value}")
         return None
+
+    # Log timestamp doğrulaması
+    ts = parsed.get("timestamp")
+    tags: list = list(parsed.get("tags", []))
+    if ts is not None:
+        valid, reason = ntp_validator.validate_log_timestamp(ts)
+        if not valid:
+            tags.append(f"timestamp_anomaly:{reason}")
+            logger.warning(f"Log timestamp anomalisi ({source_host}): {reason}")
+    parsed["tags"] = tags
 
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
