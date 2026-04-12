@@ -1,0 +1,63 @@
+[
+  {
+    "rule_id": "brute_force_ssh",
+    "name": "SSH Brute Force",
+    "description": "Aynı IP'den kısa sürede çok sayıda başarısız SSH girişi",
+    "match_event_type": "ssh_failure",
+    "group_by": "src_ip",
+    "window_seconds": 300,
+    "threshold": 5,
+    "severity": "critical",
+    "output_event_type": "brute_force_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "port_scan_detect",
+    "name": "Port Tarama Tespiti",
+    "description": "Aynı IP'den kısa sürede farklı portlara çok sayıda bağlantı denemesi",
+    "match_event_type": "zeek_connection",
+    "group_by": "src_ip",
+    "window_seconds": 60,
+    "threshold": 20,
+    "severity": "warning",
+    "output_event_type": "port_scan_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "suricata_alert_burst",
+    "name": "Suricata Alert Patlaması",
+    "description": "Kısa sürede çok sayıda Suricata IDS alarmı",
+    "match_event_type": "suricata_alert",
+    "group_by": "src_ip",
+    "window_seconds": 120,
+    "threshold": 10,
+    "severity": "critical",
+    "output_event_type": "ids_alert_burst",
+    "enabled": true
+  },
+  {
+    "rule_id": "dns_query_flood",
+    "name": "DNS Sorgu Flood",
+    "description": "Aynı kaynaktan anormal sayıda DNS sorgusu",
+    "match_event_type": "dns_query",
+    "group_by": "src_ip",
+    "window_seconds": 60,
+    "threshold": 50,
+    "severity": "warning",
+    "output_event_type": "dns_anomaly_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "wazuh_critical_burst",
+    "name": "Wazuh Kritik Alert Patlaması",
+    "description": "Aynı host'tan kısa sürede çok sayıda Wazuh kritik alarmı",
+    "match_event_type": "wazuh_rule_",
+    "match_severity": "critical",
+    "group_by": "source_host",
+    "window_seconds": 300,
+    "threshold": 5,
+    "severity": "critical",
+    "output_event_type": "wazuh_critical_burst",
+    "enabled": true
+  }
+]

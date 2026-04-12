@@ -250,6 +250,25 @@ class NormalizedLog(BaseModel):
     processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class CorrelatedEvent(BaseModel):
+    """
+    Birden fazla normalize log olayının korelasyonu sonucu üretilen olay.
+    Örnek: 5 dakikada 10 SSH hatası → tek bir brute_force_detected eventi.
+    """
+    corr_id: str = Field(description="Benzersiz korelasyon ID")
+    rule_id: str = Field(description="Tetikleyen kural ID")
+    rule_name: str
+    event_type: str = Field(description="Korelasyon olay tipi, örn: brute_force_detected")
+    severity: str = Field(description="info | warning | critical")
+    group_value: str = Field(description="Gruplanma değeri, örn: kaynak IP")
+    matched_count: int = Field(ge=1, description="Zaman penceresindeki eşleşen log sayısı")
+    window_seconds: int = Field(description="Kural zaman penceresi (saniye)")
+    first_seen: datetime = Field(description="Penceredeki ilk olayın zamanı")
+    last_seen: datetime = Field(description="Penceredeki son olayın zamanı")
+    message: str
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AlertSeverity(str, Enum):
     """Alert öncelik seviyesi."""
     INFO = "info"

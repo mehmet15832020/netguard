@@ -23,6 +23,7 @@ from shared.models import (
     Alert, AlertSeverity, AlertStatus,
     SecurityEvent, SecurityEventType,
     RawLog, NormalizedLog, LogSourceType, LogCategory,
+    CorrelatedEvent,
 )
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,29 @@ CREATE INDEX IF NOT EXISTS idx_norm_event_type  ON normalized_logs(event_type);
 """
 
 
+_CREATE_CORRELATED_EVENTS = """
+CREATE TABLE IF NOT EXISTS correlated_events (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    corr_id        TEXT UNIQUE NOT NULL,
+    rule_id        TEXT NOT NULL,
+    rule_name      TEXT NOT NULL,
+    event_type     TEXT NOT NULL,
+    severity       TEXT NOT NULL,
+    group_value    TEXT NOT NULL,
+    matched_count  INTEGER NOT NULL,
+    window_seconds INTEGER NOT NULL,
+    first_seen     TEXT NOT NULL,
+    last_seen      TEXT NOT NULL,
+    message        TEXT NOT NULL,
+    created_at     TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_corr_rule_id     ON correlated_events(rule_id);
+CREATE INDEX IF NOT EXISTS idx_corr_event_type  ON correlated_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_corr_group_value ON correlated_events(group_value);
+CREATE INDEX IF NOT EXISTS idx_corr_created_at  ON correlated_events(created_at);
+"""
+
+
 class DatabaseManager:
     """
     Thread-safe SQLite yöneticisi.
@@ -133,6 +157,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_SECURITY_EVENTS)
             conn.executescript(_CREATE_RAW_LOGS)
             conn.executescript(_CREATE_NORMALIZED_LOGS)
+            conn.executescript(_CREATE_CORRELATED_EVENTS)
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -421,6 +446,39 @@ class DatabaseManager:
             ).fetchall()
         return [self._row_to_normalized_log(r) for r in rows]
 
+    def get_normalized_logs_in_window(
+        self,
+        event_type_prefix: str,
+        group_by: str,
+        group_value: str,
+        since_iso: str,
+        severity: Optional[str] = None,
+    ) -> list[NormalizedLog]:
+        """
+        Korelasyon için: belirli zaman penceresindeki eşleşen normalize logları getir.
+        event_type_prefix ile LIKE sorgusu yapılır (örn. 'wazuh_rule_' her wazuh kuralını yakalar).
+        """
+        group_col = "src_ip" if group_by == "src_ip" else "source_host"
+        params = [f"{event_type_prefix}%", group_value, since_iso]
+        severity_clause = ""
+        if severity:
+            severity_clause = "AND severity = ?"
+            params.append(severity)
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM normalized_logs
+                WHERE event_type LIKE ?
+                  AND {group_col} = ?
+                  AND timestamp >= ?
+                  {severity_clause}
+                ORDER BY timestamp ASC
+                """,
+                params,
+            ).fetchall()
+        return [self._row_to_normalized_log(r) for r in rows]
+
     def _row_to_normalized_log(self, row: sqlite3.Row) -> NormalizedLog:
         return NormalizedLog(
             log_id       = row["log_id"],
@@ -440,6 +498,95 @@ class DatabaseManager:
             message      = row["message"],
             tags         = json.loads(row["tags"]),
             processed_at = datetime.fromisoformat(row["processed_at"]),
+        )
+
+
+    # ------------------------------------------------------------------ #
+    #  CORRELATED EVENTS
+    # ------------------------------------------------------------------ #
+
+    def save_correlated_event(self, event: CorrelatedEvent) -> bool:
+        """
+        Korelasyon olayını kaydet.
+        Aynı rule_id + group_value kombinasyonu son window_seconds içinde zaten varsa
+        kaydetme (duplicate önleme). True döner kayıt yapıldıysa, False = atlandı.
+        """
+        with self._lock:
+            with self._connect() as conn:
+                existing = conn.execute(
+                    """
+                    SELECT corr_id FROM correlated_events
+                    WHERE rule_id = ? AND group_value = ?
+                      AND created_at >= datetime('now', ? || ' seconds')
+                    LIMIT 1
+                    """,
+                    (event.rule_id, event.group_value, f"-{event.window_seconds}"),
+                ).fetchone()
+
+                if existing:
+                    return False
+
+                conn.execute("""
+                    INSERT INTO correlated_events
+                        (corr_id, rule_id, rule_name, event_type, severity,
+                         group_value, matched_count, window_seconds,
+                         first_seen, last_seen, message, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    event.corr_id,
+                    event.rule_id,
+                    event.rule_name,
+                    event.event_type,
+                    event.severity,
+                    event.group_value,
+                    event.matched_count,
+                    event.window_seconds,
+                    event.first_seen.isoformat(),
+                    event.last_seen.isoformat(),
+                    event.message,
+                    event.created_at.isoformat(),
+                ))
+                return True
+
+    def get_correlated_events(
+        self,
+        rule_id: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[CorrelatedEvent]:
+        """Korelasyon olaylarını filtreli getir — en yeni önce."""
+        clauses, params = [], []
+        if rule_id:
+            clauses.append("rule_id = ?")
+            params.append(rule_id)
+        if severity:
+            clauses.append("severity = ?")
+            params.append(severity)
+
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM correlated_events {where} ORDER BY created_at DESC LIMIT ?",
+                params,
+            ).fetchall()
+        return [self._row_to_correlated_event(r) for r in rows]
+
+    def _row_to_correlated_event(self, row: sqlite3.Row) -> CorrelatedEvent:
+        return CorrelatedEvent(
+            corr_id        = row["corr_id"],
+            rule_id        = row["rule_id"],
+            rule_name      = row["rule_name"],
+            event_type     = row["event_type"],
+            severity       = row["severity"],
+            group_value    = row["group_value"],
+            matched_count  = row["matched_count"],
+            window_seconds = row["window_seconds"],
+            first_seen     = datetime.fromisoformat(row["first_seen"]),
+            last_seen      = datetime.fromisoformat(row["last_seen"]),
+            message        = row["message"],
+            created_at     = datetime.fromisoformat(row["created_at"]),
         )
 
 

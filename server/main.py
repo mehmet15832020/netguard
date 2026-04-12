@@ -14,11 +14,25 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation
 from shared.protocol import API_VERSION
 
-SECURITY_SCAN_INTERVAL = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))  # saniye
-NTP_CHECK_INTERVAL     = int(os.getenv("NETGUARD_NTP_CHECK_INTERVAL", "300"))  # saniye (5 dk)
+SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
+NTP_CHECK_INTERVAL      = int(os.getenv("NETGUARD_NTP_CHECK_INTERVAL", "300"))  # saniye (5 dk)
+CORRELATION_INTERVAL    = int(os.getenv("NETGUARD_CORR_INTERVAL", "60"))    # saniye
+
+
+async def _correlation_loop():
+    """Her CORRELATION_INTERVAL saniyede bir korelasyon motorunu çalıştır."""
+    from server.correlator import correlator
+    while True:
+        await asyncio.sleep(CORRELATION_INTERVAL)
+        try:
+            events = correlator.run()
+            if events:
+                logger.warning(f"Korelasyon: {len(events)} yeni olay üretildi")
+        except Exception as exc:
+            logger.error(f"Korelasyon hatası: {exc}")
 
 
 async def _ntp_check_loop():
@@ -74,14 +88,17 @@ async def lifespan(app: FastAPI):
     influx_writer.connect()
     scan_task = asyncio.create_task(_security_scan_loop())
     logger.info(f"Güvenlik tarama döngüsü başlatıldı (her {SECURITY_SCAN_INTERVAL}s)")
-    ntp_task = asyncio.create_task(_ntp_check_loop())
+    ntp_task  = asyncio.create_task(_ntp_check_loop())
     logger.info(f"NTP saat kontrolü başlatıldı (her {NTP_CHECK_INTERVAL}s)")
+    corr_task = asyncio.create_task(_correlation_loop())
+    logger.info(f"Korelasyon motoru başlatıldı (her {CORRELATION_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
     yield
     scan_task.cancel()
     ntp_task.cancel()
+    corr_task.cancel()
     syslog.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
@@ -120,7 +137,8 @@ app.include_router(agents.router, prefix=api_prefix, tags=["agents"])
 app.include_router(alerts.router, prefix=api_prefix, tags=["alerts"])
 app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])
 app.include_router(security.router, prefix=api_prefix, tags=["security"])
-app.include_router(logs.router,    prefix=api_prefix, tags=["logs"])
+app.include_router(logs.router,        prefix=api_prefix, tags=["logs"])
+app.include_router(correlation.router, prefix=api_prefix, tags=["correlation"])
 
 
 @app.get("/")
