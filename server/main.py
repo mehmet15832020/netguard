@@ -14,7 +14,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security
+from server.routes import agents, alerts, auth, health, snmp, security, logs
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))  # saniye
@@ -62,8 +62,12 @@ async def lifespan(app: FastAPI):
     influx_writer.connect()
     scan_task = asyncio.create_task(_security_scan_loop())
     logger.info(f"Güvenlik tarama döngüsü başlatıldı (her {SECURITY_SCAN_INTERVAL}s)")
+    from server.syslog_receiver import SyslogReceiver
+    syslog = SyslogReceiver()
+    await syslog.start()
     yield
     scan_task.cancel()
+    syslog.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
 
@@ -101,6 +105,7 @@ app.include_router(agents.router, prefix=api_prefix, tags=["agents"])
 app.include_router(alerts.router, prefix=api_prefix, tags=["alerts"])
 app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])
 app.include_router(security.router, prefix=api_prefix, tags=["security"])
+app.include_router(logs.router,    prefix=api_prefix, tags=["logs"])
 
 
 @app.get("/")

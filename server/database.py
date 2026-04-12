@@ -19,7 +19,11 @@ from pathlib import Path
 from threading import Lock
 from typing import Optional
 
-from shared.models import Alert, AlertSeverity, AlertStatus, SecurityEvent, SecurityEventType
+from shared.models import (
+    Alert, AlertSeverity, AlertStatus,
+    SecurityEvent, SecurityEventType,
+    RawLog, NormalizedLog, LogSourceType, LogCategory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,51 @@ CREATE INDEX IF NOT EXISTS idx_sec_srcip   ON security_events(source_ip);
 """
 
 
+_CREATE_RAW_LOGS = """
+CREATE TABLE IF NOT EXISTS raw_logs (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    raw_id             TEXT UNIQUE NOT NULL,
+    source_type        TEXT,
+    source_host        TEXT NOT NULL,
+    received_at        TEXT NOT NULL,
+    raw_content        TEXT NOT NULL,
+    normalized         INTEGER NOT NULL DEFAULT 0,
+    normalized_log_id  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_raw_normalized ON raw_logs(normalized);
+CREATE INDEX IF NOT EXISTS idx_raw_host       ON raw_logs(source_host);
+CREATE INDEX IF NOT EXISTS idx_raw_received   ON raw_logs(received_at);
+"""
+
+_CREATE_NORMALIZED_LOGS = """
+CREATE TABLE IF NOT EXISTS normalized_logs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    log_id       TEXT UNIQUE NOT NULL,
+    raw_id       TEXT NOT NULL,
+    source_type  TEXT NOT NULL,
+    source_host  TEXT NOT NULL,
+    timestamp    TEXT NOT NULL,
+    received_at  TEXT NOT NULL,
+    severity     TEXT NOT NULL,
+    category     TEXT NOT NULL,
+    event_type   TEXT NOT NULL,
+    src_ip       TEXT,
+    dst_ip       TEXT,
+    src_port     INTEGER,
+    dst_port     INTEGER,
+    username     TEXT,
+    message      TEXT NOT NULL,
+    tags         TEXT NOT NULL DEFAULT '[]',
+    processed_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_norm_timestamp   ON normalized_logs(timestamp);
+CREATE INDEX IF NOT EXISTS idx_norm_source_type ON normalized_logs(source_type);
+CREATE INDEX IF NOT EXISTS idx_norm_category    ON normalized_logs(category);
+CREATE INDEX IF NOT EXISTS idx_norm_src_ip      ON normalized_logs(src_ip);
+CREATE INDEX IF NOT EXISTS idx_norm_event_type  ON normalized_logs(event_type);
+"""
+
+
 class DatabaseManager:
     """
     Thread-safe SQLite yöneticisi.
@@ -82,6 +131,8 @@ class DatabaseManager:
         with self._connect() as conn:
             conn.executescript(_CREATE_ALERTS)
             conn.executescript(_CREATE_SECURITY_EVENTS)
+            conn.executescript(_CREATE_RAW_LOGS)
+            conn.executescript(_CREATE_NORMALIZED_LOGS)
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -247,6 +298,148 @@ class DatabaseManager:
             raw_data    = row["raw_data"],
             occurred_at = datetime.fromisoformat(row["occurred_at"]),
             created_at  = datetime.fromisoformat(row["created_at"]),
+        )
+
+
+    # ------------------------------------------------------------------ #
+    #  RAW LOGS
+    # ------------------------------------------------------------------ #
+
+    def save_raw_log(self, raw: RawLog) -> None:
+        """Ham logu kaydet."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("""
+                    INSERT OR IGNORE INTO raw_logs
+                        (raw_id, source_type, source_host, received_at,
+                         raw_content, normalized, normalized_log_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    raw.raw_id,
+                    raw.source_type.value if raw.source_type else None,
+                    raw.source_host,
+                    raw.received_at.isoformat(),
+                    raw.raw_content,
+                    int(raw.normalized),
+                    raw.normalized_log_id,
+                ))
+
+    def mark_raw_normalized(self, raw_id: str, normalized_log_id: str) -> None:
+        """Ham logu normalize edildi olarak işaretle."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE raw_logs SET normalized=1, normalized_log_id=? WHERE raw_id=?",
+                    (normalized_log_id, raw_id),
+                )
+
+    def get_unnormalized_raw_logs(self, limit: int = 100) -> list[RawLog]:
+        """Henüz normalize edilmemiş ham logları getir."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM raw_logs WHERE normalized=0 ORDER BY received_at ASC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [self._row_to_raw_log(r) for r in rows]
+
+    def _row_to_raw_log(self, row: sqlite3.Row) -> RawLog:
+        return RawLog(
+            raw_id            = row["raw_id"],
+            source_type       = LogSourceType(row["source_type"]) if row["source_type"] else None,
+            source_host       = row["source_host"],
+            received_at       = datetime.fromisoformat(row["received_at"]),
+            raw_content       = row["raw_content"],
+            normalized        = bool(row["normalized"]),
+            normalized_log_id = row["normalized_log_id"],
+        )
+
+    # ------------------------------------------------------------------ #
+    #  NORMALIZED LOGS
+    # ------------------------------------------------------------------ #
+
+    def save_normalized_log(self, log: NormalizedLog) -> None:
+        """Normalize edilmiş logu kaydet."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("""
+                    INSERT OR IGNORE INTO normalized_logs
+                        (log_id, raw_id, source_type, source_host, timestamp,
+                         received_at, severity, category, event_type,
+                         src_ip, dst_ip, src_port, dst_port,
+                         username, message, tags, processed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    log.log_id,
+                    log.raw_id,
+                    log.source_type.value,
+                    log.source_host,
+                    log.timestamp.isoformat(),
+                    log.received_at.isoformat(),
+                    log.severity,
+                    log.category.value,
+                    log.event_type,
+                    log.src_ip,
+                    log.dst_ip,
+                    log.src_port,
+                    log.dst_port,
+                    log.username,
+                    log.message,
+                    json.dumps(log.tags),
+                    log.processed_at.isoformat(),
+                ))
+
+    def get_normalized_logs(
+        self,
+        source_type: Optional[str] = None,
+        category: Optional[str] = None,
+        src_ip: Optional[str] = None,
+        event_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[NormalizedLog]:
+        """Normalize logları filtreli getir — timestamp'e göre sıralı."""
+        clauses, params = [], []
+        if source_type:
+            clauses.append("source_type = ?")
+            params.append(source_type)
+        if category:
+            clauses.append("category = ?")
+            params.append(category)
+        if src_ip:
+            clauses.append("src_ip = ?")
+            params.append(src_ip)
+        if event_type:
+            clauses.append("event_type = ?")
+            params.append(event_type)
+
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM normalized_logs {where} ORDER BY timestamp DESC LIMIT ?",
+                params,
+            ).fetchall()
+        return [self._row_to_normalized_log(r) for r in rows]
+
+    def _row_to_normalized_log(self, row: sqlite3.Row) -> NormalizedLog:
+        return NormalizedLog(
+            log_id       = row["log_id"],
+            raw_id       = row["raw_id"],
+            source_type  = LogSourceType(row["source_type"]),
+            source_host  = row["source_host"],
+            timestamp    = datetime.fromisoformat(row["timestamp"]),
+            received_at  = datetime.fromisoformat(row["received_at"]),
+            severity     = row["severity"],
+            category     = LogCategory(row["category"]),
+            event_type   = row["event_type"],
+            src_ip       = row["src_ip"],
+            dst_ip       = row["dst_ip"],
+            src_port     = row["src_port"],
+            dst_port     = row["dst_port"],
+            username     = row["username"],
+            message      = row["message"],
+            tags         = json.loads(row["tags"]),
+            processed_at = datetime.fromisoformat(row["processed_at"]),
         )
 
 

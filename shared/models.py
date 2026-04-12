@@ -193,6 +193,63 @@ class SecurityEvent(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class LogSourceType(str, Enum):
+    """Log kaynağının tipi."""
+    SURICATA  = "suricata"   # Suricata IDS/IPS
+    ZEEK      = "zeek"       # Zeek network monitor
+    WAZUH     = "wazuh"      # Wazuh HIDS
+    SYSLOG    = "syslog"     # Genel syslog
+    AUTH_LOG  = "auth_log"   # /var/log/auth.log
+    NETGUARD  = "netguard"   # NetGuard internal
+
+
+class LogCategory(str, Enum):
+    """Olayın genel kategorisi."""
+    AUTHENTICATION = "authentication"  # Giriş/çıkış olayları
+    NETWORK        = "network"         # Ağ trafiği olayları
+    INTRUSION      = "intrusion"       # Saldırı tespiti
+    SYSTEM         = "system"          # Sistem olayları
+    UNKNOWN        = "unknown"
+
+
+class RawLog(BaseModel):
+    """
+    Kaynaktan gelen ham log — işlenmeden önce saklanır.
+    İki DB katmanının 'ham' tarafı budur.
+    """
+    raw_id: str = Field(description="Benzersiz ham log ID")
+    source_type: Optional[LogSourceType] = None
+    source_host: str = Field(description="Logu gönderen host/IP")
+    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    raw_content: str = Field(description="Ham log satırı veya JSON içerik")
+    normalized: bool = Field(default=False, description="Normalize edildi mi")
+    normalized_log_id: Optional[str] = None
+
+
+class NormalizedLog(BaseModel):
+    """
+    Ortak formata dönüştürülmüş log kaydı.
+    Kaynak ne olursa olsun aynı alanlar dolu — korelasyon bu sayede çalışır.
+    """
+    log_id: str = Field(description="Benzersiz normalize log ID")
+    raw_id: str = Field(description="Kaynak ham log ID")
+    source_type: LogSourceType
+    source_host: str
+    timestamp: datetime = Field(description="Olayın gerçekleştiği zaman (UTC)")
+    received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    severity: str = Field(description="info | warning | critical")
+    category: LogCategory
+    event_type: str = Field(description="Spesifik olay tipi, örn: ssh_failure")
+    src_ip: Optional[str] = None
+    dst_ip: Optional[str] = None
+    src_port: Optional[int] = None
+    dst_port: Optional[int] = None
+    username: Optional[str] = None
+    message: str = Field(description="İnsan okunabilir normalize edilmiş mesaj")
+    tags: list[str] = Field(default_factory=list, description="Ek etiketler")
+    processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
 class AlertSeverity(str, Enum):
     """Alert öncelik seviyesi."""
     INFO = "info"
