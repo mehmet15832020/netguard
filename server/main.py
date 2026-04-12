@@ -20,6 +20,20 @@ from shared.protocol import API_VERSION
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
 NTP_CHECK_INTERVAL      = int(os.getenv("NETGUARD_NTP_CHECK_INTERVAL", "300"))  # saniye (5 dk)
 CORRELATION_INTERVAL    = int(os.getenv("NETGUARD_CORR_INTERVAL", "60"))    # saniye
+DETECTOR_INTERVAL       = int(os.getenv("NETGUARD_DETECTOR_INTERVAL", "30")) # saniye
+
+
+async def _detector_loop():
+    """Her DETECTOR_INTERVAL saniyede bir ağ saldırı dedektörlerini çalıştır."""
+    from server.detectors.manager import detector_manager
+    while True:
+        await asyncio.sleep(DETECTOR_INTERVAL)
+        try:
+            logs = detector_manager.run_all()
+            if logs:
+                logger.warning(f"Dedektörler: {len(logs)} şüpheli olay")
+        except Exception as exc:
+            logger.error(f"Dedektör hatası: {exc}")
 
 
 async def _correlation_loop():
@@ -92,6 +106,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"NTP saat kontrolü başlatıldı (her {NTP_CHECK_INTERVAL}s)")
     corr_task = asyncio.create_task(_correlation_loop())
     logger.info(f"Korelasyon motoru başlatıldı (her {CORRELATION_INTERVAL}s)")
+    detector_task = asyncio.create_task(_detector_loop())
+    logger.info(f"Saldırı dedektörleri başlatıldı (her {DETECTOR_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -99,6 +115,7 @@ async def lifespan(app: FastAPI):
     scan_task.cancel()
     ntp_task.cancel()
     corr_task.cancel()
+    detector_task.cancel()
     syslog.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")

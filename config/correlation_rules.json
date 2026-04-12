@@ -12,15 +12,51 @@
     "enabled": true
   },
   {
-    "rule_id": "port_scan_detect",
+    "rule_id": "port_scan_from_detector",
     "name": "Port Tarama Tespiti",
-    "description": "Aynı IP'den kısa sürede farklı portlara çok sayıda bağlantı denemesi",
-    "match_event_type": "zeek_connection",
+    "description": "Dedektörden gelen port tarama girişimleri",
+    "match_event_type": "port_scan_attempt",
     "group_by": "src_ip",
-    "window_seconds": 60,
-    "threshold": 20,
+    "window_seconds": 120,
+    "threshold": 3,
     "severity": "warning",
     "output_event_type": "port_scan_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "arp_spoof_from_detector",
+    "name": "ARP Spoofing Tespiti",
+    "description": "ARP tablosunda IP-MAC eşleme değişikliği — tek tespit bile kritik",
+    "match_event_type": "arp_spoof_attempt",
+    "group_by": "src_ip",
+    "window_seconds": 300,
+    "threshold": 1,
+    "severity": "critical",
+    "output_event_type": "arp_spoof_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "icmp_flood_from_detector",
+    "name": "ICMP Flood Tespiti",
+    "description": "Yüksek hızda ICMP paketi — DoS saldırısı göstergesi",
+    "match_event_type": "icmp_flood_attempt",
+    "group_by": "source_host",
+    "window_seconds": 60,
+    "threshold": 1,
+    "severity": "critical",
+    "output_event_type": "icmp_flood_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "dns_anomaly_from_detector",
+    "name": "DNS Anomali Tespiti",
+    "description": "Anormal DNS sorgu yoğunluğu",
+    "match_event_type": "dns_query_burst",
+    "group_by": "src_ip",
+    "window_seconds": 120,
+    "threshold": 2,
+    "severity": "warning",
+    "output_event_type": "dns_anomaly_detected",
     "enabled": true
   },
   {
@@ -33,18 +69,6 @@
     "threshold": 10,
     "severity": "critical",
     "output_event_type": "ids_alert_burst",
-    "enabled": true
-  },
-  {
-    "rule_id": "dns_query_flood",
-    "name": "DNS Sorgu Flood",
-    "description": "Aynı kaynaktan anormal sayıda DNS sorgusu",
-    "match_event_type": "dns_query",
-    "group_by": "src_ip",
-    "window_seconds": 60,
-    "threshold": 50,
-    "severity": "warning",
-    "output_event_type": "dns_anomaly_detected",
     "enabled": true
   },
   {
