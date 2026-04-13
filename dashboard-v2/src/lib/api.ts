@@ -68,11 +68,10 @@ async function request<T>(
 
 export const authApi = {
   login: async (username: string, password: string): Promise<{ access_token: string }> => {
-    const form = new URLSearchParams({ username, password })
-    const res = await fetch(`${API}/auth/token`, {
+    const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
     })
     if (!res.ok) {
       const body = await res.json().catch(() => ({ detail: 'Giriş başarısız' }))

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/api'
 import { Sidebar } from '@/components/layout/Sidebar'
@@ -8,15 +8,18 @@ import { useWebSocket } from '@/hooks/useWebSocket'
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
-  useWebSocket()   // WebSocket bağlantısını başlat
+  const [ready, setReady] = useState(false)
+  useWebSocket()
 
   useEffect(() => {
     if (!auth.isLoggedIn()) {
       router.replace('/login')
+    } else {
+      setReady(true)
     }
   }, [router])
 
-  if (!auth.isLoggedIn()) return null
+  if (!ready) return null
 
   return (
     <div className="flex h-screen overflow-hidden">

@@ -11,6 +11,7 @@ import {
   Settings,
   LogOut,
   Activity,
+  Server,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth } from '@/lib/api'
@@ -19,6 +20,7 @@ import { Badge } from '@/components/ui/badge'
 
 const NAV_ITEMS = [
   { href: '/overview',     label: 'Genel Bakış',   icon: LayoutDashboard },
+  { href: '/agents',       label: 'Agents',         icon: Server },
   { href: '/alerts',       label: 'Alertler',       icon: Bell },
   { href: '/security',     label: 'Güvenlik',       icon: Shield },
   { href: '/logs',         label: 'Loglar',         icon: FileText },

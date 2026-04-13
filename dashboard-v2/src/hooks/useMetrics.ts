@@ -32,7 +32,9 @@ export function useLatestSnapshot(agentId: string) {
   }
 }
 
+const EMPTY_SNAPSHOTS: never[] = []
+
 // Belirli agent'ın geçmiş snapshot'ları (grafik için)
 export function useSnapshotHistory(agentId: string) {
-  return useMetricsStore((s) => s.snapshots[agentId] ?? [])
+  return useMetricsStore((s) => s.snapshots[agentId] ?? EMPTY_SNAPSHOTS)
 }

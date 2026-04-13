@@ -8,7 +8,7 @@ Her iki taraf da bu modelleri import eder — hiçbir zaman kopyalanmaz.
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, computed_field
 
 
 
@@ -33,6 +33,7 @@ class MemoryMetrics(BaseModel):
     used_bytes: int = Field(ge=0, description="Kullanılan RAM (byte)")
     available_bytes: int = Field(ge=0, description="Kullanılabilir RAM (byte)")
 
+    @computed_field
     @property
     def usage_percent(self) -> float:
         if self.total_bytes == 0:

@@ -15,6 +15,7 @@ from server.storage import storage
 from server.alert_engine import alert_engine
 from server.influx_writer import influx_writer
 from server.notifier import notifier
+from server.ws_manager import ws_manager
 
 
 logger = logging.getLogger(__name__)
@@ -32,8 +33,8 @@ def register_agent(registration: AgentRegistration):
 
 
 @router.post("/agents/metrics", status_code=202)
-def receive_metrics(snapshot: MetricSnapshot):
-    """Agent'tan gelen snapshot'ı depola ve alert kontrolü yap."""
+async def receive_metrics(snapshot: MetricSnapshot):
+    """Agent'tan gelen snapshot'ı depola, alert kontrolü yap ve WS'e broadcast et."""
     storage.store_snapshot(snapshot)
 
     # InfluxDB'ye yaz
@@ -44,6 +45,11 @@ def receive_metrics(snapshot: MetricSnapshot):
     for alert in alerts:
         storage.store_alert(alert)
         notifier.notify(alert)
+        await ws_manager.broadcast("alert", alert.model_dump(mode="json"))
+
+    # Metriği dashboard'a gerçek zamanlı gönder
+    await ws_manager.broadcast("metric", snapshot.model_dump(mode="json"))
+
     return {"status": "accepted", "alerts_triggered": len(alerts)}
 
 @router.get("/agents")
