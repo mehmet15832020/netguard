@@ -7,9 +7,8 @@ SERVER="netguard@192.168.203.134"
 
 echo "NetGuard Server deploy ediliyor..."
 
-scp -r ~/netguard/server $SERVER:~/netguard/
-scp ~/netguard/shared/models.py $SERVER:~/netguard/shared/
-scp ~/netguard/shared/protocol.py $SERVER:~/netguard/shared/
+rsync -av --exclude='__pycache__' ~/netguard/server/ $SERVER:~/netguard/server/
+rsync -av --exclude='__pycache__' ~/netguard/shared/ $SERVER:~/netguard/shared/
 
 ssh $SERVER "sudo systemctl restart netguard-server && sleep 2 && systemctl is-active netguard-server"
 
