@@ -12,6 +12,7 @@ import {
   LogOut,
   Activity,
   Server,
+  Network,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth } from '@/lib/api'
@@ -25,6 +26,7 @@ const NAV_ITEMS = [
   { href: '/security',     label: 'Güvenlik',       icon: Shield },
   { href: '/logs',         label: 'Loglar',         icon: FileText },
   { href: '/correlation',  label: 'Korelasyon',     icon: GitMerge },
+  { href: '/snmp',         label: 'SNMP',           icon: Network  },
   { href: '/settings',     label: 'Ayarlar',        icon: Settings },
 ]
 

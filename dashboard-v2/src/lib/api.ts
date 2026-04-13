@@ -182,3 +182,28 @@ export const correlationApi = {
       method: 'POST',
     }),
 }
+
+// ------------------------------------------------------------------ //
+//  SNMP
+// ------------------------------------------------------------------ //
+
+export interface SNMPDeviceInfo {
+  host: string
+  community: string
+  sys_descr: string
+  sys_name: string
+  uptime_ticks: number
+  if_in_octets: number
+  if_out_octets: number
+  if_oper_status: number
+  reachable: boolean
+  error: string
+}
+
+export const snmpApi = {
+  poll: (host: string, community = 'public') =>
+    request<SNMPDeviceInfo>('/snmp/poll', {
+      method: 'POST',
+      body: JSON.stringify({ host, community }),
+    }),
+}

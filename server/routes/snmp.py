@@ -20,13 +20,5 @@ def snmp_poll(
     _: User = Depends(get_current_user),
 ):
     """Belirtilen cihazı SNMP ile sorgula."""
-    try:
-        from agent.snmp_collector import poll_device
-        result = poll_device(request.host, request.community)
-        return result
-    except ImportError:
-        return {
-            "host": request.host,
-            "reachable": False,
-            "error": "pysnmp kurulu değil"
-        }
+    from server.snmp_collector import poll_device
+    return poll_device(request.host, request.community)
