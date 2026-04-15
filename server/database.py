@@ -116,6 +116,18 @@ CREATE INDEX IF NOT EXISTS idx_norm_event_type  ON normalized_logs(event_type);
 """
 
 
+_CREATE_SNMP_DEVICES = """
+CREATE TABLE IF NOT EXISTS snmp_devices (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    host       TEXT NOT NULL,
+    community  TEXT NOT NULL DEFAULT 'public',
+    label      TEXT NOT NULL DEFAULT '',
+    enabled    INTEGER NOT NULL DEFAULT 1,
+    added_at   TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_snmp_host ON snmp_devices(host);
+"""
+
 _CREATE_CORRELATED_EVENTS = """
 CREATE TABLE IF NOT EXISTS correlated_events (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,6 +170,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_RAW_LOGS)
             conn.executescript(_CREATE_NORMALIZED_LOGS)
             conn.executescript(_CREATE_CORRELATED_EVENTS)
+            conn.executescript(_CREATE_SNMP_DEVICES)
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -588,6 +601,47 @@ class DatabaseManager:
             message        = row["message"],
             created_at     = datetime.fromisoformat(row["created_at"]),
         )
+
+
+    # ------------------------------------------------------------------ #
+    #  SNMP DEVICES
+    # ------------------------------------------------------------------ #
+
+    def add_snmp_device(self, host: str, community: str = "public", label: str = "") -> bool:
+        """
+        SNMP cihazı ekle. Zaten varsa False döner.
+        Başarıyla eklenirse True döner.
+        """
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    conn.execute(
+                        "INSERT INTO snmp_devices (host, community, label, enabled, added_at) VALUES (?, ?, ?, 1, ?)",
+                        (host, community, label, datetime.now(timezone.utc).isoformat()),
+                    )
+                    return True
+                except sqlite3.IntegrityError:
+                    return False
+
+    def get_snmp_devices(self, enabled_only: bool = True) -> list[dict]:
+        """SNMP cihaz listesini döndür."""
+        with self._connect() as conn:
+            if enabled_only:
+                rows = conn.execute(
+                    "SELECT host, community, label, enabled, added_at FROM snmp_devices WHERE enabled=1 ORDER BY added_at"
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT host, community, label, enabled, added_at FROM snmp_devices ORDER BY added_at"
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def remove_snmp_device(self, host: str) -> bool:
+        """SNMP cihazını sil. Bulunursa True döner."""
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute("DELETE FROM snmp_devices WHERE host=?", (host,))
+                return cur.rowcount > 0
 
 
 # Global instance — uygulama boyunca tek bir tane

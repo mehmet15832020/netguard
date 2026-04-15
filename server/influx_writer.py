@@ -16,6 +16,7 @@ from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
 from shared.models import MetricSnapshot
+from server.snmp_collector import SNMPDeviceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -161,6 +162,35 @@ class InfluxWriter:
 
         except Exception as e:
             logger.error(f"InfluxDB yazma hatası: {e}")
+            return False
+
+    def write_snmp(self, info: SNMPDeviceInfo) -> bool:
+        """
+        SNMP cihaz verisini InfluxDB'ye yazar.
+        Erişilemeyen cihazlar için hiçbir şey yazmaz.
+        """
+        if not self._enabled or not self._write_api:
+            return False
+        if not info.reachable:
+            return False
+
+        try:
+            now = datetime.now(timezone.utc)
+            point = (
+                Point("snmp_metrics")
+                .tag("host", info.host)
+                .tag("sys_name", info.sys_name or info.host)
+                .field("uptime_ticks", info.uptime_ticks)
+                .field("if_in_octets", info.if_in_octets)
+                .field("if_out_octets", info.if_out_octets)
+                .field("if_oper_status", info.if_oper_status)
+                .time(now, WritePrecision.S)
+            )
+            self._write_api.write(bucket=self._bucket, org=self._org, record=point)
+            logger.debug(f"SNMP InfluxDB'ye yazıldı: {info.host}")
+            return True
+        except Exception as e:
+            logger.error(f"SNMP InfluxDB yazma hatası: {e}")
             return False
 
     def close(self):

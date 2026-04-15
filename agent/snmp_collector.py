@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 try:
     from pysnmp.hlapi.asyncio import (
-        getCmd, SnmpEngine, CommunityData,
+        get_cmd, SnmpEngine, CommunityData,
         UdpTransportTarget, ContextData, ObjectType, ObjectIdentity
     )
     SNMP_AVAILABLE = True
@@ -55,14 +55,14 @@ async def _snmp_get(host: str, community: str, oid: str) -> Optional[str]:
     if not SNMP_AVAILABLE:
         return None
     try:
-        iterator = getCmd(
+        transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
+        errorIndication, errorStatus, _, varBinds = await get_cmd(
             SnmpEngine(),
             CommunityData(community, mpModel=1),
-            UdpTransportTarget((host, 161), timeout=2, retries=1),
+            transport,
             ContextData(),
-            ObjectType(ObjectIdentity(oid))
+            ObjectType(ObjectIdentity(oid)),
         )
-        errorIndication, errorStatus, _, varBinds = await iterator
         if errorIndication or errorStatus:
             return None
         for varBind in varBinds:
@@ -90,13 +90,22 @@ async def poll_device_async(host: str, community: str = "public") -> SNMPDeviceI
             return_exceptions=True
         )
 
-        info.sys_descr = str(results[0]) if results[0] else ""
-        info.sys_name = str(results[1]) if results[1] else ""
-        info.uptime_ticks = int(results[2]) if results[2] else 0
-        info.if_in_octets = int(results[3]) if results[3] else 0
-        info.if_out_octets = int(results[4]) if results[4] else 0
-        info.if_oper_status = int(results[5]) if results[5] else 0
-        info.reachable = True
+        def _str(v) -> str:
+            return str(v) if v and not isinstance(v, Exception) else ""
+
+        def _int(v) -> int:
+            try:
+                return int(v) if v and not isinstance(v, Exception) else 0
+            except (ValueError, TypeError):
+                return 0
+
+        info.sys_descr      = _str(results[0])
+        info.sys_name       = _str(results[1])
+        info.uptime_ticks   = _int(results[2])
+        info.if_in_octets   = _int(results[3])
+        info.if_out_octets  = _int(results[4])
+        info.if_oper_status = _int(results[5])
+        info.reachable = bool(info.sys_descr or info.sys_name or info.uptime_ticks)
 
     except Exception as e:
         info.error = str(e)

@@ -21,6 +21,7 @@ SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # sa
 NTP_CHECK_INTERVAL      = int(os.getenv("NETGUARD_NTP_CHECK_INTERVAL", "300"))  # saniye (5 dk)
 CORRELATION_INTERVAL    = int(os.getenv("NETGUARD_CORR_INTERVAL", "60"))    # saniye
 DETECTOR_INTERVAL       = int(os.getenv("NETGUARD_DETECTOR_INTERVAL", "30")) # saniye
+SNMP_POLL_INTERVAL      = int(os.getenv("NETGUARD_SNMP_INTERVAL", "60"))    # saniye
 
 
 async def _detector_loop():
@@ -58,6 +59,33 @@ async def _ntp_check_loop():
             ntp_validator.check_system_clock()
         except Exception as exc:
             logger.error(f"NTP kontrol hatası: {exc}")
+
+
+async def _snmp_poll_loop():
+    """Her SNMP_POLL_INTERVAL saniyede bir kayıtlı SNMP cihazlarını sorgula."""
+    from server.snmp_collector import poll_device_async
+    from server.database import db
+
+    while True:
+        await asyncio.sleep(SNMP_POLL_INTERVAL)
+        devices = db.get_snmp_devices(enabled_only=True)
+        if not devices:
+            continue
+        try:
+            results = await asyncio.gather(
+                *[poll_device_async(d["host"], d["community"]) for d in devices],
+                return_exceptions=True,
+            )
+            for info in results:
+                if isinstance(info, Exception):
+                    continue
+                influx_writer.write_snmp(info)
+                if not info.reachable:
+                    logger.warning(f"SNMP erişilemiyor: {info.host}")
+            reachable = sum(1 for r in results if not isinstance(r, Exception) and r.reachable)
+            logger.debug(f"SNMP poll: {reachable}/{len(devices)} cihaz erişilebilir")
+        except Exception as exc:
+            logger.error(f"SNMP poll hatası: {exc}")
 
 
 async def _security_scan_loop():
@@ -108,6 +136,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Korelasyon motoru başlatıldı (her {CORRELATION_INTERVAL}s)")
     detector_task = asyncio.create_task(_detector_loop())
     logger.info(f"Saldırı dedektörleri başlatıldı (her {DETECTOR_INTERVAL}s)")
+    snmp_task = asyncio.create_task(_snmp_poll_loop())
+    logger.info(f"SNMP polling döngüsü başlatıldı (her {SNMP_POLL_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -116,6 +146,7 @@ async def lifespan(app: FastAPI):
     ntp_task.cancel()
     corr_task.cancel()
     detector_task.cancel()
+    snmp_task.cancel()
     syslog.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
