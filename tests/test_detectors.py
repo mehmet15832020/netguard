@@ -17,79 +17,72 @@ from shared.models import LogCategory
 # ------------------------------------------------------------------ #
 
 class TestPortScanDetector:
-    def _make_conn(self, remote_ip, local_port, remote_port=12345):
-        """Sahte psutil bağlantı nesnesi."""
-        conn = MagicMock()
-        conn.laddr = MagicMock(ip="192.168.1.10", port=local_port)
-        conn.raddr = MagicMock(ip=remote_ip, port=remote_port)
-        return conn
+    """
+    Port tarama dedektörü pyshark ile SYN paketlerini dinler.
+    Test ortamında sniffer thread'i başlatmadan _history'e doğrudan veri
+    enjekte ederek dedektörün karar mantığını test ediyoruz.
+    """
+
+    def _make_detector(self, threshold=10, window=60) -> "PortScanDetector":
+        """Sniffer başlatmadan dedektör oluştur."""
+        from server.detectors.port_scan import PortScanDetector
+        with patch.object(PortScanDetector, "_start_sniffer", return_value=None):
+            return PortScanDetector(threshold=threshold, window_seconds=window)
+
+    def _inject(self, detector, src_ip: str, ports: list[int], age: float = 0.0):
+        """_history'e sahte SYN kayıtları ekle. age=0 → şu an, age>0 → X saniye önce."""
+        import time
+        now = time.monotonic()
+        with detector._lock:
+            for port in ports:
+                detector._history[src_ip].append((now - age, port))
 
     def test_no_alert_below_threshold(self):
-        from server.detectors.port_scan import PortScanDetector
-        detector = PortScanDetector(threshold=10)
-
-        # Aynı IP'den 5 farklı port (eşik 10)
-        conns = [self._make_conn("1.2.3.4", port) for port in range(5)]
-        with patch("psutil.net_connections", return_value=conns):
-            logs = detector.detect()
-        assert len(logs) == 0
+        detector = self._make_detector(threshold=10)
+        self._inject(detector, "1.2.3.4", list(range(5)))
+        assert detector.detect() == []
 
     def test_alert_at_threshold(self):
-        from server.detectors.port_scan import PortScanDetector
-        detector = PortScanDetector(threshold=10)
-
-        conns = [self._make_conn("1.2.3.4", port) for port in range(10)]
-        with patch("psutil.net_connections", return_value=conns):
-            logs = detector.detect()
+        detector = self._make_detector(threshold=10)
+        self._inject(detector, "1.2.3.4", list(range(10)))
+        logs = detector.detect()
         assert len(logs) == 1
         assert logs[0].event_type == "port_scan_attempt"
         assert logs[0].src_ip == "1.2.3.4"
 
     def test_multiple_ips_tracked_independently(self):
-        from server.detectors.port_scan import PortScanDetector
-        detector = PortScanDetector(threshold=5)
-
-        conns = (
-            [self._make_conn("1.1.1.1", p) for p in range(5)] +
-            [self._make_conn("2.2.2.2", p) for p in range(3)]
-        )
-        with patch("psutil.net_connections", return_value=conns):
-            logs = detector.detect()
-
+        detector = self._make_detector(threshold=5)
+        self._inject(detector, "1.1.1.1", list(range(5)))  # eşikte
+        self._inject(detector, "2.2.2.2", list(range(3)))  # eşiğin altında
+        logs = detector.detect()
         assert len(logs) == 1
         assert logs[0].src_ip == "1.1.1.1"
 
-    def test_loopback_ignored(self):
-        from server.detectors.port_scan import PortScanDetector
-        detector = PortScanDetector(threshold=5)
-
-        conns = [self._make_conn("127.0.0.1", port) for port in range(20)]
-        with patch("psutil.net_connections", return_value=conns):
-            logs = detector.detect()
-        assert len(logs) == 0
-
-    def test_access_denied_returns_empty(self):
-        from server.detectors.port_scan import PortScanDetector
-        import psutil
-        detector = PortScanDetector(threshold=5)
-
-        with patch("psutil.net_connections", side_effect=psutil.AccessDenied(0)):
-            logs = detector.detect()
+    def test_old_entries_outside_window_ignored(self):
+        detector = self._make_detector(threshold=5, window=30)
+        # 31 saniye önce → pencere dışı
+        self._inject(detector, "3.3.3.3", list(range(10)), age=31.0)
+        logs = detector.detect()
         assert logs == []
 
+    def test_no_duplicate_alert_same_ip(self):
+        detector = self._make_detector(threshold=5)
+        self._inject(detector, "4.4.4.4", list(range(5)))
+        first  = detector.detect()
+        second = detector.detect()
+        assert len(first) == 1
+        assert len(second) == 0  # Aynı IP için tekrar alarm vermemeli
+
     def test_log_has_correct_fields(self):
-        from server.detectors.port_scan import PortScanDetector
-        detector = PortScanDetector(threshold=3)
-
-        conns = [self._make_conn("5.5.5.5", port) for port in range(3)]
-        with patch("psutil.net_connections", return_value=conns):
-            logs = detector.detect()
-
+        detector = self._make_detector(threshold=3)
+        self._inject(detector, "5.5.5.5", [80, 443, 8080])
+        logs = detector.detect()
         assert len(logs) == 1
         log = logs[0]
         assert log.category == LogCategory.NETWORK
         assert log.severity == "warning"
         assert "port_scan" in log.tags
+        assert "5.5.5.5" in log.message
 
 
 # ------------------------------------------------------------------ #
