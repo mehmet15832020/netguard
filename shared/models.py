@@ -177,6 +177,10 @@ class SecurityEventType(str, Enum):
     PORT_OPENED      = "port_opened"       # Yeni port açıldı
     PORT_CLOSED      = "port_closed"       # Port kapandı
     CHECKSUM_CHANGED = "checksum_changed"  # Kritik dosya değişti
+    PORT_SCAN        = "port_scan_attempt" # Port tarama girişimi
+    ARP_SPOOF        = "arp_spoof"         # ARP spoofing
+    ICMP_FLOOD       = "icmp_flood"        # ICMP flood
+    DNS_ANOMALY      = "dns_anomaly"       # DNS anomalisi
 
 
 class SecurityEvent(BaseModel):

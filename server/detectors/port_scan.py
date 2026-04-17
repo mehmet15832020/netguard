@@ -77,6 +77,7 @@ class PortScanDetector(BaseDetector):
 
         # tcp.flags.syn==1 AND tcp.flags.ack==0 → sadece ilk SYN (SYN-ACK değil)
         capture = pyshark.LiveCapture(
+            interface="ens33",
             bpf_filter="tcp[tcpflags] & (tcp-syn) != 0 and tcp[tcpflags] & (tcp-ack) == 0",
             use_json=True,
             include_raw=False,
