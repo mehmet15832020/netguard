@@ -22,6 +22,7 @@ NTP_CHECK_INTERVAL      = int(os.getenv("NETGUARD_NTP_CHECK_INTERVAL", "300"))  
 CORRELATION_INTERVAL    = int(os.getenv("NETGUARD_CORR_INTERVAL", "60"))    # saniye
 DETECTOR_INTERVAL       = int(os.getenv("NETGUARD_DETECTOR_INTERVAL", "30")) # saniye
 SNMP_POLL_INTERVAL      = int(os.getenv("NETGUARD_SNMP_INTERVAL", "60"))    # saniye
+UPTIME_CHECK_INTERVAL   = int(os.getenv("NETGUARD_UPTIME_INTERVAL", "60"))  # saniye
 
 
 async def _detector_loop():
@@ -88,6 +89,20 @@ async def _snmp_poll_loop():
             logger.error(f"SNMP poll hatası: {exc}")
 
 
+async def _uptime_check_loop():
+    """Her UPTIME_CHECK_INTERVAL saniyede bir cihaz erişilebilirlik kontrolü yap."""
+    from server.uptime_checker import uptime_checker
+    while True:
+        await asyncio.sleep(UPTIME_CHECK_INTERVAL)
+        try:
+            results = await uptime_checker.run_once()
+            down = sum(1 for r in results if r["check_type"] == "icmp" and r["status"] == "down")
+            if down:
+                logger.warning(f"Uptime check: {down} cihaz erişilemiyor")
+        except Exception as exc:
+            logger.error(f"Uptime check hatası: {exc}")
+
+
 async def _security_scan_loop():
     """Her SECURITY_SCAN_INTERVAL saniyede bir güvenlik taraması yap."""
     from server.security_log_parser import parse_auth_log
@@ -138,16 +153,23 @@ async def lifespan(app: FastAPI):
     logger.info(f"Saldırı dedektörleri başlatıldı (her {DETECTOR_INTERVAL}s)")
     snmp_task = asyncio.create_task(_snmp_poll_loop())
     logger.info(f"SNMP polling döngüsü başlatıldı (her {SNMP_POLL_INTERVAL}s)")
+    uptime_task = asyncio.create_task(_uptime_check_loop())
+    logger.info(f"Uptime checker başlatıldı (her {UPTIME_CHECK_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
+    from server.snmp_trap_receiver import SNMPTrapReceiver
+    trap_receiver = SNMPTrapReceiver()
+    await trap_receiver.start()
     yield
     scan_task.cancel()
     ntp_task.cancel()
     corr_task.cancel()
     detector_task.cancel()
     snmp_task.cancel()
+    uptime_task.cancel()
     syslog.stop()
+    trap_receiver.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
 

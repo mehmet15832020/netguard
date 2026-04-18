@@ -128,6 +128,34 @@ CREATE TABLE IF NOT EXISTS snmp_devices (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_snmp_host ON snmp_devices(host);
 """
 
+_CREATE_SNMP_POLL_HISTORY = """
+CREATE TABLE IF NOT EXISTS snmp_poll_history (
+    host      TEXT NOT NULL,
+    if_index  TEXT NOT NULL,
+    if_name   TEXT NOT NULL,
+    polled_at TEXT NOT NULL,
+    hc_in     INTEGER NOT NULL DEFAULT 0,
+    hc_out    INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (host, if_index)
+);
+"""
+
+_CREATE_SERVICE_CHECKS = """
+CREATE TABLE IF NOT EXISTS service_checks (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    device_id  TEXT NOT NULL,
+    check_type TEXT NOT NULL,
+    target     TEXT NOT NULL,
+    port       INTEGER,
+    status     TEXT NOT NULL,
+    rtt_ms     REAL,
+    checked_at TEXT NOT NULL,
+    details    TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_svc_device  ON service_checks(device_id);
+CREATE INDEX IF NOT EXISTS idx_svc_checked ON service_checks(checked_at);
+"""
+
 _CREATE_DEVICES = """
 CREATE TABLE IF NOT EXISTS devices (
     device_id      TEXT PRIMARY KEY,
@@ -202,6 +230,8 @@ class DatabaseManager:
             conn.executescript(_CREATE_NORMALIZED_LOGS)
             conn.executescript(_CREATE_CORRELATED_EVENTS)
             conn.executescript(_CREATE_SNMP_DEVICES)
+            conn.executescript(_CREATE_SNMP_POLL_HISTORY)
+            conn.executescript(_CREATE_SERVICE_CHECKS)
             conn.executescript(_CREATE_DEVICES)
             conn.executescript(_CREATE_API_KEYS)
         self._migrate_snmp_to_devices()
@@ -759,6 +789,88 @@ class DatabaseManager:
                     "DELETE FROM devices WHERE device_id=?", (device_id,)
                 )
                 return cur.rowcount > 0
+
+    # ------------------------------------------------------------------ #
+    #  SNMP POLL HISTORY (bandwidth delta için)
+    # ------------------------------------------------------------------ #
+
+    def upsert_snmp_poll(
+        self, host: str, if_index: str, if_name: str,
+        hc_in: int, hc_out: int,
+    ) -> None:
+        """Son poll değerlerini kaydet (REPLACE — sadece son değer tutulur)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO snmp_poll_history
+                        (host, if_index, if_name, polled_at, hc_in, hc_out)
+                    VALUES (?,?,?,?,?,?)
+                    """,
+                    (host, if_index, if_name, now, hc_in, hc_out),
+                )
+
+    def get_snmp_poll(self, host: str, if_index: str) -> Optional[dict]:
+        """Son poll verisini döndür."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM snmp_poll_history WHERE host=? AND if_index=?",
+                (host, if_index),
+            ).fetchone()
+            return dict(row) if row else None
+
+    # ------------------------------------------------------------------ #
+    #  SERVICE CHECKS (uptime checker sonuçları)
+    # ------------------------------------------------------------------ #
+
+    def save_service_check(
+        self,
+        device_id: str,
+        check_type: str,
+        target: str,
+        status: str,
+        rtt_ms: Optional[float] = None,
+        port: Optional[int] = None,
+        details: str = "",
+    ) -> None:
+        """Uptime/servis kontrol sonucunu kaydet."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO service_checks
+                        (device_id, check_type, target, port,
+                         status, rtt_ms, checked_at, details)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    """,
+                    (device_id, check_type, target, port,
+                     status, rtt_ms, now, details),
+                )
+
+    def get_service_checks(
+        self,
+        device_id: Optional[str] = None,
+        check_type: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Servis kontrol geçmişini listele."""
+        conditions, params = [], []
+        if device_id:
+            conditions.append("device_id=?")
+            params.append(device_id)
+        if check_type:
+            conditions.append("check_type=?")
+            params.append(check_type)
+        where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+        params.append(limit)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM service_checks {where} ORDER BY checked_at DESC LIMIT ?",
+                params,
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def _migrate_snmp_to_devices(self) -> None:
         """Mevcut snmp_devices kayıtlarını devices tablosuna taşı."""

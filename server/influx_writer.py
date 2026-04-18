@@ -167,6 +167,7 @@ class InfluxWriter:
     def write_snmp(self, info: SNMPDeviceInfo) -> bool:
         """
         SNMP cihaz verisini InfluxDB'ye yazar.
+        Sistem OID'leri için tek point, her arayüz için ayrı point üretir.
         Erişilemeyen cihazlar için hiçbir şey yazmaz.
         """
         if not self._enabled or not self._write_api:
@@ -176,18 +177,39 @@ class InfluxWriter:
 
         try:
             now = datetime.now(timezone.utc)
-            point = (
-                Point("snmp_metrics")
+            points = []
+
+            # Sistem düzeyinde point
+            points.append(
+                Point("snmp_device")
                 .tag("host", info.host)
                 .tag("sys_name", info.sys_name or info.host)
                 .field("uptime_ticks", info.uptime_ticks)
-                .field("if_in_octets", info.if_in_octets)
-                .field("if_out_octets", info.if_out_octets)
-                .field("if_oper_status", info.if_oper_status)
+                .field("interface_count", len(info.interfaces))
                 .time(now, WritePrecision.S)
             )
-            self._write_api.write(bucket=self._bucket, org=self._org, record=point)
-            logger.debug(f"SNMP InfluxDB'ye yazıldı: {info.host}")
+
+            # Arayüz başına point
+            for iface in info.interfaces:
+                points.append(
+                    Point("snmp_interface")
+                    .tag("host", info.host)
+                    .tag("sys_name", info.sys_name or info.host)
+                    .tag("if_index", iface.index)
+                    .tag("if_name", iface.name)
+                    .field("oper_status", iface.oper_status)
+                    .field("hc_in_octets", iface.hc_in_octets)
+                    .field("hc_out_octets", iface.hc_out_octets)
+                    .field("in_errors", iface.in_errors)
+                    .field("out_errors", iface.out_errors)
+                    .field("in_discards", iface.in_discards)
+                    .field("bandwidth_in_bps", iface.bandwidth_in_bps)
+                    .field("bandwidth_out_bps", iface.bandwidth_out_bps)
+                    .time(now, WritePrecision.S)
+                )
+
+            self._write_api.write(bucket=self._bucket, org=self._org, record=points)
+            logger.debug(f"SNMP InfluxDB'ye yazıldı: {info.host} ({len(info.interfaces)} arayüz)")
             return True
         except Exception as e:
             logger.error(f"SNMP InfluxDB yazma hatası: {e}")

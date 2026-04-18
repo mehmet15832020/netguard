@@ -181,6 +181,9 @@ class SecurityEventType(str, Enum):
     ARP_SPOOF        = "arp_spoof"         # ARP spoofing
     ICMP_FLOOD       = "icmp_flood"        # ICMP flood
     DNS_ANOMALY      = "dns_anomaly"       # DNS anomalisi
+    DEVICE_DOWN      = "device_down"       # Cihaz erişilemiyor
+    DEVICE_UP        = "device_up"         # Cihaz tekrar erişilebilir
+    SNMP_TRAP        = "snmp_trap"         # SNMP TRAP alındı
 
 
 class SecurityEvent(BaseModel):

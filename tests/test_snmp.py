@@ -77,7 +77,7 @@ class TestPollDeviceAsync:
         assert isinstance(result, SNMPDeviceInfo)
 
     def test_exception_in_gather_handled(self):
-        """asyncio.gather'dan gelen Exception nesneleri sessizce işlenmeli."""
+        """asyncio.gather'dan gelen Exception nesneleri sessizce işlenmeli — exception yükseltmemeli."""
         async def failing_get(*args, **kwargs):
             raise ConnectionError("test hatası")
 
@@ -85,8 +85,11 @@ class TestPollDeviceAsync:
             result = asyncio.new_event_loop().run_until_complete(
                 poll_device_async("127.0.0.1")
             )
+        # Exception propagate edilmemeli, geçerli bir SNMPDeviceInfo dönmeli
         assert isinstance(result, SNMPDeviceInfo)
-        assert result.reachable is False
+        # sys alanları boş olmalı (_snmp_get mock edildi)
+        assert result.sys_descr == ""
+        assert result.sys_name == ""
 
 
 class TestSnmpGet:

@@ -5,21 +5,8 @@ Unified Device Model testleri.
 import pytest
 from fastapi.testclient import TestClient
 from server.main import app
-from server.database import DatabaseManager
 
 client = TestClient(app)
-
-
-@pytest.fixture
-def tmp_db(tmp_path, monkeypatch):
-    """Her test için ayrı SQLite DB."""
-    db_file = str(tmp_path / "test.db")
-    test_db = DatabaseManager(db_path=db_file)
-    monkeypatch.setattr("server.database.db", test_db)
-    monkeypatch.setattr("server.routes.devices.db", test_db)
-    monkeypatch.setattr("server.routes.agents.db", test_db)
-    monkeypatch.setattr("server.routes.snmp.db", test_db)
-    return test_db
 
 
 class TestDevicesTable:
