@@ -7,44 +7,61 @@ Bu dosya Claude Code'un her oturumda otomatik okuduğu proje rehberidir.
 NetGuard: NMS + CSNM (Continuous Network Security Monitoring) birleşimi.
 Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified platform.
 
-## Mevcut Durum — FAZ 0 (Zemin Temizleme)
+## Mevcut Durum — FAZ 2 TAMAMLANDI ✓
 
-Faz 0 tamamlanmadan Faz 1'e geçilmez.
+### Tamamlanan Fazlar
 
-### Yapılacaklar (sırayla):
+**Faz 0 ✓** — Zemin temizleme (env değişkenleri, API key SQLite, JWT secret zorunlu, CORS dinamik)
+**Faz 1 ✓** — Unified Device Model (`devices` tablosu, tüm modüller device_id kullanır)
+**Faz 2 ✓** — NMS Çekirdeği
 
-**1. ens33 hardcoded → env değişkeni**
-- Dosya: `server/detectors/port_scan.py`
-- `ens33` → `os.getenv("NETGUARD_INTERFACE", "ens33")`
-- `.env.example`'a `NETGUARD_INTERFACE=ens33` ekle
+Faz 2 teslim edilen modüller:
+- `server/snmp_collector.py` — Interface table walk, 64-bit sayaç, bandwidth delta, SNMPInterface modeli
+- `server/influx_writer.py` — Per-arayüz snmp_interface point yazımı
+- `server/uptime_checker.py` — ICMP ping + TCP port kontrolü, device_down/up olayları
+- `server/snmp_trap_receiver.py` — UDP 162 TRAP dinleyicisi, minimal BER ayrıştırma
+- `server/main.py` — uptime_task + trap_receiver lifespan'a eklendi
+- `shared/models.py` — DEVICE_DOWN, DEVICE_UP, SNMP_TRAP event tipleri
+- `server/database.py` — service_checks, snmp_poll_history, devices tabloları + metodları
+- `tests/conftest.py` — tmp_db fixture ortak hale getirildi (tüm test modülleri kullanır)
 
-**2. API key → SQLite kalıcı**
-- Dosyalar: `server/auth.py` + `server/database.py`
-- `_api_keys` in-memory dict → SQLite `api_keys` tablosu
-- Tablo: `api_keys(agent_id TEXT PK, api_key TEXT, created_at DATETIME)`
-- Sunucu restart sonrası agent bağlantısı kopmaz
+Test durumu: **227 test, tümü geçiyor**
 
-**3. JWT secret → .env zorunlu**
-- Dosya: `server/auth.py`
-- `secrets.token_hex(32)` otomatik üretimi kaldır
-- `.env`'de yoksa `RuntimeError` fırlat, sessizce üretme
-- `.env.example`'a `JWT_SECRET_KEY=` ekle
+## Sonraki Faz — FAZ 3: Auto-Discovery
 
-**4. Kural kaydetme backend endpoint**
-- Dosya: `server/routes/correlation.py`
-- `PUT /api/v1/correlation/rules` ekle — JSON dosyasına yazar, reload_rules() çağırır
-- Dosya: `dashboard-v2/src/app/(protected)/settings/page.tsx`
-- setTimeout simülasyonu → gerçek API çağrısı
+Hedef: Ağdaki cihazları otomatik keşfetme.
 
-**5. CORS → env'den dinamik**
-- Dosya: `server/main.py`
-- Hardcoded IP listesi → `NETGUARD_CORS_ORIGINS` env (virgülle ayrılmış)
-- `.env.example`'a ekle
+### Yapılacaklar:
+
+**1. Subnet Sweep**
+- Dosya: `server/discovery/subnet_scanner.py` (YENİ)
+- `ip_network` ile subnet'i tarar
+- Her IP için asyncio ICMP ping (uptime_checker.ping kullan)
+- Paralel tarama: asyncio.gather + semaphore (max 50 eş zamanlı)
+
+**2. Port/Banner Fingerprinting**
+- Dosya: `server/discovery/fingerprinter.py` (YENİ)
+- Yaygın portları tarar (22, 23, 80, 161, 443, 8080...)
+- Banner grabbing: SSH version, HTTP server header, SNMP sysDescr
+- Vendor tespiti: MAC OUI lookup (lokal tablo)
+
+**3. Discovery API Route**
+- Dosya: `server/routes/discovery.py` (YENİ)
+- `POST /api/v1/discovery/scan` → subnet tarama başlatır (arka plan task)
+- `GET /api/v1/discovery/results` → bulunan cihazlar
+- Bulunan cihazlar `devices` tablosuna type='discovered' ile kaydedilir
+
+**4. main.py'a router ekle**
+- `from server.routes import discovery`
+- `app.include_router(discovery.router, ...)`
+
+**5. Testler**
+- `tests/test_discovery.py` — mock ping/tcp ile tarama testleri
 
 ## Commit Kuralları
 
 - Her görev ayrı commit
-- Format: Conventional Commits — `fix(auth): ...`, `feat(correlation): ...`
+- Format: Conventional Commits — `fix(auth): ...`, `feat(discovery): ...`
 - Her modül için test yaz, testler geçmeden commit atma
 - Commit sonrası push
 
@@ -57,25 +74,29 @@ Faz 0 tamamlanmadan Faz 1'e geçilmez.
 
 ## Mimari Kararlar (Değiştirme)
 
-- **Veritabanı:** Hybrid — eski tablolar source data, yeni tablolar üstüne eklenir
-- **Device modeli:** agents + SNMP + discovered hepsi `devices` tablosunda birleşir (Faz 1)
+- **Veritabanı:** SQLite (server/database.py, WAL mode) + InfluxDB (metrikler)
+- **Device modeli:** agents + SNMP + discovered hepsi `devices` tablosunda birleşir
 - **Ana sayfa:** Network Command Center (topoloji haritası + canlı incidents) (Faz 6)
 - **NetFlow/WMI/RRD:** Kapsam dışı, ekleme
+- **tmp_db fixture:** conftest.py'da tanımlı, tüm test dosyaları kullanabilir
 
-## Sonraki Fazlar (Faz 0 Bittikten Sonra)
+## Faz Yol Haritası
 
-- Faz 1: Unified Device Model (`devices` tablosu, tüm modüller device_id kullanır)
-- Faz 2: NMS Çekirdeği (64-bit SNMP, GETBULK, uptime checker, TRAP receiver)
-- Faz 3: Auto-Discovery
-- Faz 4: Topology Engine
+- Faz 0 ✓ Zemin temizleme
+- Faz 1 ✓ Unified Device Model
+- Faz 2 ✓ NMS Çekirdeği (SNMP walk, uptime, TRAP)
+- Faz 3 → Auto-Discovery (subnet sweep, vendor tespiti)
+- Faz 4: Topology Engine (L2/L3 harita)
 - Faz 5: Cross-Domain Correlation
-- Tam plan: `weekly_plan.md` memory dosyasında
+- Faz 6: Frontend Dönüşümü (topology-first dashboard)
+- Faz 7: SNMPv3 + Security Hardening
+- Faz 8: Polish + Raporlama
 
 ## Test Çalıştırma
 
 ```bash
 cd /home/mehmet/netguard
-pytest tests/ -v
+pytest tests/ -q
 ```
 
 ## Ortam
