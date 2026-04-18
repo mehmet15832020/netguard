@@ -56,6 +56,14 @@ def add_snmp_device(
     )
     if not added:
         raise HTTPException(status_code=409, detail=f"{request.host} zaten kayıtlı")
+    db.save_device(
+        device_id=request.host,
+        name=request.label if request.label else request.host,
+        device_type="snmp",
+        ip=request.host,
+        snmp_community=request.community,
+        status="unknown",
+    )
     return {"added": True, "host": request.host}
 
 
@@ -68,4 +76,5 @@ def remove_snmp_device(
     removed = db.remove_snmp_device(host)
     if not removed:
         raise HTTPException(status_code=404, detail=f"{host} bulunamadı")
+    db.remove_device(host)
     return {"removed": True, "host": host}

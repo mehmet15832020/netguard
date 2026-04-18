@@ -12,6 +12,7 @@ import logging
 from fastapi import APIRouter, HTTPException
 from shared.models import AgentRegistration, MetricSnapshot
 from server.storage import storage
+from server.database import db
 from server.alert_engine import alert_engine
 from server.influx_writer import influx_writer
 from server.notifier import notifier
@@ -26,6 +27,13 @@ router = APIRouter()
 def register_agent(registration: AgentRegistration):
     """Agent'ı kaydet."""
     storage.register_agent(registration)
+    db.save_device(
+        device_id=registration.agent_id,
+        name=registration.hostname,
+        device_type="agent",
+        os_info=f"{registration.os_name} {registration.os_version}",
+        status="up",
+    )
     logger.info(f"Agent kaydedildi: {registration.hostname} ({registration.agent_id})")
     return {"status": "registered", "agent_id": registration.agent_id}
 

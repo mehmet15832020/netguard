@@ -128,6 +128,29 @@ CREATE TABLE IF NOT EXISTS snmp_devices (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_snmp_host ON snmp_devices(host);
 """
 
+_CREATE_DEVICES = """
+CREATE TABLE IF NOT EXISTS devices (
+    device_id      TEXT PRIMARY KEY,
+    name           TEXT NOT NULL,
+    ip             TEXT DEFAULT '',
+    mac            TEXT DEFAULT '',
+    type           TEXT NOT NULL DEFAULT 'discovered',
+    vendor         TEXT DEFAULT '',
+    os_info        TEXT DEFAULT '',
+    status         TEXT DEFAULT 'unknown',
+    first_seen     TEXT NOT NULL,
+    last_seen      TEXT,
+    snmp_community TEXT DEFAULT '',
+    snmp_version   TEXT DEFAULT 'v2c',
+    risk_score     INTEGER DEFAULT 0,
+    segment        TEXT DEFAULT '',
+    notes          TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_devices_type   ON devices(type);
+CREATE INDEX IF NOT EXISTS idx_devices_status ON devices(status);
+CREATE INDEX IF NOT EXISTS idx_devices_ip     ON devices(ip);
+"""
+
 _CREATE_API_KEYS = """
 CREATE TABLE IF NOT EXISTS api_keys (
     agent_id   TEXT PRIMARY KEY,
@@ -179,7 +202,9 @@ class DatabaseManager:
             conn.executescript(_CREATE_NORMALIZED_LOGS)
             conn.executescript(_CREATE_CORRELATED_EVENTS)
             conn.executescript(_CREATE_SNMP_DEVICES)
+            conn.executescript(_CREATE_DEVICES)
             conn.executescript(_CREATE_API_KEYS)
+        self._migrate_snmp_to_devices()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -651,6 +676,117 @@ class DatabaseManager:
             with self._connect() as conn:
                 cur = conn.execute("DELETE FROM snmp_devices WHERE host=?", (host,))
                 return cur.rowcount > 0
+
+    # ------------------------------------------------------------------ #
+    #  DEVICES (Unified Device Model)
+    # ------------------------------------------------------------------ #
+
+    def save_device(
+        self,
+        device_id: str,
+        name: str,
+        device_type: str,
+        ip: str = "",
+        mac: str = "",
+        vendor: str = "",
+        os_info: str = "",
+        snmp_community: str = "",
+        snmp_version: str = "v2c",
+        status: str = "unknown",
+        segment: str = "",
+        notes: str = "",
+    ) -> None:
+        """Cihazı kaydet. Zaten varsa name, status ve last_seen güncelle."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO devices
+                        (device_id, name, ip, mac, type, vendor, os_info,
+                         status, first_seen, last_seen,
+                         snmp_community, snmp_version, segment, notes)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    ON CONFLICT(device_id) DO UPDATE SET
+                        name           = excluded.name,
+                        ip             = COALESCE(NULLIF(excluded.ip,''), ip),
+                        status         = excluded.status,
+                        last_seen      = excluded.last_seen,
+                        os_info        = COALESCE(NULLIF(excluded.os_info,''), os_info),
+                        vendor         = COALESCE(NULLIF(excluded.vendor,''), vendor)
+                    """,
+                    (device_id, name, ip, mac, device_type, vendor, os_info,
+                     status, now, now,
+                     snmp_community, snmp_version, segment, notes),
+                )
+
+    def update_device_status(self, device_id: str, status: str) -> None:
+        """Cihaz durumunu güncelle (up/down/unknown)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE devices SET status=?, last_seen=? WHERE device_id=?",
+                    (status, now, device_id),
+                )
+
+    def get_devices(self, device_type: Optional[str] = None) -> list[dict]:
+        """Tüm cihazları listele, opsiyonel olarak tipe göre filtrele."""
+        with self._connect() as conn:
+            if device_type:
+                rows = conn.execute(
+                    "SELECT * FROM devices WHERE type=? ORDER BY name", (device_type,)
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM devices ORDER BY type, name"
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_device(self, device_id: str) -> Optional[dict]:
+        """Tek bir cihazı döndür."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM devices WHERE device_id=?", (device_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def remove_device(self, device_id: str) -> bool:
+        """Cihazı sil. Bulunursa True döner."""
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "DELETE FROM devices WHERE device_id=?", (device_id,)
+                )
+                return cur.rowcount > 0
+
+    def _migrate_snmp_to_devices(self) -> None:
+        """Mevcut snmp_devices kayıtlarını devices tablosuna taşı."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute("SELECT * FROM snmp_devices").fetchall()
+                for row in rows:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO devices
+                            (device_id, name, ip, type, snmp_community,
+                             status, first_seen, last_seen)
+                        VALUES (?,?,?,?,?,?,?,?)
+                        """,
+                        (
+                            row["host"],
+                            row["label"] if row["label"] else row["host"],
+                            row["host"],
+                            "snmp",
+                            row["community"],
+                            "unknown",
+                            row["added_at"],
+                            now,
+                        ),
+                    )
+        if rows:
+            logger.info(f"{len(rows)} SNMP cihazı devices tablosuna migrate edildi")
 
     # ------------------------------------------------------------------ #
     #  API KEYS

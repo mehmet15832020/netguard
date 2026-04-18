@@ -14,7 +14,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -190,6 +190,7 @@ app.include_router(snmp.router, prefix=api_prefix, tags=["snmp"])
 app.include_router(security.router, prefix=api_prefix, tags=["security"])
 app.include_router(logs.router,        prefix=api_prefix, tags=["logs"])
 app.include_router(correlation.router, prefix=api_prefix, tags=["correlation"])
+app.include_router(devices.router, prefix=api_prefix, tags=["devices"])
 app.include_router(ws.router, tags=["websocket"])
 
 
