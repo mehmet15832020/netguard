@@ -128,6 +128,14 @@ CREATE TABLE IF NOT EXISTS snmp_devices (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_snmp_host ON snmp_devices(host);
 """
 
+_CREATE_API_KEYS = """
+CREATE TABLE IF NOT EXISTS api_keys (
+    agent_id   TEXT PRIMARY KEY,
+    api_key    TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+"""
+
 _CREATE_CORRELATED_EVENTS = """
 CREATE TABLE IF NOT EXISTS correlated_events (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -171,6 +179,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_NORMALIZED_LOGS)
             conn.executescript(_CREATE_CORRELATED_EVENTS)
             conn.executescript(_CREATE_SNMP_DEVICES)
+            conn.executescript(_CREATE_API_KEYS)
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -642,6 +651,34 @@ class DatabaseManager:
             with self._connect() as conn:
                 cur = conn.execute("DELETE FROM snmp_devices WHERE host=?", (host,))
                 return cur.rowcount > 0
+
+    # ------------------------------------------------------------------ #
+    #  API KEYS
+    # ------------------------------------------------------------------ #
+
+    def save_api_key(self, agent_id: str, api_key: str) -> None:
+        """Agent API key'ini kaydet veya güncelle."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT OR REPLACE INTO api_keys (agent_id, api_key, created_at) VALUES (?,?,?)",
+                    (agent_id, api_key, now),
+                )
+
+    def get_api_key(self, agent_id: str) -> Optional[str]:
+        """Agent'ın kayıtlı API key'ini döndür, yoksa None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT api_key FROM api_keys WHERE agent_id=?", (agent_id,)
+            ).fetchone()
+            return row["api_key"] if row else None
+
+    def get_all_api_keys(self) -> dict[str, str]:
+        """Tüm agent_id → api_key eşlemesini döndür."""
+        with self._connect() as conn:
+            rows = conn.execute("SELECT agent_id, api_key FROM api_keys").fetchall()
+            return {row["agent_id"]: row["api_key"] for row in rows}
 
 
 # Global instance — uygulama boyunca tek bir tane

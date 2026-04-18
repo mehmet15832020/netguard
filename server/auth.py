@@ -76,10 +76,6 @@ _USERS: dict[str, UserInDB] = {
     ),
 }
 
-# Agent API key deposu — agent_id → api_key
-_API_KEYS: dict[str, str] = {}
-
-
 # ─── Agent API key yönetimi ──────────────────────────────────────
 
 def generate_api_key() -> str:
@@ -89,15 +85,20 @@ def generate_api_key() -> str:
 
 def register_agent_key(agent_id: str) -> str:
     """Agent için API key oluştur veya mevcut olanı döndür."""
-    if agent_id not in _API_KEYS:
-        _API_KEYS[agent_id] = generate_api_key()
-        logger.info(f"API key oluşturuldu: {agent_id}")
-    return _API_KEYS[agent_id]
+    from server.database import db
+    existing = db.get_api_key(agent_id)
+    if existing:
+        return existing
+    new_key = generate_api_key()
+    db.save_api_key(agent_id, new_key)
+    logger.info(f"API key oluşturuldu: {agent_id}")
+    return new_key
 
 
 def verify_api_key(api_key: str) -> Optional[str]:
     """API key geçerliyse agent_id döndür, değilse None."""
-    for agent_id, key in _API_KEYS.items():
+    from server.database import db
+    for agent_id, key in db.get_all_api_keys().items():
         if secrets.compare_digest(key, api_key):
             return agent_id
     return None
