@@ -164,17 +164,20 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS
+_cors_default = ",".join([
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://192.168.203.134:3000",
+    "http://192.168.203.142:3000",
+    "http://192.168.1.113:3000",
+    "http://192.168.203.1:3000",
+])
+_cors_origins = [o.strip() for o in os.getenv("NETGUARD_CORS_ORIGINS", _cors_default).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://192.168.203.134:3000",  # VM1 - NetGuard Server
-        "http://192.168.203.142:3000",  # VM2 - Agent
-        "http://192.168.1.113:3000",    # Ana makine
-        "http://192.168.203.1:3000",    # VMware ağı gateway
-    ],
-    allow_methods=["GET", "POST"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["Content-Type", "Authorization", "X-API-Key"],
 )
 
