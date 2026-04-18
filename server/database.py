@@ -187,6 +187,31 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 """
 
+_CREATE_TOPOLOGY = """
+CREATE TABLE IF NOT EXISTS topology_nodes (
+    device_id   TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    ip          TEXT DEFAULT '',
+    type        TEXT DEFAULT 'unknown',
+    vendor      TEXT DEFAULT '',
+    os_info     TEXT DEFAULT '',
+    layer       INTEGER DEFAULT 3,
+    updated_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS topology_edges (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    src_id       TEXT NOT NULL,
+    dst_id       TEXT NOT NULL,
+    link_type    TEXT NOT NULL DEFAULT 'ip',
+    discovered   TEXT NOT NULL DEFAULT 'arp',
+    updated_at   TEXT NOT NULL,
+    UNIQUE(src_id, dst_id, link_type)
+);
+CREATE INDEX IF NOT EXISTS idx_topo_edges_src ON topology_edges(src_id);
+CREATE INDEX IF NOT EXISTS idx_topo_edges_dst ON topology_edges(dst_id);
+"""
+
 _CREATE_CORRELATED_EVENTS = """
 CREATE TABLE IF NOT EXISTS correlated_events (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -234,6 +259,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_SERVICE_CHECKS)
             conn.executescript(_CREATE_DEVICES)
             conn.executescript(_CREATE_API_KEYS)
+            conn.executescript(_CREATE_TOPOLOGY)
         self._migrate_snmp_to_devices()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
@@ -927,6 +953,71 @@ class DatabaseManager:
         with self._connect() as conn:
             rows = conn.execute("SELECT agent_id, api_key FROM api_keys").fetchall()
             return {row["agent_id"]: row["api_key"] for row in rows}
+
+    # ------------------------------------------------------------------ #
+    #  TOPOLOGY
+    # ------------------------------------------------------------------ #
+
+    def upsert_topology_node(
+        self,
+        device_id: str,
+        name: str,
+        ip: str = "",
+        device_type: str = "unknown",
+        vendor: str = "",
+        os_info: str = "",
+        layer: int = 3,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO topology_nodes
+                        (device_id, name, ip, type, vendor, os_info, layer, updated_at)
+                    VALUES (?,?,?,?,?,?,?,?)
+                    ON CONFLICT(device_id) DO UPDATE SET
+                        name=excluded.name, ip=excluded.ip, type=excluded.type,
+                        vendor=excluded.vendor, os_info=excluded.os_info,
+                        layer=excluded.layer, updated_at=excluded.updated_at
+                    """,
+                    (device_id, name, ip, device_type, vendor, os_info, layer, now),
+                )
+
+    def upsert_topology_edge(
+        self,
+        src_id: str,
+        dst_id: str,
+        link_type: str = "ip",
+        discovered: str = "arp",
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        canonical_src, canonical_dst = sorted([src_id, dst_id])
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """
+                    INSERT INTO topology_edges (src_id, dst_id, link_type, discovered, updated_at)
+                    VALUES (?,?,?,?,?)
+                    ON CONFLICT(src_id, dst_id, link_type) DO UPDATE SET
+                        discovered=excluded.discovered, updated_at=excluded.updated_at
+                    """,
+                    (canonical_src, canonical_dst, link_type, discovered, now),
+                )
+
+    def get_topology_graph(self) -> dict:
+        """Tüm node ve edge'leri döndür."""
+        with self._connect() as conn:
+            nodes = [dict(r) for r in conn.execute("SELECT * FROM topology_nodes").fetchall()]
+            edges = [dict(r) for r in conn.execute("SELECT * FROM topology_edges").fetchall()]
+        return {"nodes": nodes, "edges": edges}
+
+    def clear_topology(self) -> None:
+        """Topoloji tablolarını temizle (rebuild öncesi)."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM topology_edges")
+                conn.execute("DELETE FROM topology_nodes")
 
 
 # Global instance — uygulama boyunca tek bir tane
