@@ -130,11 +130,22 @@ function RuleCard({
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle')
+  const [localRules, setLocalRules] = useState<CorrelationRule[] | null>(null)
 
   const { data: rulesData, isLoading } = useQuery({
     queryKey: ['correlation-rules'],
     queryFn: () => correlationApi.listRules(),
+    select: (data) => data.rules,
+  })
+
+  const rules = localRules ?? rulesData ?? []
+
+  const saveMutation = useMutation({
+    mutationFn: (updatedRules: CorrelationRule[]) => correlationApi.updateRules(updatedRules),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['correlation-rules'] })
+      setLocalRules(null)
+    },
   })
 
   const reloadMutation = useMutation({
@@ -144,19 +155,10 @@ export default function SettingsPage() {
     },
   })
 
-  const rules = rulesData?.rules ?? []
-
-  // Kural güncellemesi — şimdilik sadece UI'da gösterir,
-  // tam implementasyon için backend'e PUT /settings/rules gerekir
   const handleRuleSave = (updated: CorrelationRule) => {
-    setSaveStatus('saving')
-    // TODO: Backend endpoint hazır olunca buraya PUT isteği ekle
-    // Şimdilik lokal güncelleme + reload
-    setTimeout(() => {
-      setSaveStatus('saved')
-      reloadMutation.mutate()
-      setTimeout(() => setSaveStatus('idle'), 2000)
-    }, 500)
+    const merged = rules.map((r) => (r.rule_id === updated.rule_id ? updated : r))
+    setLocalRules(merged)
+    saveMutation.mutate(merged)
   }
 
   return (
@@ -189,9 +191,14 @@ export default function SettingsPage() {
           </Button>
         </div>
 
-        {saveStatus === 'saved' && (
+        {saveMutation.isSuccess && (
           <div className="bg-green-900/30 border border-green-800 rounded px-3 py-2 text-green-400 text-xs">
-            Kurallar güncellendi ve yeniden yüklendi.
+            Kurallar kaydedildi ve yeniden yüklendi.
+          </div>
+        )}
+        {saveMutation.isError && (
+          <div className="bg-red-900/30 border border-red-800 rounded px-3 py-2 text-red-400 text-xs">
+            Kaydetme başarısız — sunucu bağlantısını kontrol et.
           </div>
         )}
 

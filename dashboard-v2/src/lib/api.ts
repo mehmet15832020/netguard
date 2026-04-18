@@ -181,6 +181,12 @@ export const correlationApi = {
     request<{ loaded: number; rules: string[] }>('/correlation/rules/reload', {
       method: 'POST',
     }),
+
+  updateRules: (rules: CorrelationRule[]) =>
+    request<{ saved: number; loaded: number }>('/correlation/rules', {
+      method: 'PUT',
+      body: JSON.stringify({ rules }),
+    }),
 }
 
 // ------------------------------------------------------------------ //

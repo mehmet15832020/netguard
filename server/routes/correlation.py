@@ -3,20 +3,29 @@ NetGuard Server — Korelasyon endpoint'leri
 
 GET  /api/v1/correlation/events          → Korelasyon olaylarını listele
 GET  /api/v1/correlation/rules           → Aktif kuralları listele
+PUT  /api/v1/correlation/rules           → Kuralları güncelle ve kaydet
 POST /api/v1/correlation/run             → Korelasyonu manuel tetikle
 POST /api/v1/correlation/rules/reload    → Kural dosyasını yeniden yükle
 """
 
+import json
 import logging
+from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 
-from server.auth import User, get_current_user
-from server.correlator import correlator
+from server.auth import User, get_current_user, require_admin
+from server.correlator import correlator, RULES_PATH
 from server.database import db
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+class RulesUpdateRequest(BaseModel):
+    rules: list[dict[str, Any]]
 
 
 @router.get("/correlation/events")
@@ -51,6 +60,32 @@ def list_rules(_: User = Depends(get_current_user)):
         for r in correlator.rules
     ]
     return {"count": len(rules), "rules": rules}
+
+
+@router.put("/correlation/rules")
+def update_rules(
+    request: RulesUpdateRequest,
+    _: User = Depends(require_admin),
+):
+    """Korelasyon kurallarını güncelle, dosyaya kaydet ve yeniden yükle."""
+    required_fields = {"rule_id", "name", "match_event_type", "window_seconds", "threshold", "output_event_type"}
+    for i, rule in enumerate(request.rules):
+        missing = required_fields - rule.keys()
+        if missing:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Kural {i} eksik alan: {missing}",
+            )
+
+    path = Path(RULES_PATH)
+    try:
+        path.write_text(json.dumps(request.rules, ensure_ascii=False, indent=2), encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Dosya yazılamadı: {exc}")
+
+    loaded = correlator.load_rules()
+    logger.info(f"Korelasyon kuralları güncellendi: {loaded} kural yüklendi")
+    return {"saved": len(request.rules), "loaded": loaded}
 
 
 @router.post("/correlation/run")
