@@ -7,24 +7,24 @@ Bu dosya Claude Code'un her oturumda otomatik okuduğu proje rehberidir.
 NetGuard: NMS + CSNM (Continuous Network Security Monitoring) birleşimi.
 Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified platform.
 
-## Mevcut Durum — FAZ 3 TAMAMLANDI ✓
+## Mevcut Durum — FAZ 4 TAMAMLANDI ✓
 
 ### Tamamlanan Fazlar
 
 **Faz 0 ✓** — Zemin temizleme (env değişkenleri, API key SQLite, JWT secret zorunlu, CORS dinamik)
 **Faz 1 ✓** — Unified Device Model (`devices` tablosu, tüm modüller device_id kullanır)
 **Faz 2 ✓** — NMS Çekirdeği (SNMP walk, uptime, TRAP)
-**Faz 3 ✓** — Auto-Discovery
+**Faz 3 ✓** — Auto-Discovery (subnet sweep, fingerprinting)
+**Faz 4 ✓** — Topology Engine
 
-Faz 3 teslim edilen modüller:
-- `server/discovery/subnet_scanner.py` — asyncio CIDR sweep, semaphore ile max 50 eş zamanlı ping
-- `server/discovery/fingerprinter.py` — port/banner analizi, OUI vendor lookup, SNMP sysDescr
-- `server/routes/discovery.py` — POST /scan (arka plan task), GET /status, GET /results
-- Bulunan cihazlar `devices` tablosuna `type=discovered` ile kaydedilir
+Faz 4 teslim edilen modüller:
+- `server/topology/builder.py` — SNMP ARP walk, LLDP komşu keşfi, subnet fallback
+- `server/routes/topology.py` — GET /graph, POST /refresh
+- `server/database.py` — topology_nodes + topology_edges tabloları
 
-Test durumu: **252 test, tümü geçiyor**
+Test durumu: **275 test, tümü geçiyor**
 
-## Sonraki Faz — FAZ 4: Topology Engine
+## Sonraki Faz — FAZ 5: Cross-Domain Correlation
 
 ## Commit Kuralları
 
@@ -54,7 +54,8 @@ Test durumu: **252 test, tümü geçiyor**
 - Faz 1 ✓ Unified Device Model
 - Faz 2 ✓ NMS Çekirdeği (SNMP walk, uptime, TRAP)
 - Faz 3 ✓ Auto-Discovery (subnet sweep, vendor tespiti)
-- Faz 4 → Topology Engine (L2/L3 harita)
+- Faz 4 ✓ Topology Engine (L2/L3 harita)
+- Faz 5 → Cross-Domain Correlation
 - Faz 4: Topology Engine (L2/L3 harita)
 - Faz 5: Cross-Domain Correlation
 - Faz 6: Frontend Dönüşümü (topology-first dashboard)
