@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 UNIQUE_PORTS_THRESHOLD = int(os.getenv("NETGUARD_PORTSCAN_THRESHOLD", "15"))
 WINDOW_SECONDS         = int(os.getenv("NETGUARD_PORTSCAN_WINDOW", "60"))
+NETWORK_INTERFACE      = os.getenv("NETGUARD_INTERFACE", "ens33")
 
 
 class PortScanDetector(BaseDetector):
@@ -69,7 +70,7 @@ class PortScanDetector(BaseDetector):
 
         t = threading.Thread(target=self._sniff_loop, daemon=True)
         t.start()
-        logger.info("Port tarama sniffer başlatıldı (pyshark/tshark)")
+        logger.info(f"Port tarama sniffer başlatıldı — arayüz: {NETWORK_INTERFACE}")
 
     def _sniff_loop(self) -> None:
         """Sürekli çalışan sniffer döngüsü — sadece TCP SYN paketleri."""
@@ -77,7 +78,7 @@ class PortScanDetector(BaseDetector):
 
         # tcp.flags.syn==1 AND tcp.flags.ack==0 → sadece ilk SYN (SYN-ACK değil)
         capture = pyshark.LiveCapture(
-            interface="ens33",
+            interface=NETWORK_INTERFACE,
             bpf_filter="tcp[tcpflags] & (tcp-syn) != 0 and tcp[tcpflags] & (tcp-ack) == 0",
             use_json=True,
             include_raw=False,
