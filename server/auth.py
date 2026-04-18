@@ -15,15 +15,23 @@ import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
+from dotenv import load_dotenv
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
+load_dotenv()
+
 logger = logging.getLogger(__name__)
 
 # JWT ayarları
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", secrets.token_hex(32))
+SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY .env dosyasında tanımlı değil. "
+        "Örnek: JWT_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
 
