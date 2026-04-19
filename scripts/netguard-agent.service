@@ -1,0 +1,18 @@
+[Unit]
+Description=NetGuard Agent
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netguard
+WorkingDirectory=/home/netguard/netguard
+EnvironmentFile=/home/netguard/netguard/.env
+ExecStart=/home/netguard/netguard/venv/bin/python3 -m agent.main
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

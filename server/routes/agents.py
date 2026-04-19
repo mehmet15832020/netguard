@@ -9,14 +9,18 @@ GET  /api/v1/agents/{id}/history → Geçmiş snapshot'lar
 """
 
 import logging
-from fastapi import APIRouter, HTTPException
-from shared.models import AgentRegistration, MetricSnapshot
+import uuid
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from shared.models import AgentRegistration, MetricSnapshot, SecurityEvent, SecurityEventType
 from server.storage import storage
 from server.database import db
 from server.alert_engine import alert_engine
 from server.influx_writer import influx_writer
 from server.notifier import notifier
 from server.ws_manager import ws_manager
+from server.auth import get_agent_from_api_key
 
 
 logger = logging.getLogger(__name__)
@@ -59,6 +63,49 @@ async def receive_metrics(snapshot: MetricSnapshot):
     await ws_manager.broadcast("metric", snapshot.model_dump(mode="json"))
 
     return {"status": "accepted", "alerts_triggered": len(alerts)}
+
+class SecurityEventItem(BaseModel):
+    event_type: str
+    severity: str = "warning"
+    source_ip: str | None = None
+    username: str | None = None
+    message: str
+    raw_data: str | None = None
+    occurred_at: str | None = None
+
+
+class SecurityEventBatch(BaseModel):
+    hostname: str
+    events: list[SecurityEventItem]
+
+
+@router.post("/agents/security-events", status_code=202)
+def receive_security_events(
+    batch: SecurityEventBatch,
+    agent_id: str = Depends(get_agent_from_api_key),
+):
+    """Agent'tan gelen güvenlik olaylarını API key doğrulamasıyla kaydet."""
+    saved = 0
+    for ev in batch.events:
+        try:
+            event = SecurityEvent(
+                event_id    = str(uuid.uuid4()),
+                agent_id    = agent_id,
+                hostname    = batch.hostname,
+                event_type  = SecurityEventType(ev.event_type),
+                severity    = ev.severity,
+                source_ip   = ev.source_ip,
+                username    = ev.username,
+                message     = ev.message,
+                raw_data    = ev.raw_data,
+                occurred_at = datetime.fromisoformat(ev.occurred_at) if ev.occurred_at else datetime.now(timezone.utc),
+            )
+            db.save_security_event(event)
+            saved += 1
+        except Exception as e:
+            logger.warning(f"Güvenlik olayı kaydedilemedi: {e}")
+    return {"status": "accepted", "saved": saved}
+
 
 @router.get("/agents")
 def list_agents():

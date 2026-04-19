@@ -1,0 +1,18 @@
+[Unit]
+Description=NetGuard Server
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=netguard
+WorkingDirectory=/home/netguard/netguard
+EnvironmentFile=/home/netguard/netguard/.env
+ExecStart=/home/netguard/netguard/venv/bin/uvicorn server.main:app --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

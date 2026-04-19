@@ -16,6 +16,7 @@ import time
 
 from agent.collector import collect_snapshot, _get_agent_id
 from agent.sender import MetricSender
+from agent.log_shipper import LogShipper
 from shared.models import AgentRegistration
 from shared.protocol import DEFAULT_SEND_INTERVAL_SEC
 from agent.traffic_collector import traffic_collector
@@ -37,7 +38,8 @@ def get_config() -> dict:
         SERVER_URL=http://192.168.1.100:8000 python -m agent.main
     """
     return {
-        "server_url": os.getenv("NETGUARD_SERVER_URL", "http://localhost:8000"),
+        "server_url":   os.getenv("NETGUARD_SERVER_URL", "http://localhost:8000"),
+        "api_key":      os.getenv("NETGUARD_API_KEY", ""),
         "send_interval": int(os.getenv("NETGUARD_SEND_INTERVAL", DEFAULT_SEND_INTERVAL_SEC)),
     }
 
@@ -51,6 +53,12 @@ def main():
     logger.info("=" * 50)
 
     sender = MetricSender(server_url=config["server_url"])
+
+    log_shipper = LogShipper(
+        server_url=config["server_url"],
+        api_key=config["api_key"],
+    )
+    log_shipper.start()
 
 # Traffic collector'ı başlat
     if os.getenv("NETGUARD_ENABLE_TRAFFIC", "true").lower() == "true":
@@ -86,6 +94,7 @@ def main():
     except KeyboardInterrupt:
         logger.info("Agent durduruluyor (Ctrl+C)...")
     finally:
+        log_shipper.stop()
         sender.close()
         logger.info("Agent durduruldu.")
 
