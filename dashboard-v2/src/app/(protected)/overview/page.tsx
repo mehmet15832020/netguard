@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Bell, Server, Shield, GitMerge, Circle, ChevronRight } from 'lucide-react'
+import { Bell, Server, Shield, GitMerge, Circle, ChevronRight, Share2 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { MetricCard } from '@/components/metrics/MetricCard'
 import { SeverityBadge } from '@/components/ui/severity-badge'
@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAgents, useLatestSnapshot } from '@/hooks/useMetrics'
 import { useAlerts } from '@/hooks/useAlerts'
 import { securityApi, correlationApi } from '@/lib/api'
+import { MiniTopology } from '@/components/topology/MiniTopology'
 import type { Severity } from '@/types/models'
 
 // Kompakt agent satırı — Overview'daki özet liste için
@@ -102,6 +103,23 @@ export default function OverviewPage() {
           status={(corrData?.count ?? 0) > 0 ? 'warning' : 'ok'}
         />
       </div>
+
+      {/* Topoloji haritası */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader className="pb-2 flex flex-row items-center justify-between">
+          <CardTitle className="text-sm text-zinc-300 flex items-center gap-2">
+            <Share2 size={14} /> Ağ Topolojisi
+          </CardTitle>
+          <Link href="/topology" className="text-xs text-indigo-400 hover:text-indigo-300">
+            Tam görünüm →
+          </Link>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="h-64">
+            <MiniTopology />
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Ana içerik: agent listesi + alertler */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
