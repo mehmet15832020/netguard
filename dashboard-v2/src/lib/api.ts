@@ -209,11 +209,22 @@ export interface SNMPDeviceInfo {
   error: string
 }
 
+export interface SNMPPollParams {
+  host: string
+  community?: string
+  snmp_version?: 'v2c' | 'v3'
+  v3_username?: string
+  v3_auth_protocol?: 'MD5' | 'SHA'
+  v3_auth_key?: string
+  v3_priv_protocol?: 'DES' | 'AES'
+  v3_priv_key?: string
+}
+
 export const snmpApi = {
-  poll: (host: string, community = 'public') =>
+  poll: (params: SNMPPollParams) =>
     request<SNMPDeviceInfo>('/snmp/poll', {
       method: 'POST',
-      body: JSON.stringify({ host, community }),
+      body: JSON.stringify(params),
     }),
 }
 
@@ -258,8 +269,45 @@ export const topologyApi = {
   graph: () =>
     request<TopologyGraph>('/topology/graph'),
 
+  getGraph: () =>
+    request<TopologyGraph>('/topology/graph'),
+
   refresh: () =>
     request<{ status: string; message: string }>('/topology/refresh', {
       method: 'POST',
     }),
+}
+
+// ------------------------------------------------------------------ //
+//  Reports
+// ------------------------------------------------------------------ //
+
+export interface ReportSummary {
+  generated_at: string
+  devices: { total: number; by_type: Record<string, number>; by_status: Record<string, number> }
+  alerts: { active: number; by_severity: Record<string, number> }
+  security: { total: number; by_type: Record<string, number> }
+  topology: { nodes: number; edges: number }
+}
+
+export const reportsApi = {
+  summary: () =>
+    request<ReportSummary>('/reports/summary'),
+
+  download: async (type: 'devices' | 'alerts' | 'security' | 'topology') => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('ng_token') : ''
+    const res = await fetch(`${API}/reports/${type}.csv`, {
+      headers: { Authorization: `Bearer ${token ?? ''}` },
+    })
+    if (!res.ok) throw new Error(`Rapor indirilemedi: ${res.status}`)
+    const blob = await res.blob()
+    const url  = URL.createObjectURL(blob)
+    const a    = document.createElement('a')
+    const disp = res.headers.get('Content-Disposition') ?? ''
+    const match = disp.match(/filename="([^"]+)"/)
+    a.href     = url
+    a.download = match?.[1] ?? `${type}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  },
 }

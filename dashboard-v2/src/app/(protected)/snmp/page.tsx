@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Network, Search, CheckCircle, XCircle, Clock, ArrowDownUp } from 'lucide-react'
+import { Network, Search, CheckCircle, XCircle, Clock, ArrowDownUp, ChevronDown, ChevronUp } from 'lucide-react'
 import { useMutation } from '@tanstack/react-query'
 import { snmpApi, type SNMPDeviceInfo } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -118,10 +118,26 @@ function Row({
 export default function SNMPPage() {
   const [host, setHost]           = useState('')
   const [community, setCommunity] = useState('public')
+  const [version, setVersion]     = useState<'v2c' | 'v3'>('v2c')
+  const [showV3, setShowV3]       = useState(false)
+  const [v3User, setV3User]       = useState('')
+  const [v3AuthProto, setV3AuthProto] = useState<'MD5' | 'SHA'>('SHA')
+  const [v3AuthKey, setV3AuthKey] = useState('')
+  const [v3PrivProto, setV3PrivProto] = useState<'DES' | 'AES'>('AES')
+  const [v3PrivKey, setV3PrivKey] = useState('')
   const [lastResult, setLastResult] = useState<SNMPDeviceInfo | null>(null)
 
   const { mutate, isPending, isError, error } = useMutation({
-    mutationFn: () => snmpApi.poll(host.trim(), community.trim() || 'public'),
+    mutationFn: () => snmpApi.poll({
+      host: host.trim(),
+      community: community.trim() || 'public',
+      snmp_version: version,
+      v3_username:       version === 'v3' ? v3User     : undefined,
+      v3_auth_protocol:  version === 'v3' ? v3AuthProto: undefined,
+      v3_auth_key:       version === 'v3' ? v3AuthKey  : undefined,
+      v3_priv_protocol:  version === 'v3' ? v3PrivProto: undefined,
+      v3_priv_key:       version === 'v3' ? v3PrivKey  : undefined,
+    }),
     onSuccess: (data) => setLastResult(data),
   })
 
@@ -131,13 +147,15 @@ export default function SNMPPage() {
     mutate()
   }
 
+  const inputCls = "bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600"
+
   return (
     <div className="space-y-6">
       {/* Başlık */}
       <div>
         <h1 className="text-xl font-semibold text-zinc-100">SNMP Sorgulama</h1>
         <p className="text-sm text-zinc-500 mt-0.5">
-          Router, switch veya SNMP destekli cihazları sorgula
+          Router, switch veya SNMP destekli cihazları sorgula (v2c / v3)
         </p>
       </div>
 
@@ -148,41 +166,111 @@ export default function SNMPPage() {
             <Network size={14} /> Cihaz Sorgusu
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
-            <div className="flex-1 space-y-1">
-              <Label htmlFor="host" className="text-xs text-zinc-400">IP Adresi veya Hostname</Label>
-              <Input
-                id="host"
-                value={host}
-                onChange={e => setHost(e.target.value)}
-                placeholder="192.168.1.1"
-                required
-                className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600"
-              />
+        <CardContent className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Satır 1: host + community + version */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="flex-1 space-y-1">
+                <Label htmlFor="host" className="text-xs text-zinc-400">IP Adresi veya Hostname</Label>
+                <Input
+                  id="host"
+                  value={host}
+                  onChange={e => setHost(e.target.value)}
+                  placeholder="192.168.1.1"
+                  required
+                  className={inputCls}
+                />
+              </div>
+              <div className="w-full sm:w-36 space-y-1">
+                <Label htmlFor="version" className="text-xs text-zinc-400">Versiyon</Label>
+                <select
+                  id="version"
+                  value={version}
+                  onChange={e => {
+                    const v = e.target.value as 'v2c' | 'v3'
+                    setVersion(v)
+                    setShowV3(v === 'v3')
+                  }}
+                  className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-100 text-sm px-3"
+                >
+                  <option value="v2c">SNMPv2c</option>
+                  <option value="v3">SNMPv3</option>
+                </select>
+              </div>
+              {version === 'v2c' && (
+                <div className="w-full sm:w-36 space-y-1">
+                  <Label htmlFor="community" className="text-xs text-zinc-400">Community</Label>
+                  <Input
+                    id="community"
+                    value={community}
+                    onChange={e => setCommunity(e.target.value)}
+                    placeholder="public"
+                    className={inputCls}
+                  />
+                </div>
+              )}
+              <div className="flex items-end">
+                <Button
+                  type="submit"
+                  disabled={isPending || !host.trim()}
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white w-full sm:w-auto"
+                >
+                  {isPending
+                    ? <><span className="animate-spin mr-2">⟳</span>Sorgulanıyor...</>
+                    : <><Search size={14} className="mr-2" />Sorgula</>
+                  }
+                </Button>
+              </div>
             </div>
-            <div className="w-full sm:w-40 space-y-1">
-              <Label htmlFor="community" className="text-xs text-zinc-400">Community</Label>
-              <Input
-                id="community"
-                value={community}
-                onChange={e => setCommunity(e.target.value)}
-                placeholder="public"
-                className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600"
-              />
-            </div>
-            <div className="flex items-end">
-              <Button
-                type="submit"
-                disabled={isPending || !host.trim()}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white w-full sm:w-auto"
-              >
-                {isPending
-                  ? <><span className="animate-spin mr-2">⟳</span>Sorgulanıyor...</>
-                  : <><Search size={14} className="mr-2" />Sorgula</>
-                }
-              </Button>
-            </div>
+
+            {/* SNMPv3 alanları */}
+            {version === 'v3' && (
+              <div className="border border-zinc-700 rounded-lg p-4 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setShowV3(!showV3)}
+                  className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-200"
+                >
+                  {showV3 ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                  SNMPv3 Kimlik Bilgileri
+                </button>
+                {showV3 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Kullanıcı Adı</Label>
+                      <Input value={v3User} onChange={e => setV3User(e.target.value)}
+                        placeholder="netguard" className={inputCls} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Auth Protokol</Label>
+                      <select value={v3AuthProto} onChange={e => setV3AuthProto(e.target.value as 'MD5' | 'SHA')}
+                        className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-100 text-sm px-3">
+                        <option value="SHA">SHA</option>
+                        <option value="MD5">MD5</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Auth Key</Label>
+                      <Input type="password" value={v3AuthKey} onChange={e => setV3AuthKey(e.target.value)}
+                        placeholder="auth şifresi" className={inputCls} />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs text-zinc-400">Priv Protokol</Label>
+                      <select value={v3PrivProto} onChange={e => setV3PrivProto(e.target.value as 'DES' | 'AES')}
+                        className="w-full h-10 rounded-md border border-zinc-700 bg-zinc-800 text-zinc-100 text-sm px-3">
+                        <option value="AES">AES</option>
+                        <option value="DES">DES</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1 sm:col-span-2">
+                      <Label className="text-xs text-zinc-400">Priv Key</Label>
+                      <Input type="password" value={v3PrivKey} onChange={e => setV3PrivKey(e.target.value)}
+                        placeholder="priv şifresi" className={inputCls} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </form>
 
           {isError && (

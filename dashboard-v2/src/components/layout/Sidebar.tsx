@@ -16,6 +16,7 @@ import {
   Monitor,
   Radar,
   Share2,
+  FileDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth } from '@/lib/api'
@@ -33,6 +34,7 @@ const NAV_ITEMS = [
   { href: '/correlation',  label: 'Korelasyon',     icon: GitMerge },
   { href: '/logs',         label: 'Loglar',         icon: FileText },
   { href: '/snmp',         label: 'SNMP',           icon: Network  },
+  { href: '/reports',      label: 'Raporlar',       icon: FileDown },
   { href: '/settings',     label: 'Ayarlar',        icon: Settings },
 ]
 
