@@ -69,7 +69,8 @@ def report_summary(_: User = Depends(get_current_user)):
 
     sec_by_type: dict[str, int] = {}
     for e in sec_events:
-        et = e.get("event_type", "") if isinstance(e, dict) else str(getattr(e, "event_type", ""))
+        _et = getattr(e, "event_type", e.get("event_type", "") if isinstance(e, dict) else "")
+        et = _et.value if hasattr(_et, "value") else str(_et)
         sec_by_type[et] = sec_by_type.get(et, 0) + 1
 
     return {
@@ -140,7 +141,7 @@ def report_security(
     raw = _db_mod.db.get_security_events(limit=limit)
     rows = [{
         "event_id":   e.event_id if not isinstance(e, dict) else e.get("event_id", ""),
-        "event_type": str(e.event_type) if not isinstance(e, dict) else e.get("event_type", ""),
+        "event_type": e.event_type.value if (not isinstance(e, dict) and hasattr(e.event_type, "value")) else (e.get("event_type", "") if isinstance(e, dict) else str(e.event_type)),
         "source_ip":  (e.source_ip if not isinstance(e, dict) else e.get("source_ip", "")) or "",
         "username":   (e.username if not isinstance(e, dict) else e.get("username", "")) or "",
         "message":    (e.message if not isinstance(e, dict) else e.get("message", "")) or "",
