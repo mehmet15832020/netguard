@@ -54,19 +54,23 @@ def report_summary(_: User = Depends(get_current_user)):
 
     device_by_type: dict[str, int] = {}
     for d in devices:
-        device_by_type[d["type"]] = device_by_type.get(d["type"], 0) + 1
+        t = d.get("type", "") if isinstance(d, dict) else str(getattr(d, "type", ""))
+        device_by_type[t] = device_by_type.get(t, 0) + 1
 
     device_by_status: dict[str, int] = {}
     for d in devices:
-        device_by_status[d["status"]] = device_by_status.get(d["status"], 0) + 1
+        s = d.get("status", "") if isinstance(d, dict) else str(getattr(d, "status", ""))
+        device_by_status[s] = device_by_status.get(s, 0) + 1
 
     alert_by_severity: dict[str, int] = {}
     for a in alerts:
-        alert_by_severity[a["severity"]] = alert_by_severity.get(a["severity"], 0) + 1
+        sev = a.get("severity", "") if isinstance(a, dict) else str(getattr(a, "severity", ""))
+        alert_by_severity[sev] = alert_by_severity.get(sev, 0) + 1
 
     sec_by_type: dict[str, int] = {}
     for e in sec_events:
-        sec_by_type[e["event_type"]] = sec_by_type.get(e["event_type"], 0) + 1
+        et = e.get("event_type", "") if isinstance(e, dict) else str(getattr(e, "event_type", ""))
+        sec_by_type[et] = sec_by_type.get(et, 0) + 1
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -114,8 +118,15 @@ def report_alerts(
 ):
     """Alert geçmişini CSV olarak indir."""
     raw = _db_mod.db.get_alerts(limit=limit)
-    fields = ["alert_id", "severity", "message", "hostname", "status", "created_at", "resolved_at"]
-    rows = [{f: a.get(f, "") for f in fields} for a in raw]
+    rows = [{
+        "alert_id":    a.alert_id if not isinstance(a, dict) else a.get("alert_id", ""),
+        "severity":    str(a.severity) if not isinstance(a, dict) else a.get("severity", ""),
+        "message":     (a.message if not isinstance(a, dict) else a.get("message", "")) or "",
+        "hostname":    (a.hostname if not isinstance(a, dict) else a.get("hostname", "")) or "",
+        "status":      str(a.status) if not isinstance(a, dict) else a.get("status", ""),
+        "created_at":  a.triggered_at.isoformat() if not isinstance(a, dict) else a.get("created_at", ""),
+        "resolved_at": a.resolved_at.isoformat() if (not isinstance(a, dict) and a.resolved_at) else (a.get("resolved_at", "") if isinstance(a, dict) else ""),
+    } for a in raw]
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     return _csv_response(rows, f"netguard_alerts_{ts}.csv")
 
@@ -127,9 +138,17 @@ def report_security(
 ):
     """Güvenlik olaylarını CSV olarak indir."""
     raw = _db_mod.db.get_security_events(limit=limit)
-    fields = ["event_id", "event_type", "source_ip", "username", "message",
-              "agent_id", "severity", "raw_log", "detected_at"]
-    rows = [{f: e.get(f, "") for f in fields} for e in raw]
+    rows = [{
+        "event_id":   e.event_id if not isinstance(e, dict) else e.get("event_id", ""),
+        "event_type": str(e.event_type) if not isinstance(e, dict) else e.get("event_type", ""),
+        "source_ip":  (e.source_ip if not isinstance(e, dict) else e.get("source_ip", "")) or "",
+        "username":   (e.username if not isinstance(e, dict) else e.get("username", "")) or "",
+        "message":    (e.message if not isinstance(e, dict) else e.get("message", "")) or "",
+        "agent_id":   (e.agent_id if not isinstance(e, dict) else e.get("agent_id", "")) or "",
+        "severity":   (e.severity if not isinstance(e, dict) else e.get("severity", "")) or "",
+        "raw_log":    (e.raw_data if not isinstance(e, dict) else e.get("raw_data", "")) or "",
+        "detected_at": e.occurred_at.isoformat() if not isinstance(e, dict) else e.get("occurred_at", ""),
+    } for e in raw]
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M")
     return _csv_response(rows, f"netguard_security_{ts}.csv")
 
