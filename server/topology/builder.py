@@ -28,7 +28,7 @@ _LAYER_HINTS = {
 }
 
 
-async def _walk_arp(host: str, community: str) -> list[tuple[str, str]]:
+async def _walk_arp(host: str, device: dict) -> list[tuple[str, str]]:
     """
     ARP tablosunu walk et.
     Döndürür: [(ip, mac_hex), ...]
@@ -38,16 +38,16 @@ async def _walk_arp(host: str, community: str) -> list[tuple[str, str]]:
         if not SNMP_AVAILABLE:
             return []
 
-        from pysnmp.hlapi.asyncio import (
-            SnmpEngine, CommunityData, UdpTransportTarget,
-        )
+        from server.snmp_auth import build_snmp_auth_from_device
+        from pysnmp.hlapi.asyncio import SnmpEngine, UdpTransportTarget
+
         transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
         engine = SnmpEngine()
-        community_data = CommunityData(community, mpModel=1)
+        auth_data = build_snmp_auth_from_device(device)
 
         mac_col, ip_col = await asyncio.gather(
-            _walk_column(engine, community_data, transport, ARP_TABLE_OID),
-            _walk_column(engine, community_data, transport, ARP_ADDR_OID),
+            _walk_column(engine, auth_data, transport, ARP_TABLE_OID),
+            _walk_column(engine, auth_data, transport, ARP_ADDR_OID),
             return_exceptions=True,
         )
 
@@ -65,7 +65,7 @@ async def _walk_arp(host: str, community: str) -> list[tuple[str, str]]:
         return []
 
 
-async def _walk_lldp(host: str, community: str) -> list[str]:
+async def _walk_lldp(host: str, device: dict) -> list[str]:
     """
     LLDP komşu IP adreslerini walk et.
     Döndürür: [neighbor_ip, ...]
@@ -75,14 +75,14 @@ async def _walk_lldp(host: str, community: str) -> list[str]:
         if not SNMP_AVAILABLE:
             return []
 
-        from pysnmp.hlapi.asyncio import (
-            SnmpEngine, CommunityData, UdpTransportTarget,
-        )
+        from server.snmp_auth import build_snmp_auth_from_device
+        from pysnmp.hlapi.asyncio import SnmpEngine, UdpTransportTarget
+
         transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
         engine = SnmpEngine()
-        community_data = CommunityData(community, mpModel=1)
+        auth_data = build_snmp_auth_from_device(device)
 
-        ip_col = await _walk_column(engine, community_data, transport, LLDP_REM_IP)
+        ip_col = await _walk_column(engine, auth_data, transport, LLDP_REM_IP)
         if not ip_col:
             return []
         return [str(v) for v in ip_col.values() if v]
@@ -164,11 +164,10 @@ async def build_topology() -> dict:
 
     for dev in snmp_devices:
         host = dev["ip"]
-        community = dev.get("snmp_community", "public") or "public"
 
         arp_entries, lldp_neighbors = await asyncio.gather(
-            _walk_arp(host, community),
-            _walk_lldp(host, community),
+            _walk_arp(host, dev),
+            _walk_lldp(host, dev),
             return_exceptions=True,
         )
 

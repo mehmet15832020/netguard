@@ -261,6 +261,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_API_KEYS)
             conn.executescript(_CREATE_TOPOLOGY)
         self._migrate_snmp_to_devices()
+        self._migrate_snmpv3_columns()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -748,6 +749,11 @@ class DatabaseManager:
         os_info: str = "",
         snmp_community: str = "",
         snmp_version: str = "v2c",
+        snmp_v3_username: str = "",
+        snmp_v3_auth_protocol: str = "SHA",
+        snmp_v3_auth_key: str = "",
+        snmp_v3_priv_protocol: str = "AES",
+        snmp_v3_priv_key: str = "",
         status: str = "unknown",
         segment: str = "",
         notes: str = "",
@@ -761,19 +767,32 @@ class DatabaseManager:
                     INSERT INTO devices
                         (device_id, name, ip, mac, type, vendor, os_info,
                          status, first_seen, last_seen,
-                         snmp_community, snmp_version, segment, notes)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                         snmp_community, snmp_version,
+                         snmp_v3_username, snmp_v3_auth_protocol,
+                         snmp_v3_auth_key, snmp_v3_priv_protocol, snmp_v3_priv_key,
+                         segment, notes)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(device_id) DO UPDATE SET
-                        name           = excluded.name,
-                        ip             = COALESCE(NULLIF(excluded.ip,''), ip),
-                        status         = excluded.status,
-                        last_seen      = excluded.last_seen,
-                        os_info        = COALESCE(NULLIF(excluded.os_info,''), os_info),
-                        vendor         = COALESCE(NULLIF(excluded.vendor,''), vendor)
+                        name                 = excluded.name,
+                        ip                   = COALESCE(NULLIF(excluded.ip,''), ip),
+                        status               = excluded.status,
+                        last_seen            = excluded.last_seen,
+                        os_info              = COALESCE(NULLIF(excluded.os_info,''), os_info),
+                        vendor               = COALESCE(NULLIF(excluded.vendor,''), vendor),
+                        snmp_community       = COALESCE(NULLIF(excluded.snmp_community,''), snmp_community),
+                        snmp_version         = COALESCE(NULLIF(excluded.snmp_version,''), snmp_version),
+                        snmp_v3_username     = COALESCE(NULLIF(excluded.snmp_v3_username,''), snmp_v3_username),
+                        snmp_v3_auth_protocol= COALESCE(NULLIF(excluded.snmp_v3_auth_protocol,''), snmp_v3_auth_protocol),
+                        snmp_v3_auth_key     = COALESCE(NULLIF(excluded.snmp_v3_auth_key,''), snmp_v3_auth_key),
+                        snmp_v3_priv_protocol= COALESCE(NULLIF(excluded.snmp_v3_priv_protocol,''), snmp_v3_priv_protocol),
+                        snmp_v3_priv_key     = COALESCE(NULLIF(excluded.snmp_v3_priv_key,''), snmp_v3_priv_key)
                     """,
                     (device_id, name, ip, mac, device_type, vendor, os_info,
                      status, now, now,
-                     snmp_community, snmp_version, segment, notes),
+                     snmp_community, snmp_version,
+                     snmp_v3_username, snmp_v3_auth_protocol,
+                     snmp_v3_auth_key, snmp_v3_priv_protocol, snmp_v3_priv_key,
+                     segment, notes),
                 )
 
     def update_device_status(self, device_id: str, status: str) -> None:
@@ -897,6 +916,22 @@ class DatabaseManager:
                 params,
             ).fetchall()
             return [dict(r) for r in rows]
+
+    def _migrate_snmpv3_columns(self) -> None:
+        """SNMPv3 credential kolonlarını devices tablosuna ekle (idempotent)."""
+        v3_columns = [
+            ("snmp_v3_username",      "TEXT DEFAULT ''"),
+            ("snmp_v3_auth_protocol", "TEXT DEFAULT 'SHA'"),
+            ("snmp_v3_auth_key",      "TEXT DEFAULT ''"),
+            ("snmp_v3_priv_protocol", "TEXT DEFAULT 'AES'"),
+            ("snmp_v3_priv_key",      "TEXT DEFAULT ''"),
+        ]
+        with self._lock:
+            with self._connect() as conn:
+                existing = {row[1] for row in conn.execute("PRAGMA table_info(devices)").fetchall()}
+                for col_name, col_def in v3_columns:
+                    if col_name not in existing:
+                        conn.execute(f"ALTER TABLE devices ADD COLUMN {col_name} {col_def}")
 
     def _migrate_snmp_to_devices(self) -> None:
         """Mevcut snmp_devices kayıtlarını devices tablosuna taşı."""

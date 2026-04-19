@@ -4,7 +4,7 @@ NetGuard Server — SNMP Collector v2
 Tüm arayüzleri sorgular (interface table walk), 64-bit counter kullanır,
 önceki poll ile delta hesaplayarak gerçek bandwidth değeri üretir.
 
-Desteklenen: SNMPv2c (v3 Faz 7'de gelecek)
+Desteklenen: SNMPv2c ve SNMPv3 (authPriv, authNoPriv, noAuthNoPriv)
 """
 
 import asyncio
@@ -26,6 +26,8 @@ try:
 except ImportError:
     SNMP_AVAILABLE = False
     logger.warning("pysnmp kurulu değil — SNMP collector devre dışı")
+
+from server.snmp_auth import build_snmp_auth
 
 # Sistem OID'leri (tekil değer)
 SYSTEM_OIDS = {
@@ -119,15 +121,17 @@ class SNMPDeviceInfo(BaseModel):
         return self.interfaces[0].oper_status if self.interfaces else 0
 
 
-async def _snmp_get(host: str, community: str, oid: str) -> Optional[str]:
-    """Tek OID değerini SNMP GET ile çeker."""
+async def _snmp_get(host: str, community: str, oid: str, auth_data=None) -> Optional[str]:
+    """Tek OID değerini SNMP GET ile çeker. auth_data verilmezse v2c community kullanır."""
     if not SNMP_AVAILABLE:
         return None
+    if auth_data is None:
+        auth_data = CommunityData(community, mpModel=1)
     try:
         transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
         err_ind, err_stat, _, var_binds = await get_cmd(
             SnmpEngine(),
-            CommunityData(community, mpModel=1),
+            auth_data,
             transport,
             ContextData(),
             ObjectType(ObjectIdentity(oid)),
@@ -220,12 +224,22 @@ def _calc_bandwidth(
     return round(in_bps, 2), round(out_bps, 2)
 
 
-async def poll_device_async(host: str, community: str = "public") -> SNMPDeviceInfo:
+async def poll_device_async(
+    host: str,
+    community: str = "public",
+    snmp_version: str = "v2c",
+    v3_username: str = "",
+    v3_auth_protocol: str = "SHA",
+    v3_auth_key: str = "",
+    v3_priv_protocol: str = "AES",
+    v3_priv_key: str = "",
+) -> SNMPDeviceInfo:
     """
     Bir cihazı tam olarak sorgular:
     - Sistem OID'leri (GET)
     - Tüm arayüzler (walk)
     - Bandwidth delta hesabı
+    SNMPv2c ve v3 (authPriv/authNoPriv/noAuthNoPriv) desteklenir.
     """
     info = SNMPDeviceInfo(host=host, community=community)
 
@@ -233,17 +247,27 @@ async def poll_device_async(host: str, community: str = "public") -> SNMPDeviceI
         info.error = "pysnmp kurulu değil"
         return info
 
+    auth_data = build_snmp_auth(
+        snmp_version=snmp_version,
+        community=community,
+        v3_username=v3_username,
+        v3_auth_protocol=v3_auth_protocol,
+        v3_auth_key=v3_auth_key,
+        v3_priv_protocol=v3_priv_protocol,
+        v3_priv_key=v3_priv_key,
+    )
+
     try:
         transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
         engine = SnmpEngine()
-        community_data = CommunityData(community, mpModel=1)
+        community_data = auth_data
 
         # 1) Sistem OID'leri — asyncio.gather ile paralel GET
         sys_results = await asyncio.gather(
-            _snmp_get(host, community, SYSTEM_OIDS["sysDescr"]),
-            _snmp_get(host, community, SYSTEM_OIDS["sysObjectID"]),
-            _snmp_get(host, community, SYSTEM_OIDS["sysUpTime"]),
-            _snmp_get(host, community, SYSTEM_OIDS["sysName"]),
+            _snmp_get(host, community, SYSTEM_OIDS["sysDescr"], auth_data),
+            _snmp_get(host, community, SYSTEM_OIDS["sysObjectID"], auth_data),
+            _snmp_get(host, community, SYSTEM_OIDS["sysUpTime"], auth_data),
+            _snmp_get(host, community, SYSTEM_OIDS["sysName"], auth_data),
             return_exceptions=True,
         )
 
@@ -326,10 +350,23 @@ async def poll_device_async(host: str, community: str = "public") -> SNMPDeviceI
     return info
 
 
-def poll_device(host: str, community: str = "public") -> SNMPDeviceInfo:
+def poll_device(
+    host: str,
+    community: str = "public",
+    snmp_version: str = "v2c",
+    v3_username: str = "",
+    v3_auth_protocol: str = "SHA",
+    v3_auth_key: str = "",
+    v3_priv_protocol: str = "AES",
+    v3_priv_key: str = "",
+) -> SNMPDeviceInfo:
     """Senkron wrapper."""
     try:
         loop = asyncio.new_event_loop()
-        return loop.run_until_complete(poll_device_async(host, community))
+        return loop.run_until_complete(poll_device_async(
+            host, community, snmp_version,
+            v3_username, v3_auth_protocol, v3_auth_key,
+            v3_priv_protocol, v3_priv_key,
+        ))
     except Exception as exc:
         return SNMPDeviceInfo(host=host, error=str(exc))
