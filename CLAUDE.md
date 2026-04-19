@@ -7,7 +7,7 @@ Bu dosya Claude Code'un her oturumda otomatik okuduğu proje rehberidir.
 NetGuard: NMS + CSNM (Continuous Network Security Monitoring) birleşimi.
 Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified platform.
 
-## Mevcut Durum — FAZ 4 TAMAMLANDI ✓
+## Mevcut Durum — FAZ 5 TAMAMLANDI ✓
 
 ### Tamamlanan Fazlar
 
@@ -22,9 +22,18 @@ Faz 4 teslim edilen modüller:
 - `server/routes/topology.py` — GET /graph, POST /refresh
 - `server/database.py` — topology_nodes + topology_edges tabloları
 
-Test durumu: **275 test, tümü geçiyor**
+**Faz 5 ✓** — Cross-Domain Correlation
 
-## Sonraki Faz — FAZ 5: Cross-Domain Correlation
+Faz 5 teslim edilen modüller:
+- `server/security_log_parser.py` — ssh_failure/success/sudo → normalized_logs
+- `server/snmp_trap_receiver.py` — snmp_trap → normalized_logs
+- `server/uptime_checker.py` — device_down/up → normalized_logs
+- `config/correlation_rules.json` — 7 cross-domain korelasyon kuralı
+- `tests/test_cross_domain_correlation.py` — 13 yeni test
+
+Test durumu: **288 test, tümü geçiyor**
+
+## Sonraki Faz — FAZ 6: Frontend Dönüşümü
 
 ## Commit Kuralları
 
@@ -55,7 +64,7 @@ Test durumu: **275 test, tümü geçiyor**
 - Faz 2 ✓ NMS Çekirdeği (SNMP walk, uptime, TRAP)
 - Faz 3 ✓ Auto-Discovery (subnet sweep, vendor tespiti)
 - Faz 4 ✓ Topology Engine (L2/L3 harita)
-- Faz 5 → Cross-Domain Correlation
+- Faz 5 ✓ Cross-Domain Correlation
 - Faz 4: Topology Engine (L2/L3 harita)
 - Faz 5: Cross-Domain Correlation
 - Faz 6: Frontend Dönüşümü (topology-first dashboard)
