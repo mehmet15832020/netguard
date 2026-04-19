@@ -7,7 +7,7 @@ Bu dosya Claude Code'un her oturumda otomatik okuduğu proje rehberidir.
 NetGuard: NMS + CSNM (Continuous Network Security Monitoring) birleşimi.
 Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified platform.
 
-## Mevcut Durum — FAZ 5 TAMAMLANDI ✓
+## Mevcut Durum — FAZ 7 TAMAMLANDI ✓
 
 ### Tamamlanan Fazlar
 
@@ -23,17 +23,20 @@ Faz 4 teslim edilen modüller:
 - `server/database.py` — topology_nodes + topology_edges tabloları
 
 **Faz 5 ✓** — Cross-Domain Correlation
+**Faz 6 ✓** — Frontend Dönüşümü (devices, discovery, topology sayfaları, overview'da mini topoloji haritası)
+**Faz 7 ✓** — SNMPv3 + Security Hardening
 
-Faz 5 teslim edilen modüller:
-- `server/security_log_parser.py` — ssh_failure/success/sudo → normalized_logs
-- `server/snmp_trap_receiver.py` — snmp_trap → normalized_logs
-- `server/uptime_checker.py` — device_down/up → normalized_logs
-- `config/correlation_rules.json` — 7 cross-domain korelasyon kuralı
-- `tests/test_cross_domain_correlation.py` — 13 yeni test
+Faz 7 teslim edilen modüller:
+- `server/snmp_auth.py` — v2c/v3 birleşik auth builder (CommunityData/UsmUserData)
+- `server/database.py` — snmp_v3_* kolonları idempotent migration
+- `server/snmp_collector.py` — poll_device_async v3 parametreleri
+- `server/topology/builder.py` — ARP/LLDP walk v3 destekli
+- `server/routes/snmp.py` — v3 Pydantic modelleri, secret key response'dan çıkarıldı
+- `tests/test_snmpv3.py` — 14 yeni test
 
-Test durumu: **288 test, tümü geçiyor**
+Test durumu: **302 test, tümü geçiyor**
 
-## Sonraki Faz — FAZ 6: Frontend Dönüşümü
+## Sonraki Faz — FAZ 8: Polish + Raporlama
 
 ## Commit Kuralları
 
