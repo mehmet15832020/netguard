@@ -7,7 +7,7 @@ Bu dosya Claude Code'un her oturumda otomatik okuduğu proje rehberidir.
 NetGuard: NMS + CSNM (Continuous Network Security Monitoring) birleşimi.
 Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified platform.
 
-## Mevcut Durum — FAZ 7 TAMAMLANDI ✓
+## Mevcut Durum — FAZ 8 TAMAMLANDI ✓ (TÜM FAZLAR TAMAMLANDI)
 
 ### Tamamlanan Fazlar
 
@@ -34,9 +34,17 @@ Faz 7 teslim edilen modüller:
 - `server/routes/snmp.py` — v3 Pydantic modelleri, secret key response'dan çıkarıldı
 - `tests/test_snmpv3.py` — 14 yeni test
 
-Test durumu: **302 test, tümü geçiyor**
+**Faz 8 ✓** — Polish + Raporlama
 
-## Sonraki Faz — FAZ 8: Polish + Raporlama
+Faz 8 teslim edilen modüller:
+- `server/routes/reports.py` — /reports/summary + 4 CSV endpoint
+- `dashboard-v2/.../reports/page.tsx` — rapor sayfası (özet + indirme)
+- SNMP sayfası v3 form toggle
+- Sidebar'a Raporlar linki
+
+Test durumu: **314 test, tümü geçiyor**
+
+## Proje Tamamlandı
 
 ## Commit Kuralları
 
