@@ -13,6 +13,9 @@ import {
   Activity,
   Server,
   Network,
+  Monitor,
+  Radar,
+  Share2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth } from '@/lib/api'
@@ -21,11 +24,14 @@ import { Badge } from '@/components/ui/badge'
 
 const NAV_ITEMS = [
   { href: '/overview',     label: 'Genel Bakış',   icon: LayoutDashboard },
+  { href: '/devices',      label: 'Cihazlar',       icon: Monitor },
+  { href: '/topology',     label: 'Topoloji',       icon: Share2 },
+  { href: '/discovery',    label: 'Keşif',          icon: Radar },
   { href: '/agents',       label: 'Agents',         icon: Server },
   { href: '/alerts',       label: 'Alertler',       icon: Bell },
   { href: '/security',     label: 'Güvenlik',       icon: Shield },
-  { href: '/logs',         label: 'Loglar',         icon: FileText },
   { href: '/correlation',  label: 'Korelasyon',     icon: GitMerge },
+  { href: '/logs',         label: 'Loglar',         icon: FileText },
   { href: '/snmp',         label: 'SNMP',           icon: Network  },
   { href: '/settings',     label: 'Ayarlar',        icon: Settings },
 ]

@@ -9,6 +9,9 @@ import type {
   NormalizedLog,
   CorrelatedEvent,
   CorrelationRule,
+  Device,
+  TopologyGraph,
+  ScanState,
 } from '@/types/models'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -211,5 +214,52 @@ export const snmpApi = {
     request<SNMPDeviceInfo>('/snmp/poll', {
       method: 'POST',
       body: JSON.stringify({ host, community }),
+    }),
+}
+
+// ------------------------------------------------------------------ //
+//  Devices
+// ------------------------------------------------------------------ //
+
+export const devicesApi = {
+  list: (device_type?: string) => {
+    const q = new URLSearchParams()
+    if (device_type) q.set('device_type', device_type)
+    return request<{ count: number; devices: Device[] }>(`/devices?${q}`)
+  },
+
+  get: (device_id: string) =>
+    request<Device>(`/devices/${device_id}`),
+}
+
+// ------------------------------------------------------------------ //
+//  Discovery
+// ------------------------------------------------------------------ //
+
+export const discoveryApi = {
+  startScan: (cidr: string, community = 'public', fingerprint = true) =>
+    request<{ scan_id: string; cidr: string; status: string }>('/discovery/scan', {
+      method: 'POST',
+      body: JSON.stringify({ cidr, community, fingerprint }),
+    }),
+
+  status: () =>
+    request<ScanState>('/discovery/status'),
+
+  results: (limit = 100) =>
+    request<{ count: number; devices: Device[] }>(`/discovery/results?limit=${limit}`),
+}
+
+// ------------------------------------------------------------------ //
+//  Topology
+// ------------------------------------------------------------------ //
+
+export const topologyApi = {
+  graph: () =>
+    request<TopologyGraph>('/topology/graph'),
+
+  refresh: () =>
+    request<{ status: string; message: string }>('/topology/refresh', {
+      method: 'POST',
     }),
 }

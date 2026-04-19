@@ -56,6 +56,8 @@ export interface Agent {
   os_name: string
   os_version: string
   registered_at: string
+  last_seen: string
+  os: string
 }
 
 // ------------------------------------------------------------------ //
@@ -155,6 +157,77 @@ export interface CorrelationRule {
   threshold: number
   severity: Severity
   output_event_type: string
+}
+
+// ------------------------------------------------------------------ //
+//  Unified Device Model
+// ------------------------------------------------------------------ //
+
+export type DeviceType = 'agent' | 'snmp' | 'discovered' | 'hybrid'
+export type DeviceStatus = 'up' | 'down' | 'unknown'
+
+export interface Device {
+  device_id: string
+  name: string
+  ip: string
+  mac: string
+  type: DeviceType
+  vendor: string
+  os_info: string
+  status: DeviceStatus
+  first_seen: string
+  last_seen: string | null
+  snmp_community: string
+  snmp_version: string
+  risk_score: number
+  segment: string
+  notes: string
+}
+
+// ------------------------------------------------------------------ //
+//  Topology
+// ------------------------------------------------------------------ //
+
+export interface TopologyNode {
+  device_id: string
+  name: string
+  ip: string
+  type: string
+  vendor: string
+  os_info: string
+  layer: number
+  updated_at: string
+}
+
+export interface TopologyEdge {
+  id: number
+  src_id: string
+  dst_id: string
+  link_type: string
+  discovered: string
+  updated_at: string
+}
+
+export interface TopologyGraph {
+  node_count: number
+  edge_count: number
+  nodes: TopologyNode[]
+  edges: TopologyEdge[]
+}
+
+// ------------------------------------------------------------------ //
+//  Discovery
+// ------------------------------------------------------------------ //
+
+export interface ScanState {
+  running: boolean
+  scan_id: string | null
+  cidr: string | null
+  started_at: string | null
+  found: number
+  total_probed: number
+  finished_at: string | null
+  error: string
 }
 
 // ------------------------------------------------------------------ //
