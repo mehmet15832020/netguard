@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional
 
-from shared.models import SecurityEvent, SecurityEventType
+from shared.models import SecurityEvent, SecurityEventType, NormalizedLog, LogSourceType, LogCategory
 from server.database import db
 
 logger = logging.getLogger(__name__)
@@ -65,6 +65,13 @@ def _parse_log_date(date_str: str) -> datetime:
         return now
 
 
+_NORMALIZED_EVENT_TYPES = {
+    SecurityEventType.SSH_FAILURE: ("ssh_failure", "warning", LogCategory.AUTHENTICATION),
+    SecurityEventType.SSH_SUCCESS: ("ssh_success", "info",    LogCategory.AUTHENTICATION),
+    SecurityEventType.SUDO_USAGE:  ("sudo_usage",  "warning", LogCategory.SYSTEM),
+}
+
+
 def _make_event(
     event_type: SecurityEventType,
     severity: str,
@@ -88,6 +95,28 @@ def _make_event(
         raw_data    = raw_line,
         occurred_at = occurred_at,
     )
+
+
+def _write_normalized(event: SecurityEvent) -> None:
+    """SecurityEvent'i normalized_logs tablosuna da yazar — correlator için."""
+    mapping = _NORMALIZED_EVENT_TYPES.get(event.event_type)
+    if mapping is None:
+        return
+    norm_event_type, _, category = mapping
+    norm = NormalizedLog(
+        log_id      = str(uuid.uuid4()),
+        raw_id      = event.event_id,
+        source_type = LogSourceType.AUTH_LOG,
+        source_host = event.hostname,
+        timestamp   = event.occurred_at,
+        severity    = event.severity,
+        category    = category,
+        event_type  = norm_event_type,
+        src_ip      = event.source_ip,
+        username    = event.username,
+        message     = event.message,
+    )
+    db.save_normalized_log(norm)
 
 
 def _check_brute_force(source_ip: str, occurred_at: datetime, agent_id: str, hostname: str) -> Optional[SecurityEvent]:
@@ -159,6 +188,7 @@ def parse_auth_log(
                 raw_line    = line.strip(),
             )
             db.save_security_event(event)
+            _write_normalized(event)
             events.append(event)
 
             # Brute force kontrolü
@@ -184,6 +214,7 @@ def parse_auth_log(
                 raw_line    = line.strip(),
             )
             db.save_security_event(event)
+            _write_normalized(event)
             events.append(event)
             continue
 
@@ -202,6 +233,7 @@ def parse_auth_log(
                 raw_line    = line.strip(),
             )
             db.save_security_event(event)
+            _write_normalized(event)
             events.append(event)
 
     logger.info(f"Auth log tarandı: {len(events)} olay bulundu")

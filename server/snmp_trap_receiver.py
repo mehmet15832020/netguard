@@ -40,8 +40,9 @@ class SNMPTrapProtocol(asyncio.DatagramProtocol):
             import uuid
             from datetime import datetime, timezone
             from server.database import db
-            from shared.models import SecurityEvent, SecurityEventType
+            from shared.models import SecurityEvent, SecurityEventType, NormalizedLog, LogSourceType, LogCategory
 
+            now = datetime.now(timezone.utc)
             event = SecurityEvent(
                 event_id=str(uuid.uuid4()),
                 agent_id=source_ip,
@@ -51,9 +52,23 @@ class SNMPTrapProtocol(asyncio.DatagramProtocol):
                 source_ip=source_ip,
                 message=description,
                 raw_data=data.hex()[:512],
-                occurred_at=datetime.now(timezone.utc),
+                occurred_at=now,
             )
             db.save_security_event(event)
+
+            norm = NormalizedLog(
+                log_id=str(uuid.uuid4()),
+                raw_id=event.event_id,
+                source_type=LogSourceType.NETGUARD,
+                source_host=source_ip,
+                timestamp=now,
+                severity="info",
+                category=LogCategory.NETWORK,
+                event_type="snmp_trap",
+                src_ip=source_ip,
+                message=description,
+            )
+            db.save_normalized_log(norm)
         except Exception as exc:
             logger.error(f"SNMP trap DB yazma hatası: {exc}")
 

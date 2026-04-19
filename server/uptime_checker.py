@@ -247,16 +247,19 @@ def _looks_like_ip(s: str) -> bool:
 
 
 def _emit_status_event(dev: dict, new_status: str):
-    """Cihaz up/down değişimini security_events'e yazar."""
+    """Cihaz up/down değişimini security_events ve normalized_logs'a yazar."""
     try:
         import uuid
         from datetime import datetime, timezone
         from server.database import db
-        from shared.models import SecurityEvent, SecurityEventType
+        from shared.models import SecurityEvent, SecurityEventType, NormalizedLog, LogSourceType, LogCategory
 
+        now = datetime.now(timezone.utc)
         etype = SecurityEventType.DEVICE_DOWN if new_status == "down" else SecurityEventType.DEVICE_UP
         severity = "warning" if new_status == "down" else "info"
         name = dev.get("name") or dev.get("device_id", "unknown")
+        msg = f"Cihaz durumu değişti: {name} → {new_status}"
+
         event = SecurityEvent(
             event_id=str(uuid.uuid4()),
             agent_id=dev.get("device_id", "unknown"),
@@ -264,11 +267,26 @@ def _emit_status_event(dev: dict, new_status: str):
             event_type=etype,
             severity=severity,
             source_ip=dev.get("ip"),
-            message=f"Cihaz durumu değişti: {name} → {new_status}",
+            message=msg,
             raw_data=str(dev),
-            occurred_at=datetime.now(timezone.utc),
+            occurred_at=now,
         )
         db.save_security_event(event)
+
+        norm_event_type = "device_down" if new_status == "down" else "device_up"
+        norm = NormalizedLog(
+            log_id=str(uuid.uuid4()),
+            raw_id=event.event_id,
+            source_type=LogSourceType.NETGUARD,
+            source_host=name,
+            timestamp=now,
+            severity=severity,
+            category=LogCategory.NETWORK,
+            event_type=norm_event_type,
+            src_ip=dev.get("ip"),
+            message=msg,
+        )
+        db.save_normalized_log(norm)
     except Exception as exc:
         logger.error(f"Status event yazma hatası: {exc}")
 
