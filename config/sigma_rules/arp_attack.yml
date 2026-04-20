@@ -1,0 +1,19 @@
+title: ARP Saldırısı Tespit Edildi
+id: arp_attack_detected
+status: stable
+description: Aynı IP'den 120 saniye içinde 2+ ARP spoof girişimi
+logsource:
+    category: network
+    product: netguard
+detection:
+    selection:
+        event_type: arp_spoof_attempt
+    condition: selection | count() by src_ip > 2
+    timeframe: 2m
+level: high
+tags:
+    - attack.credential_access
+    - attack.lateral_movement
+    - attack.t1557.002
+falsepositives:
+    - ARP proxy konfigürasyonları

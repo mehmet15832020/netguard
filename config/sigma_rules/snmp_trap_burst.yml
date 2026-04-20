@@ -1,0 +1,20 @@
+title: SNMP Trap Patlaması
+id: snmp_trap_burst
+status: stable
+description: Aynı cihazdan 300 saniye içinde 5+ SNMP trap alındı
+logsource:
+    category: network
+    product: netguard
+    service: snmp
+detection:
+    selection:
+        event_type: snmp_trap
+    condition: selection | count() by source_host > 5
+    timeframe: 5m
+level: medium
+tags:
+    - network.snmp
+    - impact.availability
+falsepositives:
+    - Cihaz yeniden başlatma dönemleri
+    - SNMP trap stres testi

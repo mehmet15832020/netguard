@@ -87,7 +87,8 @@ class TestRuleLoading:
                 "enabled": True,
             }
         ]))
-        c = Correlator(rules_path=str(rules_file))
+        no_sigma = str(tmp_path / "no_sigma")
+        c = Correlator(rules_path=str(rules_file), sigma_dir=no_sigma)
         assert len(c.rules) == 1
         assert c.rules[0].rule_id == "r1"
 
@@ -109,18 +110,21 @@ class TestRuleLoading:
                 "enabled": False,
             },
         ]))
-        c = Correlator(rules_path=str(rules_file))
+        no_sigma = str(tmp_path / "no_sigma")
+        c = Correlator(rules_path=str(rules_file), sigma_dir=no_sigma)
         assert len(c.rules) == 1
         assert c.rules[0].rule_id == "r1"
 
     def test_missing_file_returns_zero(self, tmp_path):
-        c = Correlator(rules_path=str(tmp_path / "missing.json"))
+        no_sigma = str(tmp_path / "no_sigma")
+        c = Correlator(rules_path=str(tmp_path / "missing.json"), sigma_dir=no_sigma)
         assert len(c.rules) == 0
 
     def test_reload_updates_rules(self, tmp_path):
         rules_file = tmp_path / "rules.json"
         rules_file.write_text(json.dumps([]))
-        c = Correlator(rules_path=str(rules_file))
+        no_sigma = str(tmp_path / "no_sigma")
+        c = Correlator(rules_path=str(rules_file), sigma_dir=no_sigma)
         assert len(c.rules) == 0
 
         rules_file.write_text(json.dumps([

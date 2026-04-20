@@ -40,6 +40,11 @@ RULES_PATH = os.getenv(
     str(Path(__file__).parent.parent / "config" / "correlation_rules.json"),
 )
 
+SIGMA_RULES_DIR = os.getenv(
+    "NETGUARD_SIGMA_RULES_DIR",
+    str(Path(__file__).parent.parent / "config" / "sigma_rules"),
+)
+
 
 # ------------------------------------------------------------------ #
 #  Kural veri yapısı
@@ -70,8 +75,9 @@ class Correlator:
     aktif kurallara göre korelasyon olayları üretir.
     """
 
-    def __init__(self, rules_path: str = RULES_PATH):
+    def __init__(self, rules_path: str = RULES_PATH, sigma_dir: str = SIGMA_RULES_DIR):
         self._rules_path = rules_path
+        self._sigma_dir  = sigma_dir
         self._rules: list[CorrelationRule] = []
         self.load_rules()
 
@@ -81,46 +87,53 @@ class Correlator:
 
     def load_rules(self) -> int:
         """
-        JSON dosyasından kuralları yükle.
-        Dosya bulunamazsa uyarı verir, mevcut kuralları korur.
+        Kuralları iki kaynaktan yükle: SIGMA YAML dizini + JSON dosyası.
+        Aynı rule_id varsa SIGMA kuralı önceliklidir.
         Döner: yüklenen etkin kural sayısı.
         """
+        rule_map: dict[str, CorrelationRule] = {}
+
+        # 1) JSON kuralları (eski format, geriye dönük uyumluluk)
         path = Path(self._rules_path)
-        if not path.exists():
-            logger.warning(f"Korelasyon kural dosyası bulunamadı: {path}")
-            return 0
-
-        try:
-            with open(path, encoding="utf-8") as f:
-                raw = json.load(f)
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.error(f"Kural dosyası okunamadı: {exc}")
-            return 0
-
-        rules = []
-        for item in raw:
-            if not item.get("enabled", True):
-                continue
+        if path.exists():
             try:
-                rules.append(CorrelationRule(
-                    rule_id          = item["rule_id"],
-                    name             = item["name"],
-                    description      = item.get("description", ""),
-                    match_event_type = item["match_event_type"],
-                    group_by         = item.get("group_by", "src_ip"),
-                    window_seconds   = int(item["window_seconds"]),
-                    threshold        = int(item["threshold"]),
-                    severity         = item.get("severity", "warning"),
-                    output_event_type= item["output_event_type"],
-                    enabled          = True,
-                    match_severity   = item.get("match_severity"),
-                ))
-            except KeyError as exc:
-                logger.error(f"Kural alanı eksik ({item.get('rule_id', '?')}): {exc}")
+                with open(path, encoding="utf-8") as f:
+                    raw = json.load(f)
+                for item in raw:
+                    if not item.get("enabled", True):
+                        continue
+                    try:
+                        rule = CorrelationRule(
+                            rule_id           = item["rule_id"],
+                            name              = item["name"],
+                            description       = item.get("description", ""),
+                            match_event_type  = item["match_event_type"],
+                            group_by          = item.get("group_by", "src_ip"),
+                            window_seconds    = int(item["window_seconds"]),
+                            threshold         = int(item["threshold"]),
+                            severity          = item.get("severity", "warning"),
+                            output_event_type = item["output_event_type"],
+                            enabled           = True,
+                            match_severity    = item.get("match_severity"),
+                        )
+                        rule_map[rule.rule_id] = rule
+                    except KeyError as exc:
+                        logger.error(f"JSON kural alanı eksik ({item.get('rule_id', '?')}): {exc}")
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.error(f"JSON kural dosyası okunamadı: {exc}")
 
-        self._rules = rules
-        logger.info(f"{len(rules)} korelasyon kuralı yüklendi: {[r.rule_id for r in rules]}")
-        return len(rules)
+        # 2) SIGMA kuralları — aynı rule_id varsa JSON'u override eder
+        try:
+            from server.sigma_parser import load_sigma_rules_from_dir
+            sigma_rules = load_sigma_rules_from_dir(self._sigma_dir)
+            for rule in sigma_rules:
+                rule_map[rule.rule_id] = rule
+        except Exception as exc:
+            logger.error(f"SIGMA kural yükleme hatası: {exc}")
+
+        self._rules = list(rule_map.values())
+        logger.info(f"{len(self._rules)} korelasyon kuralı yüklendi: {[r.rule_id for r in self._rules]}")
+        return len(self._rules)
 
     @property
     def rules(self) -> list[CorrelationRule]:

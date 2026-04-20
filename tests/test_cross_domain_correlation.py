@@ -337,8 +337,10 @@ class TestSecurityLogParserNormalization:
         monkeypatch.setattr(corr_module, "db", test_db)
         monkeypatch.setattr(slp_module, "db", test_db)
 
+        now = datetime.now(timezone.utc)
         lines = "\n".join(
-            f"Apr 19 10:00:0{i} server sshd[1234]: Failed password for root from 5.5.5.5 port 22 ssh2"
+            (now - timedelta(seconds=i)).strftime("%b %d %H:%M:%S")
+            + " server sshd[1234]: Failed password for root from 5.5.5.5 port 22 ssh2"
             for i in range(5)
         )
         log_file = tmp_path / "auth.log"

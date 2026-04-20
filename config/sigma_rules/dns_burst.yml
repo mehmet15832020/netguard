@@ -1,0 +1,21 @@
+title: Anormal DNS Sorgu Patlaması
+id: dns_burst_detected
+status: stable
+description: Aynı hosttan 60 saniye içinde 3+ anormal DNS sorgusu
+logsource:
+    category: network
+    product: netguard
+    service: dns
+detection:
+    selection:
+        event_type: dns_query_burst
+    condition: selection | count() by source_host > 3
+    timeframe: 1m
+level: medium
+tags:
+    - attack.exfiltration
+    - attack.command_and_control
+    - attack.t1071.004
+falsepositives:
+    - DNS önbellek temizleme işlemleri
+    - Yüksek trafikli web sunucuları

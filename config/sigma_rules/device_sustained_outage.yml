@@ -1,0 +1,18 @@
+title: Cihaz Kesintili Erişilemezlik
+id: device_sustained_outage
+status: stable
+description: Aynı cihaz 120 saniye içinde 2+ kez down olarak raporlandı
+logsource:
+    category: availability
+    product: netguard
+detection:
+    selection:
+        event_type: device_down
+    condition: selection | count() by source_host > 2
+    timeframe: 2m
+level: medium
+tags:
+    - impact.availability
+falsepositives:
+    - Planlı bakım pencereleri
+    - Ağ altyapı değişiklikleri

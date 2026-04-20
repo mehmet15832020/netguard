@@ -1,0 +1,19 @@
+title: ICMP Flood Saldırısı
+id: icmp_flood_detected
+status: stable
+description: Aynı IP'den 60 saniye içinde 3+ ICMP flood olayı
+logsource:
+    category: network
+    product: netguard
+detection:
+    selection:
+        event_type: icmp_flood_attempt
+    condition: selection | count() by src_ip > 3
+    timeframe: 1m
+level: medium
+tags:
+    - attack.impact
+    - attack.t1498.001
+falsepositives:
+    - Ağ test araçları (yetkili)
+    - Yük testi ortamları

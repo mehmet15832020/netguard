@@ -1,0 +1,20 @@
+title: SSH Brute Force Saldırısı
+id: ssh_brute_force
+status: stable
+description: Aynı IP'den 300 saniye içinde 5+ başarısız SSH girişi
+logsource:
+    category: authentication
+    product: linux
+    service: ssh
+detection:
+    selection:
+        event_type: ssh_failure
+    condition: selection | count() by src_ip > 5
+    timeframe: 5m
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110.001
+falsepositives:
+    - Yönetici aktiviteleri
+    - Toplu parola sıfırlama işlemleri
