@@ -52,8 +52,8 @@ class TestParseAuthLog:
         db_mock.count_recent_failures.return_value = count_recent
 
         with patch.object(parser_module, "db", db_mock):
-            # _tail fonksiyonunu mock'la (dosyayı okumadan satırları enjekte et)
-            with patch.object(parser_module, "_tail", return_value=lines):
+            # _read_new_lines mock'la (dosyayı okumadan satırları enjekte et)
+            with patch.object(parser_module, "_read_new_lines", return_value=lines):
                 # Dosya varlık kontrolü için Path.exists() mock'la
                 with patch("pathlib.Path.exists", return_value=True):
                     events = parser_module.parse_auth_log(
@@ -171,7 +171,7 @@ class TestParseAuthLog:
         db_mock.count_recent_failures.side_effect = [1, 2, 3, 4, 5, 6, 7, 8]
 
         with patch.object(parser_module, "db", db_mock):
-            with patch.object(parser_module, "_tail", return_value=lines):
+            with patch.object(parser_module, "_read_new_lines", return_value=lines):
                 with patch("pathlib.Path.exists", return_value=True):
                     events = parser_module.parse_auth_log("agent-1", "/fake/auth.log")
 
@@ -194,7 +194,7 @@ class TestParseAuthLog:
         db_mock.count_recent_failures.return_value = 2
 
         with patch.object(parser_module, "db", db_mock):
-            with patch.object(parser_module, "_tail", return_value=lines):
+            with patch.object(parser_module, "_read_new_lines", return_value=lines):
                 with patch("pathlib.Path.exists", return_value=True):
                     events = parser_module.parse_auth_log("agent-1", "/fake/auth.log")
 

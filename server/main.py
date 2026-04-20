@@ -69,12 +69,21 @@ async def _snmp_poll_loop():
 
     while True:
         await asyncio.sleep(SNMP_POLL_INTERVAL)
-        devices = db.get_snmp_devices(enabled_only=True)
+        devices = db.get_pollable_devices()
         if not devices:
             continue
         try:
             results = await asyncio.gather(
-                *[poll_device_async(d["host"], d["community"]) for d in devices],
+                *[poll_device_async(
+                    d["host"],
+                    community        = d.get("community", "public"),
+                    snmp_version     = d.get("snmp_version", "v2c"),
+                    v3_username      = d.get("snmp_v3_username", ""),
+                    v3_auth_protocol = d.get("snmp_v3_auth_protocol", "SHA"),
+                    v3_auth_key      = d.get("snmp_v3_auth_key", ""),
+                    v3_priv_protocol = d.get("snmp_v3_priv_protocol", "AES"),
+                    v3_priv_key      = d.get("snmp_v3_priv_key", ""),
+                ) for d in devices],
                 return_exceptions=True,
             )
             for info in results:

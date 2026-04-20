@@ -9,6 +9,7 @@ NetGuard Server — Auth Log Parser
 Brute force eşiği: 5 dakikada aynı IP'den 5+ başarısız giriş.
 """
 
+import json
 import logging
 import os
 import re
@@ -24,6 +25,7 @@ from server.database import db
 logger = logging.getLogger(__name__)
 
 AUTH_LOG_PATH = os.getenv("AUTH_LOG_PATH", "/var/log/auth.log")
+_STATE_FILE   = os.getenv("NETGUARD_LOG_STATE_FILE", "/tmp/netguard_log_state.json")
 
 BRUTE_FORCE_THRESHOLD = 5        # Kaç başarısız girişten sonra brute force sayılır
 BRUTE_FORCE_WINDOW_MIN = 5       # Kaç dakika içinde
@@ -143,16 +145,60 @@ def _check_brute_force(source_ip: str, occurred_at: datetime, agent_id: str, hos
     return None
 
 
+def _load_log_state() -> dict:
+    try:
+        with open(_STATE_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _save_log_state(state: dict) -> None:
+    try:
+        with open(_STATE_FILE, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+    except OSError as exc:
+        logger.warning(f"Log state kaydedilemedi: {exc}")
+
+
+def _read_new_lines(path: Path) -> list[str]:
+    """
+    Son okuma pozisyonundan itibaren yeni satırları oku.
+    İnode değişmişse (logrotate) veya dosya küçüldüyse baştan oku.
+    """
+    try:
+        stat = path.stat()
+    except OSError:
+        return []
+
+    state   = _load_log_state()
+    key     = str(path)
+    saved   = state.get(key, {})
+    saved_inode  = saved.get("inode", 0)
+    saved_offset = saved.get("offset", 0)
+
+    try:
+        with path.open("r", errors="replace") as f:
+            if saved_inode == stat.st_ino and saved_offset <= stat.st_size:
+                f.seek(saved_offset)
+            lines     = f.readlines()
+            new_offset = f.tell()
+    except OSError:
+        return []
+
+    state[key] = {"inode": stat.st_ino, "offset": new_offset}
+    _save_log_state(state)
+    return lines
+
+
 def parse_auth_log(
     agent_id: str,
     log_path: str = AUTH_LOG_PATH,
-    max_lines: int = 500,
 ) -> list[SecurityEvent]:
     """
-    Auth log dosyasını okur, yeni güvenlik olaylarını döndürür.
+    Auth log dosyasını okur, son okumadan bu yana gelen yeni satırları işler.
+    İnode + offset takibiyle duplicate event üretilmez.
     Bulunan olaylar otomatik olarak SQLite'a kaydedilir.
-
-    max_lines: Dosyanın sonundan kaç satır okunacak (kuyruk).
     """
     path = Path(log_path)
     if not path.exists():
@@ -163,7 +209,7 @@ def parse_auth_log(
     events: list[SecurityEvent] = []
 
     try:
-        lines = _tail(path, max_lines)
+        lines = _read_new_lines(path)
     except PermissionError:
         logger.error(f"Auth log okuma izni yok: {log_path} — sudo gerekli")
         return []
@@ -240,7 +286,3 @@ def parse_auth_log(
     return events
 
 
-def _tail(path: Path, n: int) -> list[str]:
-    """Dosyanın son N satırını döndür."""
-    with path.open("r", errors="replace") as f:
-        return f.readlines()[-n:]

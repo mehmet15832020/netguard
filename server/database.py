@@ -715,7 +715,7 @@ class DatabaseManager:
                     return False
 
     def get_snmp_devices(self, enabled_only: bool = True) -> list[dict]:
-        """SNMP cihaz listesini döndür."""
+        """Legacy snmp_devices tablosundan cihaz listesi döndür (SNMP route için)."""
         with self._connect() as conn:
             if enabled_only:
                 rows = conn.execute(
@@ -725,6 +725,35 @@ class DatabaseManager:
                 rows = conn.execute(
                     "SELECT host, community, label, enabled, added_at FROM snmp_devices ORDER BY added_at"
                 ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_pollable_devices(self) -> list[dict]:
+        """
+        Poll edilecek cihazları tüm SNMP v3 parametreleriyle döndür.
+        Unified devices tablosundan okur; yoksa legacy snmp_devices'a döner.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT ip           AS host,
+                          snmp_community AS community,
+                          snmp_version,
+                          snmp_v3_username,
+                          snmp_v3_auth_protocol,
+                          snmp_v3_auth_key,
+                          snmp_v3_priv_protocol,
+                          snmp_v3_priv_key,
+                          name          AS label
+                   FROM devices
+                   WHERE snmp_community != '' AND status != 'offline'
+                   ORDER BY rowid"""
+            ).fetchall()
+            if rows:
+                return [dict(r) for r in rows]
+
+            # Legacy fallback
+            rows = conn.execute(
+                "SELECT host, community, 'v2c' AS snmp_version, label FROM snmp_devices WHERE enabled=1 ORDER BY added_at"
+            ).fetchall()
         return [dict(r) for r in rows]
 
     def remove_snmp_device(self, host: str) -> bool:
