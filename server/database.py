@@ -14,7 +14,7 @@ import logging
 import os
 import sqlite3
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Optional
@@ -616,15 +616,18 @@ class DatabaseManager:
         kaydetme (duplicate önleme). True döner kayıt yapıldıysa, False = atlandı.
         """
         with self._lock:
+            since = (
+                datetime.now(timezone.utc) - timedelta(seconds=event.window_seconds)
+            ).isoformat()
             with self._connect() as conn:
                 existing = conn.execute(
                     """
                     SELECT corr_id FROM correlated_events
                     WHERE rule_id = ? AND group_value = ?
-                      AND created_at >= datetime('now', ? || ' seconds')
+                      AND created_at >= ?
                     LIMIT 1
                     """,
-                    (event.rule_id, event.group_value, f"-{event.window_seconds}"),
+                    (event.rule_id, event.group_value, since),
                 ).fetchone()
 
                 if existing:

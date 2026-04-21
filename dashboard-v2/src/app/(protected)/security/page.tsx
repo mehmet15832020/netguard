@@ -99,14 +99,18 @@ export default function SecurityPage() {
         </div>
       </div>
 
-      {/* Özet satırı */}
+      {/* Özet satırı — tıklayınca filtreler */}
       {summary && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
           {Object.entries(summary.summary)
             .filter(([, v]) => v > 0)
-            .slice(0, 4)
+            .slice(0, 8)
             .map(([type, count]) => (
-              <Card key={type} className="bg-zinc-900 border-zinc-800">
+              <Card
+                key={type}
+                onClick={() => setEventTypeFilter(eventTypeFilter === type ? 'all' : type)}
+                className={`bg-zinc-900 border-zinc-800 cursor-pointer transition-colors hover:border-indigo-600 ${eventTypeFilter === type ? 'border-indigo-500 bg-indigo-950/30' : ''}`}
+              >
                 <CardContent className="p-4">
                   <p className="text-xs text-zinc-500">{EVENT_TYPE_LABELS[type] ?? type}</p>
                   <p className="text-2xl font-bold text-zinc-100 mt-1">{count}</p>
