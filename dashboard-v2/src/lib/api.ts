@@ -196,17 +196,30 @@ export const correlationApi = {
 //  SNMP
 // ------------------------------------------------------------------ //
 
+export interface SNMPInterface {
+  index: string
+  name: string
+  oper_status: number
+  hc_in_octets: number
+  hc_out_octets: number
+  in_errors: number
+  out_errors: number
+  in_discards: number
+  bandwidth_in_bps: number
+  bandwidth_out_bps: number
+}
+
 export interface SNMPDeviceInfo {
   host: string
   community: string
   sys_descr: string
   sys_name: string
+  sys_object_id: string
   uptime_ticks: number
-  if_in_octets: number
-  if_out_octets: number
-  if_oper_status: number
+  interfaces: SNMPInterface[]
   reachable: boolean
   error: string
+  polled_at: string | null
 }
 
 export interface SNMPPollParams {
