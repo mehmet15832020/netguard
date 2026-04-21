@@ -6,7 +6,9 @@ GET  /api/v1/devices/{device_id}  → Tek cihaz detayı
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from server.auth import User, get_current_user
+from pydantic import BaseModel
+from typing import Literal, Optional
+from server.auth import User, get_current_user, require_admin
 from server.database import db
 
 router = APIRouter()
@@ -23,6 +25,38 @@ def list_devices(
     """
     devices = db.get_devices(device_type=device_type)
     return {"count": len(devices), "devices": devices}
+
+
+class SNMPSettingsRequest(BaseModel):
+    community: str = "public"
+    snmp_version: Literal["v2c", "v3"] = "v2c"
+    v3_username: Optional[str] = ""
+    v3_auth_protocol: Literal["MD5", "SHA"] = "SHA"
+    v3_auth_key: Optional[str] = ""
+    v3_priv_protocol: Literal["DES", "AES"] = "AES"
+    v3_priv_key: Optional[str] = ""
+
+
+@router.patch("/devices/{device_id}/snmp")
+def update_snmp_settings(
+    device_id: str,
+    body: SNMPSettingsRequest,
+    _: User = Depends(require_admin),
+):
+    """Cihazın SNMP ayarlarını güncelle."""
+    updated = db.update_device_snmp(
+        device_id=device_id,
+        community=body.community,
+        version=body.snmp_version,
+        v3_username=body.v3_username or "",
+        v3_auth_protocol=body.v3_auth_protocol,
+        v3_auth_key=body.v3_auth_key or "",
+        v3_priv_protocol=body.v3_priv_protocol,
+        v3_priv_key=body.v3_priv_key or "",
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Cihaz bulunamadı: {device_id}")
+    return {"ok": True, "device_id": device_id}
 
 
 @router.get("/devices/{device_id}")

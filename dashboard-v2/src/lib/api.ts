@@ -241,6 +241,20 @@ export const devicesApi = {
 
   get: (device_id: string) =>
     request<Device>(`/devices/${device_id}`),
+
+  updateSnmp: (device_id: string, body: {
+    community: string
+    snmp_version: 'v2c' | 'v3'
+    v3_username?: string
+    v3_auth_protocol?: 'MD5' | 'SHA'
+    v3_auth_key?: string
+    v3_priv_protocol?: 'DES' | 'AES'
+    v3_priv_key?: string
+  }) =>
+    request<{ ok: boolean; device_id: string }>(`/devices/${device_id}/snmp`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 }
 
 // ------------------------------------------------------------------ //

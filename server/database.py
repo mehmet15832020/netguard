@@ -850,6 +850,32 @@ class DatabaseManager:
                 ).fetchall()
             return [dict(r) for r in rows]
 
+    def update_device_snmp(
+        self,
+        device_id: str,
+        community: str,
+        version: str,
+        v3_username: str = "",
+        v3_auth_protocol: str = "SHA",
+        v3_auth_key: str = "",
+        v3_priv_protocol: str = "AES",
+        v3_priv_key: str = "",
+    ) -> bool:
+        """Cihazın SNMP ayarlarını güncelle. Cihaz bulunamazsa False döner."""
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    """UPDATE devices
+                       SET snmp_community=?, snmp_version=?,
+                           snmp_v3_username=?, snmp_v3_auth_protocol=?,
+                           snmp_v3_auth_key=?, snmp_v3_priv_protocol=?,
+                           snmp_v3_priv_key=?
+                       WHERE device_id=?""",
+                    (community, version, v3_username, v3_auth_protocol,
+                     v3_auth_key, v3_priv_protocol, v3_priv_key, device_id),
+                )
+                return cur.rowcount > 0
+
     def get_device(self, device_id: str) -> Optional[dict]:
         """Tek bir cihazı döndür."""
         with self._connect() as conn:
