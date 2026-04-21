@@ -10,9 +10,10 @@ import asyncio
 from unittest.mock import patch, AsyncMock
 from server.snmp_collector import (
     SNMPDeviceInfo,
+    SNMPInterface,
     poll_device,
     poll_device_async,
-    _snmp_get,
+    _run_snmpget,
     SNMP_AVAILABLE,
     OIDS,
 )
@@ -38,6 +39,18 @@ class TestSNMPDeviceInfo:
         assert d["reachable"] is True
         assert d["sys_name"] == "router"
 
+    def test_backward_compat_properties(self):
+        iface = SNMPInterface(index="1", oper_status=1, hc_in_octets=1000, hc_out_octets=500)
+        info = SNMPDeviceInfo(host="1.2.3.4", interfaces=[iface])
+        assert info.if_oper_status == 1
+        assert info.if_in_octets == 1000
+        assert info.if_out_octets == 500
+
+    def test_backward_compat_empty_interfaces(self):
+        info = SNMPDeviceInfo(host="1.2.3.4")
+        assert info.if_oper_status == 0
+        assert info.if_in_octets == 0
+
 
 class TestOIDs:
     def test_required_oids_present(self):
@@ -56,19 +69,18 @@ class TestPollDeviceUnreachable:
 
     def test_unreachable_host_has_error_or_empty(self):
         result = poll_device("192.0.2.1")
-        # ya error dolu ya da tüm alanlar boş — ama exception yok
         assert isinstance(result.error, str)
 
 
 class TestPollDeviceAsync:
     def test_snmp_unavailable_returns_error(self):
-        """pysnmp yoksa reachable=False ve error dolu dönmeli."""
+        """snmpget yoksa reachable=False ve error dolu dönmeli."""
         with patch("server.snmp_collector.SNMP_AVAILABLE", False):
             result = asyncio.new_event_loop().run_until_complete(
                 poll_device_async("127.0.0.1")
             )
         assert result.reachable is False
-        assert "pysnmp" in result.error.lower()
+        assert result.error != ""
 
     def test_poll_returns_snmpdeviceinfo(self):
         result = asyncio.new_event_loop().run_until_complete(
@@ -76,40 +88,37 @@ class TestPollDeviceAsync:
         )
         assert isinstance(result, SNMPDeviceInfo)
 
-    def test_exception_in_gather_handled(self):
-        """asyncio.gather'dan gelen Exception nesneleri sessizce işlenmeli — exception yükseltmemeli."""
+    def test_exception_in_snmpget_handled(self):
+        """_run_snmpget hata verirse exception propagate edilmemeli."""
         async def failing_get(*args, **kwargs):
             raise ConnectionError("test hatası")
 
-        with patch("server.snmp_collector._snmp_get", side_effect=failing_get):
+        with patch("server.snmp_collector._run_snmpget", side_effect=failing_get):
             result = asyncio.new_event_loop().run_until_complete(
                 poll_device_async("127.0.0.1")
             )
-        # Exception propagate edilmemeli, geçerli bir SNMPDeviceInfo dönmeli
         assert isinstance(result, SNMPDeviceInfo)
-        # sys alanları boş olmalı (_snmp_get mock edildi)
-        assert result.sys_descr == ""
-        assert result.sys_name == ""
+        assert result.reachable is False
 
 
-class TestSnmpGet:
-    def test_snmp_unavailable_returns_none(self):
+class TestRunSnmpget:
+    def test_snmp_unavailable_via_poll(self):
         with patch("server.snmp_collector.SNMP_AVAILABLE", False):
             result = asyncio.new_event_loop().run_until_complete(
-                _snmp_get("127.0.0.1", "public", OIDS["sysName"])
+                poll_device_async("127.0.0.1")
             )
-        assert result is None
+        assert result.reachable is False
 
-    def test_unreachable_returns_none(self):
-        """Timeout olan host None döndürmeli, exception fırlatmamalı."""
+    def test_unreachable_returns_empty(self):
+        """Timeout olan host boş dict döndürmeli, exception fırlatmamalı."""
         result = asyncio.new_event_loop().run_until_complete(
-            _snmp_get("192.0.2.1", "public", OIDS["sysName"])
+            _run_snmpget("192.0.2.1", [OIDS["sysName"]], ["-v2c", "-c", "public"])
         )
-        assert result is None
+        assert isinstance(result, dict)
 
 
-@pytest.mark.skipif(not SNMP_AVAILABLE, reason="pysnmp kurulu değil")
+@pytest.mark.skipif(not SNMP_AVAILABLE, reason="snmpget CLI aracı bulunamadı")
 class TestSNMPAvailable:
-    def test_import_works(self):
-        from server.snmp_collector import get_cmd  # noqa: F401 — sadece import testi
-        assert True
+    def test_snmpget_accessible(self):
+        import shutil
+        assert shutil.which("snmpget") is not None

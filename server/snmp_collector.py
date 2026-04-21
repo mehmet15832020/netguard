@@ -1,14 +1,16 @@
 """
-NetGuard Server — SNMP Collector v2
+NetGuard Server — SNMP Collector v3
 
-Tüm arayüzleri sorgular (interface table walk), 64-bit counter kullanır,
-önceki poll ile delta hesaplayarak gerçek bandwidth değeri üretir.
+snmpget / snmpwalk CLI araçlarını subprocess ile çağırır.
+pysnmp bağımlılığı yoktur — sistem araçları yeterlidir.
 
 Desteklenen: SNMPv2c ve SNMPv3 (authPriv, authNoPriv, noAuthNoPriv)
 """
 
 import asyncio
 import logging
+import re
+import shutil
 import time
 from datetime import datetime, timezone
 from typing import Optional
@@ -17,19 +19,11 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-try:
-    from pysnmp.hlapi.asyncio import (
-        get_cmd, next_cmd, SnmpEngine, CommunityData,
-        UdpTransportTarget, ContextData, ObjectType, ObjectIdentity,
-    )
-    SNMP_AVAILABLE = True
-except ImportError:
-    SNMP_AVAILABLE = False
-    logger.warning("pysnmp kurulu değil — SNMP collector devre dışı")
+SNMP_AVAILABLE = bool(shutil.which("snmpget"))
+if not SNMP_AVAILABLE:
+    logger.warning("snmpget bulunamadı — SNMP collector devre dışı")
 
-from server.snmp_auth import build_snmp_auth
-
-# Sistem OID'leri (tekil değer)
+# Sistem OID'leri
 SYSTEM_OIDS = {
     "sysDescr":    "1.3.6.1.2.1.1.1.0",
     "sysObjectID": "1.3.6.1.2.1.1.2.0",
@@ -37,20 +31,18 @@ SYSTEM_OIDS = {
     "sysName":     "1.3.6.1.2.1.1.5.0",
 }
 
-# Arayüz tablosu sütun OID'leri (walk ile tüm indeksler çekilir)
 IF_TABLE_OIDS = {
-    "ifDescr":       "1.3.6.1.2.1.2.2.1.2",      # arayüz adı
-    "ifOperStatus":  "1.3.6.1.2.1.2.2.1.8",      # 1=up, 2=down
-    "ifHCInOctets":  "1.3.6.1.2.1.31.1.1.1.6",   # 64-bit gelen byte
-    "ifHCOutOctets": "1.3.6.1.2.1.31.1.1.1.10",  # 64-bit giden byte
-    "ifInOctets":    "1.3.6.1.2.1.2.2.1.10",     # 32-bit fallback
-    "ifOutOctets":   "1.3.6.1.2.1.2.2.1.16",     # 32-bit fallback
+    "ifDescr":       "1.3.6.1.2.1.2.2.1.2",
+    "ifOperStatus":  "1.3.6.1.2.1.2.2.1.8",
+    "ifHCInOctets":  "1.3.6.1.2.1.31.1.1.1.6",
+    "ifHCOutOctets": "1.3.6.1.2.1.31.1.1.1.10",
+    "ifInOctets":    "1.3.6.1.2.1.2.2.1.10",
+    "ifOutOctets":   "1.3.6.1.2.1.2.2.1.16",
     "ifInErrors":    "1.3.6.1.2.1.2.2.1.14",
     "ifOutErrors":   "1.3.6.1.2.1.2.2.1.20",
     "ifInDiscards":  "1.3.6.1.2.1.2.2.1.13",
 }
 
-# Eski OIDS dict'i — backward compat (test_snmp.py kullanıyor)
 OIDS = {
     "sysDescr":    SYSTEM_OIDS["sysDescr"],
     "sysUpTime":   SYSTEM_OIDS["sysUpTime"],
@@ -60,21 +52,16 @@ OIDS = {
     "ifOperStatus": IF_TABLE_OIDS["ifOperStatus"] + ".1",
 }
 
-_MAX_COUNTER32 = 2**32
 _MAX_COUNTER64 = 2**64
-
-# Host başına bandwidth delta için önceki poll değerleri
-# {host: {if_index: (monotonic_time, hc_in, hc_out)}}
 _counter_cache: dict[str, dict[str, tuple[float, int, int]]] = {}
 
 
 class SNMPInterface(BaseModel):
-    """Tek bir ağ arayüzünün SNMP ile ölçülen verileri."""
     index: str
     name: str = ""
-    oper_status: int = 0          # 1=up, 2=down
-    hc_in_octets: int = 0         # 64-bit gelen byte sayacı
-    hc_out_octets: int = 0        # 64-bit giden byte sayacı
+    oper_status: int = 0
+    hc_in_octets: int = 0
+    hc_out_octets: int = 0
     in_errors: int = 0
     out_errors: int = 0
     in_discards: int = 0
@@ -95,7 +82,6 @@ class SNMPInterface(BaseModel):
 
 
 class SNMPDeviceInfo(BaseModel):
-    """SNMP ile elde edilen cihaz bilgisi — tüm arayüzleri içerir."""
     host: str
     community: str = "public"
     sys_descr: str = ""
@@ -107,7 +93,6 @@ class SNMPDeviceInfo(BaseModel):
     error: str = ""
     polled_at: Optional[datetime] = None
 
-    # Backward compat — ilk arayüzden türetilir
     @property
     def if_in_octets(self) -> int:
         return self.interfaces[0].hc_in_octets if self.interfaces else 0
@@ -121,70 +106,115 @@ class SNMPDeviceInfo(BaseModel):
         return self.interfaces[0].oper_status if self.interfaces else 0
 
 
-async def _snmp_get(host: str, community: str, oid: str, auth_data=None) -> Optional[str]:
-    """Tek OID değerini SNMP GET ile çeker. auth_data verilmezse v2c community kullanır."""
-    if not SNMP_AVAILABLE:
-        return None
-    if auth_data is None:
-        auth_data = CommunityData(community, mpModel=1)
+def _build_args(
+    version: str,
+    community: str,
+    v3_username: str,
+    v3_auth_protocol: str,
+    v3_auth_key: str,
+    v3_priv_protocol: str,
+    v3_priv_key: str,
+) -> list[str]:
+    """snmpget/snmpwalk için ortak versiyon/auth argümanları."""
+    if version == "v3":
+        level = "noAuthNoPriv"
+        args = ["-v3", "-u", v3_username]
+        if v3_auth_key:
+            level = "authNoPriv"
+            args += ["-a", v3_auth_protocol, "-A", v3_auth_key]
+        if v3_priv_key:
+            level = "authPriv"
+            args += ["-x", v3_priv_protocol, "-X", v3_priv_key]
+        args += ["-l", level]
+    else:
+        args = ["-v2c", "-c", community]
+    return args
+
+
+def _parse_value(raw: str) -> str:
+    """
+    snmpget/snmpwalk çıktısından değer kısmını ayıklar.
+    Format: .OID = TYPE: value
+    """
+    if "=" not in raw:
+        return ""
+    value_part = raw.split("=", 1)[1].strip()
+    if ":" in value_part:
+        value_part = value_part.split(":", 1)[1].strip()
+    return value_part.strip('"')
+
+
+def _parse_uptime(value: str) -> int:
+    """
+    Uptime değerini timeticks integer'a çevirir.
+    Format: '(123456) 0:20:34.56' veya '123456'
+    """
+    m = re.search(r"\((\d+)\)", value)
+    if m:
+        return int(m.group(1))
     try:
-        transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
-        err_ind, err_stat, _, var_binds = await get_cmd(
-            SnmpEngine(),
-            auth_data,
-            transport,
-            ContextData(),
-            ObjectType(ObjectIdentity(oid)),
+        return int(value)
+    except (ValueError, TypeError):
+        return 0
+
+
+async def _run_snmpget(
+    host: str,
+    oids: list[str],
+    version_args: list[str],
+) -> dict[str, str]:
+    """snmpget ile birden fazla OID'i tek sorguda çeker."""
+    cmd = ["snmpget", "-On", "-t", "2", "-r", "1"] + version_args + [host] + oids
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
         )
-        if err_ind or err_stat:
-            return None
-        for vb in var_binds:
-            return str(vb[1])
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+        results: dict[str, str] = {}
+        for line in stdout.decode(errors="replace").splitlines():
+            line = line.strip()
+            if not line or "=" not in line:
+                continue
+            oid_part = line.split("=")[0].strip().lstrip(".")
+            results[oid_part] = _parse_value(line)
+        return results
     except Exception:
-        return None
-    return None
+        return {}
 
 
-async def _walk_column(
-    engine: "SnmpEngine",
-    community_data: "CommunityData",
-    transport: "UdpTransportTarget",
+async def _run_snmpwalk(
+    host: str,
     base_oid: str,
+    version_args: list[str],
 ) -> dict[str, str]:
     """
-    Bir OID sütununu walk ile tarar.
-    Döndürür: {instance_index: value} — örn: {"1": "eth0", "2": "lo"}
+    snmpwalk ile OID sütununu tarar.
+    Döndürür: {instance_suffix: value} — örn. {"1": "eth0"}
     """
-    results: dict[str, str] = {}
-    current_oid = base_oid
-
-    while True:
-        try:
-            err_ind, err_stat, _, var_binds = await next_cmd(
-                engine,
-                community_data,
-                transport,
-                ContextData(),
-                ObjectType(ObjectIdentity(current_oid)),
-                lookupMib=False,
-            )
-        except Exception:
-            break
-
-        if err_ind or err_stat or not var_binds:
-            break
-
-        oid_str = str(var_binds[0][0])
-        value = str(var_binds[0][1])
-
-        if not oid_str.startswith(base_oid + "."):
-            break  # Farklı tabloya geçildi
-
-        instance = oid_str[len(base_oid) + 1:]
-        results[instance] = value
-        current_oid = oid_str
-
-    return results
+    cmd = ["snmpwalk", "-On", "-t", "2", "-r", "1"] + version_args + [host, base_oid]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=8)
+        results: dict[str, str] = {}
+        prefix = "." + base_oid.lstrip(".")
+        for line in stdout.decode(errors="replace").splitlines():
+            line = line.strip()
+            if not line or "=" not in line:
+                continue
+            oid_part = line.split("=")[0].strip()
+            if not oid_part.startswith(prefix + "."):
+                continue
+            suffix = oid_part[len(prefix) + 1:]
+            results[suffix] = _parse_value(line)
+        return results
+    except Exception:
+        return {}
 
 
 def _calc_bandwidth(
@@ -193,33 +223,21 @@ def _calc_bandwidth(
     new_in: int,
     new_out: int,
 ) -> tuple[float, float]:
-    """
-    Önceki poll ile delta alarak bps hesaplar.
-    64-bit overflow düzeltmesi yapar.
-    Döndürür: (in_bps, out_bps)
-    """
     now = time.monotonic()
     prev = _counter_cache.get(host, {}).get(if_index)
-
     if prev is None:
         _counter_cache.setdefault(host, {})[if_index] = (now, new_in, new_out)
         return 0.0, 0.0
-
     prev_time, prev_in, prev_out = prev
     elapsed = now - prev_time
-
     if elapsed < 1:
         return 0.0, 0.0
 
     def _delta(new: int, old: int) -> int:
-        if new >= old:
-            return new - old
-        # 64-bit overflow
-        return (_MAX_COUNTER64 - old) + new
+        return new - old if new >= old else (_MAX_COUNTER64 - old) + new
 
-    in_bps  = _delta(new_in, prev_in)  * 8 / elapsed
+    in_bps  = _delta(new_in,  prev_in)  * 8 / elapsed
     out_bps = _delta(new_out, prev_out) * 8 / elapsed
-
     _counter_cache.setdefault(host, {})[if_index] = (now, new_in, new_out)
     return round(in_bps, 2), round(out_bps, 2)
 
@@ -234,117 +252,86 @@ async def poll_device_async(
     v3_priv_protocol: str = "AES",
     v3_priv_key: str = "",
 ) -> SNMPDeviceInfo:
-    """
-    Bir cihazı tam olarak sorgular:
-    - Sistem OID'leri (GET)
-    - Tüm arayüzler (walk)
-    - Bandwidth delta hesabı
-    SNMPv2c ve v3 (authPriv/authNoPriv/noAuthNoPriv) desteklenir.
-    """
     info = SNMPDeviceInfo(host=host, community=community)
 
     if not SNMP_AVAILABLE:
-        info.error = "pysnmp kurulu değil"
+        info.error = "snmpget CLI aracı bulunamadı"
         return info
 
-    auth_data = build_snmp_auth(
-        snmp_version=snmp_version,
-        community=community,
-        v3_username=v3_username,
-        v3_auth_protocol=v3_auth_protocol,
-        v3_auth_key=v3_auth_key,
-        v3_priv_protocol=v3_priv_protocol,
-        v3_priv_key=v3_priv_key,
+    ver_args = _build_args(
+        snmp_version, community,
+        v3_username, v3_auth_protocol, v3_auth_key,
+        v3_priv_protocol, v3_priv_key,
     )
 
     try:
-        transport = await UdpTransportTarget.create((host, 161), timeout=2, retries=1)
-        engine = SnmpEngine()
-        community_data = auth_data
-
-        # 1) Sistem OID'leri — asyncio.gather ile paralel GET
-        sys_results = await asyncio.gather(
-            _snmp_get(host, community, SYSTEM_OIDS["sysDescr"], auth_data),
-            _snmp_get(host, community, SYSTEM_OIDS["sysObjectID"], auth_data),
-            _snmp_get(host, community, SYSTEM_OIDS["sysUpTime"], auth_data),
-            _snmp_get(host, community, SYSTEM_OIDS["sysName"], auth_data),
-            return_exceptions=True,
+        # 1) Sistem OID'leri
+        sys_raw = await _run_snmpget(
+            host, list(SYSTEM_OIDS.values()), ver_args
         )
 
-        def _s(v) -> str:
-            return str(v) if v and not isinstance(v, Exception) else ""
+        def _s(oid: str) -> str:
+            return sys_raw.get(oid, "").strip()
 
-        def _i(v) -> int:
-            try:
-                return int(v) if v and not isinstance(v, Exception) else 0
-            except (ValueError, TypeError):
-                return 0
+        def _i(oid: str) -> int:
+            return _parse_uptime(_s(oid)) if "sysUpTime" in [
+                k for k, v in SYSTEM_OIDS.items() if v == oid
+            ] else (int(_s(oid)) if _s(oid).isdigit() else 0)
 
-        info.sys_descr     = _s(sys_results[0])
-        info.sys_object_id = _s(sys_results[1])
-        info.uptime_ticks  = _i(sys_results[2])
-        info.sys_name      = _s(sys_results[3])
+        info.sys_descr     = _s(SYSTEM_OIDS["sysDescr"])
+        info.sys_object_id = _s(SYSTEM_OIDS["sysObjectID"])
+        info.sys_name      = _s(SYSTEM_OIDS["sysName"])
+        uptime_raw         = _s(SYSTEM_OIDS["sysUpTime"])
+        info.uptime_ticks  = _parse_uptime(uptime_raw)
 
-        # 2) Arayüz tablosu — tüm sütunları walk ile çek
-        col_results = await asyncio.gather(
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifDescr"]),
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifOperStatus"]),
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifHCInOctets"]),
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifHCOutOctets"]),
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifInErrors"]),
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifOutErrors"]),
-            _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifInDiscards"]),
-            return_exceptions=True,
+        if not (info.sys_descr or info.sys_name):
+            info.error = "Cihaz yanıt vermedi"
+            return info
+
+        # 2) Arayüz tablosu — paralel walk
+        cols = await asyncio.gather(
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifDescr"],       ver_args),
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifOperStatus"],  ver_args),
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifHCInOctets"],  ver_args),
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifHCOutOctets"], ver_args),
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifInErrors"],    ver_args),
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifOutErrors"],   ver_args),
+            _run_snmpwalk(host, IF_TABLE_OIDS["ifInDiscards"],  ver_args),
         )
+        descr_col, status_col, hc_in_col, hc_out_col, in_err_col, out_err_col, in_disc_col = cols
 
-        def _col(idx: int) -> dict[str, str]:
-            r = col_results[idx]
-            return r if isinstance(r, dict) else {}
-
-        descr_col      = _col(0)
-        status_col     = _col(1)
-        hc_in_col      = _col(2)
-        hc_out_col     = _col(3)
-        in_err_col     = _col(4)
-        out_err_col    = _col(5)
-        in_disc_col    = _col(6)
-
-        # Eğer 64-bit sütunlar boşsa 32-bit fallback
+        # 64-bit counter yoksa 32-bit fallback
         if not hc_in_col and not hc_out_col:
             hc_in_col, hc_out_col = await asyncio.gather(
-                _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifInOctets"]),
-                _walk_column(engine, community_data, transport, IF_TABLE_OIDS["ifOutOctets"]),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifInOctets"],  ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifOutOctets"], ver_args),
             )
 
-        # Tüm bilinen indeksleri birleştir
-        all_indices = (
-            set(descr_col) | set(status_col) | set(hc_in_col) | set(hc_out_col)
-        )
+        all_indices = set(descr_col) | set(status_col) | set(hc_in_col) | set(hc_out_col)
 
         for idx in sorted(all_indices, key=lambda x: int(x) if x.isdigit() else 0):
-            hc_in  = int(hc_in_col.get(idx, "0") or "0")
+            hc_in  = int(hc_in_col.get(idx,  "0") or "0")
             hc_out = int(hc_out_col.get(idx, "0") or "0")
             in_bps, out_bps = _calc_bandwidth(host, idx, hc_in, hc_out)
 
-            iface = SNMPInterface(
+            info.interfaces.append(SNMPInterface(
                 index=idx,
                 name=descr_col.get(idx, f"if{idx}"),
                 oper_status=int(status_col.get(idx, "2") or "2"),
                 hc_in_octets=hc_in,
                 hc_out_octets=hc_out,
-                in_errors=int(in_err_col.get(idx, "0") or "0"),
+                in_errors=int(in_err_col.get(idx,  "0") or "0"),
                 out_errors=int(out_err_col.get(idx, "0") or "0"),
                 in_discards=int(in_disc_col.get(idx, "0") or "0"),
                 bandwidth_in_bps=in_bps,
                 bandwidth_out_bps=out_bps,
-            )
-            info.interfaces.append(iface)
+            ))
 
-        info.reachable  = bool(info.sys_descr or info.sys_name or info.interfaces)
-        info.polled_at  = datetime.now(timezone.utc)
+        info.reachable = True
+        info.polled_at = datetime.now(timezone.utc)
 
     except Exception as exc:
-        info.error    = str(exc)
+        info.error = str(exc)
         info.reachable = False
 
     return info
@@ -360,7 +347,6 @@ def poll_device(
     v3_priv_protocol: str = "AES",
     v3_priv_key: str = "",
 ) -> SNMPDeviceInfo:
-    """Senkron wrapper."""
     try:
         loop = asyncio.new_event_loop()
         return loop.run_until_complete(poll_device_async(
