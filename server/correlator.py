@@ -220,8 +220,36 @@ class Correlator:
                     f"Korelasyon tetiklendi [{rule.rule_id}]: "
                     f"{group_value} — {count} olay / {rule.window_seconds}s"
                 )
+                self._create_alert(event)
 
         return produced
+
+    def _create_alert(self, event: CorrelatedEvent) -> None:
+        """Korelasyon eventinden Alert üret ve storage'a kaydet."""
+        try:
+            from server.storage import storage
+            from shared.models import Alert, AlertSeverity, AlertStatus
+
+            severity_map = {
+                "critical": AlertSeverity.CRITICAL,
+                "warning":  AlertSeverity.WARNING,
+                "info":     AlertSeverity.INFO,
+            }
+            alert = Alert(
+                alert_id     = str(uuid.uuid4()),
+                agent_id     = "correlator",
+                hostname     = event.group_value,
+                severity     = severity_map.get(event.severity, AlertSeverity.WARNING),
+                status       = AlertStatus.ACTIVE,
+                metric       = event.event_type,
+                message      = event.message,
+                value        = float(event.matched_count),
+                threshold    = 0.0,
+                triggered_at = event.last_seen,
+            )
+            storage.store_alert(alert)
+        except Exception as exc:
+            logger.error(f"Alert üretilemedi [{event.rule_id}]: {exc}")
 
 
 # Global instance
