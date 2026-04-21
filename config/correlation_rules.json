@@ -1,14 +1,1 @@
-[
-  {
-    "rule_id": "test_rule",
-    "name": "Test Kuralı",
-    "description": "Test amaçlı",
-    "match_event_type": "ssh_failure",
-    "group_by": "src_ip",
-    "window_seconds": 60,
-    "threshold": 3,
-    "severity": "warning",
-    "output_event_type": "test_detected",
-    "enabled": true
-  }
-]
+[]
