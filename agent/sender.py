@@ -35,7 +35,7 @@ class MetricSender:
         Sona slash koyma.
         """
         self.server_url = server_url.rstrip("/")
-        self._client = httpx.Client(timeout=CONNECTION_TIMEOUT_SEC)
+        self._client = httpx.Client(timeout=CONNECTION_TIMEOUT_SEC, verify=False)
         logger.info(f"Sender başlatıldı → {self.server_url}")
 
     def register(self, registration: AgentRegistration) -> bool:

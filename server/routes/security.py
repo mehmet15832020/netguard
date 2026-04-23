@@ -48,8 +48,7 @@ def security_summary(_: User = Depends(get_current_user)):
     from shared.models import SecurityEventType
     summary = {}
     for et in SecurityEventType:
-        events = db.get_security_events(event_type=et.value, limit=1000)
-        summary[et.value] = len(events)
+        summary[et.value] = db.count_security_events(event_type=et.value)
     return {"summary": summary}
 
 

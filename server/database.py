@@ -414,6 +414,18 @@ class DatabaseManager:
             ).fetchall()
         return [self._row_to_event(r) for r in rows]
 
+    def count_security_events(self, event_type: Optional[str] = None) -> int:
+        """Olay tipine göre toplam kayıt sayısı."""
+        with self._connect() as conn:
+            if event_type:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM security_events WHERE event_type = ?",
+                    (event_type,),
+                ).fetchone()
+            else:
+                row = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()
+        return row[0] if row else 0
+
     def count_recent_failures(
         self,
         source_ip: str,

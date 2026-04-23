@@ -120,7 +120,7 @@ class LogShipper:
         self._server_url = server_url.rstrip("/")
         self._api_key    = api_key
         self._hostname   = socket.gethostname()
-        self._client     = httpx.Client(timeout=10)
+        self._client     = httpx.Client(timeout=10, verify=False)
         self._thread     = threading.Thread(target=self._loop, daemon=True)
         self._stop       = threading.Event()
 
