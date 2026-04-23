@@ -72,11 +72,26 @@ class TestProtectedEndpoints:
 
 
 class TestApiKey:
-    def test_agent_key_generation(self):
-        key = register_agent_key("test-agent-123")
+    def test_agent_key_generation(self, tmp_db):
+        key = register_agent_key("test-agent-hash-001")
+        assert key is not None
         assert len(key) > 20
 
-    def test_same_agent_gets_same_key(self):
-        key1 = register_agent_key("agent-abc")
-        key2 = register_agent_key("agent-abc")
-        assert key1 == key2
+    def test_key_stored_as_hash(self, tmp_db):
+        from server.database import db
+        from server.auth import _hash_api_key
+        key = register_agent_key("test-agent-hash-002")
+        stored = db.get_api_key("test-agent-hash-002")
+        assert stored == _hash_api_key(key)
+        assert stored != key
+
+    def test_duplicate_registration_returns_none(self, tmp_db):
+        register_agent_key("test-agent-dup")
+        second = register_agent_key("test-agent-dup")
+        assert second is None
+
+    def test_verify_api_key(self, tmp_db):
+        from server.auth import verify_api_key
+        key = register_agent_key("test-agent-verify")
+        assert verify_api_key(key) == "test-agent-verify"
+        assert verify_api_key("wrong-key") is None

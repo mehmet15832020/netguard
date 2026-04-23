@@ -8,6 +8,7 @@ Gerçek üretim ortamında kullanıcılar veritabanında saklanır.
 Şu an basit in-memory yapı kullanıyoruz.
 """
 
+import hashlib
 import os
 import secrets
 import logging
@@ -91,14 +92,18 @@ def generate_api_key() -> str:
     return secrets.token_urlsafe(32)
 
 
-def register_agent_key(agent_id: str) -> str:
-    """Agent için API key oluştur veya mevcut olanı döndür."""
+def _hash_api_key(key: str) -> str:
+    """API key'in SHA-256 hash'ini döndür."""
+    return hashlib.sha256(key.encode()).hexdigest()
+
+
+def register_agent_key(agent_id: str) -> Optional[str]:
+    """Agent için API key oluştur; zaten varsa None döndür (key tekrar gösterilmez)."""
     from server.database import db
-    existing = db.get_api_key(agent_id)
-    if existing:
-        return existing
+    if db.get_api_key(agent_id) is not None:
+        return None
     new_key = generate_api_key()
-    db.save_api_key(agent_id, new_key)
+    db.save_api_key(agent_id, _hash_api_key(new_key))
     logger.info(f"API key oluşturuldu: {agent_id}")
     return new_key
 
@@ -106,8 +111,9 @@ def register_agent_key(agent_id: str) -> str:
 def verify_api_key(api_key: str) -> Optional[str]:
     """API key geçerliyse agent_id döndür, değilse None."""
     from server.database import db
-    for agent_id, key in db.get_all_api_keys().items():
-        if secrets.compare_digest(key, api_key):
+    key_hash = _hash_api_key(api_key)
+    for agent_id, stored_hash in db.get_all_api_keys().items():
+        if secrets.compare_digest(stored_hash, key_hash):
             return agent_id
     return None
 

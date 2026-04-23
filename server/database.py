@@ -262,6 +262,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_TOPOLOGY)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
+        self._migrate_api_keys_to_hashed()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -1019,6 +1020,19 @@ class DatabaseManager:
         if rows:
             logger.info(f"{len(rows)} SNMP cihazı devices tablosuna migrate edildi")
 
+    def _migrate_api_keys_to_hashed(self) -> None:
+        """Plaintext API key'leri sil — hash olmayan kayıtlar geçersizdir."""
+        import re
+        sha256_pattern = re.compile(r'^[0-9a-f]{64}$')
+        with self._lock:
+            with self._connect() as conn:
+                rows = conn.execute("SELECT agent_id, api_key FROM api_keys").fetchall()
+                stale = [row["agent_id"] for row in rows if not sha256_pattern.match(row["api_key"])]
+                for agent_id in stale:
+                    conn.execute("DELETE FROM api_keys WHERE agent_id=?", (agent_id,))
+        if stale:
+            logger.warning(f"Plaintext API key'ler silindi (agent'lar yeniden kayıt yaptırmalı): {stale}")
+
     # ------------------------------------------------------------------ #
     #  API KEYS
     # ------------------------------------------------------------------ #
@@ -1042,10 +1056,16 @@ class DatabaseManager:
             return row["api_key"] if row else None
 
     def get_all_api_keys(self) -> dict[str, str]:
-        """Tüm agent_id → api_key eşlemesini döndür."""
+        """Tüm agent_id → key_hash eşlemesini döndür."""
         with self._connect() as conn:
             rows = conn.execute("SELECT agent_id, api_key FROM api_keys").fetchall()
             return {row["agent_id"]: row["api_key"] for row in rows}
+
+    def delete_api_key(self, agent_id: str) -> None:
+        """Agent API key'ini sil."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM api_keys WHERE agent_id=?", (agent_id,))
 
     # ------------------------------------------------------------------ #
     #  TOPOLOGY
