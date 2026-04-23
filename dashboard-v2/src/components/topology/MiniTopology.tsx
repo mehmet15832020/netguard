@@ -48,8 +48,9 @@ export function MiniTopology() {
       animation: false,
       tooltip: {
         trigger: 'item',
-        formatter: (params: { data?: { name?: string; type?: string } }) => {
-          const d = params.data
+        formatter: (params: unknown) => {
+          const p = params as { data?: { name?: string; type?: string } }
+          const d = p.data
           if (!d?.name) return ''
           return `<span style="font-size:12px">${d.name}<br/><span style="color:#71717a">${d.type ?? ''}</span></span>`
         },
@@ -65,20 +66,21 @@ export function MiniTopology() {
           position: 'bottom',
           fontSize: 10,
           color: '#a1a1aa',
-          formatter: (params: { data?: { name?: string } }) => {
-            const name = params.data?.name ?? ''
+          formatter: (params: unknown) => {
+            const p = params as { data?: { name?: string } }
+            const name = p.data?.name ?? ''
             return name.length > 12 ? name.slice(0, 12) + '…' : name
           },
         },
         data: nodes.map((n) => ({
           ...n,
-          id: n.node_id,
-          symbolSize: n.node_type === 'router' ? 16 : n.node_type === 'switch' ? 14 : 10,
-          itemStyle: { color: nodeColor(n.node_type) },
+          id: n.device_id,
+          symbolSize: n.type === 'router' ? 16 : n.type === 'switch' ? 14 : 10,
+          itemStyle: { color: nodeColor(n.type) },
         })),
         edges: edges.map((e) => ({
-          source: e.source_id,
-          target: e.target_id,
+          source: e.src_id,
+          target: e.dst_id,
           lineStyle: { color: '#3f3f46', width: 1 },
         })),
       }],
