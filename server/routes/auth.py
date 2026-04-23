@@ -2,12 +2,14 @@
 NetGuard — Auth endpoint'leri
 
 POST /api/v1/auth/login        → JWT token al
+POST /api/v1/auth/refresh      → Yeni access token al (refresh token ile)
 POST /api/v1/auth/agent-key    → Agent API key al (admin only)
 GET  /api/v1/auth/me           → Mevcut kullanıcı bilgisi
 """
 
 import logging
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from server.auth import (
@@ -16,9 +18,11 @@ from server.auth import (
     Token,
     authenticate_user,
     create_access_token,
+    create_refresh_token,
     get_current_user,
     register_agent_key,
     require_admin,
+    verify_token,
     User,
 )
 
@@ -38,11 +42,13 @@ def login(request: Request, body: LoginRequest):
             detail="Kullanıcı adı veya şifre hatalı",
         )
 
-    token = create_access_token(user.username, user.role)
+    access  = create_access_token(user.username, user.role)
+    refresh = create_refresh_token(user.username, user.role)
     logger.info(f"Giriş başarılı: {user.username} ({user.role})")
 
     return Token(
-        access_token=token,
+        access_token=access,
+        refresh_token=refresh,
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
@@ -52,6 +58,32 @@ def login(request: Request, body: LoginRequest):
 def get_me(current_user: User = Depends(get_current_user)):
     """Mevcut kullanıcı bilgisini döndür."""
     return current_user
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+@router.post("/auth/refresh", response_model=Token)
+@limiter.limit("10/minute")
+def refresh(request: Request, body: RefreshRequest):
+    """Geçerli bir refresh token ile yeni access + refresh token çifti al."""
+    payload = verify_token(body.refresh_token, token_type="refresh")
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Geçersiz veya süresi dolmuş refresh token",
+        )
+    username = payload["sub"]
+    role     = payload["role"]
+    access  = create_access_token(username, role)
+    refresh_new = create_refresh_token(username, role)
+    return Token(
+        access_token=access,
+        refresh_token=refresh_new,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
 
 
 @router.post("/auth/agent-key")

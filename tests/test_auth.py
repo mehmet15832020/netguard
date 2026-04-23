@@ -18,6 +18,7 @@ class TestLogin:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
+        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
 
     def test_login_wrong_password(self):
@@ -69,6 +70,34 @@ class TestProtectedEndpoints:
             headers={"Authorization": f"Bearer {token}"}
         )
         assert response.status_code == 403
+
+
+class TestRefreshToken:
+    def test_refresh_flow(self):
+        from server.auth import create_access_token, create_refresh_token
+
+        access  = create_access_token("admin", "admin")
+        refresh = create_refresh_token("admin", "admin")
+
+        # Geçerli refresh token → yeni token çifti
+        r = client.post("/api/v1/auth/refresh", json={"refresh_token": refresh})
+        assert r.status_code == 200
+        data = r.json()
+        assert "access_token" in data
+        assert "refresh_token" in data
+
+        # Yeni access token ile /me çalışmalı
+        me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {data['access_token']}"})
+        assert me.status_code == 200
+        assert me.json()["username"] == "admin"
+
+        # Access token refresh endpoint'inde reddedilmeli
+        r2 = client.post("/api/v1/auth/refresh", json={"refresh_token": access})
+        assert r2.status_code == 401
+
+    def test_invalid_refresh_token_rejected(self):
+        r = client.post("/api/v1/auth/refresh", json={"refresh_token": "not.a.valid.token"})
+        assert r.status_code == 401
 
 
 class TestApiKey:

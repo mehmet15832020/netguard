@@ -27,7 +27,15 @@ export const auth = {
 
   setToken: (token: string) => localStorage.setItem('ng_token', token),
 
-  removeToken: () => localStorage.removeItem('ng_token'),
+  getRefreshToken: (): string | null =>
+    typeof window !== 'undefined' ? localStorage.getItem('ng_refresh_token') : null,
+
+  setRefreshToken: (token: string) => localStorage.setItem('ng_refresh_token', token),
+
+  removeToken: () => {
+    localStorage.removeItem('ng_token')
+    localStorage.removeItem('ng_refresh_token')
+  },
 
   isLoggedIn: (): boolean => !!auth.getToken(),
 }
@@ -36,13 +44,8 @@ export const auth = {
 //  Fetch wrapper
 // ------------------------------------------------------------------ //
 
-async function request<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const token = auth.getToken()
-
-  const res = await fetch(`${API}${path}`, {
+async function _fetchWithAuth(path: string, options: RequestInit, token: string | null) {
+  return fetch(`${API}${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
@@ -50,11 +53,38 @@ async function request<T>(
       ...options.headers,
     },
   })
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  let res = await _fetchWithAuth(path, options, auth.getToken())
 
   if (res.status === 401) {
-    auth.removeToken()
-    window.location.href = '/login'
-    throw new Error('Oturum süresi doldu')
+    const refreshToken = auth.getRefreshToken()
+    if (refreshToken) {
+      try {
+        const refreshRes = await fetch(`${API}/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh_token: refreshToken }),
+        })
+        if (refreshRes.ok) {
+          const data = await refreshRes.json()
+          auth.setToken(data.access_token)
+          auth.setRefreshToken(data.refresh_token)
+          res = await _fetchWithAuth(path, options, data.access_token)
+        }
+      } catch {
+        // refresh başarısız — logout
+      }
+    }
+    if (res.status === 401) {
+      auth.removeToken()
+      window.location.href = '/login'
+      throw new Error('Oturum süresi doldu')
+    }
   }
 
   if (!res.ok) {
@@ -70,7 +100,10 @@ async function request<T>(
 // ------------------------------------------------------------------ //
 
 export const authApi = {
-  login: async (username: string, password: string): Promise<{ access_token: string }> => {
+  login: async (
+    username: string,
+    password: string,
+  ): Promise<{ access_token: string; refresh_token: string }> => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

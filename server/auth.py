@@ -34,7 +34,8 @@ if not SECRET_KEY:
         "Örnek: JWT_SECRET_KEY=$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
     )
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_EXPIRE_MINUTES", "60"))
+ACCESS_TOKEN_EXPIRE_MINUTES  = int(os.getenv("JWT_EXPIRE_MINUTES",         "60"))
+REFRESH_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_REFRESH_EXPIRE_MINUTES", str(60 * 24 * 7)))
 
 
 
@@ -56,6 +57,7 @@ class UserInDB(User):
 
 class Token(BaseModel):
     access_token: str
+    refresh_token: str
     token_type: str = "bearer"
     expires_in: int
 
@@ -122,17 +124,25 @@ def verify_api_key(api_key: str) -> Optional[str]:
 
 def create_access_token(username: str, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {
-        "sub": username,
-        "role": role,
-        "exp": expire,
-    }
-    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+    return jwt.encode(
+        {"sub": username, "role": role, "type": "access", "exp": expire},
+        SECRET_KEY, algorithm=ALGORITHM,
+    )
 
 
-def verify_token(token: str) -> Optional[dict]:
+def create_refresh_token(username: str, role: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
+    return jwt.encode(
+        {"sub": username, "role": role, "type": "refresh", "exp": expire},
+        SECRET_KEY, algorithm=ALGORITHM,
+    )
+
+
+def verify_token(token: str, token_type: str = "access") -> Optional[dict]:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != token_type:
+            return None
         return payload
     except JWTError:
         return None

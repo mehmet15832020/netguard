@@ -21,8 +21,9 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
     try {
-      const { access_token } = await authApi.login(username, password)
+      const { access_token, refresh_token } = await authApi.login(username, password)
       auth.setToken(access_token)
+      auth.setRefreshToken(refresh_token)
       router.replace('/overview')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Giriş başarısız')
