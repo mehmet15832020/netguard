@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import socket
+from datetime import datetime, timedelta, timezone
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
@@ -14,7 +15,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -112,6 +113,22 @@ async def _uptime_check_loop():
             logger.error(f"Uptime check hatası: {exc}")
 
 
+async def _retention_loop():
+    """Her gece 02:00'de log retention cleanup çalıştır."""
+    while True:
+        now = datetime.now(timezone.utc)
+        next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+        if next_run <= now:
+            next_run += timedelta(days=1)
+        await asyncio.sleep((next_run - now).total_seconds())
+        try:
+            from server.retention import run_retention
+            report = run_retention()
+            logger.info(f"Retention: {report['total_deleted']} kayıt silindi, {report['total_archived']} arşivlendi")
+        except Exception as exc:
+            logger.error(f"Retention hatası: {exc}")
+
+
 async def _security_scan_loop():
     """Her SECURITY_SCAN_INTERVAL saniyede bir güvenlik taraması yap."""
     from server.security_log_parser import parse_auth_log
@@ -164,6 +181,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"SNMP polling döngüsü başlatıldı (her {SNMP_POLL_INTERVAL}s)")
     uptime_task = asyncio.create_task(_uptime_check_loop())
     logger.info(f"Uptime checker başlatıldı (her {UPTIME_CHECK_INTERVAL}s)")
+    retention_task = asyncio.create_task(_retention_loop())
+    logger.info("Log retention görevi başlatıldı (her gece 02:00 UTC)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -177,6 +196,7 @@ async def lifespan(app: FastAPI):
     detector_task.cancel()
     snmp_task.cancel()
     uptime_task.cancel()
+    retention_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     influx_writer.close()
@@ -225,7 +245,8 @@ app.include_router(devices.router, prefix=api_prefix, tags=["devices"])
 app.include_router(discovery.router, prefix=api_prefix, tags=["discovery"])
 app.include_router(topology.router, prefix=api_prefix, tags=["topology"])
 app.include_router(reports.router,  prefix=api_prefix, tags=["reports"])
-app.include_router(sigma.router,    prefix=api_prefix, tags=["sigma"])
+app.include_router(sigma.router,       prefix=api_prefix, tags=["sigma"])
+app.include_router(maintenance.router, prefix=api_prefix, tags=["maintenance"])
 app.include_router(ws.router, tags=["websocket"])
 
 
