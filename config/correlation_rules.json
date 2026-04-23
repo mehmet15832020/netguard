@@ -14,11 +14,11 @@
   {
     "rule_id": "port_scan",
     "name": "Port Tarama",
-    "description": "Aynı IP'den 30 saniyede 10+ port tarama girişimi",
+    "description": "Port scan dedektörü eşiği aştı — tek event yeterli",
     "match_event_type": "port_scan_attempt",
     "group_by": "src_ip",
-    "window_seconds": 30,
-    "threshold": 10,
+    "window_seconds": 120,
+    "threshold": 1,
     "severity": "high",
     "output_event_type": "port_scan_detected",
     "enabled": true
@@ -26,11 +26,11 @@
   {
     "rule_id": "arp_spoof",
     "name": "ARP Spoofing",
-    "description": "60 saniyede 3+ ARP spoof girişimi — MITM saldırısı olabilir",
+    "description": "ARP spoof dedektörü tespit etti — tek event kritik",
     "match_event_type": "arp_spoof_attempt",
     "group_by": "src_ip",
-    "window_seconds": 60,
-    "threshold": 3,
+    "window_seconds": 120,
+    "threshold": 1,
     "severity": "critical",
     "output_event_type": "arp_attack_confirmed",
     "enabled": true
@@ -38,11 +38,11 @@
   {
     "rule_id": "icmp_flood",
     "name": "ICMP Flood",
-    "description": "30 saniyede 50+ ICMP flood paketi — DoS saldırısı olabilir",
+    "description": "ICMP flood dedektörü eşiği aştı — tek event yeterli",
     "match_event_type": "icmp_flood_attempt",
     "group_by": "src_ip",
-    "window_seconds": 30,
-    "threshold": 50,
+    "window_seconds": 120,
+    "threshold": 1,
     "severity": "high",
     "output_event_type": "icmp_flood_confirmed",
     "enabled": true
