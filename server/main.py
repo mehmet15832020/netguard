@@ -11,6 +11,8 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -203,6 +205,18 @@ async def lifespan(app: FastAPI):
     logger.info("NetGuard Server kapatılıyor...")
 
 
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next) -> Response:
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"]  = "nosniff"
+        response.headers["X-Frame-Options"]         = "DENY"
+        response.headers["X-XSS-Protection"]        = "1; mode=block"
+        response.headers["Referrer-Policy"]          = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"]       = "geolocation=(), microphone=(), camera=()"
+        response.headers["Cache-Control"]            = "no-store"
+        return response
+
+
 app = FastAPI(
     title="NetGuard Server",
     description="Modüler ağ izleme ve güvenlik monitoring sistemi",
@@ -225,6 +239,7 @@ _cors_default = ",".join([
 ])
 _cors_origins = [o.strip() for o in os.getenv("NETGUARD_CORS_ORIGINS", _cors_default).split(",") if o.strip()]
 
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,

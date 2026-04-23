@@ -3,9 +3,10 @@ NetGuard — Maintenance endpoint'leri
 
 POST /api/v1/maintenance/cleanup  → Manuel retention cleanup (admin)
 GET  /api/v1/maintenance/status   → DB tablo boyutları
+GET  /api/v1/maintenance/audit    → Audit log (admin)
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request
 from server.auth import User, require_admin
 from server.database import db
 
@@ -13,10 +14,15 @@ router = APIRouter()
 
 
 @router.post("/maintenance/cleanup")
-def trigger_cleanup(_: User = Depends(require_admin)):
+def trigger_cleanup(request: Request, admin: User = Depends(require_admin)):
     """Log retention cleanup'ı manuel tetikle."""
     from server.retention import run_retention
     report = run_retention()
+    db.save_audit_event(
+        actor=admin.username, action="retention.cleanup", resource="all_tables",
+        detail=f"archived={report['total_archived']} deleted={report['total_deleted']}",
+        ip_address=request.client.host if request.client else "",
+    )
     return report
 
 
@@ -65,3 +71,13 @@ def db_status(_: User = Depends(require_admin)):
             "total_size_mb": archive_size_mb,
         },
     }
+
+
+@router.get("/maintenance/audit")
+def audit_log(
+    limit: int = Query(100, ge=1, le=1000),
+    actor: str = Query(""),
+    _: User = Depends(require_admin),
+):
+    """Admin eylem geçmişini döndür."""
+    return {"events": db.get_audit_log(limit=limit, actor=actor)}

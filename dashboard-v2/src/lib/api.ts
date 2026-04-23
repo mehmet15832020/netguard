@@ -350,6 +350,44 @@ export interface ReportSummary {
   topology: { nodes: number; edges: number }
 }
 
+// ------------------------------------------------------------------ //
+//  Maintenance
+// ------------------------------------------------------------------ //
+
+export interface MaintenanceStatus {
+  table_counts: Record<string, number>
+  retention_policy: {
+    normalized_logs_days: number
+    security_events_days: number
+    correlated_events_days: number
+    alerts_resolved_days: number
+    archive_total_days: number
+  }
+  archive: {
+    directory: string
+    file_count: number
+    total_size_mb: number
+  }
+}
+
+export interface RetentionReport {
+  started_at: string
+  completed_at: string
+  elapsed_seconds: number
+  total_archived: number
+  total_deleted: number
+  purged_archives: number
+  tables: Record<string, { archived?: number; deleted?: number; error?: string }>
+}
+
+export const maintenanceApi = {
+  status: () =>
+    request<MaintenanceStatus>('/maintenance/status'),
+
+  cleanup: () =>
+    request<RetentionReport>('/maintenance/cleanup', { method: 'POST' }),
+}
+
 export const reportsApi = {
   summary: () =>
     request<ReportSummary>('/reports/summary'),

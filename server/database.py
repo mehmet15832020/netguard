@@ -187,6 +187,22 @@ CREATE TABLE IF NOT EXISTS api_keys (
 );
 """
 
+_CREATE_AUDIT_LOG = """
+CREATE TABLE IF NOT EXISTS audit_log (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id    TEXT UNIQUE NOT NULL,
+    actor       TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    resource    TEXT NOT NULL,
+    detail      TEXT,
+    ip_address  TEXT,
+    timestamp   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_audit_actor     ON audit_log(actor);
+CREATE INDEX IF NOT EXISTS idx_audit_action    ON audit_log(action);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
+"""
+
 _CREATE_TOPOLOGY = """
 CREATE TABLE IF NOT EXISTS topology_nodes (
     device_id   TEXT PRIMARY KEY,
@@ -259,6 +275,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_SERVICE_CHECKS)
             conn.executescript(_CREATE_DEVICES)
             conn.executescript(_CREATE_API_KEYS)
+            conn.executescript(_CREATE_AUDIT_LOG)
             conn.executescript(_CREATE_TOPOLOGY)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
@@ -1066,6 +1083,42 @@ class DatabaseManager:
         with self._lock:
             with self._connect() as conn:
                 conn.execute("DELETE FROM api_keys WHERE agent_id=?", (agent_id,))
+
+    # ------------------------------------------------------------------ #
+    #  AUDIT LOG
+    # ------------------------------------------------------------------ #
+
+    def save_audit_event(
+        self,
+        actor: str,
+        action: str,
+        resource: str,
+        detail: str = "",
+        ip_address: str = "",
+    ) -> None:
+        import uuid as _uuid
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO audit_log (event_id, actor, action, resource, detail, ip_address, timestamp) "
+                    "VALUES (?,?,?,?,?,?,?)",
+                    (str(_uuid.uuid4()), actor, action, resource, detail, ip_address, now),
+                )
+
+    def get_audit_log(self, limit: int = 100, actor: str = "") -> list[dict]:
+        with self._connect() as conn:
+            if actor:
+                rows = conn.execute(
+                    "SELECT * FROM audit_log WHERE actor=? ORDER BY timestamp DESC LIMIT ?",
+                    (actor, limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+            return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------ #
     #  TOPOLOGY

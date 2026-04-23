@@ -1,1 +1,86 @@
-[]
+[
+  {
+    "rule_id": "ssh_brute_force",
+    "name": "SSH Brute Force",
+    "description": "Aynı IP'den 60 saniyede 5+ başarısız SSH girişi",
+    "match_event_type": "ssh_failure",
+    "group_by": "src_ip",
+    "window_seconds": 60,
+    "threshold": 5,
+    "severity": "critical",
+    "output_event_type": "brute_force_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "port_scan",
+    "name": "Port Tarama",
+    "description": "Aynı IP'den 30 saniyede 10+ port tarama girişimi",
+    "match_event_type": "port_scan_attempt",
+    "group_by": "src_ip",
+    "window_seconds": 30,
+    "threshold": 10,
+    "severity": "high",
+    "output_event_type": "port_scan_detected",
+    "enabled": true
+  },
+  {
+    "rule_id": "arp_spoof",
+    "name": "ARP Spoofing",
+    "description": "60 saniyede 3+ ARP spoof girişimi — MITM saldırısı olabilir",
+    "match_event_type": "arp_spoof_attempt",
+    "group_by": "src_ip",
+    "window_seconds": 60,
+    "threshold": 3,
+    "severity": "critical",
+    "output_event_type": "arp_attack_confirmed",
+    "enabled": true
+  },
+  {
+    "rule_id": "icmp_flood",
+    "name": "ICMP Flood",
+    "description": "30 saniyede 50+ ICMP flood paketi — DoS saldırısı olabilir",
+    "match_event_type": "icmp_flood_attempt",
+    "group_by": "src_ip",
+    "window_seconds": 30,
+    "threshold": 50,
+    "severity": "high",
+    "output_event_type": "icmp_flood_confirmed",
+    "enabled": true
+  },
+  {
+    "rule_id": "dns_burst",
+    "name": "DNS Sorgu Patlaması",
+    "description": "60 saniyede 20+ DNS sorgusu — DNS tünelleme veya keşif girişimi",
+    "match_event_type": "dns_query_burst",
+    "group_by": "src_ip",
+    "window_seconds": 60,
+    "threshold": 20,
+    "severity": "medium",
+    "output_event_type": "dns_anomaly_confirmed",
+    "enabled": true
+  },
+  {
+    "rule_id": "sudo_abuse",
+    "name": "Sudo Kötüye Kullanımı",
+    "description": "Aynı makinede 120 saniyede 5+ sudo komutu — yetki yükseltme girişimi",
+    "match_event_type": "sudo_usage",
+    "group_by": "source_host",
+    "window_seconds": 120,
+    "threshold": 5,
+    "severity": "warning",
+    "output_event_type": "sudo_abuse_suspected",
+    "enabled": true
+  },
+  {
+    "rule_id": "ssh_lateral_movement",
+    "name": "Lateral Movement (SSH)",
+    "description": "Tek IP'den 5 dakikada 3+ SSH başarısı — yanal hareket şüphesi",
+    "match_event_type": "ssh_success",
+    "group_by": "src_ip",
+    "window_seconds": 300,
+    "threshold": 3,
+    "severity": "high",
+    "output_event_type": "lateral_movement_suspected",
+    "enabled": true
+  }
+]
