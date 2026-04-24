@@ -2,7 +2,7 @@
 NetGuard Server — EVTX Dosya Yükleme
 
 POST /api/v1/evtx/upload  → .evtx dosyasını parse et, security event olarak kaydet
-GET  /api/v1/evtx/uploads → Yükleme geçmişi
+GET  /api/v1/evtx/events  → evtx yükleme ile kaydedilen security event'leri listele
 """
 
 import uuid
@@ -79,3 +79,26 @@ async def upload_evtx(
         "parsed":   len(records),
         "saved":    saved,
     }
+
+
+@router.get("/evtx/events")
+def list_evtx_events(
+    event_type: str | None = None,
+    limit: int = 200,
+    _: User = Depends(get_current_user),
+):
+    """evtx yükleme kaynaklı Windows security event'lerini döner."""
+    if limit < 1 or limit > 1000:
+        raise HTTPException(status_code=400, detail="limit 1-1000 arasında olmalı")
+    win_types = ["windows_logon_success", "windows_logon_failure", "windows_process_create"]
+    if event_type:
+        if event_type not in win_types:
+            raise HTTPException(status_code=400, detail=f"Geçerli tipler: {win_types}")
+        events = db.get_security_events(event_type=event_type, limit=limit)
+    else:
+        events = []
+        for wt in win_types:
+            events.extend(db.get_security_events(event_type=wt, limit=limit))
+        events.sort(key=lambda e: e.occurred_at, reverse=True)
+        events = events[:limit]
+    return {"count": len(events), "events": [e.model_dump() for e in events]}
