@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import type { Severity } from '@/types/models'
+import { ThreatBadge } from '@/components/ui/threat-badge'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
   brute_force:     'Brute Force',
@@ -169,7 +170,10 @@ export default function SecurityPage() {
                       {EVENT_TYPE_LABELS[ev.event_type] ?? ev.event_type}
                     </TableCell>
                     <TableCell className="text-sm text-zinc-200 max-w-xs truncate">{ev.message}</TableCell>
-                    <TableCell className="text-xs text-zinc-400 font-mono">{ev.source_ip ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-zinc-400 font-mono">
+                      {ev.source_ip ?? '—'}
+                      {ev.source_ip && <ThreatBadge ip={ev.source_ip} />}
+                    </TableCell>
                     <TableCell className="text-xs text-zinc-400">{ev.username ?? '—'}</TableCell>
                     <TableCell className="text-xs text-zinc-500">{formatDate(ev.occurred_at)}</TableCell>
                   </TableRow>

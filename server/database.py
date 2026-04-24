@@ -203,6 +203,17 @@ CREATE INDEX IF NOT EXISTS idx_audit_action    ON audit_log(action);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 """
 
+_CREATE_THREAT_INTEL = """
+CREATE TABLE IF NOT EXISTS threat_intel_cache (
+    ip          TEXT PRIMARY KEY,
+    score       INTEGER NOT NULL,
+    total_reports INTEGER NOT NULL DEFAULT 0,
+    country_code TEXT,
+    isp         TEXT,
+    queried_at  TEXT NOT NULL
+);
+"""
+
 _CREATE_TOKEN_BLACKLIST = """
 CREATE TABLE IF NOT EXISTS token_blacklist (
     jti        TEXT PRIMARY KEY,
@@ -283,6 +294,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_DEVICES)
             conn.executescript(_CREATE_API_KEYS)
             conn.executescript(_CREATE_AUDIT_LOG)
+            conn.executescript(_CREATE_THREAT_INTEL)
             conn.executescript(_CREATE_TOKEN_BLACKLIST)
             conn.executescript(_CREATE_TOPOLOGY)
         self._migrate_snmp_to_devices()
@@ -1165,6 +1177,31 @@ class DatabaseManager:
                 "DELETE FROM token_blacklist WHERE expires_at < ?", (now,)
             )
         return cur.rowcount
+
+    # ------------------------------------------------------------------ #
+    #  THREAT INTEL CACHE
+    # ------------------------------------------------------------------ #
+
+    def get_threat_intel(self, ip: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM threat_intel_cache WHERE ip=?", (ip,)
+            ).fetchone()
+        return dict(row) if row else None
+
+    def save_threat_intel(self, ip: str, score: int, total_reports: int,
+                          country_code: str, isp: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO threat_intel_cache (ip, score, total_reports, country_code, isp, queried_at)
+                   VALUES (?,?,?,?,?,?)
+                   ON CONFLICT(ip) DO UPDATE SET
+                     score=excluded.score, total_reports=excluded.total_reports,
+                     country_code=excluded.country_code, isp=excluded.isp,
+                     queried_at=excluded.queried_at""",
+                (ip, score, total_reports, country_code, isp, now),
+            )
 
     # ------------------------------------------------------------------ #
     #  TOPOLOGY

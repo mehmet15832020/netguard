@@ -410,6 +410,20 @@ export const maintenanceApi = {
   },
 }
 
+export interface ThreatIntel {
+  ip: string
+  score: number | null
+  total_reports: number
+  country_code: string
+  isp: string
+  queried_at: string
+}
+
+export const threatIntelApi = {
+  lookup: (ip: string) =>
+    request<ThreatIntel & { cached: boolean; message?: string }>(`/threat-intel/${encodeURIComponent(ip)}`),
+}
+
 export const reportsApi = {
   summary: () =>
     request<ReportSummary>('/reports/summary'),

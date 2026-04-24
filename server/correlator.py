@@ -35,6 +35,15 @@ from shared.models import CorrelatedEvent
 
 logger = logging.getLogger(__name__)
 
+
+def _ti_lookup_bg(ip: str) -> None:
+    try:
+        from server import threat_intel
+        threat_intel.lookup(ip)
+    except Exception as exc:
+        logger.debug(f"TI arka plan sorgusu başarısız [{ip}]: {exc}")
+
+
 RULES_PATH = os.getenv(
     "NETGUARD_CORRELATION_RULES",
     str(Path(__file__).parent.parent / "config" / "correlation_rules.json"),
@@ -226,6 +235,11 @@ class Correlator:
                     notifier.notify_correlated(event)
                 except Exception as exc:
                     logger.warning(f"Notifier hatası: {exc}")
+                if event.group_value:
+                    import threading
+                    threading.Thread(
+                        target=_ti_lookup_bg, args=(event.group_value,), daemon=True
+                    ).start()
 
         return produced
 
