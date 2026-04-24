@@ -212,6 +212,8 @@ class LogSourceType(str, Enum):
     PFSENSE   = "pfsense"    # pfSense filterlog
     CISCO_ASA = "cisco_asa"  # Cisco ASA %ASA-
     FORTIGATE = "fortigate"  # FortiGate type=traffic
+    NGINX     = "nginx"      # nginx access/error log
+    APACHE    = "apache"     # Apache access/error log
 
 
 class LogCategory(str, Enum):
