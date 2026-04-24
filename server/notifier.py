@@ -16,7 +16,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timezone
 
-from shared.models import Alert, AlertSeverity
+from shared.models import Alert, AlertSeverity, CorrelatedEvent
 
 logger = logging.getLogger(__name__)
 
@@ -186,17 +186,77 @@ class Notifier:
         self.webhook = WebhookNotifier()
 
     def notify(self, alert: Alert) -> None:
-        """
-        Alert'i tüm aktif kanallara gönderir.
-        Sadece ACTIVE (yeni) alertler için bildirim gönderilir.
-        RESOLVED alertler için bildirim gönderilmez.
-        """
+        """Alert'i tüm aktif kanallara gönderir. Sadece ACTIVE alertler için."""
         from shared.models import AlertStatus
         if alert.status != AlertStatus.ACTIVE:
             return
-
         self.email.send(alert)
         self.webhook.send(alert)
+
+    def notify_correlated(self, event: CorrelatedEvent) -> None:
+        """Correlated event'i tüm aktif kanallara gönderir."""
+        self._send_correlated_email(event)
+        self._send_correlated_webhook(event)
+
+    def _send_correlated_email(self, event: CorrelatedEvent) -> None:
+        if not self.email.enabled:
+            return
+        severity_prefix = {"critical": "🚨", "high": "🔴", "medium": "🟡", "warning": "⚠️"}.get(event.severity, "ℹ️")
+        subject = f"{severity_prefix} NetGuard Korelasyon — {event.severity.upper()}: {event.event_type}"
+        body = (
+            f"NetGuard Korelasyon Alarmı\n{'='*40}\n\n"
+            f"Olay Tipi  : {event.event_type}\n"
+            f"Kural      : {event.rule_id} ({event.rule_name})\n"
+            f"Seviye     : {event.severity.upper()}\n"
+            f"Kaynak     : {event.group_value}\n"
+            f"Mesaj      : {event.message}\n"
+            f"Eşleşme    : {event.matched_count} olay / {event.window_seconds}s\n"
+            f"Zaman      : {event.last_seen}\n\n"
+            f"{'='*40}\nBu mesaj NetGuard tarafından otomatik gönderilmiştir.\n"
+        )
+        try:
+            msg = MIMEMultipart()
+            msg["From"]    = self.email.from_email
+            msg["To"]      = ", ".join(self.email.to_emails)
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            with smtplib.SMTP(self.email.smtp_host, self.email.smtp_port) as srv:
+                srv.starttls()
+                srv.login(self.email.smtp_user, self.email.smtp_password)
+                srv.send_message(msg)
+            logger.info(f"Korelasyon e-postası gönderildi: {event.event_type}")
+        except Exception as exc:
+            logger.error(f"Korelasyon e-postası gönderilemedi: {exc}")
+
+    def _send_correlated_webhook(self, event: CorrelatedEvent) -> None:
+        if not self.webhook.enabled:
+            return
+        color_map = {"critical": 15158332, "high": 15105570, "medium": 16776960, "warning": 16744272}
+        if self.webhook.webhook_type == "discord":
+            payload = {
+                "embeds": [{
+                    "title": f"🔔 NetGuard Korelasyon — {event.severity.upper()}",
+                    "description": event.message,
+                    "color": color_map.get(event.severity, 16776960),
+                    "fields": [
+                        {"name": "Olay Tipi", "value": event.event_type,  "inline": True},
+                        {"name": "Kural",     "value": event.rule_id,     "inline": True},
+                        {"name": "Kaynak",    "value": event.group_value,  "inline": True},
+                    ],
+                    "footer": {"text": "NetGuard Monitoring System"},
+                    "timestamp": event.last_seen.isoformat(),
+                }]
+            }
+        else:
+            payload = {
+                "text": f"🔔 *NetGuard Korelasyon — {event.severity.upper()}*\n{event.message}"
+            }
+        try:
+            resp = httpx.post(self.webhook.webhook_url, json=payload, timeout=5)
+            resp.raise_for_status()
+            logger.info(f"Korelasyon webhook gönderildi: {event.event_type}")
+        except Exception as exc:
+            logger.error(f"Korelasyon webhook gönderilemedi: {exc}")
 
 
 # Global instance

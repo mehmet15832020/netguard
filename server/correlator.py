@@ -221,6 +221,11 @@ class Correlator:
                     f"{group_value} — {count} olay / {rule.window_seconds}s"
                 )
                 self._create_alert(event)
+                try:
+                    from server.notifier import notifier
+                    notifier.notify_correlated(event)
+                except Exception as exc:
+                    logger.warning(f"Notifier hatası: {exc}")
 
         return produced
 

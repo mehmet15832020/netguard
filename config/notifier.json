@@ -1,0 +1,19 @@
+{
+  "min_severity": "high",
+  "channels": {
+    "webhook": {
+      "enabled": false,
+      "url": "",
+      "timeout_seconds": 5
+    },
+    "email": {
+      "enabled": false,
+      "smtp_host": "",
+      "smtp_port": 587,
+      "smtp_user": "",
+      "smtp_password": "",
+      "from_addr": "netguard@example.com",
+      "to_addrs": []
+    }
+  }
+}
