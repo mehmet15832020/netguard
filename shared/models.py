@@ -255,9 +255,11 @@ class NormalizedLog(BaseModel):
     dst_ip: Optional[str] = None
     src_port: Optional[int] = None
     dst_port: Optional[int] = None
+    protocol: Optional[str] = None
     username: Optional[str] = None
     message: str = Field(description="İnsan okunabilir normalize edilmiş mesaj")
     tags: list[str] = Field(default_factory=list, description="Ek etiketler")
+    extra: dict = Field(default_factory=dict, description="Kaynağa özgü ek alanlar")
     processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

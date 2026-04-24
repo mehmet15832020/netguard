@@ -103,9 +103,11 @@ CREATE TABLE IF NOT EXISTS normalized_logs (
     dst_ip       TEXT,
     src_port     INTEGER,
     dst_port     INTEGER,
+    protocol     TEXT,
     username     TEXT,
     message      TEXT NOT NULL,
     tags         TEXT NOT NULL DEFAULT '[]',
+    extra        TEXT NOT NULL DEFAULT '{}',
     processed_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_norm_timestamp   ON normalized_logs(timestamp);
@@ -300,6 +302,7 @@ class DatabaseManager:
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
+        self._migrate_normalized_logs_columns()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -544,9 +547,9 @@ class DatabaseManager:
                     INSERT OR IGNORE INTO normalized_logs
                         (log_id, raw_id, source_type, source_host, timestamp,
                          received_at, severity, category, event_type,
-                         src_ip, dst_ip, src_port, dst_port,
-                         username, message, tags, processed_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         src_ip, dst_ip, src_port, dst_port, protocol,
+                         username, message, tags, extra, processed_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     log.log_id,
                     log.raw_id,
@@ -561,9 +564,11 @@ class DatabaseManager:
                     log.dst_ip,
                     log.src_port,
                     log.dst_port,
+                    log.protocol,
                     log.username,
                     log.message,
                     json.dumps(log.tags),
+                    json.dumps(log.extra),
                     log.processed_at.isoformat(),
                 ))
 
@@ -1081,6 +1086,17 @@ class DatabaseManager:
                     conn.execute("DELETE FROM api_keys WHERE agent_id=?", (agent_id,))
         if stale:
             logger.warning(f"Plaintext API key'ler silindi (agent'lar yeniden kayıt yaptırmalı): {stale}")
+
+    def _migrate_normalized_logs_columns(self) -> None:
+        """normalized_logs tablosuna protocol ve extra kolonlarını ekle."""
+        with self._connect() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(normalized_logs)").fetchall()}
+            if "protocol" not in cols:
+                conn.execute("ALTER TABLE normalized_logs ADD COLUMN protocol TEXT")
+                logger.info("normalized_logs: 'protocol' kolonu eklendi")
+            if "extra" not in cols:
+                conn.execute("ALTER TABLE normalized_logs ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
+                logger.info("normalized_logs: 'extra' kolonu eklendi")
 
     # ------------------------------------------------------------------ #
     #  API KEYS

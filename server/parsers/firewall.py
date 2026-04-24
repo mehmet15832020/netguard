@@ -32,7 +32,9 @@ def _make_log(
     dst_ip: Optional[str] = None,
     src_port: Optional[int] = None,
     dst_port: Optional[int] = None,
+    protocol: Optional[str] = None,
     tags: Optional[list] = None,
+    extra: Optional[dict] = None,
 ) -> NormalizedLog:
     now = datetime.now(timezone.utc)
     return NormalizedLog(
@@ -48,8 +50,10 @@ def _make_log(
         dst_ip      = dst_ip,
         src_port    = src_port,
         dst_port    = dst_port,
+        protocol    = protocol,
         message     = message,
         tags        = tags or [],
+        extra       = extra or {},
     )
 
 
@@ -104,7 +108,9 @@ def parse_pfsense(line: str) -> Optional[NormalizedLog]:
         dst_ip      = dst_ip,
         src_port    = src_port,
         dst_port    = dst_port,
-        tags        = [action, direction, protocol, f"iface:{parts[4]}"],
+        protocol    = protocol,
+        tags        = [action, direction],
+        extra       = {"action": action, "direction": direction, "interface": parts[4]},
     )
 
 
@@ -169,6 +175,7 @@ def parse_cisco_asa(line: str) -> Optional[NormalizedLog]:
         src_port    = src_port,
         dst_port    = dst_port,
         tags        = [f"asa_code:{code}", f"level:{level}"],
+        extra       = {"asa_code": code, "asa_level": level},
     )
 
 
@@ -221,7 +228,9 @@ def parse_fortigate(line: str) -> Optional[NormalizedLog]:
         dst_ip      = dst_ip,
         src_port    = src_port,
         dst_port    = dst_port,
+        protocol    = proto or None,
         tags        = [action, proto, f"policy:{kv.get('policyid','?')}"],
+        extra       = {"action": action, "policy": kv.get("policyid"), "devname": kv.get("devname")},
     )
 
 
