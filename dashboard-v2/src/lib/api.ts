@@ -383,12 +383,31 @@ export interface RetentionReport {
   tables: Record<string, { archived?: number; deleted?: number; error?: string }>
 }
 
+export interface AuditEvent {
+  id: number
+  event_id: string
+  actor: string
+  action: string
+  resource: string
+  detail: string | null
+  ip_address: string | null
+  timestamp: string
+}
+
 export const maintenanceApi = {
   status: () =>
     request<MaintenanceStatus>('/maintenance/status'),
 
   cleanup: () =>
     request<RetentionReport>('/maintenance/cleanup', { method: 'POST' }),
+
+  auditLog: (params?: { limit?: number; actor?: string }) => {
+    const qs = new URLSearchParams()
+    if (params?.limit)  qs.set('limit', String(params.limit))
+    if (params?.actor)  qs.set('actor', params.actor)
+    const q = qs.toString()
+    return request<{ events: AuditEvent[] }>(`/maintenance/audit${q ? `?${q}` : ''}`)
+  },
 }
 
 export const reportsApi = {

@@ -18,6 +18,7 @@ import {
   Share2,
   FileDown,
   Wrench,
+  ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -37,6 +38,7 @@ const NAV_ITEMS = [
   { href: '/snmp',         label: 'SNMP',           icon: Network  },
   { href: '/reports',      label: 'Raporlar',       icon: FileDown },
   { href: '/maintenance',  label: 'Bakım',          icon: Wrench },
+  { href: '/audit',        label: 'Denetim Günlüğü', icon: ClipboardList },
   { href: '/settings',     label: 'Ayarlar',        icon: Settings },
 ]
 
