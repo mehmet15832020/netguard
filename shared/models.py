@@ -285,6 +285,30 @@ class CorrelatedEvent(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
+class IncidentStatus(str, Enum):
+    """Incident'ın mevcut durumu."""
+    OPEN          = "open"
+    INVESTIGATING = "investigating"
+    RESOLVED      = "resolved"
+
+
+class Incident(BaseModel):
+    """Tek bir güvenlik incident kaydı."""
+    incident_id:     str = Field(description="Benzersiz incident ID")
+    title:           str
+    description:     str = ""
+    severity:        str = Field(description="info | warning | critical")
+    status:          IncidentStatus = IncidentStatus.OPEN
+    assigned_to:     Optional[str] = None
+    source_event_id: Optional[str] = None
+    source_type:     Optional[str] = None
+    created_by:      str
+    notes:           str = ""
+    created_at:      datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at:      datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    resolved_at:     Optional[datetime] = None
+
+
 class AlertSeverity(str, Enum):
     """Alert öncelik seviyesi."""
     INFO = "info"

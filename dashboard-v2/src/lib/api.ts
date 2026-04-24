@@ -424,6 +424,67 @@ export const threatIntelApi = {
     request<ThreatIntel & { cached: boolean; message?: string }>(`/threat-intel/${encodeURIComponent(ip)}`),
 }
 
+export interface Incident {
+  incident_id: string
+  title: string
+  description: string
+  severity: string
+  status: 'open' | 'investigating' | 'resolved'
+  assigned_to: string | null
+  source_event_id: string | null
+  source_type: string | null
+  created_by: string
+  notes: string
+  created_at: string
+  updated_at: string
+  resolved_at: string | null
+}
+
+export interface IncidentSummary {
+  open: number
+  investigating: number
+  resolved: number
+  total: number
+}
+
+export const incidentApi = {
+  list: (params?: { status?: string; severity?: string; limit?: number }) => {
+    const qs = new URLSearchParams()
+    if (params?.status)   qs.set('status', params.status)
+    if (params?.severity) qs.set('severity', params.severity)
+    if (params?.limit)    qs.set('limit', String(params.limit))
+    const q = qs.toString()
+    return request<{ count: number; incidents: Incident[] }>(`/incidents${q ? `?${q}` : ''}`)
+  },
+
+  get: (id: string) =>
+    request<Incident>(`/incidents/${id}`),
+
+  summary: () =>
+    request<IncidentSummary>('/incidents/summary'),
+
+  create: (body: {
+    title: string
+    description?: string
+    severity: string
+    assigned_to?: string
+    notes?: string
+    source_event_id?: string
+    source_type?: string
+  }) => request<Incident>('/incidents', { method: 'POST', body: JSON.stringify(body) }),
+
+  update: (id: string, body: {
+    status?: string
+    assigned_to?: string
+    notes?: string
+    title?: string
+    description?: string
+  }) => request<Incident>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  delete: (id: string) =>
+    request<void>(`/incidents/${id}`, { method: 'DELETE' }),
+}
+
 export const reportsApi = {
   summary: () =>
     request<ReportSummary>('/reports/summary'),

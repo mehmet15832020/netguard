@@ -27,4 +27,5 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.routes.snmp.db", test_db)
     monkeypatch.setattr("server.routes.discovery.db", test_db)
     monkeypatch.setattr("server.routes.topology.db", test_db)
+    monkeypatch.setattr("server.routes.incidents.db", test_db)
     return test_db

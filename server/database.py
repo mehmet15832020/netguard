@@ -248,6 +248,27 @@ CREATE INDEX IF NOT EXISTS idx_topo_edges_src ON topology_edges(src_id);
 CREATE INDEX IF NOT EXISTS idx_topo_edges_dst ON topology_edges(dst_id);
 """
 
+_CREATE_INCIDENTS = """
+CREATE TABLE IF NOT EXISTS incidents (
+    incident_id     TEXT PRIMARY KEY,
+    title           TEXT NOT NULL,
+    description     TEXT DEFAULT '',
+    severity        TEXT NOT NULL,
+    status          TEXT NOT NULL DEFAULT 'open',
+    assigned_to     TEXT,
+    source_event_id TEXT,
+    source_type     TEXT,
+    created_by      TEXT NOT NULL,
+    notes           TEXT DEFAULT '',
+    created_at      TEXT NOT NULL,
+    updated_at      TEXT NOT NULL,
+    resolved_at     TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_incidents_status   ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity);
+CREATE INDEX IF NOT EXISTS idx_incidents_created  ON incidents(created_at);
+"""
+
 _CREATE_CORRELATED_EVENTS = """
 CREATE TABLE IF NOT EXISTS correlated_events (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -299,6 +320,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_THREAT_INTEL)
             conn.executescript(_CREATE_TOKEN_BLACKLIST)
             conn.executescript(_CREATE_TOPOLOGY)
+            conn.executescript(_CREATE_INCIDENTS)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
@@ -1283,6 +1305,118 @@ class DatabaseManager:
             with self._connect() as conn:
                 conn.execute("DELETE FROM topology_edges")
                 conn.execute("DELETE FROM topology_nodes")
+
+
+    # ------------------------------------------------------------------ #
+    #  INCIDENTS
+    # ------------------------------------------------------------------ #
+
+    def create_incident(self, incident: "Incident") -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT INTO incidents
+                       (incident_id, title, description, severity, status,
+                        assigned_to, source_event_id, source_type,
+                        created_by, notes, created_at, updated_at, resolved_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    (
+                        incident.incident_id, incident.title, incident.description,
+                        incident.severity, incident.status.value,
+                        incident.assigned_to, incident.source_event_id, incident.source_type,
+                        incident.created_by, incident.notes, now, now, None,
+                    ),
+                )
+
+    def get_incidents(
+        self,
+        status: Optional[str] = None,
+        severity: Optional[str] = None,
+        assigned_to: Optional[str] = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        query = "SELECT * FROM incidents WHERE 1=1"
+        params: list = []
+        if status:
+            query += " AND status=?"
+            params.append(status)
+        if severity:
+            query += " AND severity=?"
+            params.append(severity)
+        if assigned_to:
+            query += " AND assigned_to=?"
+            params.append(assigned_to)
+        query += " ORDER BY created_at DESC LIMIT ?"
+        params.append(limit)
+        with self._connect() as conn:
+            return [dict(r) for r in conn.execute(query, params).fetchall()]
+
+    def get_incident(self, incident_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM incidents WHERE incident_id=?", (incident_id,)
+            ).fetchone()
+            return dict(row) if row else None
+
+    def update_incident(
+        self,
+        incident_id: str,
+        status: Optional[str] = None,
+        assigned_to: Optional[str] = None,
+        notes: Optional[str] = None,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> bool:
+        fields, params = [], []
+        now = datetime.now(timezone.utc).isoformat()
+        if status is not None:
+            fields.append("status=?")
+            params.append(status)
+            if status == "resolved":
+                fields.append("resolved_at=?")
+                params.append(now)
+        if assigned_to is not None:
+            fields.append("assigned_to=?")
+            params.append(assigned_to)
+        if notes is not None:
+            fields.append("notes=?")
+            params.append(notes)
+        if title is not None:
+            fields.append("title=?")
+            params.append(title)
+        if description is not None:
+            fields.append("description=?")
+            params.append(description)
+        if not fields:
+            return False
+        fields.append("updated_at=?")
+        params.append(now)
+        params.append(incident_id)
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    f"UPDATE incidents SET {', '.join(fields)} WHERE incident_id=?",
+                    params,
+                )
+                return cur.rowcount > 0
+
+    def delete_incident(self, incident_id: str) -> bool:
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "DELETE FROM incidents WHERE incident_id=?", (incident_id,)
+                )
+                return cur.rowcount > 0
+
+    def count_incidents(self, status: Optional[str] = None) -> int:
+        query = "SELECT COUNT(*) FROM incidents"
+        params: list = []
+        if status:
+            query += " WHERE status=?"
+            params.append(status)
+        with self._connect() as conn:
+            return conn.execute(query, params).fetchone()[0]
 
 
 # Global instance — uygulama boyunca tek bir tane
