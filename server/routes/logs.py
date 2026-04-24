@@ -4,16 +4,20 @@ NetGuard Server — Log endpoint'leri
 GET  /api/v1/logs/normalized          → Normalize edilmiş logları listele
 GET  /api/v1/logs/raw                 → Ham logları listele
 POST /api/v1/logs/ingest              → Tek log manuel gönder (test/debug)
+POST /api/v1/logs/firewall            → Firewall log satırı gönder (pfSense/ASA/FortiGate)
+POST /api/v1/logs/firewall/batch      → Toplu firewall log gönder
 """
 
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from typing import List
 
-from server.auth import User, get_current_user
+from server.auth import User, get_current_user, get_agent_from_api_key
 from server.database import db
 from server.log_normalizer import process_and_store
+from server.parsers.firewall import detect_and_parse
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -75,3 +79,50 @@ def ingest_log(
     if norm is None:
         return {"success": False, "message": "Log parse edilemedi, ham olarak kaydedildi."}
     return {"success": True, "normalized": norm}
+
+
+class FirewallLogRequest(BaseModel):
+    line: str
+    source_host: str = "firewall"
+
+
+class FirewallBatchRequest(BaseModel):
+    lines: List[str]
+    source_host: str = "firewall"
+
+
+@router.post("/logs/firewall", status_code=202)
+def ingest_firewall_log(
+    req: FirewallLogRequest,
+    _: User = Depends(get_current_user),
+):
+    """Tek firewall log satırı al, parse et, normalize olarak kaydet."""
+    norm = detect_and_parse(req.line)
+    if norm is None:
+        return {"success": False, "message": "Tanınan firewall formatı değil"}
+    if norm.source_host == norm.source_host:
+        norm.source_host = req.source_host
+    db.save_normalized_log(norm)
+    return {"success": True, "source_type": norm.source_type, "event_type": norm.event_type}
+
+
+@router.post("/logs/firewall/batch", status_code=202)
+def ingest_firewall_batch(
+    req: FirewallBatchRequest,
+    _: User = Depends(get_current_user),
+):
+    """Toplu firewall log satırı al — maksimum 1000 satır."""
+    if len(req.lines) > 1000:
+        raise HTTPException(status_code=400, detail="Maksimum 1000 satır gönderilebilir")
+
+    parsed = skipped = 0
+    for line in req.lines:
+        norm = detect_and_parse(line)
+        if norm:
+            norm.source_host = req.source_host
+            db.save_normalized_log(norm)
+            parsed += 1
+        else:
+            skipped += 1
+
+    return {"parsed": parsed, "skipped": skipped, "total": len(req.lines)}

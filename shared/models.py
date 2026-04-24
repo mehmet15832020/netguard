@@ -209,6 +209,9 @@ class LogSourceType(str, Enum):
     SYSLOG    = "syslog"     # Genel syslog
     AUTH_LOG  = "auth_log"   # /var/log/auth.log
     NETGUARD  = "netguard"   # NetGuard internal
+    PFSENSE   = "pfsense"    # pfSense filterlog
+    CISCO_ASA = "cisco_asa"  # Cisco ASA %ASA-
+    FORTIGATE = "fortigate"  # FortiGate type=traffic
 
 
 class LogCategory(str, Enum):
