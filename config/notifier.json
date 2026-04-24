@@ -1,5 +1,5 @@
 {
-  "min_severity": "high",
+  "min_severity": "critical",
   "channels": {
     "webhook": {
       "enabled": false,

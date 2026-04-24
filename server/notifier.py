@@ -194,7 +194,17 @@ class Notifier:
         self.webhook.send(alert)
 
     def notify_correlated(self, event: CorrelatedEvent) -> None:
-        """Correlated event'i tüm aktif kanallara gönderir."""
+        """Correlated event'i tüm aktif kanallara gönderir. Severity filtresi uygulanır."""
+        _SEV = {"info": 0, "warning": 1, "medium": 2, "high": 3, "critical": 4}
+        try:
+            import json
+            from pathlib import Path
+            cfg_path = Path(__file__).parent.parent / "config" / "notifier.json"
+            min_sev = json.loads(cfg_path.read_text()).get("min_severity", "high")
+        except Exception:
+            min_sev = "high"
+        if _SEV.get(event.severity, 0) < _SEV.get(min_sev, 3):
+            return
         self._send_correlated_email(event)
         self._send_correlated_webhook(event)
 
