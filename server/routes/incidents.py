@@ -136,6 +136,14 @@ def update_incident(
     return db.get_incident(incident_id)
 
 
+@router.get("/incidents/{incident_id}/events")
+def get_incident_events(incident_id: str, _: User = Depends(get_current_user)):
+    if not db.get_incident(incident_id):
+        raise HTTPException(status_code=404, detail="Incident bulunamadı")
+    events = db.get_incident_events(incident_id)
+    return {"incident_id": incident_id, "count": len(events), "events": events}
+
+
 @router.delete("/incidents/{incident_id}", status_code=204)
 def delete_incident(
     incident_id: str,

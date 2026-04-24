@@ -248,7 +248,7 @@ CREATE INDEX IF NOT EXISTS idx_topo_edges_src ON topology_edges(src_id);
 CREATE INDEX IF NOT EXISTS idx_topo_edges_dst ON topology_edges(dst_id);
 """
 
-_CREATE_INCIDENTS = """
+_CREATE_INCIDENTS_BASE = """
 CREATE TABLE IF NOT EXISTS incidents (
     incident_id     TEXT PRIMARY KEY,
     title           TEXT NOT NULL,
@@ -260,13 +260,34 @@ CREATE TABLE IF NOT EXISTS incidents (
     source_type     TEXT,
     created_by      TEXT NOT NULL,
     notes           TEXT DEFAULT '',
+    rule_id         TEXT,
+    group_value     TEXT,
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
     resolved_at     TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_incidents_status   ON incidents(status);
-CREATE INDEX IF NOT EXISTS idx_incidents_severity ON incidents(severity);
-CREATE INDEX IF NOT EXISTS idx_incidents_created  ON incidents(created_at);
+"""
+
+_CREATE_INCIDENTS_INDEXES = """
+CREATE INDEX IF NOT EXISTS idx_incidents_status      ON incidents(status);
+CREATE INDEX IF NOT EXISTS idx_incidents_severity    ON incidents(severity);
+CREATE INDEX IF NOT EXISTS idx_incidents_created     ON incidents(created_at);
+CREATE INDEX IF NOT EXISTS idx_incidents_rule_group  ON incidents(rule_id, group_value);
+"""
+
+_CREATE_INCIDENT_EVENTS = """
+CREATE TABLE IF NOT EXISTS incident_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_id TEXT NOT NULL,
+    event_id    TEXT NOT NULL,
+    event_type  TEXT NOT NULL,
+    severity    TEXT NOT NULL,
+    message     TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    added_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inc_events_incident ON incident_events(incident_id);
+CREATE INDEX IF NOT EXISTS idx_inc_events_occurred ON incident_events(occurred_at);
 """
 
 _CREATE_CORRELATED_EVENTS = """
@@ -320,7 +341,11 @@ class DatabaseManager:
             conn.executescript(_CREATE_THREAT_INTEL)
             conn.executescript(_CREATE_TOKEN_BLACKLIST)
             conn.executescript(_CREATE_TOPOLOGY)
-            conn.executescript(_CREATE_INCIDENTS)
+            conn.executescript(_CREATE_INCIDENTS_BASE)
+        self._migrate_incidents_columns()
+        with self._connect() as conn:
+            conn.executescript(_CREATE_INCIDENTS_INDEXES)
+            conn.executescript(_CREATE_INCIDENT_EVENTS)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
@@ -1120,6 +1145,17 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE normalized_logs ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
                 logger.info("normalized_logs: 'extra' kolonu eklendi")
 
+    def _migrate_incidents_columns(self) -> None:
+        """incidents tablosuna rule_id ve group_value kolonlarını ekle."""
+        with self._connect() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(incidents)").fetchall()}
+            if "rule_id" not in cols:
+                conn.execute("ALTER TABLE incidents ADD COLUMN rule_id TEXT")
+                logger.info("incidents: 'rule_id' kolonu eklendi")
+            if "group_value" not in cols:
+                conn.execute("ALTER TABLE incidents ADD COLUMN group_value TEXT")
+                logger.info("incidents: 'group_value' kolonu eklendi")
+
     # ------------------------------------------------------------------ #
     #  API KEYS
     # ------------------------------------------------------------------ #
@@ -1319,15 +1355,74 @@ class DatabaseManager:
                     """INSERT INTO incidents
                        (incident_id, title, description, severity, status,
                         assigned_to, source_event_id, source_type,
-                        created_by, notes, created_at, updated_at, resolved_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        created_by, notes, rule_id, group_value,
+                        created_at, updated_at, resolved_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         incident.incident_id, incident.title, incident.description,
                         incident.severity, incident.status.value,
                         incident.assigned_to, incident.source_event_id, incident.source_type,
-                        incident.created_by, incident.notes, now, now, None,
+                        incident.created_by, incident.notes,
+                        incident.rule_id, incident.group_value,
+                        now, now, None,
                     ),
                 )
+
+    def find_open_incident_for_rule(self, rule_id: str, group_value: str) -> Optional[str]:
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT incident_id FROM incidents
+                   WHERE rule_id=? AND group_value=? AND status IN ('open','investigating')
+                   ORDER BY created_at DESC LIMIT 1""",
+                (rule_id, group_value),
+            ).fetchone()
+            return row["incident_id"] if row else None
+
+    _SEV_ORDER = {"info": 1, "warning": 2, "critical": 3}
+
+    def escalate_incident_severity(self, incident_id: str, new_severity: str) -> bool:
+        row = self.get_incident(incident_id)
+        if not row:
+            return False
+        current = self._SEV_ORDER.get(row["severity"], 0)
+        incoming = self._SEV_ORDER.get(new_severity, 0)
+        if incoming <= current:
+            return False
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE incidents SET severity=?, updated_at=? WHERE incident_id=?",
+                    (new_severity, now, incident_id),
+                )
+        return True
+
+    def add_incident_event(
+        self,
+        incident_id: str,
+        event_id: str,
+        event_type: str,
+        severity: str,
+        message: str,
+        occurred_at: str,
+    ) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT INTO incident_events
+                       (incident_id, event_id, event_type, severity, message, occurred_at, added_at)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (incident_id, event_id, event_type, severity, message, occurred_at, now),
+                )
+
+    def get_incident_events(self, incident_id: str) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM incident_events WHERE incident_id=? ORDER BY occurred_at ASC",
+                (incident_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_incidents(
         self,

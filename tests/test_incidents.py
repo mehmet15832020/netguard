@@ -1,9 +1,12 @@
 """Incident yönetimi testleri."""
 
+import uuid
 import pytest
+from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from server.main import app
 from server.auth import create_access_token
+from shared.models import Incident, IncidentStatus, CorrelatedEvent
 
 client = TestClient(app)
 
@@ -160,3 +163,84 @@ class TestSummary:
         assert data["total"] == 3
         assert data["open"] == 2
         assert data["resolved"] == 1
+
+
+class TestIncidentEvents:
+    def test_get_events_empty(self, tmp_db):
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "warning"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        r2 = client.get(f"/api/v1/incidents/{inc_id}/events", headers=_auth())
+        assert r2.status_code == 200
+        assert r2.json()["count"] == 0
+
+    def test_get_events_nonexistent_returns_404(self, tmp_db):
+        r = client.get("/api/v1/incidents/nonexistent/events", headers=_auth())
+        assert r.status_code == 404
+
+    def test_add_and_retrieve_event(self, tmp_db):
+        from server.database import db as _db
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "warning"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        now = datetime.now(timezone.utc).isoformat()
+        _db.add_incident_event(inc_id, "evt-1", "brute_force", "critical", "5 deneme", now)
+        r2 = client.get(f"/api/v1/incidents/{inc_id}/events", headers=_auth())
+        assert r2.json()["count"] == 1
+        assert r2.json()["events"][0]["event_id"] == "evt-1"
+
+
+class TestAutoIncidentCreation:
+    def _make_corr_event(self, rule_id="rule-ssh", group_value="10.0.0.1", severity="warning"):
+        now = datetime.now(timezone.utc).isoformat()
+        return CorrelatedEvent(
+            corr_id=str(uuid.uuid4()),
+            event_id=str(uuid.uuid4()),
+            rule_id=rule_id,
+            rule_name="SSH Brute Force",
+            event_type="ssh_brute_force",
+            severity=severity,
+            group_value=group_value,
+            matched_count=5,
+            window_seconds=60,
+            message=f"{group_value} — 5 başarısız giriş",
+            first_seen=now,
+            last_seen=now,
+        )
+
+    def test_auto_creates_incident(self, tmp_db):
+        from server.database import db as _db
+        from server.correlator import correlator
+        event = self._make_corr_event()
+        correlator._create_incident_from_corr(event)
+        incidents = _db.get_incidents()
+        assert len(incidents) == 1
+        assert incidents[0]["rule_id"] == "rule-ssh"
+        assert incidents[0]["group_value"] == "10.0.0.1"
+
+    def test_duplicate_merges_into_same_incident(self, tmp_db):
+        from server.database import db as _db
+        from server.correlator import correlator
+        event1 = self._make_corr_event()
+        event2 = self._make_corr_event()
+        correlator._create_incident_from_corr(event1)
+        correlator._create_incident_from_corr(event2)
+        incidents = _db.get_incidents()
+        assert len(incidents) == 1
+        events = _db.get_incident_events(incidents[0]["incident_id"])
+        assert len(events) == 2
+
+    def test_severity_escalation(self, tmp_db):
+        from server.database import db as _db
+        from server.correlator import correlator
+        event_warn = self._make_corr_event(severity="warning")
+        event_crit = self._make_corr_event(severity="critical")
+        correlator._create_incident_from_corr(event_warn)
+        correlator._create_incident_from_corr(event_crit)
+        incidents = _db.get_incidents()
+        assert incidents[0]["severity"] == "critical"
+
+    def test_different_groups_create_separate_incidents(self, tmp_db):
+        from server.database import db as _db
+        from server.correlator import correlator
+        correlator._create_incident_from_corr(self._make_corr_event(group_value="10.0.0.1"))
+        correlator._create_incident_from_corr(self._make_corr_event(group_value="10.0.0.2"))
+        assert len(_db.get_incidents()) == 2

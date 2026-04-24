@@ -230,6 +230,7 @@ class Correlator:
                     f"{group_value} — {count} olay / {rule.window_seconds}s"
                 )
                 self._create_alert(event)
+                self._create_incident_from_corr(event)
                 try:
                     from server.notifier import notifier
                     notifier.notify_correlated(event)
@@ -242,6 +243,48 @@ class Correlator:
                     ).start()
 
         return produced
+
+    def _create_incident_from_corr(self, event: CorrelatedEvent) -> None:
+        try:
+            from server.database import db
+            from shared.models import Incident, IncidentStatus
+
+            last_seen_iso = event.last_seen.isoformat() if hasattr(event.last_seen, "isoformat") else event.last_seen
+            existing_id = db.find_open_incident_for_rule(event.rule_id, event.group_value)
+            if existing_id:
+                db.escalate_incident_severity(existing_id, event.severity)
+                db.add_incident_event(
+                    incident_id=existing_id,
+                    event_id=event.corr_id,
+                    event_type=event.event_type,
+                    severity=event.severity,
+                    message=event.message,
+                    occurred_at=last_seen_iso,
+                )
+            else:
+                incident = Incident(
+                    incident_id=str(uuid.uuid4()),
+                    title=event.message,
+                    description=f"Otomatik: {event.event_type} — {event.group_value}",
+                    severity=event.severity,
+                    status=IncidentStatus.OPEN,
+                    source_event_id=event.corr_id,
+                    source_type="correlated_event",
+                    created_by="correlator",
+                    rule_id=event.rule_id,
+                    group_value=event.group_value,
+                )
+                db.create_incident(incident)
+                db.add_incident_event(
+                    incident_id=incident.incident_id,
+                    event_id=event.corr_id,
+                    event_type=event.event_type,
+                    severity=event.severity,
+                    message=event.message,
+                    occurred_at=last_seen_iso,
+                )
+        except Exception as exc:
+            logger.error(f"Otomatik incident oluşturulamadı [{event.rule_id}]: {exc}")
 
     def _create_alert(self, event: CorrelatedEvent) -> None:
         """Korelasyon eventinden Alert üret ve storage'a kaydet."""
