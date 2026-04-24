@@ -4,7 +4,7 @@ Authentication testleri.
 
 from fastapi.testclient import TestClient
 from server.main import app
-from server.auth import register_agent_key
+from server.auth import register_agent_key, create_access_token
 
 client = TestClient(app)
 
@@ -98,6 +98,24 @@ class TestRefreshToken:
     def test_invalid_refresh_token_rejected(self):
         r = client.post("/api/v1/auth/refresh", json={"refresh_token": "not.a.valid.token"})
         assert r.status_code == 401
+
+
+class TestLogout:
+    def test_logout_blacklists_token(self, tmp_db):
+        access = create_access_token("admin", "admin")
+        headers = {"Authorization": f"Bearer {access}"}
+
+        # Logout
+        r = client.post("/api/v1/auth/logout", headers=headers)
+        assert r.status_code == 200
+
+        # Aynı token artık geçersiz olmalı
+        me = client.get("/api/v1/auth/me", headers=headers)
+        assert me.status_code == 401
+
+    def test_logout_without_token_returns_403(self):
+        r = client.post("/api/v1/auth/logout")
+        assert r.status_code in (401, 403)
 
 
 class TestApiKey:

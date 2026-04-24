@@ -20,7 +20,7 @@ import {
   Wrench,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { auth } from '@/lib/api'
+import { auth, authApi } from '@/lib/api'
 import { useAlertStore } from '@/store/alertStore'
 import { Badge } from '@/components/ui/badge'
 
@@ -45,7 +45,8 @@ export function Sidebar() {
   const unreadCount = useAlertStore((s) => s.unreadCount)
   const markAllRead = useAlertStore((s) => s.markAllRead)
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try { await authApi.logout() } catch { /* token zaten süreli olabilir */ }
     auth.removeToken()
     window.location.href = '/login'
   }

@@ -115,6 +115,9 @@ export const authApi = {
     }
     return res.json()
   },
+
+  logout: () =>
+    request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
 }
 
 // ------------------------------------------------------------------ //

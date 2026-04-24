@@ -3,17 +3,23 @@ NetGuard — Auth endpoint'leri
 
 POST /api/v1/auth/login        → JWT token al
 POST /api/v1/auth/refresh      → Yeni access token al (refresh token ile)
+POST /api/v1/auth/logout       → Token blacklist'e ekle (çıkış)
 POST /api/v1/auth/agent-key    → Agent API key al (admin only)
 GET  /api/v1/auth/me           → Mevcut kullanıcı bilgisi
 """
 
 import logging
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from jose import jwt, JWTError
 from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
+    ALGORITHM,
+    SECRET_KEY,
     LoginRequest,
     Token,
     authenticate_user,
@@ -23,6 +29,7 @@ from server.auth import (
     register_agent_key,
     require_admin,
     verify_token,
+    bearer_scheme,
     User,
 )
 
@@ -84,6 +91,26 @@ def refresh(request: Request, body: RefreshRequest):
         token_type="bearer",
         expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+
+@router.post("/auth/logout", status_code=200)
+def logout(
+    credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
+    current_user: User = Depends(get_current_user),
+):
+    """Access token'ı blacklist'e ekle — anında geçersiz kılar."""
+    from server.database import db
+    token = credentials.credentials
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+        if jti and exp:
+            expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).isoformat()
+            db.blacklist_token(jti, expires_at)
+    except JWTError:
+        pass
+    return {"ok": True, "message": f"{current_user.username} oturumu kapatıldı"}
 
 
 @router.post("/auth/agent-key")

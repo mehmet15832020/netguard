@@ -125,7 +125,8 @@ def verify_api_key(api_key: str) -> Optional[str]:
 def create_access_token(username: str, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
-        {"sub": username, "role": role, "type": "access", "exp": expire},
+        {"sub": username, "role": role, "type": "access", "exp": expire,
+         "jti": secrets.token_hex(16)},
         SECRET_KEY, algorithm=ALGORITHM,
     )
 
@@ -133,7 +134,8 @@ def create_access_token(username: str, role: str) -> str:
 def create_refresh_token(username: str, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
-        {"sub": username, "role": role, "type": "refresh", "exp": expire},
+        {"sub": username, "role": role, "type": "refresh", "exp": expire,
+         "jti": secrets.token_hex(16)},
         SECRET_KEY, algorithm=ALGORITHM,
     )
 
@@ -143,6 +145,11 @@ def verify_token(token: str, token_type: str = "access") -> Optional[dict]:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         if payload.get("type") != token_type:
             return None
+        jti = payload.get("jti")
+        if jti:
+            from server.database import db
+            if db.is_token_blacklisted(jti):
+                return None
         return payload
     except JWTError:
         return None

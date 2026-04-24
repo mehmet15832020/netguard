@@ -203,6 +203,13 @@ CREATE INDEX IF NOT EXISTS idx_audit_action    ON audit_log(action);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 """
 
+_CREATE_TOKEN_BLACKLIST = """
+CREATE TABLE IF NOT EXISTS token_blacklist (
+    jti        TEXT PRIMARY KEY,
+    expires_at TEXT NOT NULL
+);
+"""
+
 _CREATE_TOPOLOGY = """
 CREATE TABLE IF NOT EXISTS topology_nodes (
     device_id   TEXT PRIMARY KEY,
@@ -276,6 +283,7 @@ class DatabaseManager:
             conn.executescript(_CREATE_DEVICES)
             conn.executescript(_CREATE_API_KEYS)
             conn.executescript(_CREATE_AUDIT_LOG)
+            conn.executescript(_CREATE_TOKEN_BLACKLIST)
             conn.executescript(_CREATE_TOPOLOGY)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
@@ -1131,6 +1139,32 @@ class DatabaseManager:
                     (limit,),
                 ).fetchall()
             return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    #  TOKEN BLACKLIST
+    # ------------------------------------------------------------------ #
+
+    def blacklist_token(self, jti: str, expires_at: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO token_blacklist (jti, expires_at) VALUES (?,?)",
+                (jti, expires_at),
+            )
+
+    def is_token_blacklisted(self, jti: str) -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM token_blacklist WHERE jti=?", (jti,)
+            ).fetchone()
+        return row is not None
+
+    def cleanup_expired_blacklist(self) -> int:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            cur = conn.execute(
+                "DELETE FROM token_blacklist WHERE expires_at < ?", (now,)
+            )
+        return cur.rowcount
 
     # ------------------------------------------------------------------ #
     #  TOPOLOGY
