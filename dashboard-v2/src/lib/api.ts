@@ -447,6 +447,17 @@ export interface IncidentSummary {
   total: number
 }
 
+export interface IncidentEvent {
+  id: number
+  incident_id: string
+  event_id: string
+  event_type: string
+  severity: string
+  message: string
+  occurred_at: string
+  added_at: string
+}
+
 export const incidentApi = {
   list: (params?: { status?: string; severity?: string; limit?: number }) => {
     const qs = new URLSearchParams()
@@ -483,6 +494,9 @@ export const incidentApi = {
 
   delete: (id: string) =>
     request<void>(`/incidents/${id}`, { method: 'DELETE' }),
+
+  getEvents: (id: string) =>
+    request<{ incident_id: string; count: number; events: IncidentEvent[] }>(`/incidents/${id}/events`),
 }
 
 export const reportsApi = {

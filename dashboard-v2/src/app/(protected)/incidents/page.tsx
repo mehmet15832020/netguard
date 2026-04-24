@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShieldAlert, RefreshCw, Plus, X } from 'lucide-react'
-import { incidentApi, type Incident } from '@/lib/api'
+import { incidentApi, type Incident, type IncidentEvent } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -13,6 +13,48 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+
+const SEV_DOT: Record<string, string> = {
+  critical: 'bg-red-500',
+  warning:  'bg-yellow-500',
+  info:     'bg-blue-500',
+}
+
+function EventTimeline({ incidentId }: { incidentId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['incident-events', incidentId],
+    queryFn:  () => incidentApi.getEvents(incidentId),
+    refetchInterval: 15_000,
+  })
+
+  const events: IncidentEvent[] = data?.events ?? []
+
+  if (isLoading) return <p className="text-xs text-zinc-500 py-2">Yükleniyor...</p>
+  if (events.length === 0) return <p className="text-xs text-zinc-500 py-2">Henüz event yok</p>
+
+  return (
+    <div className="relative ml-2 mt-2 space-y-0">
+      {events.map((ev, i) => (
+        <div key={ev.id} className="flex gap-3 relative pb-4">
+          <div className="flex flex-col items-center">
+            <span className={`mt-1 w-2.5 h-2.5 rounded-full flex-shrink-0 ${SEV_DOT[ev.severity] ?? 'bg-zinc-500'}`} />
+            {i < events.length - 1 && (
+              <div className="w-px flex-1 bg-zinc-700 mt-1" />
+            )}
+          </div>
+          <div className="pb-1">
+            <p className="text-xs text-zinc-300 leading-snug">{ev.message}</p>
+            <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">
+              {new Date(ev.occurred_at).toLocaleString('tr-TR')}
+              {' · '}
+              <span className="uppercase">{ev.event_type}</span>
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 const STATUS_LABELS: Record<string, string> = {
   open:          'Açık',
@@ -283,6 +325,10 @@ export default function IncidentsPage() {
                 Çözüm: {new Date(selected.resolved_at).toLocaleString('tr-TR')}
               </p>
             )}
+            <div>
+              <p className="text-xs text-zinc-500 mb-1 font-medium uppercase tracking-wide">Event Timeline</p>
+              <EventTimeline incidentId={selected.incident_id} />
+            </div>
           </CardContent>
         </Card>
       )}
