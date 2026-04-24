@@ -184,6 +184,9 @@ class SecurityEventType(str, Enum):
     DEVICE_DOWN      = "device_down"       # Cihaz erişilemiyor
     DEVICE_UP        = "device_up"         # Cihaz tekrar erişilebilir
     SNMP_TRAP        = "snmp_trap"         # SNMP TRAP alındı
+    WIN_LOGON_SUCCESS = "windows_logon_success"  # Windows başarılı oturum (4624)
+    WIN_LOGON_FAILURE = "windows_logon_failure"  # Windows başarısız oturum (4625)
+    WIN_PROCESS_CREATE = "windows_process_create"  # Windows süreç oluşturma (4688)
 
 
 class SecurityEvent(BaseModel):

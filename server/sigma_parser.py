@@ -55,16 +55,21 @@ def parse_timeframe(tf: str) -> int:
     return int(m.group(1)) * units[m.group(2)]
 
 
-def parse_condition(condition: str) -> tuple[str, int]:
+def parse_condition(condition: str) -> tuple[str, int, Optional[str]]:
     """
-    'selection | count() by src_ip > 5'     → ('src_ip', 5)
-    'selection | count(src_ip) by src_ip > 5' → ('src_ip', 5)
-    Döner: (group_by_field, threshold)
+    'selection | count() by src_ip > 5'              → ('src_ip', 5, None)
+    'selection | count(distinct username) by src_ip > 10' → ('src_ip', 10, 'username')
+    Döner: (group_by_field, threshold, distinct_by_or_None)
     """
+    distinct_by: Optional[str] = None
+    dm = re.search(r"count\(distinct\s+(\w+)\)", condition, re.IGNORECASE)
+    if dm:
+        distinct_by = dm.group(1)
+
     m = re.search(r"by\s+(\w+)\s*>=?\s*(\d+)", condition)
     if not m:
         raise ValueError(f"Condition parse hatası (beklenen: ... by <field> > <N>): {condition!r}")
-    return m.group(1), int(m.group(2))
+    return m.group(1), int(m.group(2)), distinct_by
 
 
 def sigma_to_correlation_rule(sigma: SigmaRule):
@@ -78,10 +83,11 @@ def sigma_to_correlation_rule(sigma: SigmaRule):
 
     event_type     = selection.get("event_type", "")
     match_severity = selection.get("severity")
+    keywords       = selection.get("keywords") or None
 
-    group_by, threshold = parse_condition(condition)
-    window_seconds      = parse_timeframe(timeframe)
-    severity            = LEVEL_TO_SEVERITY.get(sigma.level.lower(), "warning")
+    group_by, threshold, distinct_by = parse_condition(condition)
+    window_seconds = parse_timeframe(timeframe)
+    severity       = LEVEL_TO_SEVERITY.get(sigma.level.lower(), "warning")
 
     rule_id_slug       = re.sub(r"[^a-z0-9_]", "_", sigma.rule_id.lower())
     output_event_type  = f"{rule_id_slug}_detected"
@@ -98,6 +104,8 @@ def sigma_to_correlation_rule(sigma: SigmaRule):
         output_event_type = output_event_type,
         enabled           = sigma.enabled,
         match_severity    = match_severity,
+        keywords          = keywords,
+        distinct_by       = distinct_by,
     )
 
 
@@ -123,6 +131,7 @@ def parse_sigma_file(path: Path) -> Optional[SigmaRule]:
     try:
         parse_condition(data["detection"].get("condition", ""))
         parse_timeframe(str(data["detection"].get("timeframe", "5m")))
+
     except ValueError as exc:
         logger.error(f"SIGMA kural hatası ({path.name}): {exc}")
         return None

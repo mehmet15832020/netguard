@@ -1,0 +1,40 @@
+title: Windows Şüpheli Süreç (LOLBin / Offensive Tool)
+id: windows_suspicious_process
+status: stable
+description: >
+  Windows'ta bilinen saldırı araçları veya Living-off-the-Land binary'lerin
+  şüpheli kullanımı tespit edildi. Kırmızı takım araçları ve post-exploitation
+  aktivitesi göstergesi.
+  MITRE ATT&CK T1059 (Komut Yorumlayıcı) + T1003 (Kimlik Bilgisi Dökümü).
+logsource:
+    category: process_creation
+    product: windows
+    service: security
+detection:
+    selection:
+        event_type: windows_process_create
+        keywords:
+            - mimikatz
+            - procdump
+            - meterpreter
+            - cobalt strike
+            - "powershell.*-enc"
+            - "powershell.*-nop"
+            - "cmd.*hidden"
+            - "certutil.*-urlcache"
+            - "wscript.*vbs"
+            - "regsvr32.*scrobj"
+            - lsass
+            - secretsdump
+    condition: selection | count() by source_host > 1
+    timeframe: 5m
+level: critical
+tags:
+    - attack.execution
+    - attack.credential_access
+    - attack.defense_evasion
+    - attack.t1059.001
+    - attack.t1003.001
+falsepositives:
+    - Yetkili penetrasyon testi
+    - Güvenlik araştırmaları (izole ortam)

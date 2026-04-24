@@ -1,0 +1,24 @@
+title: Windows Yanal Hareket (Lateral Movement)
+id: windows_lateral_movement
+status: stable
+description: >
+  Aynı IP'den kısa sürede birden fazla hedefe network logon (tip 3) başarısı.
+  Domain Controller dışı makineler arası geçiş, yanal hareket göstergesidir.
+  MITRE ATT&CK T1021 — Remote Services.
+logsource:
+    category: authentication
+    product: windows
+    service: security
+detection:
+    selection:
+        event_type: windows_logon_success
+    condition: selection | count() by src_ip > 3
+    timeframe: 5m
+level: high
+tags:
+    - attack.lateral_movement
+    - attack.t1021.001
+    - attack.t1021.002
+falsepositives:
+    - Domain admin toplu yönetim işlemleri
+    - Yazılım dağıtım sistemleri (SCCM, Ansible)

@@ -60,6 +60,16 @@ def main():
     )
     log_shipper.start()
 
+    if platform.system() == "Windows":
+        from agent.windows_log_shipper import WindowsLogShipper
+        win_shipper = WindowsLogShipper(
+            server_url=config["server_url"],
+            api_key=config["api_key"],
+        )
+        win_shipper.start()
+    else:
+        win_shipper = None
+
 # Traffic collector'ı başlat
     if os.getenv("NETGUARD_ENABLE_TRAFFIC", "true").lower() == "true":
         traffic_collector.start()

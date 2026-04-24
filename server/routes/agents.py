@@ -102,6 +102,19 @@ def receive_security_events(
             )
             db.save_security_event(event)
             saved += 1
+            if ev.source_ip:
+                try:
+                    from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
+                    trigger = attack_chain_tracker.record(
+                        src_ip=ev.source_ip,
+                        event_type=ev.event_type,
+                        occurred_at=event.occurred_at,
+                    )
+                    if trigger:
+                        chain_event = chain_trigger_to_correlated_event(trigger, db_save=True)
+                        logger.warning(f"SALDIRI ZİNCİRİ (agent): {ev.source_ip} — {trigger['chain_type']}")
+                except Exception:
+                    pass
         except Exception as e:
             logger.warning(f"Güvenlik olayı kaydedilemedi: {e}")
     return {"status": "accepted", "saved": saved}

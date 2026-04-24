@@ -72,6 +72,8 @@ class CorrelationRule:
     output_event_type: str
     enabled: bool
     match_severity: Optional[str] = None   # opsiyonel severity filtresi
+    keywords: Optional[list] = None        # mesajda aranacak anahtar kelimeler (OR)
+    distinct_by: Optional[str] = None      # count(distinct field) — password spray için
 
 
 # ------------------------------------------------------------------ #
@@ -173,19 +175,29 @@ class Correlator:
         since = datetime.now(timezone.utc) - timedelta(seconds=rule.window_seconds)
         since_iso = since.isoformat()
 
-        # Tüm group_by değerlerini bulmak için distinct sorgu
-        group_col = "src_ip" if rule.group_by == "src_ip" else "source_host"
+        group_col  = "src_ip" if rule.group_by == "src_ip" else "source_host"
+        count_expr = f"COUNT(DISTINCT {rule.distinct_by})" if rule.distinct_by else "COUNT(*)"
+
+        kw_clause  = ""
+        kw_params: list = []
+        if rule.keywords:
+            parts = " OR ".join("(message LIKE ? OR raw_log LIKE ?)" for _ in rule.keywords)
+            kw_clause = f"AND ({parts})"
+            for kw in rule.keywords:
+                kw_params += [f"%{kw}%", f"%{kw}%"]
 
         with db._connect() as conn:
             rows = conn.execute(
                 f"""
-                SELECT {group_col} as grp_val, COUNT(*) as cnt,
+                SELECT {group_col} as grp_val,
+                       {count_expr} as cnt,
                        MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
                 FROM normalized_logs
                 WHERE event_type LIKE ?
                   AND timestamp >= ?
                   {"AND severity = ?" if rule.match_severity else ""}
                   AND {group_col} IS NOT NULL
+                  {kw_clause}
                 GROUP BY {group_col}
                 HAVING cnt >= ?
                 """,
@@ -193,6 +205,7 @@ class Correlator:
                     f"{rule.match_event_type}%",
                     since_iso,
                     *(([rule.match_severity]) if rule.match_severity else []),
+                    *kw_params,
                     rule.threshold,
                 ),
             ).fetchall()
@@ -231,6 +244,7 @@ class Correlator:
                 )
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
+                self._check_attack_chain(event)
                 try:
                     from server.notifier import notifier
                     notifier.notify_correlated(event)
@@ -285,6 +299,24 @@ class Correlator:
                 )
         except Exception as exc:
             logger.error(f"Otomatik incident oluşturulamadı [{event.rule_id}]: {exc}")
+
+    def _check_attack_chain(self, event: CorrelatedEvent) -> None:
+        try:
+            from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
+            trigger = attack_chain_tracker.record(
+                src_ip=event.group_value,
+                event_type=event.event_type,
+            )
+            if trigger:
+                chain_event = chain_trigger_to_correlated_event(trigger, db_save=True)
+                self._create_alert(chain_event)
+                self._create_incident_from_corr(chain_event)
+                logger.warning(
+                    f"SALDIRI ZİNCİRİ tespit edildi: {event.group_value} "
+                    f"— {trigger['chain_type']}"
+                )
+        except Exception as exc:
+            logger.error(f"Attack chain kontrol hatası: {exc}")
 
     def _create_alert(self, event: CorrelatedEvent) -> None:
         """Korelasyon eventinden Alert üret ve storage'a kaydet."""

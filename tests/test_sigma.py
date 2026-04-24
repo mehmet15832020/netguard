@@ -49,10 +49,12 @@ def test_parse_timeframe_invalid_empty():
 # ------------------------------------------------------------------ #
 
 @pytest.mark.parametrize("condition,expected", [
-    ("selection | count() by src_ip > 5",        ("src_ip", 5)),
-    ("selection | count(src_ip) by src_ip > 5",  ("src_ip", 5)),
-    ("selection | count() by source_host > 3",   ("source_host", 3)),
-    ("selection | count() by src_ip >= 10",       ("src_ip", 10)),
+    ("selection | count() by src_ip > 5",                          ("src_ip", 5, None)),
+    ("selection | count(src_ip) by src_ip > 5",                    ("src_ip", 5, None)),
+    ("selection | count() by source_host > 3",                     ("source_host", 3, None)),
+    ("selection | count() by src_ip >= 10",                        ("src_ip", 10, None)),
+    ("selection | count(distinct username) by src_ip > 10",        ("src_ip", 10, "username")),
+    ("selection | count(distinct source_host) by src_ip > 3",      ("src_ip", 3, "source_host")),
 ])
 def test_parse_condition_valid(condition, expected):
     assert parse_condition(condition) == expected
@@ -61,6 +63,11 @@ def test_parse_condition_valid(condition, expected):
 def test_parse_condition_invalid():
     with pytest.raises(ValueError):
         parse_condition("selection | count() > 5")
+
+
+def test_parse_condition_distinct_sets_distinct_by():
+    _, _, distinct_by = parse_condition("selection | count(distinct username) by src_ip > 5")
+    assert distinct_by == "username"
 
 
 # ------------------------------------------------------------------ #
@@ -264,3 +271,88 @@ def test_real_sigma_rule_ids_unique():
     rules = load_sigma_rules_from_dir(str(sigma_dir))
     ids = [r.rule_id for r in rules]
     assert len(ids) == len(set(ids)), "Duplicate rule_id tespit edildi"
+
+
+# ------------------------------------------------------------------ #
+#  Windows kuralları + yeni parser özellikleri
+# ------------------------------------------------------------------ #
+
+def test_windows_rules_load(tmp_path):
+    """keywords ve distinct_by içeren kurallar doğru parse edilmeli."""
+    rule_yaml = textwrap.dedent("""\
+        title: Windows Password Spray Test
+        id: win_spray_test
+        status: stable
+        description: Test
+        logsource:
+            category: authentication
+            product: windows
+        detection:
+            selection:
+                event_type: windows_logon_failure
+            condition: selection | count(distinct username) by src_ip > 5
+            timeframe: 5m
+        level: high
+        tags:
+            - attack.t1110.003
+        falsepositives: []
+    """)
+    p = tmp_path / "win_spray.yml"
+    p.write_text(rule_yaml, encoding="utf-8")
+    rules = load_sigma_rules_from_dir(str(tmp_path))
+    assert len(rules) == 1
+    assert rules[0].distinct_by == "username"
+    assert rules[0].rule_id == "win_spray_test"
+
+
+def test_keywords_parsed_from_sigma(tmp_path):
+    """selection.keywords listesi CorrelationRule.keywords'e aktarılmalı."""
+    rule_yaml = textwrap.dedent("""\
+        title: Suspicious Process Test
+        id: suspicious_proc_test
+        status: stable
+        description: Test
+        logsource:
+            category: process_creation
+            product: windows
+        detection:
+            selection:
+                event_type: windows_process_create
+                keywords:
+                    - mimikatz
+                    - lsass
+            condition: selection | count() by source_host > 1
+            timeframe: 5m
+        level: critical
+        falsepositives: []
+    """)
+    p = tmp_path / "sus_proc.yml"
+    p.write_text(rule_yaml, encoding="utf-8")
+    rules = load_sigma_rules_from_dir(str(tmp_path))
+    assert len(rules) == 1
+    assert rules[0].keywords == ["mimikatz", "lsass"]
+
+
+def test_real_windows_sigma_rules_load():
+    """Windows Sigma kuralları gerçek dosyadan yüklenebilmeli."""
+    sigma_dir = Path(__file__).parent.parent / "config" / "sigma_rules"
+    if not sigma_dir.exists():
+        pytest.skip("config/sigma_rules/ dizini yok")
+    rules = load_sigma_rules_from_dir(str(sigma_dir))
+    rule_ids = {r.rule_id for r in rules}
+    windows_rules = {
+        "windows_brute_force",
+        "windows_password_spray",
+        "windows_suspicious_process",
+        "windows_lateral_movement",
+        "windows_pass_the_hash",
+    }
+    for rid in windows_rules:
+        assert rid in rule_ids, f"Beklenen Windows kuralı bulunamadı: {rid}"
+
+    spray = next(r for r in rules if r.rule_id == "windows_password_spray")
+    assert spray.distinct_by == "username"
+
+    sus = next(r for r in rules if r.rule_id == "windows_suspicious_process")
+    assert sus.keywords is not None
+    assert "mimikatz" in sus.keywords

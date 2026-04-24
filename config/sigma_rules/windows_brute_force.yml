@@ -1,0 +1,22 @@
+title: Windows Brute Force Saldırısı
+id: windows_brute_force
+status: stable
+description: >
+  Aynı IP'den 60 saniye içinde 5+ başarısız Windows oturum açma girişimi.
+  MITRE ATT&CK T1110.001 — Password Guessing.
+logsource:
+    category: authentication
+    product: windows
+    service: security
+detection:
+    selection:
+        event_type: windows_logon_failure
+    condition: selection | count() by src_ip > 5
+    timeframe: 1m
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110.001
+falsepositives:
+    - Yönetici parola sıfırlama işlemleri
+    - Servis hesabı yanlış yapılandırması

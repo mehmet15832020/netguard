@@ -1,0 +1,28 @@
+title: Pass-the-Hash Girişimi
+id: windows_pass_the_hash
+status: stable
+description: >
+  Network logon (tip 3) + NtLmSsP kimlik doğrulaması kombinasyonu.
+  Aynı kaynaktan çok sayıda bu kalıp, çalınmış NTLM hash'iyle kimlik taklidi
+  (pass-the-hash) saldırısını gösterir.
+  MITRE ATT&CK T1550.002 — Pass the Hash.
+logsource:
+    category: authentication
+    product: windows
+    service: security
+detection:
+    selection:
+        event_type: windows_logon_success
+        keywords:
+            - NtLmSsP
+            - NTLM
+    condition: selection | count() by src_ip > 2
+    timeframe: 5m
+level: critical
+tags:
+    - attack.lateral_movement
+    - attack.credential_access
+    - attack.t1550.002
+falsepositives:
+    - Eski NTLM gerektiren uygulamalar
+    - Kerberos desteklemeyen eski sistemler
