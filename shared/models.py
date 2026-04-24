@@ -214,6 +214,7 @@ class LogSourceType(str, Enum):
     FORTIGATE = "fortigate"  # FortiGate type=traffic
     NGINX     = "nginx"      # nginx access/error log
     APACHE    = "apache"     # Apache access/error log
+    NETFLOW   = "netflow"    # NetFlow v5/v9 UDP akış verisi
 
 
 class LogCategory(str, Enum):

@@ -17,7 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -191,6 +191,9 @@ async def lifespan(app: FastAPI):
     from server.snmp_trap_receiver import SNMPTrapReceiver
     trap_receiver = SNMPTrapReceiver()
     await trap_receiver.start()
+    from server.netflow_receiver import NetFlowReceiver
+    netflow_receiver = NetFlowReceiver()
+    await netflow_receiver.start()
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -201,6 +204,7 @@ async def lifespan(app: FastAPI):
     retention_task.cancel()
     syslog.stop()
     trap_receiver.stop()
+    netflow_receiver.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
 
@@ -263,6 +267,7 @@ app.include_router(reports.router,  prefix=api_prefix, tags=["reports"])
 app.include_router(sigma.router,       prefix=api_prefix, tags=["sigma"])
 app.include_router(maintenance.router,  prefix=api_prefix, tags=["maintenance"])
 app.include_router(threat_intel.router, prefix=api_prefix, tags=["threat-intel"])
+app.include_router(netflow.router,     prefix=api_prefix, tags=["netflow"])
 app.include_router(ws.router, tags=["websocket"])
 
 
