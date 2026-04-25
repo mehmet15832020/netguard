@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { auth } from '@/lib/api'
 import { Sidebar } from '@/components/layout/Sidebar'
+import { Topbar } from '@/components/layout/Topbar'
 import { useWebSocket } from '@/hooks/useWebSocket'
 
 export default function ProtectedLayout({ children }: { children: React.ReactNode }) {
@@ -22,11 +23,14 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   if (!ready) return null
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-screen overflow-hidden bg-[#080b10]">
       <Sidebar />
-      <main className="flex-1 overflow-y-auto bg-zinc-950 p-6">
-        {children}
-      </main>
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <Topbar />
+        <main className="flex-1 overflow-y-auto">
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
