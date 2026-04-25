@@ -240,6 +240,9 @@ _cors_default = ",".join([
     "http://192.168.203.142:3000",
     "http://192.168.1.113:3000",
     "http://192.168.203.1:3000",
+    "https://192.168.203.134",      # nginx TLS proxy
+    "https://192.168.203.142",
+    "https://192.168.203.1",
 ])
 _cors_origins = [o.strip() for o in os.getenv("NETGUARD_CORS_ORIGINS", _cors_default).split(",") if o.strip()]
 
