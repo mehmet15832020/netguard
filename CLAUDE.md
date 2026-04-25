@@ -14,7 +14,7 @@ Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified pla
 
 ## Mevcut Durum
 
-### Tamamlanan (Faz 0–8 + Güvenlik Sertleştirme) ✓
+### Tamamlanan (Faz 0–8 + Güvenlik Sertleştirme + T1 + GNS3 Lab) ✓
 
 | Faz | İçerik |
 |-----|--------|
@@ -27,31 +27,30 @@ Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified pla
 | Faz 6 | Frontend: devices, discovery, topology, overview |
 | Faz 7 | SNMPv3 + Security Hardening |
 | Faz 8 | Raporlama: /reports/summary, 4 CSV endpoint |
-| Güvenlik+ | API key SHA-256 hash, JWT refresh+blacklist hazırlığı, HTTP security headers, audit log, maintenance dashboard, üretim korelasyon kuralları (7 kural) |
+| Güvenlik+ | API key SHA-256 hash, JWT refresh+blacklist, HTTP security headers, audit log, 7 korelasyon kuralı |
+| T1-1 | HTTPS/TLS (nginx + self-signed) ✅ |
+| T1-2 | JWT logout + token blacklist ✅ |
+| T1-3 | Notifier → Correlated Events ✅ |
+| T1-4 | Audit log UI sayfası ✅ |
+| T2-1 | Threat Intelligence (AbuseIPDB API) ✅ |
+| GNS3 Lab | OPNsense + VyOS + Alpine WebServer tam kurulu, veriler akıyor ✅ |
 
-**Test durumu: 353 test, tümü geçiyor.**
+**Test durumu: 549 test, tümü geçiyor.**
 
 ---
 
 ## Aktif Yol Haritası
 
-### Tier 1 — Platform Tamamlama (Öncelikli)
-
-| # | Görev | Durum |
-|---|-------|-------|
-| T1-1 | HTTPS / TLS (nginx + self-signed) | ⏳ |
-| T1-2 | JWT logout + token blacklist | ⏳ |
-| T1-3 | Notifier → Correlated Events (email/webhook) | ⏳ |
-| T1-4 | Audit log UI sayfası | ⏳ |
+### Tier 1 — Platform Tamamlama ✅ TAMAMLANDI
 
 ### Tier 2 — Veri Zenginleştirme
 
 | # | Görev | Durum |
 |---|-------|-------|
-| T2-1 | Threat Intelligence (AbuseIPDB ücretsiz API) | ⏳ |
-| T2-2 | Firewall log parser (pfSense/Cisco ASA/FortiGate) | ⏳ |
-| T2-3 | Web log parser (nginx/Apache access.log) | ⏳ |
-| T2-4 | NetFlow v5/v9 receiver (UDP parse) | ⏳ |
+| T2-1 | Threat Intelligence (AbuseIPDB ücretsiz API) | ✅ |
+| T2-2 | Firewall log parser (OPNsense syslog formatı) | ⏳ **SIRA** |
+| T2-3 | Web log parser (nginx access.log) | ⏳ **SIRA** |
+| T2-4 | NetFlow v5/v9 receiver (UDP parse) | ⏳ doğrula |
 
 ### Tier 3 — Kurumsal Özellikler
 
@@ -66,39 +65,75 @@ Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified pla
 
 | # | Görev | Durum |
 |---|-------|-------|
-| T4-1 | Anomaly detection (baseline + sapma) | ⏳ |
+| T4-1 | Anomaly detection (baseline + sapma) | ⏳ 7 gün warm-up sonrası |
 | T4-2 | Docker deployment (docker-compose) | ⏳ |
 | T4-3 | Multi-site / multi-tenant | ⏳ |
-| T4-4 | GNS3 lab entegrasyonu | ⏳ |
+| T4-4 | GNS3 lab entegrasyonu | ✅ |
 
 ---
 
-## Lab Ortamı Stratejisi
+## GNS3 Lab — Mevcut Durum
 
-### Mevcut Lab
+### Topoloji
+
+```
+INTERNET (Cloud/enp1s0) — kablo yok
+    │
+OPNsense 26.1.2  vtnet0=WAN, vtnet1=LAN(10.0.30.1/24)
+    console: VNC :5900   RAM: 3GB   root/opnsense
+    │ 10.0.30.0/24
+VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
+    console: telnet :5018   vyos/vyos
+    ├── DMZ-Switch → Alpine WebServer (10.0.10.2)  console: telnet :5019
+    └── LAN-Switch → Host1, Host2, Kali-Bridge(vmnet8→NetGuard)
+```
+
+### Veri Akışı (Çalışanlar)
+
+| Kaynak | Protokol | Hedef | Durum |
+|--------|----------|-------|-------|
+| OPNsense | Syslog UDP 514 | NetGuard:5140 | ✅ akıyor |
+| VyOS | Syslog UDP 514 | NetGuard:5140 | ✅ akıyor |
+| VyOS | SNMP v2c community=public | NetGuard | ✅ çalışıyor |
+| VyOS | NetFlow v9 UDP 2055 | NetGuard | ✅ konfigüre (doğrulanmadı) |
+| Alpine nginx | Syslog access_log | NetGuard:5140 | ✅ akıyor |
+
+### Reboot Sonrası Yapılacaklar
+
+**NetGuard VM (192.168.203.134) — her reboot'ta:**
+```bash
+sudo ip route add 10.0.30.0/24 via 192.168.203.200
+sudo ip route add 10.0.10.0/24 via 192.168.203.200
+sudo sysctl -w net.ipv4.ip_forward=1
+sudo sysctl -w net.ipv4.conf.all.rp_filter=0
+sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/8 -o ens33 -j MASQUERADE
+sudo iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-port 5140
+```
+
+**VyOS — her reboot'ta (kernel route için):**
+```bash
+sudo ip route replace default via 192.168.203.134
+```
+
+**Alpine WebServer — her reboot'ta:**
+```bash
+ip link set eth0 up
+ip addr add 10.0.10.2/24 dev eth0
+ip route add default via 10.0.10.1
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+nginx
+```
+
+### Lab Makine Listesi
 
 | Makine | IP | Rol |
 |--------|----|-----|
 | NetGuard Server | 192.168.203.134 | Server + dashboard (systemd: netguard.service) |
 | Agent VM (Ubuntu) | 192.168.203.142 | Linux agent (systemd: netguard-agent.service) |
 | Kali | 192.168.203.132 | Saldırı testleri |
-
-### Önerilen Genişleme: 2 Aşama
-
-**Aşama 1 — Doğrudan VM Ekle (GNS3 gerekmez, hızlı)**
-- **pfSense VM** — Gerçek firewall. Syslog + SNMP destekler. Firewall log parser testi için.
-- **VyOS VM** — Açık kaynak router. BGP/OSPF + SNMP + syslog + NetFlow export. Ücretsiz.
-
-**Aşama 2 — GNS3 ile Tam Topoloji**
-GNS3 VM (VMware appliance) üzerine:
-- pfSense (firewall/NAT)
-- VyOS (router, BGP/OSPF)
-- Mikrotik CHR (ücretsiz, Türkiye'de yaygın switch/router)
-- OpenWrt (edge router)
-- Linux VM'ler (sunucu simülasyonu)
-
-GNS3'ün artısı: Sanal switch/kablo altyapısıyla karmaşık VLAN ve routing senaryoları.
-Cisco image gerektirmez — VyOS + Mikrotik CHR + pfSense tamamen ücretsiz.
+| VyOS (GNS3) | 192.168.203.200 / 10.0.30.2 | Router, NetFlow, SNMP |
+| OPNsense (GNS3) | 10.0.30.1 | Firewall |
+| Alpine WebServer (GNS3) | 10.0.10.2 | nginx web server |
 
 ### Hangi Protokolden Ne Elde Edilir
 
