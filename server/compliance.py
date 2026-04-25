@@ -385,104 +385,41 @@ def _collect_metrics(db) -> dict:
     """DB'den mevcut veri metriklerini toplar."""
     metrics: dict = {}
 
-    try:
-        row = db._conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()
-        metrics["audit_log_count"] = row[0] if row else 0
-    except Exception:
-        metrics["audit_log_count"] = 0
+    def _count(sql: str) -> int:
+        try:
+            with db._connect() as conn:
+                row = conn.execute(sql).fetchone()
+                return row[0] if row else 0
+        except Exception:
+            return 0
 
-    try:
-        row = db._conn.execute("SELECT COUNT(*) FROM correlated_events").fetchone()
-        metrics["correlated_event_count"] = row[0] if row else 0
-    except Exception:
-        metrics["correlated_event_count"] = 0
-
-    try:
-        row = db._conn.execute("SELECT COUNT(*) FROM incidents").fetchone()
-        metrics["incident_count"] = row[0] if row else 0
-    except Exception:
-        metrics["incident_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM security_events WHERE event_type IN ('brute_force','windows_logon_failure')"
-        ).fetchone()
-        metrics["brute_force_event_count"] = row[0] if row else 0
-    except Exception:
-        metrics["brute_force_event_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM security_events WHERE event_type = 'sudo_usage'"
-        ).fetchone()
-        metrics["sudo_event_count"] = row[0] if row else 0
-    except Exception:
-        metrics["sudo_event_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM security_events WHERE event_type = 'windows_process_create'"
-        ).fetchone()
-        metrics["windows_process_count"] = row[0] if row else 0
-    except Exception:
-        metrics["windows_process_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM security_events WHERE event_type LIKE 'ssh_%' OR event_type LIKE 'windows_logon%'"
-        ).fetchone()
-        metrics["auth_event_count"] = row[0] if row else 0
-    except Exception:
-        metrics["auth_event_count"] = 0
-
-    try:
-        row = db._conn.execute("SELECT COUNT(*) FROM normalized_logs").fetchone()
-        metrics["normalized_log_count"] = row[0] if row else 0
-    except Exception:
-        metrics["normalized_log_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM normalized_logs WHERE source_type = 'netflow'"
-        ).fetchone()
-        metrics["netflow_log_count"] = row[0] if row else 0
-    except Exception:
-        metrics["netflow_log_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM normalized_logs WHERE source_type IN ('pfsense','cisco_asa','fortigate')"
-        ).fetchone()
-        metrics["firewall_log_count"] = row[0] if row else 0
-    except Exception:
-        metrics["firewall_log_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM normalized_logs WHERE source_type IN ('nginx','apache')"
-        ).fetchone()
-        metrics["web_log_count"] = row[0] if row else 0
-    except Exception:
-        metrics["web_log_count"] = 0
-
-    try:
-        row = db._conn.execute("SELECT COUNT(*) FROM devices").fetchone()
-        metrics["device_count"] = row[0] if row else 0
-    except Exception:
-        metrics["device_count"] = 0
-
-    try:
-        row = db._conn.execute(
-            "SELECT COUNT(*) FROM alerts WHERE status = 'active'"
-        ).fetchone()
-        metrics["active_alert_count"] = row[0] if row else 0
-    except Exception:
-        metrics["active_alert_count"] = 0
-
-    try:
-        row = db._conn.execute("SELECT COUNT(*) FROM threat_intel_cache").fetchone()
-        metrics["threat_intel_count"] = row[0] if row else 0
-    except Exception:
-        metrics["threat_intel_count"] = 0
+    metrics["audit_log_count"]       = _count("SELECT COUNT(*) FROM audit_log")
+    metrics["correlated_event_count"] = _count("SELECT COUNT(*) FROM correlated_events")
+    metrics["incident_count"]         = _count("SELECT COUNT(*) FROM incidents")
+    metrics["brute_force_event_count"] = _count(
+        "SELECT COUNT(*) FROM security_events WHERE event_type IN ('brute_force','windows_logon_failure')"
+    )
+    metrics["sudo_event_count"]       = _count(
+        "SELECT COUNT(*) FROM security_events WHERE event_type = 'sudo_usage'"
+    )
+    metrics["windows_process_count"]  = _count(
+        "SELECT COUNT(*) FROM security_events WHERE event_type = 'windows_process_create'"
+    )
+    metrics["auth_event_count"]       = _count(
+        "SELECT COUNT(*) FROM security_events WHERE event_type LIKE 'ssh_%' OR event_type LIKE 'windows_logon%'"
+    )
+    metrics["normalized_log_count"]   = _count("SELECT COUNT(*) FROM normalized_logs")
+    metrics["netflow_log_count"]      = _count(
+        "SELECT COUNT(*) FROM normalized_logs WHERE source_type = 'netflow'"
+    )
+    metrics["firewall_log_count"]     = _count(
+        "SELECT COUNT(*) FROM normalized_logs WHERE source_type IN ('pfsense','cisco_asa','fortigate')"
+    )
+    metrics["web_log_count"]          = _count(
+        "SELECT COUNT(*) FROM normalized_logs WHERE source_type IN ('nginx','apache')"
+    )
+    metrics["device_count"]           = _count("SELECT COUNT(*) FROM devices")
+    metrics["active_alert_count"]     = _count("SELECT COUNT(*) FROM alerts WHERE status = 'active'")
+    metrics["threat_intel_count"]     = _count("SELECT COUNT(*) FROM threat_intel_cache")
 
     return metrics
