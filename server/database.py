@@ -292,19 +292,21 @@ CREATE INDEX IF NOT EXISTS idx_inc_events_occurred ON incident_events(occurred_a
 
 _CREATE_CORRELATED_EVENTS = """
 CREATE TABLE IF NOT EXISTS correlated_events (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    corr_id        TEXT UNIQUE NOT NULL,
-    rule_id        TEXT NOT NULL,
-    rule_name      TEXT NOT NULL,
-    event_type     TEXT NOT NULL,
-    severity       TEXT NOT NULL,
-    group_value    TEXT NOT NULL,
-    matched_count  INTEGER NOT NULL,
-    window_seconds INTEGER NOT NULL,
-    first_seen     TEXT NOT NULL,
-    last_seen      TEXT NOT NULL,
-    message        TEXT NOT NULL,
-    created_at     TEXT NOT NULL
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    corr_id          TEXT UNIQUE NOT NULL,
+    rule_id          TEXT NOT NULL,
+    rule_name        TEXT NOT NULL,
+    event_type       TEXT NOT NULL,
+    severity         TEXT NOT NULL,
+    group_value      TEXT NOT NULL,
+    matched_count    INTEGER NOT NULL,
+    window_seconds   INTEGER NOT NULL,
+    first_seen       TEXT NOT NULL,
+    last_seen        TEXT NOT NULL,
+    message          TEXT NOT NULL,
+    created_at       TEXT NOT NULL,
+    mitre_techniques TEXT DEFAULT '',
+    mitre_tactics    TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_corr_rule_id     ON correlated_events(rule_id);
 CREATE INDEX IF NOT EXISTS idx_corr_event_type  ON correlated_events(event_type);
@@ -350,6 +352,7 @@ class DatabaseManager:
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
         self._migrate_normalized_logs_columns()
+        self._migrate_correlated_events_mitre()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -739,8 +742,9 @@ class DatabaseManager:
                     INSERT INTO correlated_events
                         (corr_id, rule_id, rule_name, event_type, severity,
                          group_value, matched_count, window_seconds,
-                         first_seen, last_seen, message, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         first_seen, last_seen, message, created_at,
+                         mitre_techniques, mitre_tactics)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     event.corr_id,
                     event.rule_id,
@@ -754,6 +758,8 @@ class DatabaseManager:
                     event.last_seen.isoformat(),
                     event.message,
                     event.created_at.isoformat(),
+                    ",".join(event.mitre_techniques),
+                    ",".join(event.mitre_tactics),
                 ))
                 return True
 
@@ -783,19 +789,23 @@ class DatabaseManager:
         return [self._row_to_correlated_event(r) for r in rows]
 
     def _row_to_correlated_event(self, row: sqlite3.Row) -> CorrelatedEvent:
+        def _split(val: str) -> list[str]:
+            return [v for v in (val or "").split(",") if v]
         return CorrelatedEvent(
-            corr_id        = row["corr_id"],
-            rule_id        = row["rule_id"],
-            rule_name      = row["rule_name"],
-            event_type     = row["event_type"],
-            severity       = row["severity"],
-            group_value    = row["group_value"],
-            matched_count  = row["matched_count"],
-            window_seconds = row["window_seconds"],
-            first_seen     = datetime.fromisoformat(row["first_seen"]),
-            last_seen      = datetime.fromisoformat(row["last_seen"]),
-            message        = row["message"],
-            created_at     = datetime.fromisoformat(row["created_at"]),
+            corr_id           = row["corr_id"],
+            rule_id           = row["rule_id"],
+            rule_name         = row["rule_name"],
+            event_type        = row["event_type"],
+            severity          = row["severity"],
+            group_value       = row["group_value"],
+            matched_count     = row["matched_count"],
+            window_seconds    = row["window_seconds"],
+            first_seen        = datetime.fromisoformat(row["first_seen"]),
+            last_seen         = datetime.fromisoformat(row["last_seen"]),
+            message           = row["message"],
+            created_at        = datetime.fromisoformat(row["created_at"]),
+            mitre_techniques  = _split(row["mitre_techniques"] if "mitre_techniques" in row.keys() else ""),
+            mitre_tactics     = _split(row["mitre_tactics"] if "mitre_tactics" in row.keys() else ""),
         )
 
 
@@ -1155,6 +1165,17 @@ class DatabaseManager:
             if "group_value" not in cols:
                 conn.execute("ALTER TABLE incidents ADD COLUMN group_value TEXT")
                 logger.info("incidents: 'group_value' kolonu eklendi")
+
+    def _migrate_correlated_events_mitre(self) -> None:
+        """correlated_events tablosuna mitre_techniques ve mitre_tactics kolonlarını ekle."""
+        with self._connect() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(correlated_events)").fetchall()}
+            if "mitre_techniques" not in cols:
+                conn.execute("ALTER TABLE correlated_events ADD COLUMN mitre_techniques TEXT DEFAULT ''")
+                logger.info("correlated_events: 'mitre_techniques' kolonu eklendi")
+            if "mitre_tactics" not in cols:
+                conn.execute("ALTER TABLE correlated_events ADD COLUMN mitre_tactics TEXT DEFAULT ''")
+                logger.info("correlated_events: 'mitre_tactics' kolonu eklendi")
 
     # ------------------------------------------------------------------ #
     #  API KEYS

@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 
 from server.database import db
+from server.mitre import parse_mitre_tags
 from shared.models import CorrelatedEvent
 
 logger = logging.getLogger(__name__)
@@ -74,6 +75,7 @@ class CorrelationRule:
     match_severity: Optional[str] = None   # opsiyonel severity filtresi
     keywords: Optional[list] = None        # mesajda aranacak anahtar kelimeler (OR)
     distinct_by: Optional[str] = None      # count(distinct field) — password spray için
+    tags: list = None                      # Sigma tags → MITRE etiketleri
 
 
 # ------------------------------------------------------------------ #
@@ -233,6 +235,7 @@ class Correlator:
                     f"{rule.window_seconds}s içinde {count} olay "
                     f"(eşik: {rule.threshold})"
                 ),
+                **parse_mitre_tags(rule.tags or []),
             )
 
             saved = db.save_correlated_event(event)

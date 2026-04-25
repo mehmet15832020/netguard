@@ -106,6 +106,7 @@ def sigma_to_correlation_rule(sigma: SigmaRule):
         match_severity    = match_severity,
         keywords          = keywords,
         distinct_by       = distinct_by,
+        tags              = sigma.tags,
     )
 
 

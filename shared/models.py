@@ -285,6 +285,8 @@ class CorrelatedEvent(BaseModel):
     first_seen: datetime = Field(description="Penceredeki ilk olayın zamanı")
     last_seen: datetime = Field(description="Penceredeki son olayın zamanı")
     message: str
+    mitre_techniques: list[str] = Field(default_factory=list, description="MITRE ATT&CK teknik ID'leri, örn: T1110.001")
+    mitre_tactics: list[str] = Field(default_factory=list, description="MITRE ATT&CK taktik adları, örn: credential_access")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
