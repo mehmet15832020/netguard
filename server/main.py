@@ -17,7 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -270,6 +270,8 @@ app.include_router(threat_intel.router, prefix=api_prefix, tags=["threat-intel"]
 app.include_router(netflow.router,     prefix=api_prefix, tags=["netflow"])
 app.include_router(incidents.router,   prefix=api_prefix, tags=["incidents"])
 app.include_router(evtx.router,        prefix=api_prefix, tags=["evtx"])
+app.include_router(mitre.router,       prefix=api_prefix, tags=["mitre"])
+app.include_router(compliance.router,  prefix=api_prefix, tags=["compliance"])
 app.include_router(ws.router, tags=["websocket"])
 
 

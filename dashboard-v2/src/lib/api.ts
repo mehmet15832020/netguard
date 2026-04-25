@@ -499,6 +499,70 @@ export const incidentApi = {
     request<{ incident_id: string; count: number; events: IncidentEvent[] }>(`/incidents/${id}/events`),
 }
 
+export interface MitreTechniqueRule {
+  rule_id: string
+  rule_name: string
+  severity: string
+  mitre_techniques: string[]
+  mitre_tactics: string[]
+}
+
+export interface MitreCoverage {
+  tactics: Record<string, {
+    label: string
+    tactic_id: string
+    techniques: string[]
+    rule_count: number
+  }>
+  techniques: Record<string, string[]>
+  total_rules_with_mitre: number
+  total_techniques: number
+}
+
+export const mitreApi = {
+  coverage: () => request<MitreCoverage>('/mitre/coverage'),
+  heatmap:  (days = 30) => request<Record<string, unknown>>(`/mitre/heatmap?days=${days}`),
+  techniques: () => request<{ count: number; rules: MitreTechniqueRule[] }>('/mitre/techniques'),
+}
+
+export interface ComplianceControl {
+  control_id: string
+  title: string
+  framework: string
+  category: string
+  status: 'compliant' | 'partial' | 'gap'
+  score: number
+  evidence: string[]
+  recommendations: string[]
+}
+
+export interface ComplianceReport {
+  overall_score: number
+  total_controls: number
+  compliant: number
+  partial: number
+  gaps: number
+  by_framework: Record<string, {
+    score: number
+    compliant: number
+    partial: number
+    gap: number
+    total: number
+  }>
+  controls: ComplianceControl[]
+}
+
+export const complianceApi = {
+  report: (framework = '') => {
+    const q = framework ? `?framework=${encodeURIComponent(framework)}` : ''
+    return request<ComplianceReport>(`/compliance/report${q}`)
+  },
+  summary: () => request<{
+    pci_dss: { score: number; compliant: number; partial: number; gaps: number; total: number }
+    iso_27001: { score: number; compliant: number; partial: number; gaps: number; total: number }
+  }>('/compliance/summary'),
+}
+
 export const reportsApi = {
   summary: () =>
     request<ReportSummary>('/reports/summary'),

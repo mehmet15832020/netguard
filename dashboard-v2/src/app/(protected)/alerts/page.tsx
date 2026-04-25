@@ -90,7 +90,7 @@ export default function AlertsPage() {
       <div className="grid grid-cols-3 gap-3">
         {(['critical', 'warning', 'info'] as Severity[]).map((sev) => {
           const count = all.filter((a) => a.severity === sev && a.status === 'active').length
-          const labels = { critical: 'Kritik', warning: 'Uyarı', info: 'Bilgi' }
+          const labels: Record<string, string> = { critical: 'Kritik', warning: 'Uyarı', high: 'Yüksek', info: 'Bilgi' }
           return (
             <Card
               key={sev}

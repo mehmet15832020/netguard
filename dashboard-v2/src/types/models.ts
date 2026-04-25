@@ -1,7 +1,7 @@
 // NetGuard — Tüm domain modelleri
 // Bu tipler backend shared/models.py ile birebir eşleşir
 
-export type Severity = 'info' | 'warning' | 'critical'
+export type Severity = 'info' | 'warning' | 'high' | 'critical'
 export type AlertStatus = 'active' | 'resolved'
 export type LogCategory = 'authentication' | 'network' | 'intrusion' | 'system' | 'unknown'
 export type LogSourceType = 'suricata' | 'zeek' | 'wazuh' | 'syslog' | 'auth_log' | 'netguard'
@@ -145,6 +145,8 @@ export interface CorrelatedEvent {
   last_seen: string
   message: string
   created_at: string
+  mitre_techniques: string[]
+  mitre_tactics: string[]
 }
 
 export interface CorrelationRule {

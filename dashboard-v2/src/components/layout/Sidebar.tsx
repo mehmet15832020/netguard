@@ -20,6 +20,9 @@ import {
   Wrench,
   ClipboardList,
   ShieldAlert,
+  Crosshair,
+  Swords,
+  ShieldCheck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -40,7 +43,10 @@ const NAV_ITEMS = [
   { href: '/reports',      label: 'Raporlar',       icon: FileDown },
   { href: '/maintenance',  label: 'Bakım',          icon: Wrench },
   { href: '/incidents',    label: 'Incidents',        icon: ShieldAlert },
-  { href: '/audit',        label: 'Denetim Günlüğü', icon: ClipboardList },
+  { href: '/timeline',     label: 'Saldırı Timeline', icon: Swords },
+  { href: '/mitre',        label: 'MITRE ATT&CK',     icon: Crosshair },
+  { href: '/compliance',   label: 'Compliance',        icon: ShieldCheck },
+  { href: '/audit',        label: 'Denetim Günlüğü',  icon: ClipboardList },
   { href: '/settings',     label: 'Ayarlar',        icon: Settings },
 ]
 
