@@ -26,7 +26,7 @@ const SECTIONS = [
     ],
   },
   {
-    label: 'SIEM',
+    label: 'Güvenlik',
     items: [
       { href: '/alerts',      label: 'Alertler',      icon: Bell },
       { href: '/security',    label: 'Güvenlik',      icon: Shield },
