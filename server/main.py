@@ -17,7 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance, anomaly as anomaly_route
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -194,6 +194,12 @@ async def lifespan(app: FastAPI):
     from server.netflow_receiver import NetFlowReceiver
     netflow_receiver = NetFlowReceiver()
     await netflow_receiver.start()
+    from server.anomaly import AnomalyEngine
+    db_path = os.getenv("NETGUARD_DB_PATH", "netguard.db")
+    anomaly_engine = AnomalyEngine(db_path)
+    anomaly_route.set_engine(anomaly_engine)
+    await anomaly_engine.start()
+    logger.info("Anomaly detection motoru başlatıldı.")
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -205,6 +211,7 @@ async def lifespan(app: FastAPI):
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()
+    anomaly_engine.stop()
     influx_writer.close()
     logger.info("NetGuard Server kapatılıyor...")
 
@@ -274,7 +281,8 @@ app.include_router(netflow.router,     prefix=api_prefix, tags=["netflow"])
 app.include_router(incidents.router,   prefix=api_prefix, tags=["incidents"])
 app.include_router(evtx.router,        prefix=api_prefix, tags=["evtx"])
 app.include_router(mitre.router,       prefix=api_prefix, tags=["mitre"])
-app.include_router(compliance.router,  prefix=api_prefix, tags=["compliance"])
+app.include_router(compliance.router,    prefix=api_prefix, tags=["compliance"])
+app.include_router(anomaly_route.router, prefix=api_prefix, tags=["anomaly"])
 app.include_router(ws.router, tags=["websocket"])
 
 
