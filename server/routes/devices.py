@@ -8,7 +8,7 @@ GET  /api/v1/devices/{device_id}  → Tek cihaz detayı
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import Literal, Optional
-from server.auth import User, get_current_user, require_admin
+from server.auth import User, get_current_user, require_admin, tenant_scope
 from server.database import db
 
 router = APIRouter()
@@ -17,13 +17,13 @@ router = APIRouter()
 @router.get("/devices")
 def list_devices(
     device_type: str = None,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """
     Tüm cihazları listele.
     device_type filtresi: agent | snmp | discovered | hybrid
     """
-    devices = db.get_devices(device_type=device_type)
+    devices = db.get_devices(device_type=device_type, tenant_id=tenant_scope(current_user))
     return {"count": len(devices), "devices": devices}
 
 

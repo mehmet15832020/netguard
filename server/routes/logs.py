@@ -16,7 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from typing import List
 
-from server.auth import User, get_current_user, get_agent_from_api_key
+from server.auth import User, get_current_user, get_agent_from_api_key, tenant_scope
 from server.database import db
 from server.log_normalizer import process_and_store
 from server.parsers.firewall import detect_and_parse as detect_firewall
@@ -38,7 +38,7 @@ def list_normalized_logs(
     src_ip: str = None,
     event_type: str = None,
     limit: int = 100,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Normalize edilmiş logları filtreli listele."""
     if limit < 1 or limit > 1000:
@@ -49,6 +49,7 @@ def list_normalized_logs(
         src_ip=src_ip,
         event_type=event_type,
         limit=limit,
+        tenant_id=tenant_scope(current_user),
     )
     return {"count": len(logs), "logs": logs}
 

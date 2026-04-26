@@ -60,7 +60,7 @@ Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified pla
 |---|-------|-------|
 | T4-1 | Anomaly detection (Welford baseline + Z-score + Isolation Forest) | ✅ |
 | T4-2 | Docker deployment (docker-compose) | ✅ |
-| T4-3 | Multi-site / multi-tenant | ⏳ |
+| T4-3 | Multi-site / multi-tenant (tenants+sites+db_users, JWT tid, tenant_scope) | ✅ |
 | T4-4 | GNS3 lab entegrasyonu | ✅ |
 
 ---

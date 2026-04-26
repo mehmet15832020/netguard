@@ -314,6 +314,38 @@ CREATE INDEX IF NOT EXISTS idx_corr_group_value ON correlated_events(group_value
 CREATE INDEX IF NOT EXISTS idx_corr_created_at  ON correlated_events(created_at);
 """
 
+_CREATE_TENANTS = """
+CREATE TABLE IF NOT EXISTS tenants (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    is_active  INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+);
+"""
+
+_CREATE_SITES = """
+CREATE TABLE IF NOT EXISTS sites (
+    id         TEXT PRIMARY KEY,
+    tenant_id  TEXT NOT NULL REFERENCES tenants(id),
+    name       TEXT NOT NULL,
+    location   TEXT NOT NULL DEFAULT '',
+    tz         TEXT NOT NULL DEFAULT 'UTC',
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sites_tenant ON sites(tenant_id);
+"""
+
+_CREATE_DB_USERS = """
+CREATE TABLE IF NOT EXISTS db_users (
+    username      TEXT PRIMARY KEY,
+    password_hash TEXT NOT NULL,
+    role          TEXT NOT NULL DEFAULT 'viewer',
+    tenant_id     TEXT REFERENCES tenants(id),
+    created_at    TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_db_users_tenant ON db_users(tenant_id);
+"""
+
 
 class DatabaseManager:
     """
@@ -344,6 +376,9 @@ class DatabaseManager:
             conn.executescript(_CREATE_TOKEN_BLACKLIST)
             conn.executescript(_CREATE_TOPOLOGY)
             conn.executescript(_CREATE_INCIDENTS_BASE)
+            conn.executescript(_CREATE_TENANTS)
+            conn.executescript(_CREATE_SITES)
+            conn.executescript(_CREATE_DB_USERS)
         self._migrate_incidents_columns()
         with self._connect() as conn:
             conn.executescript(_CREATE_INCIDENTS_INDEXES)
@@ -353,6 +388,8 @@ class DatabaseManager:
         self._migrate_api_keys_to_hashed()
         self._migrate_normalized_logs_columns()
         self._migrate_correlated_events_mitre()
+        self._migrate_tenant_id()
+        self.ensure_default_tenant()
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
 
     @contextmanager
@@ -404,19 +441,23 @@ class DatabaseManager:
         self,
         status: Optional[str] = None,
         limit: int = 100,
+        tenant_id: Optional[str] = None,
     ) -> list[Alert]:
-        """Alert listesini döndür. Status filtresi opsiyonel."""
+        """Alert listesini döndür. Status ve tenant_id filtresi opsiyonel."""
+        clauses, params = [], []
+        if status:
+            clauses.append("status = ?")
+            params.append(status)
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        params.append(limit)
         with self._connect() as conn:
-            if status:
-                rows = conn.execute(
-                    "SELECT * FROM alerts WHERE status = ? ORDER BY triggered_at DESC LIMIT ?",
-                    (status, limit),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM alerts ORDER BY triggered_at DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
+            rows = conn.execute(
+                f"SELECT * FROM alerts {where} ORDER BY triggered_at DESC LIMIT ?",
+                params,
+            ).fetchall()
         return [self._row_to_alert(r) for r in rows]
 
     def _row_to_alert(self, row: sqlite3.Row) -> Alert:
@@ -467,6 +508,7 @@ class DatabaseManager:
         event_type: Optional[str] = None,
         source_ip: Optional[str] = None,
         limit: int = 100,
+        tenant_id: Optional[str] = None,
     ) -> list[SecurityEvent]:
         """Güvenlik olaylarını filtreli getir."""
         clauses, params = [], []
@@ -476,6 +518,9 @@ class DatabaseManager:
         if source_ip:
             clauses.append("source_ip = ?")
             params.append(source_ip)
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params.append(limit)
@@ -629,6 +674,7 @@ class DatabaseManager:
         src_ip: Optional[str] = None,
         event_type: Optional[str] = None,
         limit: int = 100,
+        tenant_id: Optional[str] = None,
     ) -> list[NormalizedLog]:
         """Normalize logları filtreli getir — timestamp'e göre sıralı."""
         clauses, params = [], []
@@ -644,6 +690,9 @@ class DatabaseManager:
         if event_type:
             clauses.append("event_type = ?")
             params.append(event_type)
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params.append(limit)
@@ -768,6 +817,7 @@ class DatabaseManager:
         rule_id: Optional[str] = None,
         severity: Optional[str] = None,
         limit: int = 100,
+        tenant_id: Optional[str] = None,
     ) -> list[CorrelatedEvent]:
         """Korelasyon olaylarını filtreli getir — en yeni önce."""
         clauses, params = [], []
@@ -777,6 +827,9 @@ class DatabaseManager:
         if severity:
             clauses.append("severity = ?")
             params.append(severity)
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
 
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         params.append(limit)
@@ -901,6 +954,7 @@ class DatabaseManager:
         status: str = "unknown",
         segment: str = "",
         notes: str = "",
+        tenant_id: str = "default",
     ) -> None:
         """Cihazı kaydet. Zaten varsa name, status ve last_seen güncelle."""
         now = datetime.now(timezone.utc).isoformat()
@@ -914,8 +968,8 @@ class DatabaseManager:
                          snmp_community, snmp_version,
                          snmp_v3_username, snmp_v3_auth_protocol,
                          snmp_v3_auth_key, snmp_v3_priv_protocol, snmp_v3_priv_key,
-                         segment, notes)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                         segment, notes, tenant_id)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                     ON CONFLICT(device_id) DO UPDATE SET
                         name                 = excluded.name,
                         ip                   = COALESCE(NULLIF(excluded.ip,''), ip),
@@ -936,7 +990,7 @@ class DatabaseManager:
                      snmp_community, snmp_version,
                      snmp_v3_username, snmp_v3_auth_protocol,
                      snmp_v3_auth_key, snmp_v3_priv_protocol, snmp_v3_priv_key,
-                     segment, notes),
+                     segment, notes, tenant_id),
                 )
 
     def update_device_status(self, device_id: str, status: str) -> None:
@@ -949,17 +1003,24 @@ class DatabaseManager:
                     (status, now, device_id),
                 )
 
-    def get_devices(self, device_type: Optional[str] = None) -> list[dict]:
-        """Tüm cihazları listele, opsiyonel olarak tipe göre filtrele."""
+    def get_devices(
+        self,
+        device_type: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+    ) -> list[dict]:
+        """Tüm cihazları listele. device_type ve/veya tenant_id ile filtrele."""
+        clauses, params = [], []
+        if device_type:
+            clauses.append("type=?")
+            params.append(device_type)
+        if tenant_id is not None:
+            clauses.append("tenant_id=?")
+            params.append(tenant_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         with self._connect() as conn:
-            if device_type:
-                rows = conn.execute(
-                    "SELECT * FROM devices WHERE type=? ORDER BY name", (device_type,)
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT * FROM devices ORDER BY type, name"
-                ).fetchall()
+            rows = conn.execute(
+                f"SELECT * FROM devices {where} ORDER BY type, name", params
+            ).fetchall()
             return [dict(r) for r in rows]
 
     def update_device_snmp(
@@ -1177,6 +1238,181 @@ class DatabaseManager:
                 conn.execute("ALTER TABLE correlated_events ADD COLUMN mitre_tactics TEXT DEFAULT ''")
                 logger.info("correlated_events: 'mitre_tactics' kolonu eklendi")
 
+    def _migrate_tenant_id(self) -> None:
+        """Tüm data tablolarına tenant_id kolonu ekle (idempotent)."""
+        tables = [
+            "devices", "normalized_logs", "incidents",
+            "alerts", "security_events", "correlated_events",
+        ]
+        with self._lock:
+            with self._connect() as conn:
+                for table in tables:
+                    cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+                    if "tenant_id" not in cols:
+                        conn.execute(
+                            f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT DEFAULT 'default'"
+                        )
+                        logger.info(f"{table}: 'tenant_id' kolonu eklendi")
+
+    # ------------------------------------------------------------------ #
+    #  TENANTS
+    # ------------------------------------------------------------------ #
+
+    def ensure_default_tenant(self) -> None:
+        """Default tenant yoksa oluştur."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO tenants (id, name, created_at) VALUES (?,?,?)",
+                ("default", "Default", now),
+            )
+
+    def create_tenant(self, id: str, name: str) -> bool:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    conn.execute(
+                        "INSERT INTO tenants (id, name, created_at) VALUES (?,?,?)",
+                        (id, name, now),
+                    )
+                    return True
+                except sqlite3.IntegrityError:
+                    return False
+
+    def get_tenants(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute("SELECT * FROM tenants ORDER BY name").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_tenant(self, id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM tenants WHERE id=?", (id,)).fetchone()
+            return dict(row) if row else None
+
+    def update_tenant(self, id: str, name: Optional[str] = None, is_active: Optional[int] = None) -> bool:
+        fields, params = [], []
+        if name is not None:
+            fields.append("name=?")
+            params.append(name)
+        if is_active is not None:
+            fields.append("is_active=?")
+            params.append(is_active)
+        if not fields:
+            return False
+        params.append(id)
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(f"UPDATE tenants SET {','.join(fields)} WHERE id=?", params)
+                return cur.rowcount > 0
+
+    def delete_tenant(self, id: str) -> bool:
+        if id == "default":
+            return False
+        with self._lock:
+            with self._connect() as conn:
+                if not conn.execute("SELECT 1 FROM tenants WHERE id=?", (id,)).fetchone():
+                    return False
+                conn.execute("DELETE FROM sites WHERE tenant_id=?", (id,))
+                conn.execute("DELETE FROM db_users WHERE tenant_id=?", (id,))
+                conn.execute("DELETE FROM tenants WHERE id=?", (id,))
+                return True
+
+    # ------------------------------------------------------------------ #
+    #  SITES
+    # ------------------------------------------------------------------ #
+
+    def create_site(self, id: str, tenant_id: str, name: str, location: str = "", tz: str = "UTC") -> bool:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    conn.execute(
+                        "INSERT INTO sites (id, tenant_id, name, location, tz, created_at) VALUES (?,?,?,?,?,?)",
+                        (id, tenant_id, name, location, tz, now),
+                    )
+                    return True
+                except sqlite3.IntegrityError:
+                    return False
+
+    def get_sites(self, tenant_id: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if tenant_id:
+                rows = conn.execute(
+                    "SELECT * FROM sites WHERE tenant_id=? ORDER BY name", (tenant_id,)
+                ).fetchall()
+            else:
+                rows = conn.execute("SELECT * FROM sites ORDER BY tenant_id, name").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_site(self, id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM sites WHERE id=?", (id,)).fetchone()
+            return dict(row) if row else None
+
+    def delete_site(self, id: str) -> bool:
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute("DELETE FROM sites WHERE id=?", (id,))
+                return cur.rowcount > 0
+
+    # ------------------------------------------------------------------ #
+    #  DB USERS  (in-memory _USERS'a ek olarak DB'deki kullanıcılar)
+    # ------------------------------------------------------------------ #
+
+    def create_db_user(self, username: str, password_hash: str, role: str, tenant_id: Optional[str]) -> bool:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    conn.execute(
+                        "INSERT INTO db_users (username, password_hash, role, tenant_id, created_at) VALUES (?,?,?,?,?)",
+                        (username, password_hash, role, tenant_id, now),
+                    )
+                    return True
+                except sqlite3.IntegrityError:
+                    return False
+
+    def get_db_user(self, username: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute("SELECT * FROM db_users WHERE username=?", (username,)).fetchone()
+            return dict(row) if row else None
+
+    def get_db_users(self, tenant_id: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            if tenant_id is not None:
+                rows = conn.execute(
+                    "SELECT username, role, tenant_id, created_at FROM db_users WHERE tenant_id=? ORDER BY username",
+                    (tenant_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT username, role, tenant_id, created_at FROM db_users ORDER BY tenant_id, username"
+                ).fetchall()
+            return [dict(r) for r in rows]
+
+    def delete_db_user(self, username: str) -> bool:
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute("DELETE FROM db_users WHERE username=?", (username,))
+                return cur.rowcount > 0
+
+    def update_db_user_password(self, username: str, password_hash: str) -> bool:
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "UPDATE db_users SET password_hash=? WHERE username=?", (password_hash, username)
+                )
+                return cur.rowcount > 0
+
+    def update_db_user_role(self, username: str, role: str) -> bool:
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "UPDATE db_users SET role=? WHERE username=?", (role, username)
+                )
+                return cur.rowcount > 0
+
     # ------------------------------------------------------------------ #
     #  API KEYS
     # ------------------------------------------------------------------ #
@@ -1368,7 +1604,7 @@ class DatabaseManager:
     #  INCIDENTS
     # ------------------------------------------------------------------ #
 
-    def create_incident(self, incident: "Incident") -> None:
+    def create_incident(self, incident: "Incident", tenant_id: str = "default") -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             with self._connect() as conn:
@@ -1377,15 +1613,15 @@ class DatabaseManager:
                        (incident_id, title, description, severity, status,
                         assigned_to, source_event_id, source_type,
                         created_by, notes, rule_id, group_value,
-                        created_at, updated_at, resolved_at)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        created_at, updated_at, resolved_at, tenant_id)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         incident.incident_id, incident.title, incident.description,
                         incident.severity, incident.status.value,
                         incident.assigned_to, incident.source_event_id, incident.source_type,
                         incident.created_by, incident.notes,
                         incident.rule_id, incident.group_value,
-                        now, now, None,
+                        now, now, None, tenant_id,
                     ),
                 )
 
@@ -1451,6 +1687,7 @@ class DatabaseManager:
         severity: Optional[str] = None,
         assigned_to: Optional[str] = None,
         limit: int = 100,
+        tenant_id: Optional[str] = None,
     ) -> list[dict]:
         query = "SELECT * FROM incidents WHERE 1=1"
         params: list = []
@@ -1463,6 +1700,9 @@ class DatabaseManager:
         if assigned_to:
             query += " AND assigned_to=?"
             params.append(assigned_to)
+        if tenant_id is not None:
+            query += " AND tenant_id=?"
+            params.append(tenant_id)
         query += " ORDER BY created_at DESC LIMIT ?"
         params.append(limit)
         with self._connect() as conn:

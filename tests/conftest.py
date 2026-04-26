@@ -13,7 +13,13 @@ from server.database import DatabaseManager
 @pytest.fixture(scope="session")
 def admin_token() -> str:
     """Admin JWT token'ını direkt oluştur (rate limit'i tetiklemez)."""
-    return create_access_token(username="admin", role="admin")
+    return create_access_token(username="admin", role="admin", tenant_id="default")
+
+
+@pytest.fixture(scope="session")
+def superadmin_token() -> str:
+    """Superadmin JWT token — tüm tenant'lara erişir."""
+    return create_access_token(username="admin", role="superadmin", tenant_id=None)
 
 
 @pytest.fixture
@@ -28,4 +34,5 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.routes.discovery.db", test_db)
     monkeypatch.setattr("server.routes.topology.db", test_db)
     monkeypatch.setattr("server.routes.incidents.db", test_db)
+    monkeypatch.setattr("server.routes.tenants.db", test_db)
     return test_db

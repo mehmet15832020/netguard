@@ -49,8 +49,8 @@ def login(request: Request, body: LoginRequest):
             detail="Kullanıcı adı veya şifre hatalı",
         )
 
-    access  = create_access_token(user.username, user.role)
-    refresh = create_refresh_token(user.username, user.role)
+    access  = create_access_token(user.username, user.role, user.tenant_id)
+    refresh = create_refresh_token(user.username, user.role, user.tenant_id)
     logger.info(f"Giriş başarılı: {user.username} ({user.role})")
 
     return Token(
@@ -81,10 +81,11 @@ def refresh(request: Request, body: RefreshRequest):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Geçersiz veya süresi dolmuş refresh token",
         )
-    username = payload["sub"]
-    role     = payload["role"]
-    access  = create_access_token(username, role)
-    refresh_new = create_refresh_token(username, role)
+    username  = payload["sub"]
+    role      = payload["role"]
+    tenant_id = payload.get("tid", "default")
+    access      = create_access_token(username, role, tenant_id)
+    refresh_new = create_refresh_token(username, role, tenant_id)
     return Token(
         access_token=access,
         refresh_token=refresh_new,

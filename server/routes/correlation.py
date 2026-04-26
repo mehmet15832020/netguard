@@ -16,7 +16,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from server.auth import User, get_current_user, require_admin
+from server.auth import User, get_current_user, require_admin, tenant_scope
 from server.correlator import correlator, RULES_PATH
 from server.database import db
 
@@ -33,12 +33,15 @@ def list_correlated_events(
     rule_id: str = None,
     severity: str = None,
     limit: int = 100,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Korelasyon olaylarını filtreli listele."""
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit 1-500 arasında olmalı")
-    events = db.get_correlated_events(rule_id=rule_id, severity=severity, limit=limit)
+    events = db.get_correlated_events(
+        rule_id=rule_id, severity=severity, limit=limit,
+        tenant_id=tenant_scope(current_user),
+    )
     return {"count": len(events), "events": events}
 
 

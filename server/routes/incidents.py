@@ -16,7 +16,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from server.auth import User, get_current_user
+from server.auth import User, get_current_user, tenant_scope
 from server.database import db
 from shared.models import Incident, IncidentStatus
 
@@ -61,7 +61,7 @@ def create_incident(
         created_by      = current_user.username,
         notes           = req.notes,
     )
-    db.create_incident(incident)
+    db.create_incident(incident, tenant_id=current_user.tenant_id or "default")
     db.save_audit_event(
         actor=current_user.username,
         action="incident_created",
@@ -88,12 +88,13 @@ def list_incidents(
     severity: Optional[str] = None,
     assigned_to: Optional[str] = None,
     limit: int = 100,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit 1-500 arasında olmalı")
     rows = db.get_incidents(
-        status=status, severity=severity, assigned_to=assigned_to, limit=limit
+        status=status, severity=severity, assigned_to=assigned_to,
+        limit=limit, tenant_id=tenant_scope(current_user),
     )
     return {"count": len(rows), "incidents": rows}
 

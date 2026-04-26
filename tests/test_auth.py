@@ -56,7 +56,7 @@ class TestProtectedEndpoints:
         )
         assert response.status_code == 200
         assert response.json()["username"] == "admin"
-        assert response.json()["role"] == "admin"
+        assert response.json()["role"] == "superadmin"
 
     def test_viewer_cannot_create_agent_key(self):
         response = client.post("/api/v1/auth/login", json={

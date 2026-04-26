@@ -12,7 +12,7 @@ import socket
 
 from fastapi import APIRouter, HTTPException, Depends
 
-from server.auth import get_current_user, User
+from server.auth import get_current_user, User, tenant_scope
 from server.database import db
 from server.security_log_parser import parse_auth_log, AUTH_LOG_PATH
 from server.port_monitor import port_monitor
@@ -29,7 +29,7 @@ def list_security_events(
     event_type: str = None,
     source_ip: str = None,
     limit: int = 100,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Güvenlik olaylarını filtreli listele."""
     if limit < 1 or limit > 500:
@@ -38,6 +38,7 @@ def list_security_events(
         event_type=event_type,
         source_ip=source_ip,
         limit=limit,
+        tenant_id=tenant_scope(current_user),
     )
     return {"count": len(events), "events": events}
 

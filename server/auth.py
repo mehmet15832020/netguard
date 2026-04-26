@@ -48,7 +48,8 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 class User(BaseModel):
     username: str
-    role: str = "viewer"    # admin veya viewer
+    role: str = "viewer"          # superadmin | admin | viewer
+    tenant_id: Optional[str] = "default"   # None → superadmin (tüm tenant'lar)
 
 
 class UserInDB(User):
@@ -73,16 +74,19 @@ def _hash(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-# Varsayılan kullanıcılar — .env'den okunur, yoksa default
+# Yerleşik kullanıcılar — .env'den okunur.
+# Superadmin: tüm tenant'ları görür (tenant_id=None).
 _USERS: dict[str, UserInDB] = {
     os.getenv("ADMIN_USERNAME", "admin"): UserInDB(
         username=os.getenv("ADMIN_USERNAME", "admin"),
-        role="admin",
+        role="superadmin",
+        tenant_id=None,
         hashed_password=_hash(os.getenv("ADMIN_PASSWORD", "netguard123")),
     ),
     os.getenv("VIEWER_USERNAME", "viewer"): UserInDB(
         username=os.getenv("VIEWER_USERNAME", "viewer"),
         role="viewer",
+        tenant_id="default",
         hashed_password=_hash(os.getenv("VIEWER_PASSWORD", "viewer123")),
     ),
 }
@@ -122,20 +126,20 @@ def verify_api_key(api_key: str) -> Optional[str]:
 
 # ─── JWT işlemleri ───────────────────────────────────────────────
 
-def create_access_token(username: str, role: str) -> str:
+def create_access_token(username: str, role: str, tenant_id: Optional[str] = "default") -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
         {"sub": username, "role": role, "type": "access", "exp": expire,
-         "jti": secrets.token_hex(16)},
+         "jti": secrets.token_hex(16), "tid": tenant_id},
         SECRET_KEY, algorithm=ALGORITHM,
     )
 
 
-def create_refresh_token(username: str, role: str) -> str:
+def create_refresh_token(username: str, role: str, tenant_id: Optional[str] = "default") -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=REFRESH_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(
         {"sub": username, "role": role, "type": "refresh", "exp": expire,
-         "jti": secrets.token_hex(16)},
+         "jti": secrets.token_hex(16), "tid": tenant_id},
         SECRET_KEY, algorithm=ALGORITHM,
     )
 
@@ -158,12 +162,25 @@ def verify_token(token: str, token_type: str = "access") -> Optional[dict]:
 # ─── Kullanıcı doğrulama ─────────────────────────────────────────
 
 def authenticate_user(username: str, password: str) -> Optional[UserInDB]:
+    # Önce yerleşik kullanıcıları kontrol et
     user = _USERS.get(username)
-    if not user:
+    if user:
+        if not bcrypt.checkpw(password.encode(), user.hashed_password.encode()):
+            return None
+        return user
+    # Sonra DB kullanıcılarına bak
+    from server.database import db
+    row = db.get_db_user(username)
+    if not row:
         return None
-    if not bcrypt.checkpw(password.encode(), user.hashed_password.encode()):
+    if not bcrypt.checkpw(password.encode(), row["password_hash"].encode()):
         return None
-    return user
+    return UserInDB(
+        username=row["username"],
+        role=row["role"],
+        tenant_id=row["tenant_id"],
+        hashed_password=row["password_hash"],
+    )
 
 
 # ─── FastAPI dependency'leri ─────────────────────────────────────
@@ -190,15 +207,34 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    return User(username=payload["sub"], role=payload["role"])
+    return User(
+        username=payload["sub"],
+        role=payload["role"],
+        tenant_id=payload.get("tid", "default"),
+    )
+
+
+def tenant_scope(user: User) -> Optional[str]:
+    """Superadmin için None (filtre yok), diğerleri için tenant_id döner."""
+    return None if user.role == "superadmin" else user.tenant_id
 
 
 def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Sadece admin rolüne izin verir."""
-    if current_user.role != "admin":
+    """Admin veya superadmin rolüne izin verir."""
+    if current_user.role not in ("admin", "superadmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Bu işlem için admin yetkisi gerekli",
+        )
+    return current_user
+
+
+def require_superadmin(current_user: User = Depends(get_current_user)) -> User:
+    """Sadece superadmin rolüne izin verir."""
+    if current_user.role != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Bu işlem için superadmin yetkisi gerekli",
         )
     return current_user
 
