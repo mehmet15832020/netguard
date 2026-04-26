@@ -11,6 +11,7 @@ services:
       - NETGUARD_DB_PATH=/data/netguard.db
       - INFLUXDB_URL=http://influxdb:8086
       - NETGUARD_CORS_ORIGINS=https://localhost,https://127.0.0.1,https://${NETGUARD_HOST:-localhost}
+      - NETGUARD_INTERFACE=eth0
     volumes:
       - netguard_data:/data
       - ./config:/app/config:ro
@@ -29,7 +30,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 30s
 
   # ── Frontend: Next.js ──────────────────────────────────────────────
   frontend:
@@ -53,6 +54,8 @@ services:
       context: ./nginx
       dockerfile: Dockerfile
     restart: unless-stopped
+    environment:
+      - NETGUARD_HOST=${NETGUARD_HOST:-localhost}
     volumes:
       - ssl_certs:/etc/ssl/netguard
     ports:
@@ -77,8 +80,6 @@ services:
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-change-me-in-production}
     volumes:
       - influxdb_data:/var/lib/influxdb2
-    ports:
-      - "8086:8086"
     healthcheck:
       test: ["CMD", "influx", "ping"]
       interval: 10s

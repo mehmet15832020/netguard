@@ -40,9 +40,11 @@ Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified pla
 | T3-2 | Windows agent EVTX parser (4625/4624/4688) ✅ |
 | T3-3 | Saldırı timeline (attack_chain.py + /timeline UI) ✅ |
 | T3-4 | Compliance raporu (PCI DSS / ISO 27001) ✅ |
+| T4-1 | Anomaly detection (Welford baseline + Isolation Forest) ✅ |
+| T4-2 | Docker deployment (docker-compose, nginx TLS, InfluxDB) ✅ |
 | GNS3 Lab | OPNsense + VyOS + Alpine WebServer tam kurulu, veriler akıyor ✅ |
 
-**Test durumu: 561 test, tümü geçiyor.**
+**Test durumu: 595 test, tümü geçiyor.**
 
 ---
 
