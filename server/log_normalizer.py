@@ -22,6 +22,7 @@ from typing import Optional
 
 from server.database import db
 from server.ntp_validator import ntp_validator
+from server.parsers.firewall import detect_and_parse as _fw_detect_and_parse
 from shared.models import (
     LogCategory,
     LogSourceType,
@@ -43,6 +44,12 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     (LogSourceType.ZEEK,      re.compile(r'^\d+\.\d+\t')),
     # Wazuh JSON — "rule" ve "agent" alanları içerir (çok satırlı JSON desteklenir)
     (LogSourceType.WAZUH,     re.compile(r'"rule"\s*:.*"agent"\s*:', re.DOTALL)),
+    # Firewall logları — AUTH_LOG'dan önce kontrol edilmeli
+    (LogSourceType.OPNSENSE,  re.compile(r'filterlog\[')),           # OPNsense (PID'li)
+    (LogSourceType.PFSENSE,   re.compile(r'filterlog:')),            # pfSense (PID'siz)
+    (LogSourceType.CISCO_ASA, re.compile(r'%ASA-')),
+    (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
+    (LogSourceType.VYOS,      re.compile(r'kernel:.*SRC=[\d.]+.*DST=[\d.]+')),
     # auth.log — sshd veya sudo içerir
     (LogSourceType.AUTH_LOG,  re.compile(r'\b(sshd|sudo|su)\b')),
 ]
@@ -276,13 +283,39 @@ def _parse_syslog(raw: str, source_host: str) -> Optional[dict]:
     )
 
 
+def _parse_firewall(raw: str, source_host: str) -> Optional[dict]:
+    """Firewall log satırını parsers.firewall modülüyle işle."""
+    norm = _fw_detect_and_parse(raw)
+    if norm is None:
+        return None
+    return {
+        "timestamp": norm.timestamp,
+        "severity":  norm.severity,
+        "category":  norm.category,
+        "event_type": norm.event_type,
+        "src_ip":    norm.src_ip,
+        "dst_ip":    norm.dst_ip,
+        "src_port":  norm.src_port,
+        "dst_port":  norm.dst_port,
+        "protocol":  norm.protocol,
+        "message":   norm.message,
+        "tags":      list(norm.tags),
+        "extra":     dict(norm.extra),
+    }
+
+
 _PARSERS = {
-    LogSourceType.AUTH_LOG : _parse_auth_log,
-    LogSourceType.SURICATA : _parse_suricata,
-    LogSourceType.ZEEK     : _parse_zeek,
-    LogSourceType.WAZUH    : _parse_wazuh,
-    LogSourceType.SYSLOG   : _parse_syslog,
-    LogSourceType.NETGUARD : _parse_syslog,
+    LogSourceType.AUTH_LOG  : _parse_auth_log,
+    LogSourceType.SURICATA  : _parse_suricata,
+    LogSourceType.ZEEK      : _parse_zeek,
+    LogSourceType.WAZUH     : _parse_wazuh,
+    LogSourceType.SYSLOG    : _parse_syslog,
+    LogSourceType.NETGUARD  : _parse_syslog,
+    LogSourceType.PFSENSE   : _parse_firewall,
+    LogSourceType.OPNSENSE  : _parse_firewall,
+    LogSourceType.CISCO_ASA : _parse_firewall,
+    LogSourceType.FORTIGATE : _parse_firewall,
+    LogSourceType.VYOS      : _parse_firewall,
 }
 
 

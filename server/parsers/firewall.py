@@ -235,15 +235,139 @@ def parse_fortigate(line: str) -> Optional[NormalizedLog]:
 
 
 # ──────────────────────────────────────────────────────────────────
+#  OPNsense parser
+#  OPNsense filterlog satırı pfSense'ten farklı olarak PID içerir:
+#  <134>Apr 26 10:00:01 OPNsense filterlog[12345]: 82,,,0,vtnet1,match,block,...
+# ──────────────────────────────────────────────────────────────────
+
+_OPNSENSE_HOST_RE   = re.compile(r'(?:<\d+>)?\w+\s+\d+\s+[\d:]+\s+(\S+)\s+filterlog\[')
+_OPNSENSE_FIELDS_RE = re.compile(r'filterlog\[\d+\]:\s+(.+)$')
+
+
+def parse_opnsense(line: str) -> Optional[NormalizedLog]:
+    fm = _OPNSENSE_FIELDS_RE.search(line)
+    if not fm:
+        return None
+    parts = fm.group(1).split(",")
+    if len(parts) < 19:
+        return None
+
+    hm = _OPNSENSE_HOST_RE.search(line)
+    source_host = hm.group(1) if hm else "opnsense"
+
+    try:
+        action    = parts[6].lower()
+        direction = parts[7].lower()
+        protocol  = parts[16].lower()
+        src_ip    = parts[18]
+        dst_ip    = parts[19] if len(parts) > 19 else None
+        src_port  = int(parts[20]) if len(parts) > 20 and parts[20].isdigit() else None
+        dst_port  = int(parts[21]) if len(parts) > 21 and parts[21].isdigit() else None
+    except (IndexError, ValueError):
+        return None
+
+    blocked    = action == "block"
+    severity   = "warning" if blocked else "info"
+    event_type = "fw_block" if blocked else "fw_allow"
+    msg = (
+        f"OPNsense {action.upper()} {direction.upper()} "
+        f"{protocol.upper()} {src_ip}:{src_port} → {dst_ip}:{dst_port}"
+    )
+
+    return _make_log(
+        source_type = LogSourceType.OPNSENSE,
+        source_host = source_host,
+        event_type  = event_type,
+        severity    = severity,
+        category    = LogCategory.NETWORK,
+        message     = msg,
+        raw_content = line,
+        src_ip      = src_ip,
+        dst_ip      = dst_ip,
+        src_port    = src_port,
+        dst_port    = dst_port,
+        protocol    = protocol,
+        tags        = [action, direction],
+        extra       = {"action": action, "direction": direction, "interface": parts[4]},
+    )
+
+
+# ──────────────────────────────────────────────────────────────────
+#  VyOS / iptables kernel log parser
+#  Apr 26 10:00:01 vyos kernel: [VyOS-FW-DROP] IN=eth0 OUT= SRC=10.0.30.1
+#  DST=192.168.1.1 PROTO=TCP SPT=12345 DPT=443 ...
+# ──────────────────────────────────────────────────────────────────
+
+_VYOS_HOST_RE   = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+kernel:')
+_VYOS_ACTION_RE = re.compile(r'\[([A-Za-z_-]+)\]')
+_VYOS_FIELDS_RE = re.compile(
+    r'SRC=(?P<src>[\d.]+).*?DST=(?P<dst>[\d.]+).*?PROTO=(?P<proto>\w+)'
+    r'(?:.*?SPT=(?P<sport>\d+))?(?:.*?DPT=(?P<dport>\d+))?',
+    re.DOTALL,
+)
+
+
+def parse_vyos(line: str) -> Optional[NormalizedLog]:
+    if "SRC=" not in line or "DST=" not in line:
+        return None
+
+    hm = _VYOS_HOST_RE.search(line)
+    source_host = hm.group(1) if hm else "vyos"
+
+    am = _VYOS_ACTION_RE.search(line)
+    action_tag = am.group(1) if am else ""
+    blocked = any(w in action_tag.upper() for w in ("DROP", "BLOCK", "REJECT", "DENY"))
+
+    fm = _VYOS_FIELDS_RE.search(line)
+    if not fm:
+        return None
+
+    src_ip   = fm.group("src")
+    dst_ip   = fm.group("dst")
+    protocol = fm.group("proto").lower()
+    src_port = int(fm.group("sport")) if fm.group("sport") else None
+    dst_port = int(fm.group("dport")) if fm.group("dport") else None
+
+    action     = "block" if blocked else "allow"
+    severity   = "warning" if blocked else "info"
+    event_type = "fw_block" if blocked else "fw_allow"
+    msg = (
+        f"VyOS {action.upper()} "
+        f"{protocol.upper()} {src_ip}:{src_port} → {dst_ip}:{dst_port}"
+    )
+
+    return _make_log(
+        source_type = LogSourceType.VYOS,
+        source_host = source_host,
+        event_type  = event_type,
+        severity    = severity,
+        category    = LogCategory.NETWORK,
+        message     = msg,
+        raw_content = line,
+        src_ip      = src_ip,
+        dst_ip      = dst_ip,
+        src_port    = src_port,
+        dst_port    = dst_port,
+        protocol    = protocol,
+        tags        = [action, action_tag.lower()],
+        extra       = {"action": action, "action_tag": action_tag, "interface": ""},
+    )
+
+
+# ──────────────────────────────────────────────────────────────────
 #  Otomatik tespit + parse
 # ──────────────────────────────────────────────────────────────────
 
 def detect_and_parse(line: str) -> Optional[NormalizedLog]:
     """Firewall log satırını otomatik tespit et ve parse et."""
+    if "filterlog[" in line:
+        return parse_opnsense(line)
     if "filterlog:" in line:
         return parse_pfsense(line)
     if "%ASA-" in line:
         return parse_cisco_asa(line)
     if "type=traffic" in line or "type=utm" in line:
         return parse_fortigate(line)
+    if "kernel:" in line and "SRC=" in line and "DST=" in line:
+        return parse_vyos(line)
     return None

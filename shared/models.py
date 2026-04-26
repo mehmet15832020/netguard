@@ -213,8 +213,10 @@ class LogSourceType(str, Enum):
     AUTH_LOG  = "auth_log"   # /var/log/auth.log
     NETGUARD  = "netguard"   # NetGuard internal
     PFSENSE   = "pfsense"    # pfSense filterlog
+    OPNSENSE  = "opnsense"   # OPNsense filterlog[pid]
     CISCO_ASA = "cisco_asa"  # Cisco ASA %ASA-
     FORTIGATE = "fortigate"  # FortiGate type=traffic
+    VYOS      = "vyos"       # VyOS iptables/nftables kernel log
     NGINX     = "nginx"      # nginx access/error log
     APACHE    = "apache"     # Apache access/error log
     NETFLOW   = "netflow"    # NetFlow v5/v9 UDP akış verisi
