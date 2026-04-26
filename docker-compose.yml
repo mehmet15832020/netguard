@@ -1,0 +1,95 @@
+services:
+
+  # ── Backend: FastAPI + tüm servisler ──────────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - NETGUARD_DB_PATH=/data/netguard.db
+      - INFLUXDB_URL=http://influxdb:8086
+    volumes:
+      - netguard_data:/data
+      - ./config:/app/config:ro
+    ports:
+      - "${SYSLOG_PORT:-5140}:5140/udp"    # OPNsense / VyOS syslog
+      - "${NETFLOW_PORT:-2055}:2055/udp"   # VyOS NetFlow
+    cap_add:
+      - NET_RAW    # pyshark paket yakalama için
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    networks:
+      - netguard_net
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ── Frontend: Next.js ──────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./dashboard-v2
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=
+        - NEXT_PUBLIC_WS_URL=
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - netguard_net
+
+  # ── Nginx: TLS reverse proxy ───────────────────────────────────────
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    volumes:
+      - ssl_certs:/etc/ssl/netguard
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - netguard_net
+
+  # ── InfluxDB: Zaman serisi metrikleri ─────────────────────────────
+  influxdb:
+    image: influxdb:2.7-alpine
+    restart: unless-stopped
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-NetGuard2024!}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-netguard}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-metrics}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-change-me-in-production}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    ports:
+      - "8086:8086"
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - netguard_net
+
+networks:
+  netguard_net:
+    driver: bridge
+
+volumes:
+  netguard_data:    # SQLite DB + anomaly baselines
+  influxdb_data:    # InfluxDB zaman serisi verileri
+  ssl_certs:        # Nginx self-signed TLS sertifikaları

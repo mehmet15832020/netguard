@@ -1,0 +1,15 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+tests/
+.env
+netguard.db
+*.db
+docs/
+.git/
+dashboard-v2/
+agent/
+scripts/
+nginx/
