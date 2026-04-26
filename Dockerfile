@@ -3,7 +3,8 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # tshark: pyshark paket yakalama için gerekli
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN DEBIAN_FRONTEND=noninteractive apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         tshark \
         snmp \
     && rm -rf /var/lib/apt/lists/*

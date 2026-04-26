@@ -10,6 +10,7 @@ services:
     environment:
       - NETGUARD_DB_PATH=/data/netguard.db
       - INFLUXDB_URL=http://influxdb:8086
+      - NETGUARD_CORS_ORIGINS=https://localhost,https://127.0.0.1,https://${NETGUARD_HOST:-localhost}
     volumes:
       - netguard_data:/data
       - ./config:/app/config:ro
@@ -36,8 +37,10 @@ services:
       context: ./dashboard-v2
       dockerfile: Dockerfile
       args:
+        # Boş = tarayıcı mevcut origin'i kullanır (/api/v1/... → nginx üzerinden backend'e)
         - NEXT_PUBLIC_API_URL=
-        - NEXT_PUBLIC_WS_URL=
+        # wss:// nginx üzerinden WebSocket — ${NETGUARD_HOST} .env'den gelir
+        - NEXT_PUBLIC_WS_URL=wss://${NETGUARD_HOST:-localhost}/ws
     restart: unless-stopped
     depends_on:
       - backend
