@@ -1,67 +1,152 @@
 # NetGuard — Claude Rehberi
 
 Bu dosya Claude Code'un her oturumda otomatik okuduğu proje rehberidir.
+Her yeni özellik veya değişiklikten sonra bu dosya güncellenmeli.
 
 ---
 
-## Proje Kimliği
+## Ürün Kimliği (Değiştirme)
 
-NetGuard: NMS + CSNM (Continuous Network Security Monitoring) birleşimi.
-Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified platform.
-**Hedef kitle:** Splunk/QRadar bütçesi olmayan KOBİ ve orta ölçekli kurumlar.
+**NetGuard: Kurumsal bütçesi olmayan orta ölçekli şirketler için açık kaynak NDR platformu.**
+
+> "Splunk yıllık 50K dolar. QRadar 30K dolar. NetGuard: açık kaynak, Docker ile 30 dakikada kurulum."
+
+**Hedef kitle:** 50–500 çalışanlı, siber güvenlik bütçesi kısıtlı şirketlerin IT yöneticileri.
+
+**Ürünü bir cümleyle tanımlama:**
+NetGuard, ağ trafiğini ve host loglarını birden fazla protokolden toplar, korelasyon + kill chain analizi ile tehditleri tespit eder, incident workflow ile yanıt verir.
+
+**Bu ürün ne DEĞİLDİR:**
+- Wireshark (paket yakalayıcı) değil — tespiti amaçlar, ham veriyi değil
+- Zabbix gibi saf NMS değil — güvenlik tespiti önceliktir
+- Splunk gibi log yöneticisi değil — ağ odaklıdır
 
 ---
 
-## Mevcut Durum
+## Mimari — Üç Katman
 
-### Tamamlanan (Faz 0–8 + Güvenlik Sertleştirme + T1 + GNS3 Lab) ✓
+```
+KOLEKSIYON          TESPIT              YANIT
+──────────          ──────              ─────
+Agent (psutil)      Korelasyon motoru   Incident yönetimi
+SNMP v2c/v3         Sigma kuralları     Saldırı timeline
+Syslog (firewall)   Kill chain (5 aşama) Alert + bildirim
+NetFlow v5/v9       Anomaly detection   Compliance raporu
+EVTX (Windows)      MITRE ATT&CK       Audit log
+Web log (nginx)     Threat intel
+pyshark (SYN/BPF)   ARP/DNS/ICMP det.
+         │                  │                  │
+         └──────────────────┴──────────────────┘
+                        Event Bus
+                    (normalized_logs)
+```
 
-| Faz | İçerik |
-|-----|--------|
-| Faz 0 | Zemin: env, API key SQLite, JWT secret, CORS |
-| Faz 1 | Unified Device Model (`devices` tablosu) |
-| Faz 2 | NMS Çekirdeği: SNMP walk, uptime, TRAP alıcı |
-| Faz 3 | Auto-Discovery: subnet sweep, vendor fingerprinting |
-| Faz 4 | Topology Engine: SNMP ARP walk, LLDP |
-| Faz 5 | Cross-Domain Correlation motoru |
-| Faz 6 | Frontend: devices, discovery, topology, overview |
-| Faz 7 | SNMPv3 + Security Hardening |
-| Faz 8 | Raporlama: /reports/summary, 4 CSV endpoint |
-| Güvenlik+ | API key SHA-256 hash, JWT refresh+blacklist, HTTP security headers, audit log, 7 korelasyon kuralı |
-| T1-1 | HTTPS/TLS (nginx + self-signed) ✅ |
-| T1-2 | JWT logout + token blacklist ✅ |
-| T1-3 | Notifier → Correlated Events ✅ |
-| T1-4 | Audit log UI sayfası ✅ |
-| T2-1 | Threat Intelligence (AbuseIPDB API) ✅ |
-| T2-2 | Firewall log parser (OPNsense + VyOS + pfSense/ASA/FortiGate) ✅ |
-| T2-3 | Web log parser (nginx access + error log, API endpoint) ✅ |
-| T2-4 | NetFlow v5/v9 receiver (UDP 2055) ✅ |
-| T3-1 | Incident yönetimi (open/investigating/resolved + atama) ✅ |
-| T3-2 | Windows agent EVTX parser (4625/4624/4688) ✅ |
-| T3-3 | Saldırı timeline (attack_chain.py + /timeline UI) ✅ |
-| T3-4 | Compliance raporu (PCI DSS / ISO 27001) ✅ |
-| T4-1 | Anomaly detection (Welford baseline + Isolation Forest) ✅ |
-| T4-2 | Docker deployment (docker-compose, nginx TLS, InfluxDB) ✅ |
-| GNS3 Lab | OPNsense + VyOS + Alpine WebServer tam kurulu, veriler akıyor ✅ |
+---
 
-**Test durumu: 595 test, tümü geçiyor.**
+## Tamamlanan Modüller
+
+### Koleksiyon Katmanı
+| Modül | Dosya | Durum |
+|-------|-------|-------|
+| Linux Agent (CPU/RAM/disk/net) | `agent/collector.py` | ✅ Systemd servisi var |
+| SNMP v2c/v3 polling + TRAP | `server/snmp_collector.py`, `server/snmp_trap_receiver.py` | ✅ |
+| Syslog parser (OPNsense/VyOS/pfSense/ASA/FortiGate) | `server/parsers/firewall.py` | ✅ |
+| NetFlow v5/v9 binary parser | `server/parsers/netflow.py`, `server/netflow_receiver.py` | ✅ |
+| EVTX parser (4624/4625/4688) | `server/evtx_parser.py` | ✅ |
+| Web log parser (nginx access+error) | `server/parsers/web_log.py` | ✅ |
+| pyshark SYN paket sniffer | `server/detectors/port_scan.py` | ✅ Gerçek paket analizi |
+| Traffic collector (agent tarafı) | `agent/traffic_collector.py` | ⚠️ Server'a bağlı değil |
+
+### Tespit Katmanı
+| Modül | Dosya | Durum |
+|-------|-------|-------|
+| Korelasyon motoru (JSON kurallar) | `server/correlator.py` | ✅ 7 aktif kural |
+| Sigma kural parser (YAML) | `server/sigma_parser.py` | ✅ |
+| Kill chain dedektörü (5 aşama) | `server/attack_chain.py` | ✅ RECON→LATERAL |
+| MITRE ATT&CK eşleme | `server/mitre.py` | ✅ |
+| Anomaly detection (Welford + IsolationForest) | `server/anomaly/` | ✅ |
+| AbuseIPDB tehdit istihbaratı | `server/threat_intel.py` | ✅ |
+| ARP spoof dedektörü | `server/detectors/arp_spoof.py` | ✅ |
+| DNS anomali dedektörü | `server/detectors/dns_anomaly.py` | ✅ |
+| ICMP flood dedektörü | `server/detectors/icmp_flood.py` | ✅ |
+
+### Yanıt Katmanı
+| Modül | Dosya | Durum |
+|-------|-------|-------|
+| Incident yönetimi (open/investigating/resolved) | `server/routes/incidents.py` | ✅ |
+| Saldırı zaman çizelgesi | `server/attack_chain.py`, `/timeline` UI | ✅ |
+| Webhook + email bildirimi | `server/notifier.py` | ⚠️ Sadece korelasyon tetikliyor |
+| Audit log | `server/database.py` | ✅ |
+| PCI DSS / ISO 27001 compliance raporu | `server/compliance.py` | ✅ |
+
+### Platform
+| Modül | Durum |
+|-------|-------|
+| JWT (access 60dk + refresh 7gün + blacklist) | ✅ |
+| API key (SHA-256 hash) | ✅ |
+| Multi-tenant (tenant → site → device, JWT tid) | ✅ |
+| TLS (nginx reverse proxy, self-signed) | ✅ |
+| Docker deployment (docker-compose + InfluxDB) | ✅ |
+| Rate limiting (slowapi) | ✅ |
+| Log retention (hot/warm/cold) | ✅ |
+| InfluxDB zaman serisi | ✅ yazılıyor, ⚠️ frontend'de grafik YOK |
+
+**Test durumu: ~620 test, tümü geçiyor.**
 
 ---
 
 ## Aktif Yol Haritası
 
-### Tier 1 — Platform Tamamlama ✅ TAMAMLANDI
-### Tier 2 — Veri Zenginleştirme ✅ TAMAMLANDI
-### Tier 3 — Kurumsal Özellikler ✅ TAMAMLANDI (T3-2 kısmen: EVTX parser var, Windows agent servisi yok)
+Hoca geri bildirimi ve ürün kimliği analizi sonrası belirlenen öncelikli görevler.
+**Kural:** Yeni özellik eklemek yerine mevcut modülleri derinleştir ve birbirine bağla.
 
-### Tier 4 — İleri Seviye
+### Aşama 1 — Temizlik ve Sağlamlık (Öncelik: Kritik)
 
-| # | Görev | Durum |
-|---|-------|-------|
-| T4-1 | Anomaly detection (Welford baseline + Z-score + Isolation Forest) | ✅ |
-| T4-2 | Docker deployment (docker-compose) | ✅ |
-| T4-3 | Multi-site / multi-tenant (tenants+sites+db_users, JWT tid, tenant_scope) | ✅ |
-| T4-4 | GNS3 lab entegrasyonu | ✅ |
+| # | Görev | Dosyalar | Süre |
+|---|-------|---------|------|
+| A1-1 | In-memory storage kaldır → agent alert'leri SQLite'a | `server/storage.py` (sil), `server/alert_engine.py`, `server/routes/alerts.py` | 1 gün |
+| A1-2 | SQLite FTS5 ile log full-text arama | `server/database.py`, `server/routes/logs.py`, logs UI sayfası | 1.5 gün |
+| A1-3 | Bildirim pipeline tamamla → anomaly + agent alert da notify etsin | `server/notifier.py`, `server/anomaly/engine.py`, `server/alert_engine.py` | 1 gün |
+
+### Aşama 2 — UI Kimlik Operasyonu (Öncelik: Yüksek)
+
+| # | Görev | Dosyalar | Süre |
+|---|-------|---------|------|
+| A2-1 | Sidebar yeniden yapılandır (19 flat → 5 grup) | `dashboard-v2/src/app/(protected)/layout.tsx` | 0.5 gün |
+| A2-2 | Ana sayfa: Güvenlik Durumu + Risk Skoru | `dashboard-v2/src/app/(protected)/overview/page.tsx`, `server/routes/reports.py` | 2 gün |
+| A2-3 | InfluxDB grafiklerini frontend'e bağla (CPU/net/log hacmi) | `server/influx_writer.py`, yeni `server/routes/metrics.py`, cihaz sayfası | 2 gün |
+| A2-4 | Cihaz detay sayfası (grafik + alert + SNMP özeti) | `dashboard-v2/src/app/(protected)/devices/[id]/page.tsx` | 2 gün |
+
+### Aşama 3 — NDR Derinliği (Öncelik: Yüksek)
+
+| # | Görev | Dosyalar | Süre |
+|---|-------|---------|------|
+| A3-1 | Kill chain dedektörünü ürünün merkezi yap (API + UI) | `server/attack_chain.py`, yeni `server/routes/attack_chains.py`, `/timeline` UI | 3 gün |
+| A3-2 | agent/traffic_collector.py'yi server'a bağla | `agent/main.py`, `agent/sender.py`, `server/routes/agents.py`, `server/database.py` | 1.5 gün |
+| A3-3 | MITRE ATT&CK görselleştirme derinleştir (heat map) | `server/mitre.py`, `/mitre` UI | 1.5 gün |
+
+### Aşama 4 — Sunum Hazırlığı (Öncelik: Orta)
+
+| # | Görev | Dosyalar | Süre |
+|---|-------|---------|------|
+| A4-1 | GNS3 lab demo senaryosu belgele (Kali saldırı → kill chain) | `CLAUDE.md`, `docs/demo-scenario.md` | 0.5 gün |
+| A4-2 | README ve mimari belgeleme | `README.md` | 0.5 gün |
+
+---
+
+## Kırmızı Çizgiler — Artık Eklenmeyecekler
+
+Aşağıdakiler tartışılmadan reddedilecek. Bunları eklemek "çorba" sorununu derinleştirir:
+
+| Teklif | Neden Red |
+|--------|-----------|
+| Vulnerability scanner (OpenVAS/Nessus) | Farklı ürün kategorisi |
+| Template sistemi (Cisco Router template) | Önce mevcut modüller tamamlansın |
+| Rule editor UI | Sonraya; önce mevcut kurallar anlamlı gösterilsin |
+| PagerDuty/Opsgenie entegrasyonu | Önce temel email/webhook sağlam olsun |
+| Rootkit tespiti | EDR alanı, NDR değil |
+| Active Response (otomatik IP blok) | Sonraya; önce tespit derinleşsin |
+| FIM (File Integrity Monitoring) | Wazuh'un alanı |
 
 ---
 
@@ -80,6 +165,17 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
     ├── DMZ-Switch → Alpine WebServer (10.0.10.2)  console: telnet :5019
     └── LAN-Switch → Host1, Host2, Kali-Bridge(vmnet8→NetGuard)
 ```
+
+### Makine Listesi
+
+| Makine | IP | Rol |
+|--------|----|-----|
+| NetGuard Server | 192.168.203.134 | Server + dashboard (systemd: netguard.service) |
+| Agent VM (Ubuntu) | 192.168.203.142 | Linux agent (systemd: netguard-agent.service) |
+| Kali | 192.168.203.132 | Saldırı testleri |
+| VyOS (GNS3) | 192.168.203.200 / 10.0.30.2 | Router, NetFlow, SNMP |
+| OPNsense (GNS3) | 10.0.30.1 | Firewall |
+| Alpine WebServer (GNS3) | 10.0.10.2 | nginx web server |
 
 ### Veri Akışı (Çalışanlar)
 
@@ -103,7 +199,7 @@ sudo iptables -t nat -A POSTROUTING -s 10.0.0.0/8 -o ens33 -j MASQUERADE
 sudo iptables -t nat -A PREROUTING -p udp --dport 514 -j REDIRECT --to-port 5140
 ```
 
-**VyOS — her reboot'ta (kernel route için):**
+**VyOS — her reboot'ta:**
 ```bash
 sudo ip route replace default via 192.168.203.134
 ```
@@ -117,54 +213,55 @@ echo "nameserver 8.8.8.8" > /etc/resolv.conf
 nginx
 ```
 
-### Lab Makine Listesi
+### Protokol → Kazanım Tablosu
 
-| Makine | IP | Rol |
-|--------|----|-----|
-| NetGuard Server | 192.168.203.134 | Server + dashboard (systemd: netguard.service) |
-| Agent VM (Ubuntu) | 192.168.203.142 | Linux agent (systemd: netguard-agent.service) |
-| Kali | 192.168.203.132 | Saldırı testleri |
-| VyOS (GNS3) | 192.168.203.200 / 10.0.30.2 | Router, NetFlow, SNMP |
-| OPNsense (GNS3) | 10.0.30.1 | Firewall |
-| Alpine WebServer (GNS3) | 10.0.10.2 | nginx web server |
-
-### Hangi Protokolden Ne Elde Edilir
-
-| Protokol | Kaynak cihaz | NetGuard katkısı |
-|----------|-------------|-----------------|
+| Protokol | Kaynak | NetGuard katkısı |
+|----------|--------|-----------------|
 | SNMP v2c/v3 | Router, switch, firewall | Interface istatistikleri, CPU/RAM, uptime |
 | Syslog UDP 514 | Firewall, router | Allow/deny logları, auth events |
-| NetFlow v5/v9 | VyOS router, Cisco | Trafik akış analizi (kim kime ne kadar) |
+| NetFlow v5/v9 | VyOS router | Trafik akış analizi (kim kime ne kadar) |
 | LLDP | Switch, router | Fiziksel topoloji bağlantıları |
 | SNMP TRAP | Tüm ağ cihazları | Anlık event (interface down, auth fail) |
-| pfSense syslog | pfSense | Kural bazlı firewall logları |
-| Mikrotik syslog | Mikrotik CHR | RouterOS eventi, DHCP, OSPF |
+| pyshark (BPF) | NetGuard'ın kendi arayüzü | SYN scan, port tarama, anomali |
 
 ---
 
 ## Mimari Kararlar (Değiştirme)
 
-- **Veritabanı:** SQLite (WAL mode) + InfluxDB (zaman serisi metrikler)
-- **Device modeli:** agents + SNMP + discovered → hepsi `devices` tablosunda birleşir
-- **Korelasyon:** `config/correlation_rules.json` (threshold tabanlı) + `config/sigma_rules/` (YAML)
-- **Token güvenliği:** verify_token(token, token_type="access"|"refresh") — tip karıştırma engeli
+- **Kimlik:** NDR (Network Detection and Response) — NMS + SIEM değil
+- **Veritabanı:** SQLite WAL + InfluxDB (zaman serisi)
+- **Event pipeline:** Her kaynak → `normalized_logs` tablosu (tek merkezi tablo)
+- **Device modeli:** agent + SNMP + discovered → hepsi `devices` tablosunda
+- **Korelasyon:** `config/correlation_rules.json` + `config/sigma_rules/` YAML
+- **Token güvenliği:** `verify_token(token, token_type="access"|"refresh")` — tip karıştırma engeli
 - **API key:** SHA-256 hash saklanır, plaintext asla DB'ye yazılmaz
-- **tmp_db fixture:** conftest.py'da tanımlı, tüm test dosyaları kullanabilir
+- **Multi-tenant:** `tenant_scope(user)` → superadmin için `None`, diğerleri için `tenant_id`
+- **Test fixture:** `tmp_db` conftest.py'da tanımlı, tüm test dosyaları kullanabilir
+
+---
+
+## Bilinen Sorunlar (Çözülmeyene Dokunma)
+
+- `server/storage.py` — InMemoryStorage hâlâ var, A1-1 görevi ile kaldırılacak
+- `agent/traffic_collector.py` — pyshark ile trafik yakalıyor ama server almıyor (A3-2)
+- InfluxDB — metrikler yazılıyor, frontend'de grafik yok (A2-3)
+- `notifier.py` — sadece korelasyon olaylarını notify ediyor (A1-3)
 
 ---
 
 ## Commit Kuralları
 
 - Her görev ayrı commit
-- Format: Conventional Commits — `fix(auth): ...`, `feat(discovery): ...`
-- Her modül için test yaz, testler geçmeden commit atma
+- Format: `fix(auth): ...`, `feat(discovery): ...`, `feat(ndr): ...`
+- Her modül için test yaz; testler geçmeden commit atma
 - Commit sonrası push
 
 ## Kod Kuralları
 
 - Yorum yazma (açıklayıcı isimler yeterli)
 - Error handling sadece gerçek sınır noktalarında (user input, external API)
-- Mevcut pattern'leri takip et (yeni route → routes/ altına, router'ı main.py'a ekle)
+- Mevcut pattern'leri takip et: yeni route → `routes/` altına, router'ı `main.py`'a ekle
+- Yeni UI sayfası → `dashboard-v2/src/app/(protected)/` altına
 
 ## Test Çalıştırma
 
