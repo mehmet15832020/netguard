@@ -33,39 +33,30 @@ Her ağ olayını hem performans hem güvenlik boyutuyla analiz eden unified pla
 | T1-3 | Notifier → Correlated Events ✅ |
 | T1-4 | Audit log UI sayfası ✅ |
 | T2-1 | Threat Intelligence (AbuseIPDB API) ✅ |
+| T2-2 | Firewall log parser (OPNsense + VyOS + pfSense/ASA/FortiGate) ✅ |
+| T2-3 | Web log parser (nginx access + error log, API endpoint) ✅ |
+| T2-4 | NetFlow v5/v9 receiver (UDP 2055) ✅ |
+| T3-1 | Incident yönetimi (open/investigating/resolved + atama) ✅ |
+| T3-2 | Windows agent EVTX parser (4625/4624/4688) ✅ |
+| T3-3 | Saldırı timeline (attack_chain.py + /timeline UI) ✅ |
+| T3-4 | Compliance raporu (PCI DSS / ISO 27001) ✅ |
 | GNS3 Lab | OPNsense + VyOS + Alpine WebServer tam kurulu, veriler akıyor ✅ |
 
-**Test durumu: 549 test, tümü geçiyor.**
+**Test durumu: 561 test, tümü geçiyor.**
 
 ---
 
 ## Aktif Yol Haritası
 
 ### Tier 1 — Platform Tamamlama ✅ TAMAMLANDI
-
-### Tier 2 — Veri Zenginleştirme
-
-| # | Görev | Durum |
-|---|-------|-------|
-| T2-1 | Threat Intelligence (AbuseIPDB ücretsiz API) | ✅ |
-| T2-2 | Firewall log parser (OPNsense syslog formatı) | ⏳ **SIRA** |
-| T2-3 | Web log parser (nginx access.log) | ⏳ **SIRA** |
-| T2-4 | NetFlow v5/v9 receiver (UDP parse) | ⏳ doğrula |
-
-### Tier 3 — Kurumsal Özellikler
-
-| # | Görev | Durum |
-|---|-------|-------|
-| T3-1 | Incident yönetimi (open/investigating/resolved + atama) | ⏳ |
-| T3-2 | Windows agent (WMI / EVTX parser, Event Log 4625/4624/4688) | ⏳ |
-| T3-3 | Saldırı timeline görselleştirme | ⏳ |
-| T3-4 | Compliance raporu (PCI DSS / ISO 27001 otomatik eşleştirme) | ⏳ |
+### Tier 2 — Veri Zenginleştirme ✅ TAMAMLANDI
+### Tier 3 — Kurumsal Özellikler ✅ TAMAMLANDI (T3-2 kısmen: EVTX parser var, Windows agent servisi yok)
 
 ### Tier 4 — İleri Seviye
 
 | # | Görev | Durum |
 |---|-------|-------|
-| T4-1 | Anomaly detection (baseline + sapma) | ⏳ 7 gün warm-up sonrası |
+| T4-1 | Anomaly detection (baseline + sapma) | ⏳ **SIRA** |
 | T4-2 | Docker deployment (docker-compose) | ⏳ |
 | T4-3 | Multi-site / multi-tenant | ⏳ |
 | T4-4 | GNS3 lab entegrasyonu | ✅ |
