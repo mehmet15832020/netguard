@@ -15,7 +15,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from server.auth import User, get_current_user, require_admin
+from server.auth import User, get_current_user, require_admin, tenant_scope
 from server.database import db
 
 logger = logging.getLogger(__name__)
@@ -43,13 +43,14 @@ class ScanRequest(BaseModel):
 @router.post("/discovery/scan", status_code=202)
 async def start_scan(
     req: ScanRequest,
-    _: User = Depends(require_admin),
+    current_user: User = Depends(require_admin),
 ):
     """Subnet tarama başlatır — arka planda çalışır."""
     if _scan_state["running"]:
         raise HTTPException(status_code=409, detail="Zaten bir tarama çalışıyor")
 
     scan_id = str(uuid.uuid4())[:8]
+    tenant_id = current_user.tenant_id or "default"
     _scan_state.update({
         "running": True,
         "scan_id": scan_id,
@@ -61,7 +62,7 @@ async def start_scan(
         "error": "",
     })
 
-    asyncio.create_task(_run_scan(req.cidr, req.community, req.fingerprint, scan_id))
+    asyncio.create_task(_run_scan(req.cidr, req.community, req.fingerprint, scan_id, tenant_id))
     return {"scan_id": scan_id, "cidr": req.cidr, "status": "started"}
 
 
@@ -74,14 +75,14 @@ def scan_status(_: User = Depends(get_current_user)):
 @router.get("/discovery/results")
 def discovery_results(
     limit: int = 100,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Keşfedilen cihazları döndürür."""
-    devices = db.get_devices(device_type="discovered")
+    devices = db.get_devices(device_type="discovered", tenant_id=tenant_scope(current_user))
     return {"count": len(devices), "devices": devices[:limit]}
 
 
-async def _run_scan(cidr: str, community: str, do_fingerprint: bool, scan_id: str):
+async def _run_scan(cidr: str, community: str, do_fingerprint: bool, scan_id: str, tenant_id: str = "default"):
     """Arka plan tarama görevi."""
     from server.discovery.subnet_scanner import sweep
     from server.discovery.fingerprinter import fingerprint
@@ -109,6 +110,7 @@ async def _run_scan(cidr: str, community: str, do_fingerprint: bool, scan_id: st
                 os_info=fp.get("os_hint", ""),
                 status="up",
                 notes=_build_notes(fp),
+                tenant_id=tenant_id,
             )
             _scan_state["found"] += 1
             logger.info(f"Keşfedildi: {ip} ({name})")

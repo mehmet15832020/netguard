@@ -2,14 +2,19 @@
 NetGuard Server — Alert endpoint'leri
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
+from server.auth import get_current_user, User
 from server.storage import storage
 
 router = APIRouter()
 
 
 @router.get("/alerts")
-def list_alerts(status: str = None, limit: int = 100):
+def list_alerts(
+    status: str = None,
+    limit: int = 100,
+    _: User = Depends(get_current_user),
+):
     """Alert listesini döndür."""
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit 1-500 arasında olmalı")
@@ -21,7 +26,7 @@ def list_alerts(status: str = None, limit: int = 100):
 
 
 @router.get("/alerts/summary")
-def alert_summary():
+def alert_summary(_: User = Depends(get_current_user)):
     """Özet: kaç aktif, kaç resolved alert var."""
     active = storage.get_alerts(status="active")
     resolved = storage.get_alerts(status="resolved")

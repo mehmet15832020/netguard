@@ -479,7 +479,7 @@ class DatabaseManager:
     #  SECURITY EVENTS
     # ------------------------------------------------------------------ #
 
-    def save_security_event(self, event: SecurityEvent) -> None:
+    def save_security_event(self, event: SecurityEvent, tenant_id: str = "default") -> None:
         """Güvenlik olayını kaydet. Duplicate event_id'yi sessizce yoksay."""
         with self._lock:
             with self._connect() as conn:
@@ -487,8 +487,8 @@ class DatabaseManager:
                     INSERT OR IGNORE INTO security_events
                         (event_id, agent_id, hostname, event_type, severity,
                          source_ip, username, message, raw_data,
-                         occurred_at, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         occurred_at, created_at, tenant_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     event.event_id,
                     event.agent_id,
@@ -501,6 +501,7 @@ class DatabaseManager:
                     event.raw_data,
                     event.occurred_at.isoformat(),
                     event.created_at.isoformat(),
+                    tenant_id,
                 ))
 
     def get_security_events(
@@ -1765,14 +1766,17 @@ class DatabaseManager:
                 )
                 return cur.rowcount > 0
 
-    def count_incidents(self, status: Optional[str] = None) -> int:
-        query = "SELECT COUNT(*) FROM incidents"
-        params: list = []
+    def count_incidents(self, status: Optional[str] = None, tenant_id: Optional[str] = None) -> int:
+        clauses, params = [], []
         if status:
-            query += " WHERE status=?"
+            clauses.append("status=?")
             params.append(status)
+        if tenant_id is not None:
+            clauses.append("tenant_id=?")
+            params.append(tenant_id)
+        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         with self._connect() as conn:
-            return conn.execute(query, params).fetchone()[0]
+            return conn.execute(f"SELECT COUNT(*) FROM incidents {where}", params).fetchone()[0]
 
 
 # Global instance — uygulama boyunca tek bir tane

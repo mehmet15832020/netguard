@@ -13,7 +13,7 @@ import io
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
-from server.auth import get_current_user, User
+from server.auth import get_current_user, User, tenant_scope
 import server.database as _db_mod
 
 router = APIRouter()
@@ -45,11 +45,12 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 
 
 @router.get("/reports/summary")
-def report_summary(_: User = Depends(get_current_user)):
-    """Sistem geneli özet — dashboard widget ve rapor sayfası için."""
-    devices     = _db_mod.db.get_devices()
-    alerts      = _db_mod.db.get_alerts(status="active", limit=1000)
-    sec_events  = _db_mod.db.get_security_events(limit=1000)
+def report_summary(current_user: User = Depends(get_current_user)):
+    """Kullanıcının tenant'ına ait özet — dashboard widget ve rapor sayfası için."""
+    tid         = tenant_scope(current_user)
+    devices     = _db_mod.db.get_devices(tenant_id=tid)
+    alerts      = _db_mod.db.get_alerts(status="active", limit=1000, tenant_id=tid)
+    sec_events  = _db_mod.db.get_security_events(limit=1000, tenant_id=tid)
     topology    = _db_mod.db.get_topology_graph()
 
     device_by_type: dict[str, int] = {}
@@ -98,10 +99,10 @@ def report_summary(_: User = Depends(get_current_user)):
 @router.get("/reports/devices.csv")
 def report_devices(
     device_type: str = Query(default=""),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Cihaz envanterini CSV olarak indir."""
-    all_devices = _db_mod.db.get_devices(device_type=device_type or None)
+    all_devices = _db_mod.db.get_devices(device_type=device_type or None, tenant_id=tenant_scope(current_user))
     safe_fields = [
         "device_id", "name", "ip", "mac", "type", "vendor",
         "os_info", "status", "snmp_version", "segment",
@@ -115,10 +116,10 @@ def report_devices(
 @router.get("/reports/alerts.csv")
 def report_alerts(
     limit: int = Query(default=1000, le=5000),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Alert geçmişini CSV olarak indir."""
-    raw = _db_mod.db.get_alerts(limit=limit)
+    raw = _db_mod.db.get_alerts(limit=limit, tenant_id=tenant_scope(current_user))
     rows = [{
         "alert_id":    a.alert_id if not isinstance(a, dict) else a.get("alert_id", ""),
         "severity":    str(a.severity) if not isinstance(a, dict) else a.get("severity", ""),
@@ -135,10 +136,10 @@ def report_alerts(
 @router.get("/reports/security.csv")
 def report_security(
     limit: int = Query(default=2000, le=10000),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """Güvenlik olaylarını CSV olarak indir."""
-    raw = _db_mod.db.get_security_events(limit=limit)
+    raw = _db_mod.db.get_security_events(limit=limit, tenant_id=tenant_scope(current_user))
     rows = [{
         "event_id":   e.event_id if not isinstance(e, dict) else e.get("event_id", ""),
         "event_type": e.event_type.value if (not isinstance(e, dict) and hasattr(e.event_type, "value")) else (e.get("event_type", "") if isinstance(e, dict) else str(e.event_type)),
@@ -155,7 +156,7 @@ def report_security(
 
 
 @router.get("/reports/topology.csv")
-def report_topology(_: User = Depends(get_current_user)):
+def report_topology(current_user: User = Depends(get_current_user)):  # noqa: ARG001 — topology henüz tenant-aware değil
     """Topoloji kenarlarını CSV olarak indir."""
     graph   = _db_mod.db.get_topology_graph()
     nodes_by_id = {n["node_id"]: n for n in graph["nodes"]}

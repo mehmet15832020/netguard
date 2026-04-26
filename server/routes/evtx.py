@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 
-from server.auth import User, get_current_user
+from server.auth import User, get_current_user, tenant_scope
 from server.database import db
 from server.evtx_parser import parse_evtx_bytes
 from shared.models import SecurityEvent, SecurityEventType
@@ -62,7 +62,7 @@ async def upload_evtx(
                 occurred_at = datetime.fromisoformat(rec["occurred_at"])
                               if rec.get("occurred_at") else datetime.now(timezone.utc),
             )
-            db.save_security_event(event)
+            db.save_security_event(event, tenant_id=current_user.tenant_id or "default")
             saved += 1
         except Exception as exc:
             logger.warning(f"EVTX event kaydedilemedi: {exc}")
@@ -85,20 +85,21 @@ async def upload_evtx(
 def list_evtx_events(
     event_type: str | None = None,
     limit: int = 200,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     """evtx yükleme kaynaklı Windows security event'lerini döner."""
     if limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="limit 1-1000 arasında olmalı")
+    tid = tenant_scope(current_user)
     win_types = ["windows_logon_success", "windows_logon_failure", "windows_process_create"]
     if event_type:
         if event_type not in win_types:
             raise HTTPException(status_code=400, detail=f"Geçerli tipler: {win_types}")
-        events = db.get_security_events(event_type=event_type, limit=limit)
+        events = db.get_security_events(event_type=event_type, limit=limit, tenant_id=tid)
     else:
         events = []
         for wt in win_types:
-            events.extend(db.get_security_events(event_type=wt, limit=limit))
+            events.extend(db.get_security_events(event_type=wt, limit=limit, tenant_id=tid))
         events.sort(key=lambda e: e.occurred_at, reverse=True)
         events = events[:limit]
     return {"count": len(events), "events": [e.model_dump() for e in events]}

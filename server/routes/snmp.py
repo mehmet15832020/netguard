@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from server.auth import get_current_user, User
+from server.auth import get_current_user, require_admin, User
 from server.database import db
 
 router = APIRouter()
@@ -78,9 +78,9 @@ def list_snmp_devices(_: User = Depends(get_current_user)):
 @router.post("/snmp/devices", status_code=201)
 def add_snmp_device(
     request: SNMPDeviceRequest,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
 ):
-    """Yeni SNMP cihazı ekle (v2c veya v3)."""
+    """Yeni SNMP cihazı ekle (v2c veya v3). Admin gerekli."""
     added = db.add_snmp_device(
         host=request.host,
         community=request.community,
@@ -101,6 +101,7 @@ def add_snmp_device(
         snmp_v3_priv_protocol=request.v3_priv_protocol,
         snmp_v3_priv_key=request.v3_priv_key,
         status="unknown",
+        tenant_id=current_user.tenant_id or "default",
     )
     return {"added": True, "host": request.host}
 

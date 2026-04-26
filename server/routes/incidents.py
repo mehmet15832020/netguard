@@ -72,13 +72,14 @@ def create_incident(
 
 
 @router.get("/incidents/summary")
-def incidents_summary(_: User = Depends(get_current_user)):
+def incidents_summary(current_user: User = Depends(get_current_user)):
     """Her durum için incident sayısını döner."""
+    tid = tenant_scope(current_user)
     return {
-        "open":          db.count_incidents(status="open"),
-        "investigating": db.count_incidents(status="investigating"),
-        "resolved":      db.count_incidents(status="resolved"),
-        "total":         db.count_incidents(),
+        "open":          db.count_incidents(status="open",          tenant_id=tid),
+        "investigating": db.count_incidents(status="investigating", tenant_id=tid),
+        "resolved":      db.count_incidents(status="resolved",      tenant_id=tid),
+        "total":         db.count_incidents(tenant_id=tid),
     }
 
 
@@ -99,12 +100,20 @@ def list_incidents(
     return {"count": len(rows), "incidents": rows}
 
 
-@router.get("/incidents/{incident_id}")
-def get_incident(incident_id: str, _: User = Depends(get_current_user)):
+def _check_incident_access(incident_id: str, current_user: User) -> dict:
+    """Incident'ı getir; yoksa veya tenant uyuşmuyorsa 404."""
     row = db.get_incident(incident_id)
     if not row:
         raise HTTPException(status_code=404, detail="Incident bulunamadı")
+    if current_user.role != "superadmin":
+        if row.get("tenant_id", "default") != (current_user.tenant_id or "default"):
+            raise HTTPException(status_code=404, detail="Incident bulunamadı")
     return row
+
+
+@router.get("/incidents/{incident_id}")
+def get_incident(incident_id: str, current_user: User = Depends(get_current_user)):
+    return _check_incident_access(incident_id, current_user)
 
 
 @router.patch("/incidents/{incident_id}")
@@ -113,6 +122,7 @@ def update_incident(
     req: UpdateIncidentRequest,
     current_user: User = Depends(get_current_user),
 ):
+    _check_incident_access(incident_id, current_user)
     valid_statuses = {s.value for s in IncidentStatus}
     if req.status and req.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Geçerli status: {valid_statuses}")
@@ -138,9 +148,8 @@ def update_incident(
 
 
 @router.get("/incidents/{incident_id}/events")
-def get_incident_events(incident_id: str, _: User = Depends(get_current_user)):
-    if not db.get_incident(incident_id):
-        raise HTTPException(status_code=404, detail="Incident bulunamadı")
+def get_incident_events(incident_id: str, current_user: User = Depends(get_current_user)):
+    _check_incident_access(incident_id, current_user)
     events = db.get_incident_events(incident_id)
     return {"incident_id": incident_id, "count": len(events), "events": events}
 
@@ -150,8 +159,9 @@ def delete_incident(
     incident_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Sadece admin silebilir")
+    _check_incident_access(incident_id, current_user)
     if not db.delete_incident(incident_id):
         raise HTTPException(status_code=404, detail="Incident bulunamadı")
     db.save_audit_event(
