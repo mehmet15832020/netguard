@@ -5,6 +5,29 @@ Her yeni özellik veya değişiklikten sonra bu dosya güncellenmeli.
 
 ---
 
+## Temel İlke — Her Adımda Ön Planda Tut (Değiştirme)
+
+**NetGuard bir hikayesi olan üründür. Her kod değişikliği bu hikayeye hizmet etmeli.**
+
+Hikaye:
+> Bir IT yöneticisi sabah işe gelir. Dashboard açar. Geceyi özetleyen bir güvenlik durumu görür.
+> Anormal bir trafik tespit edilmiş, kill chain'in 2. aşamasına ulaşmış, incident açılmış.
+> Bir tıkla zaman çizelgesine bakar — hangi IP, hangi port, hangi saat. Karar verir.
+
+**Her geliştirme adımında şu soruyu sor:**
+- Bu değişiklik o IT yöneticisinin işini somut olarak kolaylaştırıyor mu?
+- Ürünün bütününde anlamlı, görünür ve profesyonel bir etki yaratıyor mu?
+- "Demo'da gösterilince etkileyici" mi?
+
+**Kaçınılacaklar:**
+- Arka planda çalışıp UI'da görünmeyen "altyapı" işleri (zorunlu olmadıkça)
+- Kullanıcıya değer katmayan teknik refactor
+- Parça parça, birbirinden kopuk özellikler
+
+**Her commit şu testi geçmeli:** "Bu değişikliği demo'da gösterebilir miyim? Birisi görünce 'bu işe yarıyor' der mi?"
+
+---
+
 ## Ürün Kimliği (Değiştirme)
 
 **NetGuard: Kurumsal bütçesi olmayan orta ölçekli şirketler için açık kaynak NDR platformu.**
