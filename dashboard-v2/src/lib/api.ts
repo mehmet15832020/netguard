@@ -188,6 +188,23 @@ export const logsApi = {
     return request<{ count: number; logs: NormalizedLog[] }>(`/logs/normalized?${q}`)
   },
 
+  searchLogs: (params: {
+    q: string
+    source_type?: string
+    category?: string
+    severity?: string
+    limit?: number
+  }) => {
+    const query = new URLSearchParams({ q: params.q })
+    if (params.source_type) query.set('source_type', params.source_type)
+    if (params.category)    query.set('category', params.category)
+    if (params.severity)    query.set('severity', params.severity)
+    if (params.limit)       query.set('limit', String(params.limit))
+    return request<{ query: string; count: number; logs: NormalizedLog[] }>(
+      `/logs/search?${query}`
+    )
+  },
+
   ingest: (rawContent: string, sourceHost: string) =>
     request('/logs/ingest', {
       method: 'POST',

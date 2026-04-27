@@ -54,6 +54,33 @@ def list_normalized_logs(
     return {"count": len(logs), "logs": logs}
 
 
+@router.get("/logs/search")
+def search_logs(
+    q: str = "",
+    source_type: str = None,
+    category: str = None,
+    severity: str = None,
+    limit: int = 100,
+    current_user: User = Depends(get_current_user),
+):
+    """Full-text log arama: mesaj, IP, kullanıcı adı, olay tipi içinde arar."""
+    if limit < 1 or limit > 500:
+        raise HTTPException(status_code=400, detail="limit 1-500 arasında olmalı")
+    logs = db.search_logs(
+        query=q,
+        source_type=source_type,
+        category=category,
+        severity=severity,
+        limit=limit,
+        tenant_id=tenant_scope(current_user),
+    )
+    return {
+        "query": q,
+        "count": len(logs),
+        "logs": [log.model_dump(mode="json") for log in logs],
+    }
+
+
 @router.get("/logs/raw")
 def list_raw_logs(
     normalized: bool = None,

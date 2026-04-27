@@ -12,12 +12,15 @@ Tablo şeması:
 import json
 import logging
 import os
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Lock
 from typing import Optional
+
+_IP_RE = re.compile(r'^\d{1,3}(\.\d{1,3}){1,3}$')
 
 from shared.models import (
     Alert, AlertSeverity, AlertStatus,
@@ -346,6 +349,31 @@ CREATE TABLE IF NOT EXISTS db_users (
 CREATE INDEX IF NOT EXISTS idx_db_users_tenant ON db_users(tenant_id);
 """
 
+_CREATE_FTS5 = """
+CREATE VIRTUAL TABLE IF NOT EXISTS normalized_logs_fts USING fts5(
+    message,
+    src_ip,
+    dst_ip,
+    source_host,
+    username,
+    event_type,
+    content='normalized_logs',
+    content_rowid='id'
+);
+"""
+
+_CREATE_FTS5_TRIGGERS = """
+CREATE TRIGGER IF NOT EXISTS fts_insert AFTER INSERT ON normalized_logs BEGIN
+    INSERT INTO normalized_logs_fts(rowid, message, src_ip, dst_ip, source_host, username, event_type)
+    VALUES (new.id, new.message, new.src_ip, new.dst_ip, new.source_host, new.username, new.event_type);
+END;
+
+CREATE TRIGGER IF NOT EXISTS fts_delete AFTER DELETE ON normalized_logs BEGIN
+    INSERT INTO normalized_logs_fts(normalized_logs_fts, rowid, message, src_ip, dst_ip, source_host, username, event_type)
+    VALUES ('delete', old.id, old.message, old.src_ip, old.dst_ip, old.source_host, old.username, old.event_type);
+END;
+"""
+
 _CREATE_SCHEMA_VERSION = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version     INTEGER PRIMARY KEY,
@@ -378,6 +406,79 @@ class DatabaseManager:
                 return row[0] or 0
         except Exception:
             return 0
+
+    def _init_fts(self) -> None:
+        """FTS5 virtual table ve trigger'ları oluştur; mevcut verilerle indexi doldur."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.executescript(_CREATE_FTS5)
+                conn.executescript(_CREATE_FTS5_TRIGGERS)
+                count = conn.execute("SELECT COUNT(*) FROM normalized_logs_fts").fetchone()[0]
+                if count == 0:
+                    conn.execute("""
+                        INSERT INTO normalized_logs_fts(rowid, message, src_ip, dst_ip, source_host, username, event_type)
+                        SELECT id, message, src_ip, dst_ip, source_host, username, event_type
+                        FROM normalized_logs
+                    """)
+                    rebuilt = conn.execute("SELECT COUNT(*) FROM normalized_logs_fts").fetchone()[0]
+                    if rebuilt > 0:
+                        logger.info(f"FTS5 indexi yeniden oluşturuldu: {rebuilt} kayıt")
+
+    def search_logs(
+        self,
+        query: str,
+        source_type: Optional[str] = None,
+        category: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 100,
+        tenant_id: Optional[str] = None,
+    ) -> list:
+        """Full-text arama: message, src_ip, dst_ip, source_host, username, event_type içinde ara."""
+        q = query.strip()
+        if not q:
+            return self.get_normalized_logs(
+                source_type=source_type, category=category, limit=limit, tenant_id=tenant_id
+            )
+
+        clauses: list[str] = []
+        params: list = []
+
+        if _IP_RE.match(q):
+            clauses.append("(src_ip LIKE ? OR dst_ip LIKE ? OR source_host LIKE ?)")
+            pattern = f"{q}%"
+            params.extend([pattern, pattern, pattern])
+        else:
+            safe_q = q.replace('"', '""')
+            clauses.append(
+                "id IN (SELECT rowid FROM normalized_logs_fts WHERE normalized_logs_fts MATCH ?)"
+            )
+            params.append(safe_q)
+
+        if source_type:
+            clauses.append("source_type = ?")
+            params.append(source_type)
+        if category:
+            clauses.append("category = ?")
+            params.append(category)
+        if severity:
+            clauses.append("severity = ?")
+            params.append(severity)
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+
+        where = "WHERE " + " AND ".join(clauses)
+        params.append(limit)
+
+        try:
+            with self._connect() as conn:
+                rows = conn.execute(
+                    f"SELECT * FROM normalized_logs {where} ORDER BY timestamp DESC LIMIT ?",
+                    params,
+                ).fetchall()
+            return [self._row_to_normalized_log(r) for r in rows]
+        except sqlite3.OperationalError:
+            return []
 
     def _apply_schema_version(self, version: int, description: str) -> None:
         now = datetime.now(timezone.utc).isoformat()
@@ -420,6 +521,7 @@ class DatabaseManager:
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
         self.ensure_default_tenant()
+        self._init_fts()
         self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
         logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()} (schema v{self.get_schema_version()})")
 
