@@ -171,6 +171,9 @@ async def lifespan(app: FastAPI):
     logger.info(f"API versiyonu: {API_VERSION}")
     logger.info("=" * 50)
     influx_writer.connect()
+    from server.alert_engine import alert_engine
+    from server.database import db as _db
+    alert_engine.restore_active_alerts(_db)
     scan_task = asyncio.create_task(_security_scan_loop())
     logger.info(f"Güvenlik tarama döngüsü başlatıldı (her {SECURITY_SCAN_INTERVAL}s)")
     ntp_task  = asyncio.create_task(_ntp_check_loop())

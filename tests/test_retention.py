@@ -128,6 +128,31 @@ class TestRetentionCleanup:
         assert "old-active" in ids
         assert "old-resolved" not in ids
 
+    def test_raw_logs_cleaned_up(self, tmp_db, retention_env):
+        ret, _ = retention_env
+        from server.database import db
+
+        old_ts = _old_ts(5)
+        new_ts = _new_ts()
+        with db._connect() as conn:
+            conn.execute(
+                "INSERT INTO raw_logs (raw_id, source_host, received_at, raw_content) "
+                "VALUES (?, 'host', ?, 'old log')",
+                ("raw-old", old_ts),
+            )
+            conn.execute(
+                "INSERT INTO raw_logs (raw_id, source_host, received_at, raw_content) "
+                "VALUES (?, 'host', ?, 'new log')",
+                ("raw-new", new_ts),
+            )
+
+        report = ret.run_retention()
+
+        assert report["tables"]["raw_logs"]["deleted"] == 1
+        with db._connect() as conn:
+            remaining = conn.execute("SELECT COUNT(*) FROM raw_logs").fetchone()[0]
+        assert remaining == 1
+
     def test_report_structure(self, tmp_db, retention_env):
         ret, _ = retention_env
         report = ret.run_retention()
@@ -136,6 +161,7 @@ class TestRetentionCleanup:
         assert "total_archived" in report
         assert "total_deleted" in report
         assert "tables" in report
+        assert "raw_logs" in report["tables"]
 
     def test_purge_old_archives(self, tmp_path, monkeypatch):
         import server.retention as ret

@@ -1,10 +1,9 @@
 """
 NetGuard Server — Storage
 
-Şu an: Veriyi bellekte (RAM) tutar.
-İleride: Bu sınıfın arayüzü değişmeden InfluxDB backend'e geçilecek.
-
-Maksimum kaç snapshot saklanacağı sabittir — bellek taşmaz.
+Agent kayıt ve anlık metrik snapshot'larını bellekte tutar.
+Alert'ler artık doğrudan SQLite'a yazılır/okunur (server/database.py).
+Snapshot'lar gerçek zamanlı dashboard için RAM'de, kalıcı metrikler InfluxDB'de.
 """
 
 from collections import deque
@@ -13,16 +12,14 @@ from datetime import datetime, timezone
 from threading import Lock
 from typing import Optional
 
-from shared.models import AgentRegistration, Alert, AlertStatus, MetricSnapshot
-from server.database import db
+from shared.models import AgentRegistration, MetricSnapshot
 
-# Agent başına tutulacak maksimum snapshot sayısı
 MAX_SNAPSHOTS_PER_AGENT = 360  # 10 saniyelik aralıkla 1 saatlik veri
 
 
 @dataclass
 class AgentRecord:
-    """Bir agent'ın tüm bilgilerini tutar."""
+    """Bir agent'ın anlık durumunu ve son snapshot'larını tutar."""
     registration: AgentRegistration
     snapshots: deque = field(
         default_factory=lambda: deque(maxlen=MAX_SNAPSHOTS_PER_AGENT)
@@ -32,21 +29,18 @@ class AgentRecord:
 
 class InMemoryStorage:
     """
-    Thread-safe bellek içi depolama.
-    Lock kullanıyoruz çünkü FastAPI async — aynı anda birden fazla
-    agent veri gönderebilir.
+    Thread-safe agent durum deposu.
+    Sadece anlık metrik snapshot'larını ve agent bağlantı durumunu tutar.
+    Alert'ler bu sınıfın sorumluluğunda değil — SQLite'a yaz, SQLite'tan oku.
     """
 
     def __init__(self):
         self._agents: dict[str, AgentRecord] = {}
-        self._alerts: deque = deque(maxlen=1000)
         self._lock = Lock()
 
     def register_agent(self, registration: AgentRegistration) -> None:
-        """Agent'ı kaydet. Zaten varsa kaydını güncelle."""
         with self._lock:
             if registration.agent_id in self._agents:
-                # Mevcut snapshot'ları koru, sadece kaydı güncelle
                 self._agents[registration.agent_id].registration = registration
                 self._agents[registration.agent_id].last_seen = datetime.now(timezone.utc)
             else:
@@ -67,72 +61,34 @@ class InMemoryStorage:
                     )
                 )
             record = self._agents[snapshot.agent_id]
-            
-            # Traffic summary varsa sakla, yoksa öncekini koru
             if snapshot.traffic_summary is None and record.snapshots:
                 last = record.snapshots[-1]
                 if last.traffic_summary is not None:
                     snapshot.traffic_summary = last.traffic_summary
-            
             record.snapshots.append(snapshot)
             record.last_seen = snapshot.collected_at
 
     def get_all_agents(self) -> list[AgentRecord]:
-        """Tüm kayıtlı agent'ları döndür."""
         with self._lock:
             return list(self._agents.values())
 
     def get_agent(self, agent_id: str) -> Optional[AgentRecord]:
-        """Belirli bir agent'ı döndür. Yoksa None."""
         with self._lock:
             return self._agents.get(agent_id)
 
     def get_latest_snapshot(self, agent_id: str) -> Optional[MetricSnapshot]:
-        """Agent'ın en son snapshot'ını döndür."""
         with self._lock:
             record = self._agents.get(agent_id)
             if record and record.snapshots:
                 return record.snapshots[-1]
             return None
 
-    def get_snapshots(
-        self, agent_id: str, limit: int = 60
-    ) -> list[MetricSnapshot]:
-        """Agent'ın son N snapshot'ını döndür."""
+    def get_snapshots(self, agent_id: str, limit: int = 60) -> list[MetricSnapshot]:
         with self._lock:
             record = self._agents.get(agent_id)
             if not record:
                 return []
-            snapshots = list(record.snapshots)
-            return snapshots[-limit:]
-
-
-    def store_alert(self, alert: Alert) -> None:
-        """Alert'i RAM cache'e ve SQLite'a yazar."""
-        db.save_alert(alert)  # kalıcı depolama
-        with self._lock:
-            if alert.status == AlertStatus.RESOLVED:
-                for existing in self._alerts:
-                    if existing.alert_id == alert.alert_id:
-                        existing.status = AlertStatus.RESOLVED
-                        existing.resolved_at = alert.resolved_at
-                        return
-            else:
-                self._alerts.append(alert)
-
-    def get_alerts(
-        self,
-        status: Optional[str] = None,
-        limit: int = 100
-    ) -> list[Alert]:
-        """Alert listesini döndür. Status filtresi opsiyonel."""
-        with self._lock:
-            alerts = list(self._alerts)
-            if status:
-                alerts = [a for a in alerts if a.status == status]
-            # En yeni önce
-            alerts.sort(key=lambda a: a.triggered_at, reverse=True)
-            return alerts[:limit]
+            return list(record.snapshots)[-limit:]
 
     @property
     def agent_count(self) -> int:
@@ -140,5 +96,4 @@ class InMemoryStorage:
             return len(self._agents)
 
 
-# Global storage instance — uygulama boyunca tek bir tane
 storage = InMemoryStorage()

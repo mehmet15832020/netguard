@@ -322,9 +322,9 @@ class Correlator:
             logger.error(f"Attack chain kontrol hatası: {exc}")
 
     def _create_alert(self, event: CorrelatedEvent) -> None:
-        """Korelasyon eventinden Alert üret ve storage'a kaydet."""
+        """Korelasyon eventinden Alert üret ve SQLite'a kaydet."""
         try:
-            from server.storage import storage
+            from server.database import db
             from shared.models import Alert, AlertSeverity, AlertStatus
 
             severity_map = {
@@ -344,7 +344,7 @@ class Correlator:
                 threshold    = 0.0,
                 triggered_at = event.last_seen,
             )
-            storage.store_alert(alert)
+            db.save_alert(alert)
         except Exception as exc:
             logger.error(f"Alert üretilemedi [{event.rule_id}]: {exc}")
 

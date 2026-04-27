@@ -346,6 +346,16 @@ CREATE TABLE IF NOT EXISTS db_users (
 CREATE INDEX IF NOT EXISTS idx_db_users_tenant ON db_users(tenant_id);
 """
 
+_CREATE_SCHEMA_VERSION = """
+CREATE TABLE IF NOT EXISTS schema_version (
+    version     INTEGER PRIMARY KEY,
+    applied_at  TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT ''
+);
+"""
+
+CURRENT_SCHEMA_VERSION = 1
+
 
 class DatabaseManager:
     """
@@ -358,9 +368,29 @@ class DatabaseManager:
         self._lock = Lock()
         self._init_db()
 
+    def get_schema_version(self) -> int:
+        """Mevcut schema versiyonunu döndür. Tablo yoksa 0."""
+        try:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT MAX(version) FROM schema_version"
+                ).fetchone()
+                return row[0] or 0
+        except Exception:
+            return 0
+
+    def _apply_schema_version(self, version: int, description: str) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO schema_version (version, applied_at, description) VALUES (?,?,?)",
+                (version, now, description),
+            )
+
     def _init_db(self) -> None:
         """Tabloları oluştur, yoksa geç."""
         with self._connect() as conn:
+            conn.executescript(_CREATE_SCHEMA_VERSION)
             conn.executescript(_CREATE_ALERTS)
             conn.executescript(_CREATE_SECURITY_EVENTS)
             conn.executescript(_CREATE_RAW_LOGS)
@@ -390,7 +420,8 @@ class DatabaseManager:
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
         self.ensure_default_tenant()
-        logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()}")
+        self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
+        logger.info(f"SQLite başlatıldı: {Path(self._path).resolve()} (schema v{self.get_schema_version()})")
 
     @contextmanager
     def _connect(self):

@@ -3,8 +3,8 @@ NetGuard Server — Alert endpoint'leri
 """
 
 from fastapi import APIRouter, Depends, HTTPException
-from server.auth import get_current_user, User
-from server.storage import storage
+from server.auth import get_current_user, User, tenant_scope
+from server.database import db
 
 router = APIRouter()
 
@@ -13,25 +13,24 @@ router = APIRouter()
 def list_alerts(
     status: str = None,
     limit: int = 100,
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    """Alert listesini döndür."""
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit 1-500 arasında olmalı")
-    alerts = storage.get_alerts(status=status, limit=limit)
+    alerts = db.get_alerts(status=status, limit=limit, tenant_id=tenant_scope(current_user))
     return {
         "count": len(alerts),
-        "alerts": alerts
+        "alerts": [a.model_dump(mode="json") for a in alerts],
     }
 
 
 @router.get("/alerts/summary")
-def alert_summary(_: User = Depends(get_current_user)):
-    """Özet: kaç aktif, kaç resolved alert var."""
-    active = storage.get_alerts(status="active")
-    resolved = storage.get_alerts(status="resolved")
+def alert_summary(current_user: User = Depends(get_current_user)):
+    tid = tenant_scope(current_user)
+    active   = db.get_alerts(status="active",   limit=500, tenant_id=tid)
+    resolved = db.get_alerts(status="resolved", limit=500, tenant_id=tid)
     return {
-        "active": len(active),
+        "active":   len(active),
         "resolved": len(resolved),
-        "total": len(active) + len(resolved),
+        "total":    len(active) + len(resolved),
     }

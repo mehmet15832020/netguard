@@ -138,7 +138,8 @@ def run_retention() -> dict:
 
     tasks = [
         ("normalized_logs",   "timestamp",   RETAIN_NORMALIZED_DAYS,  ""),
-        ("security_events",   "timestamp",   RETAIN_SECURITY_DAYS,    ""),
+        ("raw_logs",          "received_at", RETAIN_NORMALIZED_DAYS,  ""),
+        ("security_events",   "occurred_at", RETAIN_SECURITY_DAYS,    ""),
         ("correlated_events", "created_at",  RETAIN_CORRELATED_DAYS,  ""),
         ("alerts",            "triggered_at", RETAIN_ALERTS_DAYS,     "status='resolved'"),
     ]

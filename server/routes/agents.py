@@ -55,7 +55,7 @@ async def receive_metrics(snapshot: MetricSnapshot):
     # Alert Engine'i çalıştır
     alerts = alert_engine.evaluate(snapshot)
     for alert in alerts:
-        storage.store_alert(alert)
+        db.save_alert(alert)
         notifier.notify(alert)
         await ws_manager.broadcast("alert", alert.model_dump(mode="json"))
 

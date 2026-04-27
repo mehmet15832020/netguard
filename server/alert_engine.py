@@ -12,9 +12,12 @@ import logging
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from shared.models import Alert, AlertSeverity, AlertStatus, MetricSnapshot
+
+if TYPE_CHECKING:
+    from server.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -114,14 +117,24 @@ _RULES: list[AlertRule] = [
 class AlertEngine:
     """
     Alert Engine ana sınıfı.
-    Storage ile doğrudan konuşmaz — alert listesini döndürür,
-    storage katmanı kaydeder. Sorumluluklar ayrı.
+    Alert listesini döndürür; çağıran katman SQLite'a yazar.
     """
 
     def __init__(self):
-        # agent_id + rule_id → aktif alert_id
-        # Aynı kural için birden fazla alert oluşmasını önler
+        # "agent_id:metric" → alert_id  (aktif alert takibi)
         self._active: dict[str, str] = {}
+
+    def restore_active_alerts(self, db: "DatabaseManager") -> None:
+        """Sunucu yeniden başladığında aktif alert'leri DB'den yükler.
+        Bu olmadan restart sonrası aynı alert tekrar üretilir."""
+        alerts = db.get_alerts(status="active")
+        for alert in alerts:
+            if alert.agent_id == "correlator":
+                continue
+            key = f"{alert.agent_id}:{alert.metric}"
+            self._active[key] = alert.alert_id
+        if alerts:
+            logger.info(f"AlertEngine: {len(self._active)} aktif alert DB'den yüklendi")
 
     def evaluate(self, snapshot: MetricSnapshot) -> list[Alert]:
         """
@@ -132,7 +145,7 @@ class AlertEngine:
         now = datetime.now(timezone.utc)
 
         for rule in _RULES:
-            key = f"{snapshot.agent_id}:{rule.rule_id}"
+            key = f"{snapshot.agent_id}:{rule.metric}"
             triggered, value, threshold = rule.check_fn(snapshot)
 
             if triggered and key not in self._active:
