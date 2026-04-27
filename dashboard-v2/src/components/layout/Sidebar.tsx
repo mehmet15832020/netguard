@@ -5,9 +5,9 @@ import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import {
   LayoutDashboard, Bell, Shield, FileText, GitMerge, Settings, LogOut,
-  Activity, Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
+  Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
   ClipboardList, ShieldAlert, Crosshair, Swords, ShieldCheck, ChevronLeft,
-  ChevronRight, BarChart3, Zap,
+  ChevronRight, Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -15,41 +15,46 @@ import { useAlertStore } from '@/store/alertStore'
 
 const SECTIONS = [
   {
-    label: 'NMS',
+    label: '',
     items: [
-      { href: '/overview',    label: 'Genel Bakış',  icon: LayoutDashboard },
-      { href: '/devices',     label: 'Cihazlar',      icon: Monitor },
-      { href: '/topology',    label: 'Topoloji',      icon: Share2 },
-      { href: '/discovery',   label: 'Keşif',         icon: Radar },
-      { href: '/snmp',        label: 'SNMP',          icon: Network },
-      { href: '/agents',      label: 'Agents',        icon: Server },
+      { href: '/overview', label: 'Genel Bakış', icon: LayoutDashboard },
     ],
   },
   {
-    label: 'Güvenlik',
+    label: 'Tehdit Tespiti',
     items: [
       { href: '/alerts',      label: 'Alertler',      icon: Bell },
-      { href: '/security',    label: 'Güvenlik',      icon: Shield },
       { href: '/correlation', label: 'Korelasyon',    icon: GitMerge },
-      { href: '/logs',        label: 'Loglar',        icon: FileText },
-      { href: '/incidents',   label: 'Incidents',     icon: ShieldAlert },
-      { href: '/timeline',    label: 'Timeline',      icon: Swords },
-    ],
-  },
-  {
-    label: 'Intelligence',
-    items: [
+      { href: '/timeline',    label: 'Kill Chain',    icon: Swords },
       { href: '/mitre',       label: 'MITRE ATT&CK',  icon: Crosshair },
-      { href: '/compliance',  label: 'Compliance',    icon: ShieldCheck },
     ],
   },
   {
-    label: 'System',
+    label: 'Ağ İzleme',
     items: [
-      { href: '/reports',     label: 'Raporlar',      icon: FileDown },
-      { href: '/audit',       label: 'Denetim Günlüğü', icon: ClipboardList },
-      { href: '/maintenance', label: 'Bakım',         icon: Wrench },
-      { href: '/settings',    label: 'Ayarlar',       icon: Settings },
+      { href: '/devices',   label: 'Cihazlar',  icon: Monitor },
+      { href: '/topology',  label: 'Topoloji',  icon: Share2 },
+      { href: '/agents',    label: 'Agents',    icon: Server },
+      { href: '/snmp',      label: 'SNMP',      icon: Network },
+      { href: '/discovery', label: 'Keşif',     icon: Radar },
+    ],
+  },
+  {
+    label: 'Araştırma',
+    items: [
+      { href: '/logs',      label: 'Loglar',            icon: FileText },
+      { href: '/security',  label: 'Güvenlik Olayları', icon: Shield },
+      { href: '/incidents', label: 'Incidents',         icon: ShieldAlert },
+    ],
+  },
+  {
+    label: 'Yönetim',
+    items: [
+      { href: '/compliance',  label: 'Compliance',       icon: ShieldCheck },
+      { href: '/reports',     label: 'Raporlar',         icon: FileDown },
+      { href: '/audit',       label: 'Denetim Günlüğü',  icon: ClipboardList },
+      { href: '/maintenance', label: 'Bakım',            icon: Wrench },
+      { href: '/settings',    label: 'Ayarlar',          icon: Settings },
     ],
   },
 ]
@@ -82,7 +87,7 @@ export function Sidebar() {
         {!collapsed && (
           <div>
             <span className="font-bold text-sm text-zinc-100 tracking-tight">NetGuard</span>
-            <span className="block text-[10px] text-zinc-500 leading-tight">NIST · CSNM</span>
+            <span className="block text-[10px] text-zinc-500 leading-tight">Açık Kaynak NDR</span>
           </div>
         )}
       </div>
@@ -90,8 +95,8 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 space-y-4 scrollbar-none">
         {SECTIONS.map((section) => (
-          <div key={section.label}>
-            {!collapsed && (
+          <div key={section.label || '__top'}>
+            {!collapsed && section.label && (
               <p className="px-4 mb-1 text-[10px] font-semibold tracking-widest text-zinc-600 uppercase">
                 {section.label}
               </p>
