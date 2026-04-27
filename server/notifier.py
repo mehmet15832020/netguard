@@ -14,9 +14,13 @@ import smtplib
 import httpx
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import TYPE_CHECKING
 
 from shared.models import Alert, AlertSeverity, CorrelatedEvent
+
+if TYPE_CHECKING:
+    from server.anomaly.models import AnomalyResult
 
 logger = logging.getLogger(__name__)
 
@@ -175,18 +179,32 @@ class WebhookNotifier:
         }
 
 
+_SEV_RANK = {"info": 0, "warning": 1, "medium": 2, "high": 3, "critical": 4}
+_ANOMALY_COOLDOWN_SECS = 3600  # Aynı entity+metric için saatte bir bildirim
+
+
 class Notifier:
     """
     Tüm bildirim kanallarını yöneten ana sınıf.
-    Alert Engine bu sınıfla konuşur.
+    Desteklenen event tipleri: Agent Alert, Correlated Event, Anomaly Result.
     """
 
     def __init__(self):
         self.email = EmailNotifier()
         self.webhook = WebhookNotifier()
+        self._anomaly_cooldown: dict[str, datetime] = {}
+
+    def _get_min_severity(self) -> str:
+        try:
+            import json
+            from pathlib import Path
+            cfg_path = Path(__file__).parent.parent / "config" / "notifier.json"
+            return json.loads(cfg_path.read_text()).get("min_severity", "high")
+        except Exception:
+            return "high"
 
     def notify(self, alert: Alert) -> None:
-        """Alert'i tüm aktif kanallara gönderir. Sadece ACTIVE alertler için."""
+        """Agent threshold alert'i gönderir. Sadece ACTIVE alertler."""
         from shared.models import AlertStatus
         if alert.status != AlertStatus.ACTIVE:
             return
@@ -194,19 +212,24 @@ class Notifier:
         self.webhook.send(alert)
 
     def notify_correlated(self, event: CorrelatedEvent) -> None:
-        """Correlated event'i tüm aktif kanallara gönderir. Severity filtresi uygulanır."""
-        _SEV = {"info": 0, "warning": 1, "medium": 2, "high": 3, "critical": 4}
-        try:
-            import json
-            from pathlib import Path
-            cfg_path = Path(__file__).parent.parent / "config" / "notifier.json"
-            min_sev = json.loads(cfg_path.read_text()).get("min_severity", "high")
-        except Exception:
-            min_sev = "high"
-        if _SEV.get(event.severity, 0) < _SEV.get(min_sev, 3):
+        """Korelasyon event'ini gönderir. Min severity filtresi uygulanır."""
+        if _SEV_RANK.get(event.severity, 0) < _SEV_RANK.get(self._get_min_severity(), 3):
             return
         self._send_correlated_email(event)
         self._send_correlated_webhook(event)
+
+    def notify_anomaly(self, result: "AnomalyResult") -> None:
+        """Anomali tespiti bildirimi — saatlik cooldown ve min severity filtresi ile."""
+        if _SEV_RANK.get(result.severity, 0) < _SEV_RANK.get(self._get_min_severity(), 3):
+            return
+        cooldown_key = f"{result.entity_id}:{result.metric}"
+        now = datetime.now(timezone.utc)
+        last = self._anomaly_cooldown.get(cooldown_key)
+        if last and (now - last).total_seconds() < _ANOMALY_COOLDOWN_SECS:
+            return
+        self._anomaly_cooldown[cooldown_key] = now
+        self._send_anomaly_email(result)
+        self._send_anomaly_webhook(result)
 
     def _send_correlated_email(self, event: CorrelatedEvent) -> None:
         if not self.email.enabled:
@@ -267,6 +290,74 @@ class Notifier:
             logger.info(f"Korelasyon webhook gönderildi: {event.event_type}")
         except Exception as exc:
             logger.error(f"Korelasyon webhook gönderilemedi: {exc}")
+
+    def _send_anomaly_email(self, result: "AnomalyResult") -> None:
+        if not self.email.enabled:
+            return
+        prefix = {"critical": "🚨", "high": "🔴", "warning": "⚠️"}.get(result.severity, "ℹ️")
+        subject = f"{prefix} NetGuard Anomali — {result.severity.upper()}: {result.entity_id}"
+        body = (
+            f"NetGuard Anomali Tespiti\n{'='*40}\n\n"
+            f"Cihaz/Kaynak : {result.entity_id}\n"
+            f"Metrik       : {result.metric}\n"
+            f"Seviye       : {result.severity.upper()}\n"
+            f"Gözlemlenen  : {result.observed_value:.2f}\n"
+            f"Baseline     : {result.baseline_mean:.2f} ± {result.baseline_std:.2f}\n"
+            f"Z-Skoru      : {result.z_score:.1f}σ\n"
+            f"Güven        : %{result.confidence*100:.0f}\n"
+            f"Zaman        : {result.detected_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n"
+            f"Mesaj        : {result.message}\n\n"
+            f"{'='*40}\nBu mesaj NetGuard tarafından otomatik gönderilmiştir.\n"
+        )
+        try:
+            msg = MIMEMultipart()
+            msg["From"]    = self.email.from_email
+            msg["To"]      = ", ".join(self.email.to_emails)
+            msg["Subject"] = subject
+            msg.attach(MIMEText(body, "plain", "utf-8"))
+            with smtplib.SMTP(self.email.smtp_host, self.email.smtp_port) as srv:
+                srv.starttls()
+                srv.login(self.email.smtp_user, self.email.smtp_password)
+                srv.send_message(msg)
+            logger.info(f"Anomali e-postası gönderildi: {result.entity_id} / {result.metric}")
+        except Exception as exc:
+            logger.error(f"Anomali e-postası gönderilemedi: {exc}")
+
+    def _send_anomaly_webhook(self, result: "AnomalyResult") -> None:
+        if not self.webhook.enabled:
+            return
+        color_map = {"critical": 15158332, "high": 15105570, "warning": 16776960}
+        if self.webhook.webhook_type == "discord":
+            payload = {
+                "embeds": [{
+                    "title": f"📊 NetGuard Anomali — {result.severity.upper()}",
+                    "description": result.message,
+                    "color": color_map.get(result.severity, 16776960),
+                    "fields": [
+                        {"name": "Cihaz",      "value": result.entity_id,            "inline": True},
+                        {"name": "Metrik",     "value": result.metric,               "inline": True},
+                        {"name": "Z-Skoru",    "value": f"{result.z_score:.1f}σ",    "inline": True},
+                        {"name": "Gözlem",     "value": f"{result.observed_value:.2f}", "inline": True},
+                        {"name": "Baseline",   "value": f"{result.baseline_mean:.2f}", "inline": True},
+                        {"name": "Güven",      "value": f"%{result.confidence*100:.0f}", "inline": True},
+                    ],
+                    "footer": {"text": "NetGuard Anomaly Detection"},
+                    "timestamp": result.detected_at.isoformat(),
+                }]
+            }
+        else:
+            payload = {
+                "text": (
+                    f"📊 *NetGuard Anomali — {result.severity.upper()}*\n"
+                    f"{result.message}"
+                )
+            }
+        try:
+            resp = httpx.post(self.webhook.webhook_url, json=payload, timeout=5)
+            resp.raise_for_status()
+            logger.info(f"Anomali webhook gönderildi: {result.entity_id} / {result.metric}")
+        except Exception as exc:
+            logger.error(f"Anomali webhook gönderilemedi: {exc}")
 
 
 # Global instance

@@ -97,10 +97,12 @@ class AnomalyEngine:
             for eid in entities:
                 self._ifd.fit(eid)
 
-        # 6. Sonuçları kaydet
+        # 6. Sonuçları kaydet ve bildir
         if all_results:
+            from server.notifier import notifier
             for r in all_results:
                 self._results.save(r)
+                notifier.notify_anomaly(r)
             logger.info(
                 f"Anomaly cycle #{self._cycle_count}: "
                 f"{len(all_results)} anomali / {len(snapshots)} entity"
