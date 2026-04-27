@@ -996,6 +996,23 @@ class DatabaseManager:
         )
 
 
+    def count_correlated_events_since(self, hours: int = 24, tenant_id: Optional[str] = None) -> dict:
+        """Son N saatteki korelasyon event sayısını döndür (toplam + kritik)."""
+        clauses = ["created_at >= datetime('now', ?)"]
+        params: list = [f"-{hours} hours"]
+        if tenant_id is not None:
+            clauses.append("tenant_id = ?")
+            params.append(tenant_id)
+        where = "WHERE " + " AND ".join(clauses)
+        with self._connect() as conn:
+            row = conn.execute(
+                f"""SELECT COUNT(*) AS total,
+                    SUM(CASE WHEN severity IN ('critical','high') THEN 1 ELSE 0 END) AS high_plus
+                    FROM correlated_events {where}""",
+                params,
+            ).fetchone()
+        return {"total": row["total"] or 0, "high_plus": row["high_plus"] or 0}
+
     # ------------------------------------------------------------------ #
     #  SNMP DEVICES
     # ------------------------------------------------------------------ #

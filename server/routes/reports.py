@@ -44,6 +44,54 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
     )
 
 
+@router.get("/reports/security-status")
+def security_status(current_user: User = Depends(get_current_user)):
+    """Anlık güvenlik durumu ve risk skoru — overview sayfası için."""
+    tid = tenant_scope(current_user)
+
+    critical_alerts = len([
+        a for a in _db_mod.db.get_alerts(status="active", limit=500, tenant_id=tid)
+        if (a.severity.value if hasattr(a.severity, "value") else str(a.severity)) == "critical"
+    ])
+    open_incidents  = _db_mod.db.count_incidents(status="open",          tenant_id=tid)
+    inv_incidents   = _db_mod.db.count_incidents(status="investigating",  tenant_id=tid)
+    corr            = _db_mod.db.count_correlated_events_since(hours=24,  tenant_id=tid)
+
+    anomaly_high = 0
+    try:
+        from server.routes.anomaly import _engine
+        if _engine is not None:
+            s = _engine.get_summary(since_hours=24)
+            anomaly_high = (s.get("critical") or 0) + (s.get("high") or 0)
+    except Exception:
+        pass
+
+    score = min(100,
+        critical_alerts * 20 +
+        (open_incidents + inv_incidents) * 15 +
+        corr["high_plus"] * 8 +
+        anomaly_high * 5,
+    )
+
+    if score == 0:
+        status, label = "safe",    "Güvende"
+    elif score <= 40:
+        status, label = "warning", "Dikkat Gerekli"
+    else:
+        status, label = "danger",  "Tehlike Altında"
+
+    return {
+        "risk_score":       score,
+        "status":           status,
+        "label":            label,
+        "critical_alerts":  critical_alerts,
+        "open_incidents":   open_incidents + inv_incidents,
+        "corr_events_24h":  corr["total"],
+        "anomalies_24h":    anomaly_high,
+        "updated_at":       datetime.now(timezone.utc).isoformat(),
+    }
+
+
 @router.get("/reports/summary")
 def report_summary(current_user: User = Depends(get_current_user)):
     """Kullanıcının tenant'ına ait özet — dashboard widget ve rapor sayfası için."""

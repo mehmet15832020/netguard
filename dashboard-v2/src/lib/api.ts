@@ -580,7 +580,21 @@ export const complianceApi = {
   }>('/compliance/summary'),
 }
 
+export interface SecurityStatus {
+  risk_score:      number
+  status:          'safe' | 'warning' | 'danger'
+  label:           string
+  critical_alerts: number
+  open_incidents:  number
+  corr_events_24h: number
+  anomalies_24h:   number
+  updated_at:      string
+}
+
 export const reportsApi = {
+  securityStatus: () =>
+    request<SecurityStatus>('/reports/security-status'),
+
   summary: () =>
     request<ReportSummary>('/reports/summary'),
 
