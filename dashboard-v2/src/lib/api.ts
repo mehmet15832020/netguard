@@ -308,6 +308,9 @@ export const devicesApi = {
   get: (device_id: string) =>
     request<Device>(`/devices/${device_id}`),
 
+  alerts: (device_id: string, limit = 20) =>
+    request<{ count: number; alerts: Alert[] }>(`/devices/${encodeURIComponent(device_id)}/alerts?limit=${limit}`),
+
   updateSnmp: (device_id: string, body: {
     community: string
     snmp_version: 'v2c' | 'v3'

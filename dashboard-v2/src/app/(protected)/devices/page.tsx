@@ -340,7 +340,11 @@ export default function DevicesPage() {
                 {filtered.map((device) => {
                   const hasCommunity = !!(device as any).snmp_community
                   return (
-                    <TableRow key={device.device_id} className="border-zinc-800 hover:bg-zinc-800/50">
+                    <TableRow
+                      key={device.device_id}
+                      className="border-zinc-800 hover:bg-zinc-800/50 cursor-pointer"
+                      onClick={() => window.location.href = `/devices/${device.device_id}`}
+                    >
                       <TableCell>
                         <StatusDot status={device.status} />
                       </TableCell>

@@ -573,14 +573,18 @@ class DatabaseManager:
     def get_alerts(
         self,
         status: Optional[str] = None,
+        agent_id: Optional[str] = None,
         limit: int = 100,
         tenant_id: Optional[str] = None,
     ) -> list[Alert]:
-        """Alert listesini döndür. Status ve tenant_id filtresi opsiyonel."""
+        """Alert listesini döndür. Status, agent_id ve tenant_id filtresi opsiyonel."""
         clauses, params = [], []
         if status:
             clauses.append("status = ?")
             params.append(status)
+        if agent_id is not None:
+            clauses.append("agent_id = ?")
+            params.append(agent_id)
         if tenant_id is not None:
             clauses.append("tenant_id = ?")
             params.append(tenant_id)

@@ -69,3 +69,18 @@ def get_device(
     if not device:
         raise HTTPException(status_code=404, detail=f"Cihaz bulunamadı: {device_id}")
     return device
+
+
+@router.get("/devices/{device_id}/alerts")
+def device_alerts(
+    device_id: str,
+    limit: int = 20,
+    current_user: User = Depends(get_current_user),
+):
+    """Cihaza ait alert geçmişini döndür (agent_id == device_id)."""
+    device = db.get_device(device_id)
+    if not device:
+        raise HTTPException(status_code=404, detail=f"Cihaz bulunamadı: {device_id}")
+    tid = tenant_scope(current_user)
+    alerts = db.get_alerts(agent_id=device_id, limit=limit, tenant_id=tid)
+    return {"count": len(alerts), "alerts": [a.model_dump(mode="json") for a in alerts]}
