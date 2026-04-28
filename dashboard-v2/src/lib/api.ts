@@ -543,10 +543,15 @@ export interface MitreCoverage {
   total_techniques: number
 }
 
+export interface MitreActivity {
+  tactics: Record<string, { count_24h: number; count_7d: number }>
+}
+
 export const mitreApi = {
-  coverage: () => request<MitreCoverage>('/mitre/coverage'),
-  heatmap:  (days = 30) => request<Record<string, unknown>>(`/mitre/heatmap?days=${days}`),
+  coverage:  () => request<MitreCoverage>('/mitre/coverage'),
+  heatmap:   (days = 30) => request<Record<string, unknown>>(`/mitre/heatmap?days=${days}`),
   techniques: () => request<{ count: number; rules: MitreTechniqueRule[] }>('/mitre/techniques'),
+  activity:  () => request<MitreActivity>('/mitre/activity'),
 }
 
 export interface ComplianceControl {

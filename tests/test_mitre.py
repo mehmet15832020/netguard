@@ -188,3 +188,26 @@ class TestMitreEndpoints:
         data = r.json()
         # En az 5 Windows + Linux kuralı MITRE etiketli olmalı
         assert data["count"] >= 5
+
+    def test_activity_requires_auth(self, tmp_db):
+        r = client.get("/api/v1/mitre/activity")
+        assert r.status_code == 401
+
+    def test_activity_returns_200(self, tmp_db):
+        r = client.get("/api/v1/mitre/activity", headers=_auth())
+        assert r.status_code == 200
+        data = r.json()
+        assert "tactics" in data
+
+    def test_activity_known_tactics_present(self, tmp_db):
+        r = client.get("/api/v1/mitre/activity", headers=_auth())
+        data = r.json()
+        for tactic in data["tactics"].values():
+            assert "count_24h" in tactic
+            assert "count_7d" in tactic
+
+    def test_activity_empty_when_no_events(self, tmp_db):
+        r = client.get("/api/v1/mitre/activity", headers=_auth())
+        data = r.json()
+        total = sum(v["count_24h"] for v in data["tactics"].values())
+        assert total == 0
