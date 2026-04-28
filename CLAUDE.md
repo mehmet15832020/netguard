@@ -123,37 +123,46 @@ pyshark (SYN/BPF)   ARP/DNS/ICMP det.
 Hoca geri bildirimi ve ürün kimliği analizi sonrası belirlenen öncelikli görevler.
 **Kural:** Yeni özellik eklemek yerine mevcut modülleri derinleştir ve birbirine bağla.
 
-### Aşama 1 — Temizlik ve Sağlamlık (Öncelik: Kritik)
+### Aşama 1 — Temizlik ve Sağlamlık ✅ TAMAMLANDI
 
-| # | Görev | Dosyalar | Süre |
-|---|-------|---------|------|
-| A1-1 | In-memory storage kaldır → agent alert'leri SQLite'a | `server/storage.py` (sil), `server/alert_engine.py`, `server/routes/alerts.py` | 1 gün |
-| A1-2 | SQLite FTS5 ile log full-text arama | `server/database.py`, `server/routes/logs.py`, logs UI sayfası | 1.5 gün |
-| A1-3 | Bildirim pipeline tamamla → anomaly + agent alert da notify etsin | `server/notifier.py`, `server/anomaly/engine.py`, `server/alert_engine.py` | 1 gün |
+| # | Görev | Durum |
+|---|-------|-------|
+| A1-1 | In-memory storage kaldır → agent alert'leri SQLite'a | ✅ |
+| A1-2 | SQLite FTS5 ile log full-text arama | ✅ |
+| A1-3 | Bildirim pipeline tamamla → anomaly + agent alert da notify etsin | ✅ |
 
-### Aşama 2 — UI Kimlik Operasyonu (Öncelik: Yüksek)
+### Aşama 2 — UI Kimlik Operasyonu ✅ TAMAMLANDI
 
-| # | Görev | Dosyalar | Süre |
-|---|-------|---------|------|
-| A2-1 | Sidebar yeniden yapılandır (19 flat → 5 grup) | `dashboard-v2/src/app/(protected)/layout.tsx` | 0.5 gün |
-| A2-2 | Ana sayfa: Güvenlik Durumu + Risk Skoru | `dashboard-v2/src/app/(protected)/overview/page.tsx`, `server/routes/reports.py` | 2 gün |
-| A2-3 | InfluxDB grafiklerini frontend'e bağla (CPU/net/log hacmi) | `server/influx_writer.py`, yeni `server/routes/metrics.py`, cihaz sayfası | 2 gün |
-| A2-4 | Cihaz detay sayfası (grafik + alert + SNMP özeti) | `dashboard-v2/src/app/(protected)/devices/[id]/page.tsx` | 2 gün |
+| # | Görev | Durum |
+|---|-------|-------|
+| A2-1 | Sidebar yeniden yapılandır (19 flat → 5 grup) | ✅ |
+| A2-2 | Ana sayfa: Güvenlik Durumu + Risk Skoru | ✅ |
+| A2-3 | InfluxDB grafiklerini frontend'e bağla (CPU/net/log hacmi) | ✅ |
+| A2-4 | Cihaz detay sayfası (grafik + alert + SNMP özeti) | ✅ |
 
-### Aşama 3 — NDR Derinliği (Öncelik: Yüksek)
+### Aşama 3 — NDR Derinliği ✅ TAMAMLANDI
 
-| # | Görev | Dosyalar | Süre |
-|---|-------|---------|------|
-| A3-1 | Kill chain dedektörünü ürünün merkezi yap (API + UI) | `server/attack_chain.py`, yeni `server/routes/attack_chains.py`, `/timeline` UI | 3 gün |
-| A3-2 | agent/traffic_collector.py'yi server'a bağla | `agent/main.py`, `agent/sender.py`, `server/routes/agents.py`, `server/database.py` | 1.5 gün |
-| A3-3 | MITRE ATT&CK görselleştirme derinleştir (heat map) | `server/mitre.py`, `/mitre` UI | 1.5 gün |
+| # | Görev | Durum |
+|---|-------|-------|
+| A3-1 | Kill chain dedektörünü ürünün merkezi yap (API + UI) | ✅ |
+| A3-2 | agent/traffic_collector.py'yi server'a bağla | ✅ |
+| A3-3 | MITRE ATT&CK görselleştirme derinleştir (heat map) | ✅ |
 
-### Aşama 4 — Sunum Hazırlığı (Öncelik: Orta)
+### Aşama 4 — Lab Testi + Sunum Hazırlığı (AKTİF)
 
-| # | Görev | Dosyalar | Süre |
-|---|-------|---------|------|
-| A4-1 | GNS3 lab demo senaryosu belgele (Kali saldırı → kill chain) | `CLAUDE.md`, `docs/demo-scenario.md` | 0.5 gün |
-| A4-2 | README ve mimari belgeleme | `README.md` | 0.5 gün |
+| # | Görev | Dosyalar | Durum |
+|---|-------|---------|-------|
+| **L0-1** | **`correlator.py:186` `raw_log` → `message` bug fix** | `server/correlator.py` | 🔴 KRİTİK — her dakika korelasyon fail oluyor |
+| **L0-2** | **Server'a `git pull` + servis restart** | server VM | 🔴 Server eski commit'te (fab9b9c), yeni özellikler aktif değil |
+| L1-1 | Agent traffic collector doğrula (pyshark aktif mi?) | `agent/traffic_collector.py` | ⏳ |
+| L1-2 | VyOS SNMP polling doğrula | GNS3 + server logs | ⏳ |
+| L1-3 | VyOS NetFlow akışı doğrula | GNS3 + server logs | ⏳ |
+| L2-1 | Kali → SSH Brute Force → `ssh_brute_force` kuralı tetikle | Kali: `hydra` | ⏳ |
+| L2-2 | Kali → Port Scan → `port_scan_detected` kuralı tetikle | Kali: `nmap -sS` | ⏳ |
+| L2-3 | Kali → ICMP Flood → `icmp_flood_detected` tetikle | Kali: `hping3 --flood` | ⏳ |
+| L3-1 | Kill chain uçtan uca: RECON→WEAPONIZE→ACCESS (3 aşama = partial_attack_chain) | Kali sekans | ⏳ |
+| L4-1 | Dashboard UI doğrula (overview/timeline/mitre/alerts tüm verili) | Tarayıcı | ⏳ |
+| A4-2 | README ve mimari belgeleme | `README.md` | ⏳ |
 
 ---
 
@@ -263,12 +272,18 @@ nginx
 
 ---
 
-## Bilinen Sorunlar (Çözülmeyene Dokunma)
+## Bilinen Sorunlar — Aktif
 
-- `server/storage.py` — InMemoryStorage hâlâ var, A1-1 görevi ile kaldırılacak
-- `agent/traffic_collector.py` — pyshark ile trafik yakalıyor ama server almıyor (A3-2)
-- InfluxDB — metrikler yazılıyor, frontend'de grafik yok (A2-3)
-- `notifier.py` — sadece korelasyon olaylarını notify ediyor (A1-3)
+- **`server/correlator.py:186`** — `raw_log` kolonu yok, korelasyon her dakika `ERROR: no such column: raw_log` veriyor. `raw_log LIKE ?` → silinmeli (sadece `message LIKE ?` yeterli). **L0-1 ile düzeltilecek.**
+- **Server eski commit'te** — Production VM (192.168.203.134) `fab9b9c` commit'inde, local `9c83b72`'de. `git pull` + servis restart gerekli. **L0-2 ile düzeltilecek.**
+- **Server DB tabloları boş** — `normalized_logs: 40624` satır var ama `correlated_events: 73`, `alerts: 88` görece az. Korelasyon bug'ı yüzünden birikmemiş.
+- `server/storage.py` — InMemoryStorage hâlâ var (A1-1 tamamlandı ama server güncellenmedi)
+
+## Çözülmüş Sorunlar (Referans)
+
+- `agent/traffic_collector.py` → server'a bağlandı (A3-2) ✅
+- InfluxDB frontend grafikleri → tamamlandı (A2-3) ✅
+- `notifier.py` → anomaly + agent alert bildirimleri eklendi (A1-3) ✅
 
 ---
 
