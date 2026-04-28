@@ -648,3 +648,31 @@ export const metricsApi = {
   logVolume: (range: MetricRange = '24h') =>
     request<LogVolumeResponse>(`/metrics/log-volume?range=${range}`),
 }
+
+export interface ActiveChain {
+  src_ip:       string
+  stages:       Record<string, number>
+  stage_labels: Record<string, string>
+  stage_count:  number
+  severity:     string
+  chain_type:   string
+}
+
+export interface ChainStats {
+  active_ips:         number
+  chains_24h:         number
+  critical_24h:       number
+  unique_ips_24h:     number
+  stage_distribution: Record<string, number>
+}
+
+export const attackChainsApi = {
+  active: () =>
+    request<{ count: number; chains: ActiveChain[] }>('/attack-chains/active'),
+
+  history: (limit = 50) =>
+    request<{ count: number; events: CorrelatedEvent[] }>(`/attack-chains/history?limit=${limit}`),
+
+  stats: () =>
+    request<ChainStats>('/attack-chains/stats'),
+}

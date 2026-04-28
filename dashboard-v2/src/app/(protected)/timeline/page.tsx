@@ -1,200 +1,294 @@
 'use client'
 
-import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Swords, RefreshCw, ChevronRight } from 'lucide-react'
-import { correlationApi } from '@/lib/api'
+import { Swords, RefreshCw, Shield, AlertTriangle, Activity, Target } from 'lucide-react'
+import { attackChainsApi, correlationApi } from '@/lib/api'
+import type { ActiveChain } from '@/lib/api'
 import type { CorrelatedEvent } from '@/types/models'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
-const SEV_COLOR: Record<string, string> = {
-  critical: 'text-red-400 border-red-500/40 bg-red-500/10',
-  warning:  'text-yellow-400 border-yellow-500/40 bg-yellow-500/10',
-  high:     'text-orange-400 border-orange-500/40 bg-orange-500/10',
-  info:     'text-blue-400 border-blue-500/40 bg-blue-500/10',
+// Kill chain aşamaları sabit sırada
+const STAGE_ORDER = ['recon', 'weaponize', 'access', 'execute', 'lateral'] as const
+const STAGE_TR: Record<string, string> = {
+  recon:      'Keşif',
+  weaponize:  'Erişim Denemeleri',
+  access:     'İlk Erişim',
+  execute:    'Komut Çalıştırma',
+  lateral:    'Yanal Hareket',
 }
 
-const SEV_DOT: Record<string, string> = {
-  critical: 'bg-red-500',
-  warning:  'bg-yellow-500',
-  high:     'bg-orange-500',
-  info:     'bg-blue-500',
+const SEV_COLOR: Record<string, { border: string; bg: string; text: string; dot: string }> = {
+  critical: { border: 'border-red-500/40',    bg: 'bg-red-500/10',    text: 'text-red-400',    dot: 'bg-red-500' },
+  warning:  { border: 'border-yellow-500/40', bg: 'bg-yellow-500/10', text: 'text-yellow-400', dot: 'bg-yellow-500' },
+  high:     { border: 'border-orange-500/40', bg: 'bg-orange-500/10', text: 'text-orange-400', dot: 'bg-orange-500' },
+  info:     { border: 'border-blue-500/40',   bg: 'bg-blue-500/10',   text: 'text-blue-400',   dot: 'bg-blue-500' },
 }
 
-const TACTIC_LABEL: Record<string, string> = {
-  reconnaissance:       'Reconnaissance',
-  initial_access:       'Initial Access',
-  credential_access:    'Credential Access',
-  lateral_movement:     'Lateral Movement',
-  execution:            'Execution',
-  persistence:          'Persistence',
-  privilege_escalation: 'Privilege Escalation',
-  defense_evasion:      'Defense Evasion',
-  discovery:            'Discovery',
-  command_and_control:  'C2',
-  exfiltration:         'Exfiltration',
-  impact:               'Impact',
-}
+// ------------------------------------------------------------------ //
+//  Kill Chain Pipeline — bir IP için 5 aşama görselleştirmesi
+// ------------------------------------------------------------------ //
 
-function MitreBadge({ tech }: { tech: string }) {
-  return (
-    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-mono bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-      {tech}
-    </span>
-  )
-}
-
-function TacticBadge({ tactic }: { tactic: string }) {
-  return (
-    <span className="inline-block px-1.5 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 border border-purple-500/30">
-      {TACTIC_LABEL[tactic] ?? tactic}
-    </span>
-  )
-}
-
-function ChainGroup({ ip, events }: { ip: string; events: CorrelatedEvent[] }) {
-  const [expanded, setExpanded] = useState(false)
-  const sorted = [...events].sort((a, b) => a.created_at.localeCompare(b.created_at))
-  const highest: string = events.some(e => e.severity === 'critical') ? 'critical'
-    : events.some(e => e.severity === 'warning' || e.severity === 'high') ? 'warning' : 'info'
-
-  const allTechniques = [...new Set(events.flatMap(e => e.mitre_techniques ?? []))]
-  const allTactics    = [...new Set(events.flatMap(e => e.mitre_tactics ?? []))]
+function KillChainPipeline({ chain }: { chain: ActiveChain }) {
+  const cfg = SEV_COLOR[chain.severity] ?? SEV_COLOR.info
+  const completedStages = STAGE_ORDER.filter(s => chain.stages[s])
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800 mb-3">
-      <CardHeader
-        className="py-3 px-4 cursor-pointer select-none"
-        onClick={() => setExpanded(v => !v)}
-      >
-        <div className="flex items-center gap-3">
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${SEV_DOT[highest] ?? 'bg-zinc-500'}`} />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono text-sm text-zinc-100">{ip}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded border ${SEV_COLOR[highest] ?? ''}`}>
-                {highest.toUpperCase()}
-              </span>
-              <span className="text-xs text-zinc-500">{events.length} olay</span>
-            </div>
-            <div className="flex gap-1 flex-wrap mt-1">
-              {allTactics.map(t => <TacticBadge key={t} tactic={t} />)}
-              {allTechniques.map(t => <MitreBadge key={t} tech={t} />)}
-            </div>
-          </div>
-          <ChevronRight
-            size={14}
-            className={`text-zinc-500 transition-transform flex-shrink-0 ${expanded ? 'rotate-90' : ''}`}
-          />
+    <div className={cn('rounded-lg border p-4', cfg.border, cfg.bg)}>
+      {/* Başlık */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot)} />
+          <span className="font-mono text-sm font-semibold text-zinc-100">{chain.src_ip}</span>
+          <span className={cn('text-xs px-1.5 py-0.5 rounded border', cfg.text, cfg.border, cfg.bg)}>
+            {chain.severity.toUpperCase()} · {chain.stage_count} AŞAMA
+          </span>
         </div>
-      </CardHeader>
+        <span className="text-[11px] text-zinc-600 uppercase tracking-wide">
+          {chain.chain_type === 'FULL_ATTACK_CHAIN' ? 'TAM ZİNCİR' : 'KISMİ ZİNCİR'}
+        </span>
+      </div>
 
-      {expanded && (
-        <CardContent className="px-4 pb-4 pt-0">
-          <div className="border-t border-zinc-800 pt-3 space-y-0">
-            {sorted.map((ev, i) => (
-              <div key={ev.corr_id} className="flex gap-3 relative pb-3">
-                <div className="flex flex-col items-center">
-                  <span className={`mt-1 w-2.5 h-2.5 rounded-full flex-shrink-0 ${SEV_DOT[ev.severity] ?? 'bg-zinc-500'}`} />
-                  {i < sorted.length - 1 && <div className="w-px flex-1 bg-zinc-700 mt-1" />}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-200 leading-snug">{ev.rule_name}</p>
-                  <p className="text-xs text-zinc-500 mt-0.5">
-                    {new Date(ev.created_at).toLocaleString('tr-TR')}
-                    {' · '}
-                    <span className="font-mono">{ev.event_type}</span>
-                    {' · '}
-                    {ev.matched_count} olay / {ev.window_seconds}s
+      {/* 5 Aşama Pipeline */}
+      <div className="flex items-center gap-1">
+        {STAGE_ORDER.map((stage, idx) => {
+          const isActive  = !!chain.stages[stage]
+          const eventCount = chain.stages[stage] ?? 0
+          const isLast    = idx === STAGE_ORDER.length - 1
+
+          return (
+            <div key={stage} className="flex items-center flex-1">
+              <div className={cn(
+                'flex-1 rounded-md px-2 py-2 text-center transition-all',
+                isActive
+                  ? cn('border', cfg.border, cfg.bg)
+                  : 'border border-zinc-800 bg-zinc-800/30',
+              )}>
+                <p className={cn('text-[10px] font-semibold uppercase tracking-wide',
+                  isActive ? cfg.text : 'text-zinc-600'
+                )}>
+                  {STAGE_TR[stage] ?? stage}
+                </p>
+                {isActive && (
+                  <p className={cn('text-lg font-bold tabular-nums mt-0.5', cfg.text)}>
+                    {eventCount}
                   </p>
-                  {((ev.mitre_techniques?.length ?? 0) > 0 || (ev.mitre_tactics?.length ?? 0) > 0) && (
-                    <div className="flex gap-1 flex-wrap mt-1">
-                      {(ev.mitre_tactics ?? []).map(t => <TacticBadge key={t} tactic={t} />)}
-                      {(ev.mitre_techniques ?? []).map(t => <MitreBadge key={t} tech={t} />)}
-                    </div>
-                  )}
-                </div>
+                )}
+                {!isActive && (
+                  <p className="text-zinc-700 text-sm mt-0.5">—</p>
+                )}
               </div>
-            ))}
-          </div>
-        </CardContent>
-      )}
-    </Card>
+              {!isLast && (
+                <div className={cn('w-4 h-px flex-shrink-0 mx-0.5',
+                  isActive && completedStages.includes(STAGE_ORDER[idx + 1])
+                    ? cfg.dot.replace('bg-', 'bg-') + ' opacity-60'
+                    : 'bg-zinc-700'
+                )} />
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
+
+// ------------------------------------------------------------------ //
+//  Geçmiş olay satırı
+// ------------------------------------------------------------------ //
+
+function HistoryRow({ ev }: { ev: CorrelatedEvent }) {
+  const cfg = SEV_COLOR[ev.severity] ?? SEV_COLOR.info
+  const isChain = ev.rule_id.includes('attack_chain')
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-zinc-800/60 last:border-0 hover:bg-zinc-800/30 transition-colors">
+      <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', cfg.dot)} />
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-mono text-xs text-zinc-200 font-medium">{ev.group_value}</span>
+          {isChain && (
+            <span className={cn('text-[10px] px-1.5 py-0.5 rounded border', cfg.text, cfg.border)}>
+              {ev.rule_id === 'full_attack_chain' ? 'TAM ZİNCİR' : 'KISMİ ZİNCİR'}
+            </span>
+          )}
+          <span className="text-[10px] text-zinc-500">{ev.rule_name}</span>
+        </div>
+        <p className="text-[11px] text-zinc-500 mt-0.5 truncate">{ev.message}</p>
+      </div>
+      <span className="text-[11px] text-zinc-600 flex-shrink-0 tabular-nums">
+        {new Date(ev.created_at).toLocaleString('tr-TR', {
+          month: '2-digit', day: '2-digit',
+          hour: '2-digit', minute: '2-digit',
+        })}
+      </span>
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------ //
+//  Ana sayfa
+// ------------------------------------------------------------------ //
 
 export default function TimelinePage() {
-  const { data, isLoading, refetch } = useQuery({
-    queryKey: ['timeline-events'],
-    queryFn:  () => correlationApi.listEvents({ limit: 500 }),
+  const { data: activeData, isLoading: activeLoading, refetch: refetchActive } = useQuery({
+    queryKey: ['attack-chains-active'],
+    queryFn:  () => attackChainsApi.active(),
+    refetchInterval: 15_000,
+  })
+
+  const { data: statsData } = useQuery({
+    queryKey: ['attack-chains-stats'],
+    queryFn:  () => attackChainsApi.stats(),
     refetchInterval: 30_000,
   })
 
-  const events = data?.events ?? []
-
-  // IP bazında grupla
-  const byIp = events.reduce<Record<string, CorrelatedEvent[]>>((acc: Record<string, CorrelatedEvent[]>, ev: CorrelatedEvent) => {
-    const key = ev.group_value
-    if (!acc[key]) acc[key] = []
-    acc[key].push(ev)
-    return acc
-  }, {})
-
-  // En yüksek severity'ye ve olay sayısına göre sırala
-  const sevOrder: Record<string, number> = { critical: 3, warning: 2, high: 2, info: 1 }
-  const sortedGroups = (Object.entries(byIp) as [string, CorrelatedEvent[]][]).sort(([, a], [, b]) => {
-    const sa = Math.max(...a.map((e: CorrelatedEvent) => sevOrder[e.severity] ?? 0))
-    const sb = Math.max(...b.map((e: CorrelatedEvent) => sevOrder[e.severity] ?? 0))
-    if (sb !== sa) return sb - sa
-    return b.length - a.length
+  const { data: historyData } = useQuery({
+    queryKey: ['attack-chains-history'],
+    queryFn:  () => attackChainsApi.history(30),
+    refetchInterval: 30_000,
   })
 
-  const chainGroups = sortedGroups.filter(([, evs]) => evs.length > 1)
-  const singleGroups = sortedGroups.filter(([, evs]) => evs.length === 1)
+  const { data: corrData } = useQuery({
+    queryKey: ['corr-events-timeline'],
+    queryFn:  () => correlationApi.listEvents({ limit: 20 }),
+    refetchInterval: 30_000,
+  })
+
+  const activeChains = activeData?.chains ?? []
+  const historyEvents = historyData?.events ?? []
+  const otherEvents   = (corrData?.events ?? []).filter(e => !e.rule_id.includes('attack_chain')).slice(0, 10)
+  const stats = statsData
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-5 space-y-5 max-w-[1400px]">
+
+      {/* Başlık */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Swords className="w-5 h-5 text-red-400" />
-          <h1 className="text-xl font-semibold">Saldırı Timeline</h1>
-          <span className="text-xs text-zinc-500">Kill chain ve korelasyon olayları</span>
+        <div className="flex items-center gap-3">
+          <Swords size={18} className="text-red-400" />
+          <h1 className="text-xl font-semibold text-zinc-100">Kill Chain & Saldırı Timeline</h1>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="w-4 h-4" />
+        <Button variant="outline" size="sm"
+          onClick={() => refetchActive()}
+          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+        >
+          <RefreshCw size={14} className="mr-1.5" /> Yenile
         </Button>
       </div>
 
-      {isLoading ? (
-        <p className="text-zinc-500 text-sm">Yükleniyor...</p>
-      ) : sortedGroups.length === 0 ? (
-        <p className="text-zinc-500 text-sm">Henüz korelasyon olayı yok.</p>
-      ) : (
-        <>
-          {chainGroups.length > 0 && (
-            <div>
-              <h2 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wide">
-                Çoklu Aşama Zincirleri ({chainGroups.length})
-              </h2>
-              {chainGroups.map(([ip, evs]) => (
-                <ChainGroup key={ip} ip={ip} events={evs} />
-              ))}
-            </div>
-          )}
+      {/* İstatistik kartları */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[
+          {
+            label: 'Aktif Saldırı IP',
+            value: stats?.active_ips ?? 0,
+            icon: Target,
+            color: (stats?.active_ips ?? 0) > 0 ? 'text-red-400 bg-red-500/10' : 'text-zinc-400 bg-zinc-800',
+          },
+          {
+            label: 'Zincir (24 saat)',
+            value: stats?.chains_24h ?? 0,
+            icon: Swords,
+            color: (stats?.chains_24h ?? 0) > 0 ? 'text-orange-400 bg-orange-500/10' : 'text-zinc-400 bg-zinc-800',
+          },
+          {
+            label: 'Kritik (24 saat)',
+            value: stats?.critical_24h ?? 0,
+            icon: AlertTriangle,
+            color: (stats?.critical_24h ?? 0) > 0 ? 'text-red-400 bg-red-500/10' : 'text-zinc-400 bg-zinc-800',
+          },
+          {
+            label: 'Etkilenen IP (24s)',
+            value: stats?.unique_ips_24h ?? 0,
+            icon: Shield,
+            color: (stats?.unique_ips_24h ?? 0) > 0 ? 'text-yellow-400 bg-yellow-500/10' : 'text-zinc-400 bg-zinc-800',
+          },
+        ].map(({ label, value, icon: Icon, color }) => (
+          <Card key={label} className="bg-zinc-900 border-zinc-800">
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className={cn('w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0', color)}>
+                <Icon size={16} />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-zinc-100 tabular-nums">{value}</p>
+                <p className="text-[11px] text-zinc-500">{label}</p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
 
-          {singleGroups.length > 0 && (
+      {/* Aktif Kill Chain'ler */}
+      <div>
+        <h2 className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <span className={cn('w-2 h-2 rounded-full', activeChains.length > 0 ? 'bg-red-500 animate-pulse' : 'bg-zinc-600')} />
+          Aktif Saldırı Zincirleri ({activeChains.length})
+        </h2>
+
+        {activeLoading ? (
+          <p className="text-zinc-600 text-sm">Yükleniyor...</p>
+        ) : activeChains.length === 0 ? (
+          <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-8 text-center">
+            <Shield size={24} className="text-emerald-500/40 mx-auto mb-2" />
+            <p className="text-zinc-500 text-sm">Son 30 dakikada aktif saldırı zinciri tespit edilmedi</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {activeChains.map((chain) => (
+              <KillChainPipeline key={chain.src_ip} chain={chain} />
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Geçmiş + Diğer Olaylar */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+        {/* Kill Chain Geçmişi */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+            <Swords size={13} className="text-zinc-500" />
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+              Kill Chain Geçmişi ({historyEvents.length})
+            </span>
+          </div>
+          {historyEvents.length === 0 ? (
+            <div className="flex items-center justify-center py-8 text-zinc-600 text-sm">
+              Kayıt yok
+            </div>
+          ) : (
             <div>
-              <h2 className="text-sm font-medium text-zinc-400 mb-3 uppercase tracking-wide">
-                Tekil Olaylar ({singleGroups.length})
-              </h2>
-              {singleGroups.map(([ip, evs]) => (
-                <ChainGroup key={ip} ip={ip} events={evs} />
+              {historyEvents.map((ev) => (
+                <HistoryRow key={ev.corr_id} ev={ev} />
               ))}
             </div>
           )}
-        </>
-      )}
+        </div>
+
+        {/* Diğer Korelasyon Olayları */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+            <Activity size={13} className="text-zinc-500" />
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">
+              Diğer Korelasyon ({otherEvents.length})
+            </span>
+          </div>
+          {otherEvents.length === 0 ? (
+            <div className="flex items-center justify-center py-8 text-zinc-600 text-sm">
+              Kayıt yok
+            </div>
+          ) : (
+            <div>
+              {otherEvents.map((ev) => (
+                <HistoryRow key={ev.corr_id} ev={ev} />
+              ))}
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   )
 }
