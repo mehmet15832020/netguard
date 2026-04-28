@@ -2,15 +2,17 @@
 
 import { use, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Cpu, MemoryStick, HardDrive, Circle } from 'lucide-react'
+import { ArrowLeft, Cpu, MemoryStick, HardDrive, Circle, Wifi, AlertTriangle } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { MetricCard } from '@/components/metrics/MetricCard'
 import { CPUChart } from '@/components/charts/CPUChart'
 import { MemoryGauge } from '@/components/charts/MemoryGauge'
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart'
 import { useLatestSnapshot, useSnapshotHistory, useAgents, useInfluxMetrics } from '@/hooks/useMetrics'
+import { agentsApi } from '@/lib/api'
 import type { MetricRange } from '@/lib/api'
-import type { Severity } from '@/types/models'
+import type { Severity, TrafficSummary } from '@/types/models'
 
 const RANGES: { label: string; value: MetricRange }[] = [
   { label: '1s', value: '1h' },
@@ -27,6 +29,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const { snapshot, isLoading } = useLatestSnapshot(id)
   const history = useSnapshotHistory(id)
   const { data: influx } = useInfluxMetrics(id, range)
+  const { data: traffic } = useQuery({
+    queryKey: ['traffic', id],
+    queryFn:  () => agentsApi.trafficSummary(id),
+    refetchInterval: 60_000,
+  })
 
   const agentMeta = agentsData?.agents.find(a => a.agent_id === id)
   const isOnline  = agentMeta
@@ -200,6 +207,82 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           </CardContent>
         </Card>
       </div>
+
+      {/* Trafik Özeti */}
+      {traffic && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm text-zinc-300 flex items-center gap-2">
+                <Wifi size={14} />
+                Trafik Özeti
+                {traffic.suspicious_packet_count >= 5 && (
+                  <span className="flex items-center gap-1 text-xs text-red-400 font-normal">
+                    <AlertTriangle size={11} />
+                    {traffic.suspicious_packet_count} şüpheli paket
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-2">
+              <div className="grid grid-cols-3 gap-2 text-center">
+                {[
+                  { label: 'Paket', value: traffic.total_packets.toLocaleString() },
+                  { label: 'Boyut', value: traffic.total_bytes > 1e6 ? `${(traffic.total_bytes / 1e6).toFixed(1)} MB` : `${(traffic.total_bytes / 1e3).toFixed(0)} KB` },
+                  { label: 'Arayüz', value: traffic.interface },
+                ].map(({ label, value }) => (
+                  <div key={label} className="bg-zinc-800/50 rounded p-2">
+                    <p className="text-[10px] text-zinc-500">{label}</p>
+                    <p className="text-sm font-mono font-medium text-zinc-200 truncate">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-1.5">
+                {traffic.protocols.slice(0, 5).map((p) => (
+                  <div key={p.protocol} className="flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-500 w-20 flex-shrink-0 font-mono">{p.protocol}</span>
+                    <div className="flex-1 bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full"
+                        style={{ width: `${Math.min(100, p.percentage)}%` }}
+                      />
+                    </div>
+                    <span className="text-[11px] text-zinc-400 w-10 text-right tabular-nums">{p.percentage.toFixed(0)}%</span>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-zinc-900 border-zinc-800">
+            <CardHeader className="pb-2 pt-4 px-4">
+              <CardTitle className="text-sm text-zinc-300">En Aktif IP'ler</CardTitle>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              {traffic.top_src_ips.length === 0 && traffic.top_dst_ips.length === 0 ? (
+                <p className="text-zinc-600 text-xs text-center py-6">Veri yok</p>
+              ) : (
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-zinc-800">
+                      <th className="px-4 py-2 text-left text-zinc-500 font-medium">Kaynak IP</th>
+                      <th className="px-4 py-2 text-left text-zinc-500 font-medium">Hedef IP</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Array.from({ length: Math.max(traffic.top_src_ips.length, traffic.top_dst_ips.length) }, (_, i) => (
+                      <tr key={i} className="border-b border-zinc-800/40 last:border-0">
+                        <td className="px-4 py-1.5 font-mono text-zinc-300">{traffic.top_src_ips[i] ?? '—'}</td>
+                        <td className="px-4 py-1.5 font-mono text-zinc-300">{traffic.top_dst_ips[i] ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {/* Disk detayı */}
       <Card className="bg-zinc-900 border-zinc-800">

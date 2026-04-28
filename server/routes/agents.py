@@ -13,7 +13,10 @@ import uuid
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from shared.models import AgentRegistration, MetricSnapshot, SecurityEvent, SecurityEventType
+from shared.models import (
+    AgentRegistration, MetricSnapshot, SecurityEvent, SecurityEventType,
+    NormalizedLog, LogSourceType, LogCategory, TrafficSummary,
+)
 from server.storage import storage
 from server.database import db
 from server.alert_engine import alert_engine
@@ -21,6 +24,10 @@ from server.influx_writer import influx_writer
 from server.notifier import notifier
 from server.ws_manager import ws_manager
 from server.auth import get_agent_from_api_key
+from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
+
+SUSPICIOUS_WARN_THRESHOLD    = 5
+SUSPICIOUS_CRITICAL_THRESHOLD = 15
 
 
 logger = logging.getLogger(__name__)
@@ -44,6 +51,55 @@ def register_agent(registration: AgentRegistration):
 
 
 
+def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSummary) -> None:
+    """
+    Gelen TrafficSummary'yi işler:
+    - InfluxDB'ye protokol/paket metrikleri yazar
+    - Şüpheli paket eşiği aşıldıysa normalized_log kaydeder
+    - Aktif kaynak IP'leri kill chain tracker'a besler
+    """
+    influx_writer.write_traffic(agent_id, hostname, summary)
+
+    if summary.suspicious_packet_count >= SUSPICIOUS_WARN_THRESHOLD:
+        severity = "critical" if summary.suspicious_packet_count >= SUSPICIOUS_CRITICAL_THRESHOLD else "warning"
+        now = datetime.now(timezone.utc)
+        log = NormalizedLog(
+            log_id      = str(uuid.uuid4()),
+            raw_id      = str(uuid.uuid4()),
+            source_type = LogSourceType.NETGUARD,
+            source_host = hostname,
+            timestamp   = summary.captured_at,
+            received_at = now,
+            severity    = severity,
+            category    = LogCategory.NETWORK,
+            event_type  = "suspicious_traffic",
+            src_ip      = summary.top_src_ips[0] if summary.top_src_ips else None,
+            message     = (
+                f"{hostname}: {summary.suspicious_packet_count} şüpheli paket "
+                f"({summary.interface}, {summary.duration_sec:.0f}s)"
+            ),
+            processed_at = now,
+        )
+        db.save_normalized_log(log)
+        logger.warning(
+            f"Şüpheli trafik: {hostname} — {summary.suspicious_packet_count} paket "
+            f"({summary.interface})"
+        )
+
+        try:
+            for src_ip in summary.top_src_ips[:3]:
+                trigger = attack_chain_tracker.record(
+                    src_ip=src_ip,
+                    event_type="port_scan",
+                    occurred_at=summary.captured_at,
+                )
+                if trigger:
+                    chain_trigger_to_correlated_event(trigger, db_save=True)
+                    logger.warning(f"Kill chain (traffic): {src_ip} — {trigger['chain_type']}")
+        except Exception as exc:
+            logger.debug(f"Kill chain feed hatası: {exc}")
+
+
 @router.post("/agents/metrics", status_code=202)
 async def receive_metrics(snapshot: MetricSnapshot):
     """Agent'tan gelen snapshot'ı depola, alert kontrolü yap ve WS'e broadcast et."""
@@ -51,6 +107,13 @@ async def receive_metrics(snapshot: MetricSnapshot):
 
     # InfluxDB'ye yaz
     influx_writer.write_snapshot(snapshot)
+
+    # Trafik özeti varsa işle
+    if snapshot.traffic_summary:
+        try:
+            _process_traffic_summary(snapshot.agent_id, snapshot.hostname, snapshot.traffic_summary)
+        except Exception as exc:
+            logger.error(f"Traffic summary işleme hatası: {exc}")
 
     # Alert Engine'i çalıştır
     alerts = alert_engine.evaluate(snapshot)

@@ -12,6 +12,7 @@ import type {
   Device,
   TopologyGraph,
   ScanState,
+  TrafficSummary,
 } from '@/types/models'
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -130,6 +131,9 @@ export const agentsApi = {
 
   getLatestSnapshot: (agentId: string) =>
     request<MetricSnapshot>(`/agents/${agentId}/latest`),
+
+  trafficSummary: (agentId: string) =>
+    request<TrafficSummary>(`/agents/${encodeURIComponent(agentId)}/traffic`),
 }
 
 // ------------------------------------------------------------------ //

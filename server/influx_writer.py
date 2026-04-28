@@ -18,7 +18,7 @@ _AGENT_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,64}$')
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
 
-from shared.models import MetricSnapshot
+from shared.models import MetricSnapshot, TrafficSummary
 from server.snmp_collector import SNMPDeviceInfo
 
 logger = logging.getLogger(__name__)
@@ -270,6 +270,38 @@ class InfluxWriter:
         except Exception as e:
             logger.error(f"InfluxDB sorgu hatası: {e}")
             return None
+
+    def write_traffic(self, agent_id: str, hostname: str, summary: TrafficSummary) -> bool:
+        """TrafficSummary'yi InfluxDB'ye yazar."""
+        if not self._enabled:
+            return False
+        try:
+            points = [
+                Point("traffic_metrics")
+                .tag("agent_id", agent_id)
+                .tag("hostname", hostname)
+                .tag("interface", summary.interface)
+                .field("total_packets", summary.total_packets)
+                .field("total_bytes", summary.total_bytes)
+                .field("suspicious_count", summary.suspicious_packet_count)
+                .time(summary.captured_at, WritePrecision.S)
+            ]
+            for ps in summary.protocols:
+                points.append(
+                    Point("traffic_protocols")
+                    .tag("agent_id", agent_id)
+                    .tag("protocol", ps.protocol)
+                    .field("packet_count", ps.packet_count)
+                    .field("byte_count", ps.byte_count)
+                    .field("percentage", ps.percentage)
+                    .time(summary.captured_at, WritePrecision.S)
+                )
+            self._write_api.write(bucket=self._bucket, org=self._org, record=points)
+            logger.debug(f"Traffic InfluxDB'ye yazıldı: {agent_id} ({summary.total_packets} paket)")
+            return True
+        except Exception as e:
+            logger.error(f"Traffic InfluxDB yazma hatası: {e}")
+            return False
 
     def close(self):
         """Bağlantıyı kapat."""

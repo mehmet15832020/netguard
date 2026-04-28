@@ -60,6 +60,25 @@ export interface Agent {
   os: string
 }
 
+export interface ProtocolStats {
+  protocol:     string
+  packet_count: number
+  byte_count:   number
+  percentage:   number
+}
+
+export interface TrafficSummary {
+  interface:              string
+  duration_sec:           number
+  total_packets:          number
+  total_bytes:            number
+  protocols:              ProtocolStats[]
+  top_src_ips:            string[]
+  top_dst_ips:            string[]
+  captured_at:            string
+  suspicious_packet_count: number
+}
+
 // ------------------------------------------------------------------ //
 //  Alert
 // ------------------------------------------------------------------ //
