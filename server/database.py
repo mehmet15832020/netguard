@@ -893,6 +893,29 @@ class DatabaseManager:
         )
 
 
+    def get_log_volume(self, range: str = "24h", tenant_id: Optional[str] = None) -> list[dict]:
+        """Saatlik log hacmini döner: [{t, c}, ...]"""
+        hours = {"1h": 1, "6h": 6, "24h": 24, "7d": 168}.get(range, 24)
+        since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
+        params: list = [since]
+        tenant_clause = ""
+        if tenant_id is not None:
+            tenant_clause = "AND tenant_id = ?"
+            params.append(tenant_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT strftime('%Y-%m-%dT%H:00:00Z', received_at) AS t,
+                       COUNT(*) AS c
+                FROM normalized_logs
+                WHERE received_at >= ? {tenant_clause}
+                GROUP BY t
+                ORDER BY t
+                """,
+                params,
+            ).fetchall()
+        return [{"t": r["t"], "c": r["c"]} for r in rows]
+
     # ------------------------------------------------------------------ #
     #  CORRELATED EVENTS
     # ------------------------------------------------------------------ #

@@ -10,7 +10,10 @@ RAM cache hâlâ çalışır, InfluxDB kalıcı katman olarak eklenir.
 
 import logging
 import os
+import re
 from datetime import datetime, timezone
+
+_AGENT_ID_RE = re.compile(r'^[a-zA-Z0-9_\-]{1,64}$')
 
 from influxdb_client import InfluxDBClient, Point, WritePrecision
 from influxdb_client.client.write_api import SYNCHRONOUS
@@ -214,6 +217,59 @@ class InfluxWriter:
         except Exception as e:
             logger.error(f"SNMP InfluxDB yazma hatası: {e}")
             return False
+
+    _RANGES: dict[str, tuple[str, str]] = {
+        "1h":  ("1m",  "-1h"),
+        "6h":  ("5m",  "-6h"),
+        "24h": ("15m", "-24h"),
+        "7d":  ("1h",  "-7d"),
+    }
+
+    def query_agent_metrics(self, agent_id: str, range: str = "1h") -> dict | None:
+        """
+        InfluxDB'den agent metrik geçmişini çeker.
+        Döner: {cpu, memory, net_in, net_out} her biri [{t, v}] listesi.
+        InfluxDB yoksa None döner.
+        """
+        if not self._enabled:
+            return None
+        if not _AGENT_ID_RE.match(agent_id):
+            return None
+
+        window, start = self._RANGES.get(range, ("1m", "-1h"))
+        bucket = self._bucket
+
+        try:
+            client = InfluxDBClient(url=self._url, token=self._token, org=self._org)
+            qa = client.query_api()
+
+            def run(measurement: str, field: str) -> list[dict]:
+                flux = (
+                    f'from(bucket: "{bucket}")'
+                    f' |> range(start: {start})'
+                    f' |> filter(fn: (r) => r._measurement == "{measurement}")'
+                    f' |> filter(fn: (r) => r["agent_id"] == "{agent_id}")'
+                    f' |> filter(fn: (r) => r._field == "{field}")'
+                    f' |> aggregateWindow(every: {window}, fn: mean, createEmpty: false)'
+                    f' |> keep(columns: ["_time", "_value"])'
+                )
+                tables = qa.query(flux)
+                return [
+                    {"t": rec.get_time().isoformat(), "v": round(rec.get_value() or 0, 2)}
+                    for table in tables for rec in table.records
+                ]
+
+            result = {
+                "cpu":     run("cpu_metrics",       "usage_percent"),
+                "memory":  run("memory_metrics",    "usage_percent"),
+                "net_in":  run("bandwidth_metrics", "bytes_recv_per_sec"),
+                "net_out": run("bandwidth_metrics", "bytes_sent_per_sec"),
+            }
+            client.close()
+            return result
+        except Exception as e:
+            logger.error(f"InfluxDB sorgu hatası: {e}")
+            return None
 
     def close(self):
         """Bağlantıyı kapat."""

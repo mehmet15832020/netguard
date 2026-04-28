@@ -7,10 +7,11 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { SeverityBadge } from '@/components/ui/severity-badge'
-import { useAgents, useLatestSnapshot } from '@/hooks/useMetrics'
+import { useAgents, useLatestSnapshot, useLogVolume } from '@/hooks/useMetrics'
 import { useAlerts } from '@/hooks/useAlerts'
 import { securityApi, correlationApi, reportsApi } from '@/lib/api'
 import { MiniTopology } from '@/components/topology/MiniTopology'
+import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart'
 import type { Severity } from '@/types/models'
 import { cn } from '@/lib/utils'
 
@@ -183,6 +184,25 @@ function Panel({ title, icon: Icon, href, children }: {
   )
 }
 
+function LogVolumePanel() {
+  const { data } = useLogVolume('24h')
+  const series = (data?.data ?? []).map((d) => ({ t: d.t, v: d.c }))
+
+  return (
+    <Panel title="Log Hacmi (24 saat)" icon={Activity} href="/logs">
+      {series.length > 1 ? (
+        <div className="px-2 py-3">
+          <TimeSeriesChart data={series} label="Log" color="#6366f1" unit=" adet" height={140} />
+        </div>
+      ) : (
+        <div className="flex items-center justify-center py-8 text-zinc-600 text-sm">
+          Yeterli veri yok
+        </div>
+      )}
+    </Panel>
+  )
+}
+
 // ------------------------------------------------------------------ //
 //  Ana sayfa
 // ------------------------------------------------------------------ //
@@ -333,6 +353,10 @@ export default function OverviewPage() {
         </Panel>
 
       </div>
+
+      {/* Log hacmi grafiği */}
+      <LogVolumePanel />
+
     </div>
   )
 }

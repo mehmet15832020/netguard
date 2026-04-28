@@ -615,3 +615,33 @@ export const reportsApi = {
     URL.revokeObjectURL(url)
   },
 }
+
+export type MetricRange = '1h' | '6h' | '24h' | '7d'
+
+export interface TimeSeries {
+  t: string
+  v: number
+}
+
+export interface AgentMetricsResponse {
+  available: boolean
+  agent_id: string
+  range: MetricRange
+  cpu?: TimeSeries[]
+  memory?: TimeSeries[]
+  net_in?: TimeSeries[]
+  net_out?: TimeSeries[]
+}
+
+export interface LogVolumeResponse {
+  range: MetricRange
+  data: { t: string; c: number }[]
+}
+
+export const metricsApi = {
+  agentMetrics: (agentId: string, range: MetricRange = '1h') =>
+    request<AgentMetricsResponse>(`/metrics/agent/${encodeURIComponent(agentId)}?range=${range}`),
+
+  logVolume: (range: MetricRange = '24h') =>
+    request<LogVolumeResponse>(`/metrics/log-volume?range=${range}`),
+}

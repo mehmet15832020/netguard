@@ -1,7 +1,8 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
-import { agentsApi } from '@/lib/api'
+import { agentsApi, metricsApi } from '@/lib/api'
+import type { MetricRange } from '@/lib/api'
 import { useMetricsStore } from '@/store/metricsStore'
 
 // Agent listesi — 30s'de bir yenile
@@ -37,4 +38,23 @@ const EMPTY_SNAPSHOTS: never[] = []
 // Belirli agent'ın geçmiş snapshot'ları (grafik için)
 export function useSnapshotHistory(agentId: string) {
   return useMetricsStore((s) => s.snapshots[agentId] ?? EMPTY_SNAPSHOTS)
+}
+
+// InfluxDB'den agent metrik geçmişi
+export function useInfluxMetrics(agentId: string, range: MetricRange = '1h') {
+  return useQuery({
+    queryKey: ['influx-metrics', agentId, range],
+    queryFn: () => metricsApi.agentMetrics(agentId, range),
+    enabled: !!agentId,
+    refetchInterval: 60_000,
+  })
+}
+
+// Saatlik log hacmi
+export function useLogVolume(range: MetricRange = '24h') {
+  return useQuery({
+    queryKey: ['log-volume', range],
+    queryFn: () => metricsApi.logVolume(range),
+    refetchInterval: 60_000,
+  })
 }
