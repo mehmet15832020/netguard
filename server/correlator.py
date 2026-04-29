@@ -183,10 +183,10 @@ class Correlator:
         kw_clause  = ""
         kw_params: list = []
         if rule.keywords:
-            parts = " OR ".join("(message LIKE ? OR raw_log LIKE ?)" for _ in rule.keywords)
+            parts = " OR ".join("message LIKE ?" for _ in rule.keywords)
             kw_clause = f"AND ({parts})"
             for kw in rule.keywords:
-                kw_params += [f"%{kw}%", f"%{kw}%"]
+                kw_params += [f"%{kw}%"]
 
         with db._connect() as conn:
             rows = conn.execute(
