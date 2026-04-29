@@ -1,0 +1,19 @@
+title: Başarılı SSH Girişi
+id: ssh_success
+status: stable
+description: Brute force sonrası veya normal başarılı SSH girişi tespiti
+logsource:
+    category: authentication
+    product: linux
+    service: ssh
+detection:
+    selection:
+        event_type: ssh_success
+    condition: selection | count() by src_ip > 0
+    timeframe: 5m
+level: info
+tags:
+    - attack.initial_access
+    - attack.t1078
+falsepositives:
+    - Normal yönetici SSH bağlantıları
