@@ -1,14 +1,14 @@
 title: Port Tarama Girişimi
 id: port_scan_detected
 status: stable
-description: Aynı IP'den 60 saniye içinde 3+ port tarama olayı
+description: Aynı IP'den 60 saniye içinde 1+ port tarama olayı
 logsource:
     category: network
     product: netguard
 detection:
     selection:
         event_type: port_scan_attempt
-    condition: selection | count() by src_ip > 3
+    condition: selection | count() by src_ip > 0
     timeframe: 1m
 level: medium
 tags:
