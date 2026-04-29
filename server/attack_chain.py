@@ -36,6 +36,7 @@ FULL_THRESHOLD    = 3     # kritik eşiği
 
 STAGE_MAP: dict[str, str] = {
     # event_type prefix → stage adı
+    # Raw log event types
     "port_scan":                 "recon",
     "dns_anomaly":               "recon",
     "ssh_failure":               "weaponize",
@@ -49,6 +50,12 @@ STAGE_MAP: dict[str, str] = {
     "sudo_abuse":                "execute",
     "lateral_movement":          "lateral",
     "windows_lateral":           "lateral",
+    # Correlated event output types (sigma rule output)
+    "ssh_brute_force":           "weaponize",
+    "windows_pass_the_hash":     "weaponize",
+    "port_scan_detected":        "recon",
+    "arp_attack":                "recon",
+    "ssh_lateral":               "lateral",
 }
 
 STAGE_LABELS = {
