@@ -278,6 +278,7 @@ def _parse_syslog(raw: str, source_host: str) -> Optional[dict]:
         severity   = "info",
         category   = LogCategory.SYSTEM,
         event_type = "syslog",
+        src_ip     = source_host,
         message    = raw[:500],
         tags       = ["syslog"],
     )
