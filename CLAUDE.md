@@ -225,23 +225,56 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 | VyOS | NetFlow v9 UDP 2055 | NetGuard | ✅ konfigüre (doğrulanmadı) |
 | Alpine nginx | Syslog access_log | NetGuard:5140 | ✅ akıyor |
 
-### Reboot Sonrası Yapılacaklar
+### Bilgisayar Açılış Sırası (Tam Otomatik)
 
-**NetGuard VM — OTOMATİK** (systemd: netguard-lab-routes.service)
-- Routes, iptables, ip_forward otomatik uygulanıyor ✅
+#### Adım 1 — Bilgisayar Açılışı (otomatik)
+- VMware kernel modülleri yüklenir (`/etc/init.d/vmware`)
+- systemd user servisi NetGuard + Agent VM'leri başlatır
+  - Servis: `~/.config/systemd/user/vmware-netguard.service`
+  - ⚠️ İlk reboot'ta test edilmedi — çalışmazsa elle: VMware'i aç → VM'leri başlat
 
-**VyOS — OTOMATİK** (/config/scripts/vyos-postconfig-bootup.script)
-- Default route otomatik uygulanıyor ✅
+#### Adım 2 — NetGuard VM (otomatik, VMware başlayınca)
+- `netguard-lab-routes.service` → routes + iptables + ip_forward ✅
+- `netguard.service` → API server (lab-routes bittikten sonra başlar) ✅
 
-**OPNsense — OTOMATİK** (/etc/rc.conf.local + /usr/local/etc/syslog-ng.conf.d/netguard.conf)
-- Route ve syslog-ng config kalıcı ✅
-
-**Alpine WebServer — MANUEL** (Live ISO, kalıcı yapılamaz)
+#### Adım 3 — GNS3 (elle aç, sonra otomatik)
 ```bash
-ip link set eth0 up && ip addr add 10.0.10.2/24 dev eth0 && ip route add default via 10.0.10.1 && echo "nameserver 8.8.8.8" > /etc/resolv.conf && nginx
+# GNS3'ü aç → netguard-lab-1 projesini yükle
+# auto_start=True: node'lar otomatik başlar
+```
+- VyOS: config.boot yüklenir + postconfig script (default route) ✅
+- OPNsense: rc.conf.local (route) + syslog-ng (log akışı) + SSH ✅
+- Alpine: Live ISO — otomatik OLMAZ
+
+#### Adım 4 — Alpine (tek manuel adım)
+```bash
+python3 ~/netguard/scripts/lab-start.sh
 ```
 
-**GNS3 açılışında tek yapılacak:** Alpine'e telnet (localhost:5017) ile bağlanıp üstteki komutu çalıştır.
+### Kalıcılık Özeti
+
+| Bileşen | Kalıcılık | Mekanizma |
+|---------|-----------|-----------|
+| NetGuard routes + iptables | ✅ Otomatik | systemd: netguard-lab-routes.service |
+| NetGuard API server | ✅ Otomatik | systemd: netguard.service |
+| VMware VM auto-start | ⚠️ Test edilmedi | systemd user: vmware-netguard.service |
+| VyOS config (SNMP/syslog/NAT) | ✅ Kalıcı | config.boot |
+| VyOS default route | ✅ Kalıcı | /config/scripts/vyos-postconfig-bootup.script |
+| OPNsense route | ✅ Kalıcı | /etc/rc.conf.local |
+| OPNsense syslog → NetGuard | ✅ Kalıcı | /usr/local/etc/syslog-ng.conf.d/netguard.conf |
+| OPNsense SSH | ✅ Kalıcı | openssh_enable=YES (sysrc) |
+| GNS3 node auto-start | ✅ Kalıcı | auto_start=True (proje dosyası) |
+| Alpine nginx | ❌ Live ISO | lab-start.sh ile manuel |
+
+### Erişim Bilgileri
+
+| Makine | Erişim | Kimlik |
+|--------|--------|--------|
+| NetGuard | `ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134` | key |
+| VyOS | `telnet localhost 5012` veya `ssh vyos@192.168.203.200` | vyos/vyos |
+| OPNsense | `ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1` | root/netguard123 |
+| Alpine | `telnet localhost 5017` | root (parola yok) |
+| Agent VM | `ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.142` | key |
 
 ### Protokol → Kazanım Tablosu
 
