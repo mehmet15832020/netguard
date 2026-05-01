@@ -11,13 +11,13 @@ import time
 import pexpect
 
 ALPINE_PORT = 5017
-ALPINE_CMD = (
-    "ip link set eth0 up && "
-    "ip addr add 10.0.10.2/24 dev eth0 && "
-    "ip route add default via 10.0.10.1 && "
-    "echo 'nameserver 8.8.8.8' > /etc/resolv.conf && "
-    "nginx"
-)
+ALPINE_COMMANDS = [
+    "ip link set eth0 up",
+    "ip addr add 10.0.10.2/24 dev eth0",
+    "ip route add default via 10.0.10.1",
+    "echo nameserver 8.8.8.8 > /etc/resolv.conf",
+    "nginx",
+]
 
 
 def wait_for_port(port, host="localhost", timeout=120):
@@ -40,21 +40,28 @@ def configure_alpine():
         print("HATA: Alpine konsol açılmadı.")
         sys.exit(1)
 
-    # Alpine boot için ekstra bekleme
     print("Alpine boot tamamlanıyor (10s)...")
     time.sleep(10)
 
     print("Alpine yapılandırılıyor...")
     child = pexpect.spawn(f"telnet localhost {ALPINE_PORT}", timeout=30)
+    child.setecho(False)
 
-    # Prompt bekle (root ya da login)
-    idx = child.expect(["#", "login:", pexpect.TIMEOUT], timeout=20)
+    # Login veya doğrudan prompt bekle
+    idx = child.expect(["#", "login:", "Password:", pexpect.TIMEOUT], timeout=20)
     if idx == 1:
         child.sendline("root")
+        idx = child.expect(["#", "Password:", pexpect.TIMEOUT], timeout=10)
+    if idx == 2:
+        child.sendline("")
         child.expect("#", timeout=10)
 
-    child.sendline(ALPINE_CMD)
-    child.expect("#", timeout=15)
+    # Komutları tek tek çalıştır
+    for cmd in ALPINE_COMMANDS:
+        print(f"  -> {cmd}")
+        child.sendline(cmd)
+        child.expect(["#", pexpect.TIMEOUT], timeout=10)
+
     child.sendline("exit")
     child.close()
 
