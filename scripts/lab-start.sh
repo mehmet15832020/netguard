@@ -20,7 +20,7 @@ ALPINE_COMMANDS = [
 ]
 
 
-def wait_for_port(port, host="localhost", timeout=120):
+def wait_for_port(port, host="localhost", timeout=600):
     print(f"Alpine konsol bekleniyor (localhost:{port})...", end="", flush=True)
     start = time.time()
     while time.time() - start < timeout:
