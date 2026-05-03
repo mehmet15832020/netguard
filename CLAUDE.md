@@ -449,7 +449,6 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 
 | Sorun | Dosya | Çözüm |
 |-------|-------|-------|
-| Web scan sigma kuralı yok | `config/sigma_rules/` | **P6** |
 | Cross-source korelasyon kuralı yok | `config/correlation_rules.json` | **P4** |
 | Lateral movement dedektörü yok | `server/detectors/` | **P5** |
 | Incident enrichment zayıf | `server/routes/incidents.py` | **P11** |
@@ -465,6 +464,7 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 - Compliance sidebar'dan kaldırıldı (commit: 6af811a) ✅
 - Anomaly → normalized_logs → kill chain bağlandı (commit: 0aa22f9) ✅ **P1**
 - Threat intel AbuseIPDB score ≥ 70 → incident critical escalation (commit: 75c504f) ✅ **P2**
+- web_scan sigma kuralı: 60sn/50+ HTTP → web_scan_detected → RECON (commit: f880c5c) ✅ **P6**
 - vmware-netguard.service reboot testinde doğrulandı ✅
 
 ---
