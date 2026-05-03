@@ -50,6 +50,57 @@ Hikaye:
 
 ---
 
+## Katman Bazında Derinlik Analizi — Hiç Yapılmayanlar
+
+Bu bölüm NSM/NDR tanımı gereği olması gereken ama hiç uygulanmamış veya yüzeysel kalmış şeyleri belgeler.
+**Geliştirme kararı verirken bu listeye bak — hangi eksik gerçek değer katıyor?**
+
+### COLLECT — Veri Kalitesi (Temelsiz Analiz Riski)
+
+> Kural: Yanlış veya eksik veri → yanlış tespit. Toplama katmanı doğruysa detect ve respond otomatik güçlenir.
+
+| Eksik | Olması gereken | Şu an | Etki |
+|-------|---------------|-------|------|
+| **Tutarsız şema** | Her kaynaktan gelen log aynı alanlara sahip olmalı (ECS) | Syslog'da dst_ip çoğu zaman boş, NetFlow'da dolu | Aynı saldırı farklı kaynaklarda eşleştirilemiyor |
+| **DNS çözümleme** | Her IP → hostname eşlenmeli, logda hem IP hem hostname olmalı | Yok — sadece IP var | "192.168.1.5" yerine "accounting-pc" diyemiyoruz |
+| **Asset baseline** | Her cihazın normal trafik davranışı bilinmeli | Yok — anomaly detection temelsiz çalışıyor | "Normal dışı" neye göre belirleniyor? |
+| **İç ağ görünürlüğü** | East-west trafik izlenmeli (sadece perimeter değil) | Yok — sadece VyOS/OPNsense syslog var | Perimeter geçen saldırgan içeride görünmez |
+| **Veri doğrulama** | Geçersiz IP, gelecek timestamp, eksik zorunlu alan reddedilmeli | Zayıf — NTP validator sadece tag ekliyor, logu atmıyor | Hatalı log → hatalı korelasyon |
+| **NetFlow doğrulanmadı** | Flow verisi gerçekten geliyor mu teyit edilmeli | Konfigüre ama doğrulanmadı | Kör nokta olabilir |
+
+### DETECT — Analiz Derinliği
+
+| Eksik | Olması gereken | Şu an | Etki |
+|-------|---------------|-------|------|
+| **Dar zaman penceresi** | Korelasyon dakikalar değil saatler/günler span edebilmeli | Max 2 dakika | APT ve yavaş saldırılar tespit edilemiyor |
+| **EXECUTE aşaması boş** | Komut çalıştırma, zararlı process tespiti | STAGE_MAP'te tanımlı, dedektör yok | Kill chain 3 aşamada kalıyor |
+| **LATERAL aşaması boş** | Pivot yapma, iç ağda yayılma tespiti | STAGE_MAP'te tanımlı, dedektör yok (P5 görevi) | Saldırgan yayıldıktan sonra kaybolur |
+| **False positive yönetimi yok** | Bilinen iyi davranış whitelist'e alınabilmeli | Yok — yetkili port tarama da alarm üretiyor | Alarm yorgunluğu (alert fatigue) |
+| **Context enrichment yok** | Alert gelince "Bu IP daha önce ne yaptı?" otomatik eklenmeli | Yok — her olay izole görünüyor | IT yöneticisi bağlamı manuel araştırıyor |
+| **Tespit kapsam ölçümü yok** | MITRE tekniklerinin kaçı tespit edilebiliyor? | MITRE heatmap var ama kapsam % bilinmiyor | Kör noktalar görünmez |
+
+### RESPOND — Yanıt Kalitesi
+
+| Eksik | Olması gereken | Şu an | Etki |
+|-------|---------------|-------|------|
+| **Otomatik evidence toplama** | Incident açılınca ilgili tüm loglar otomatik bağlanmalı | Yok — sadece source_event_id var | IT yöneticisi kanıt için manuel log araması yapıyor |
+| **Önceliklendirme** | Hangi incident'e önce bakılmalı? Risk skoru + SLA | Sadece severity var | 20 açık incident'te nereden başlanır? |
+| **Müdahale rehberi** | Her alert türü için "şu adımları izle" önerisi | Yok | Her seferinde sıfırdan düşünmek |
+| **Kapanış notu zorunlu değil** | Kapanırken root cause ve aksiyon kaydedilmeli | Status değişiyor ama neden kapandı bilinmiyor | Aynı saldırı tekrar gelince bağlantı kurulamıyor |
+| **Zaman bazlı eskalasyon** | 24 saat çözülmeyen incident otomatik eskalasyon | Yok | Kritik incident sessizce bekleyebilir |
+
+### Öncelik Değerlendirmesi (Teslim Öncesi Yapılabilir)
+
+Bu listedeki her şey V1 veya V2 kapsamı **değil** — bazıları 1-2 saatte kapatılabilir:
+
+| Görev | Süre | Hangi plana ekle |
+|-------|------|-----------------|
+| NetFlow doğrulama | 30dk | Buffer haftası |
+| Incident'e ilgili logları otomatik bağla | 2s | Respond derinliği — P11 |
+| False positive için basit IP whitelist | 1s | Detect kalitesi — P12 |
+
+---
+
 ## NDR/NSM Kimlik Analizi — Dürüst Değerlendirme
 
 Gartner'ın tam NDR tanımı 3 katman gerektirir: collection + behavioral detection + response.
