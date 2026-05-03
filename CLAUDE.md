@@ -137,14 +137,20 @@ EVTX (Windows)          ARP/DNS/ICMP det.
 | Cross-source korelasyon | Aynı IP syslog+NetFlow+agent'ta görünüyor ama tespit yok | P4 |
 | Web scan sigma kuralı | Alpine nginx HTTP flood geldiğinde kural yok | P6 |
 
-### Var ama Demo'da Öne Çıkarılmayacak
+### Kaldırılanlar (Yapıldı)
 
-| Modül | Neden |
-|-------|-------|
-| `server/compliance.py` | Sahte skorlama: `if event_count >= 10: return "compliant"` |
-| EVTX upload UI | Host log analizi — NDR kimliğine uymayan alan |
-| CPU/RAM metrikleri | Zabbix'in işi, NSM kimliğini zayıflatıyor |
-| Multi-tenant mimarisi | Kodu koru, demo'da gösterme |
+| Modül | Yapılan | Neden |
+|-------|---------|-------|
+| Compliance sayfası (sidebar) | ✅ Sidebar'dan kaldırıldı | Sahte skorlama — NSM/NDR kimliğine zarar veriyor |
+| EVTX frontend sayfası | ✅ Hiç eklenmedi | Host log analizi — NDR değil |
+
+### Var ama Dokunulmayacak
+
+| Modül | Karar | Neden |
+|-------|-------|-------|
+| `server/compliance.py` backend | Kodu koru | Testler bağımlı; sadece sidebar'dan gizlendi |
+| CPU/RAM metrikleri | Dashboard'da küçük tut | Agent sayfasında görmek normal, ana odak değil |
+| Multi-tenant mimarisi | Kodu koru | Demo'da gösterme, V1'de değerlendir |
 
 ---
 
@@ -333,7 +339,8 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 | Threat intel → incident bağlantısı yok | `server/threat_intel.py` | P2 görevi |
 | Lateral movement dedektörü yok | `server/detectors/` | P5 görevi |
 | NetFlow akışı doğrulanmadı | `server/netflow_receiver.py` | Buffer haftasında doğrula |
-| VyOS console port değişken | GNS3 API | Her oturumda `telnet localhost $(gns3 api port)` ile doğrula |
+| VyOS console port değişken | GNS3 API | Her oturumda GNS3 API'den al; CLAUDE.md'deki port sabit değil |
+| P5 için Kali test scripti yok | `scripts/` | P5 başlamadan önce lateral movement senaryosu yaz |
 
 ## Çözülmüş Sorunlar (Referans)
 

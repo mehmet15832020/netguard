@@ -6,7 +6,7 @@ import { useState } from 'react'
 import {
   LayoutDashboard, Bell, Shield, FileText, GitMerge, Settings, LogOut,
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
-  ClipboardList, ShieldAlert, Crosshair, Swords, ShieldCheck, ChevronLeft,
+  ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
   ChevronRight, Zap,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -50,7 +50,6 @@ const SECTIONS = [
   {
     label: 'Yönetim',
     items: [
-      { href: '/compliance',  label: 'Compliance',       icon: ShieldCheck },
       { href: '/reports',     label: 'Raporlar',         icon: FileDown },
       { href: '/audit',       label: 'Denetim Günlüğü',  icon: ClipboardList },
       { href: '/maintenance', label: 'Bakım',            icon: Wrench },
