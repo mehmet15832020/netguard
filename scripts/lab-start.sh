@@ -5,12 +5,19 @@ GNS3 açıldıktan sonra bu scripti çalıştır.
 Alpine WebServer'ı otomatik olarak yapılandırır.
 """
 
+import json
 import socket
 import sys
 import time
+import urllib.request
+import urllib.error
+import base64
 import pexpect
 
-ALPINE_PORT = 5017
+GNS3_URL = "http://127.0.0.1:3080/v2"
+GNS3_USER = "admin"
+GNS3_PASS = "KLMwSeS0mklkToRm5EAWuhBgumnr0HHrD2ezvIVikaeDy3V5AJmYC3AsbMIMytaK"
+
 ALPINE_COMMANDS = [
     "ip link set eth0 up",
     "ip addr add 10.0.10.2/24 dev eth0",
@@ -18,6 +25,27 @@ ALPINE_COMMANDS = [
     "echo nameserver 8.8.8.8 > /etc/resolv.conf",
     "nginx",
 ]
+
+
+def gns3_request(path):
+    url = f"{GNS3_URL}{path}"
+    creds = base64.b64encode(f"{GNS3_USER}:{GNS3_PASS}".encode()).decode()
+    req = urllib.request.Request(url, headers={"Authorization": f"Basic {creds}"})
+    with urllib.request.urlopen(req, timeout=5) as r:
+        return json.loads(r.read())
+
+
+def get_alpine_port():
+    try:
+        projects = gns3_request("/projects")
+        opened = next((p for p in projects if p["status"] == "opened"), None)
+        if not opened:
+            return None
+        nodes = gns3_request(f"/projects/{opened['project_id']}/nodes")
+        webserver = next((n for n in nodes if n["name"] == "WebServer"), None)
+        return webserver["console"] if webserver else None
+    except Exception:
+        return None
 
 
 def wait_for_port(port, host="localhost", timeout=600):
@@ -36,7 +64,14 @@ def wait_for_port(port, host="localhost", timeout=600):
 
 
 def configure_alpine():
-    if not wait_for_port(ALPINE_PORT):
+    port = get_alpine_port()
+    if port:
+        print(f"Alpine console port: {port}")
+    else:
+        port = 5017
+        print(f"GNS3 API'den port alınamadı, varsayılan kullanılıyor: {port}")
+
+    if not wait_for_port(port):
         print("HATA: Alpine konsol açılmadı.")
         sys.exit(1)
 
@@ -44,7 +79,7 @@ def configure_alpine():
     time.sleep(10)
 
     print("Alpine yapılandırılıyor...")
-    child = pexpect.spawn(f"telnet localhost {ALPINE_PORT}", timeout=30)
+    child = pexpect.spawn(f"telnet localhost {port}", timeout=30)
     child.setecho(False)
 
     # Login veya doğrudan prompt bekle
