@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import uuid
 from datetime import datetime, timezone
 
 from server.anomaly.baseline import BaselineStore
@@ -8,6 +9,8 @@ from server.anomaly.collector import MetricsCollector
 from server.anomaly.detector import IsolationForestDetector, StatisticalDetector
 from server.anomaly.models import AnomalyResult, METRICS
 from server.anomaly.store import AnomalyResultStore
+from server.database import DatabaseManager
+from shared.models import LogCategory, LogSourceType, NormalizedLog
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +36,7 @@ class AnomalyEngine:
         self._stat      = StatisticalDetector()
         self._ifd       = IsolationForestDetector()
         self._results   = AnomalyResultStore(db_path)
+        self._db        = DatabaseManager(db_path)
         self._cycle_count = 0
         self._task: asyncio.Task | None = None
 
@@ -103,6 +107,20 @@ class AnomalyEngine:
             for r in all_results:
                 self._results.save(r)
                 notifier.notify_anomaly(r)
+                log = NormalizedLog(
+                    log_id=str(uuid.uuid4()),
+                    raw_id=str(uuid.uuid4()),
+                    source_type=LogSourceType.NETGUARD,
+                    source_host="netguard-anomaly",
+                    timestamp=r.detected_at,
+                    severity=r.severity,
+                    category=LogCategory.INTRUSION,
+                    event_type="anomaly_detected",
+                    src_ip=r.entity_id,
+                    message=r.message,
+                    tags=["anomaly", r.metric],
+                )
+                self._db.save_normalized_log(log)
             logger.info(
                 f"Anomaly cycle #{self._cycle_count}: "
                 f"{len(all_results)} anomali / {len(snapshots)} entity"

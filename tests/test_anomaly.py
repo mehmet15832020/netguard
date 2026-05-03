@@ -318,3 +318,37 @@ class TestAnomalyEngine:
     def test_cycle_empty_db(self, engine):
         engine._cycle()   # boş DB'de çalışmalı, hata vermemeli
         assert engine._cycle_count == 1
+
+    def test_cycle_writes_normalized_log_on_anomaly(self, tmp_db, monkeypatch):
+        import sqlite3
+        engine = AnomalyEngine(tmp_db)
+
+        snap = MetricSnapshot(
+            entity_id="1.2.3.4",
+            window_start=datetime.now(timezone.utc),
+            fw_block_rate=0.0,
+            conn_rate=999.0,
+            unique_dst_ips=0.0,
+            unique_dst_ports=0.0,
+            auth_failure_rate=0.0,
+        )
+        monkeypatch.setattr(engine._collector, "collect", lambda: [snap])
+
+        for metric in METRICS:
+            bp = BaselinePoint("1.2.3.4", metric, datetime.now(timezone.utc).hour)
+            for _ in range(30):
+                bp.update(10.0)
+            bp.m2 = 29.0
+            engine._baselines.save(bp)
+
+        import server.notifier as notifier_module
+        monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
+
+        engine._cycle()
+
+        with sqlite3.connect(tmp_db) as conn:
+            row = conn.execute(
+                "SELECT event_type, src_ip FROM normalized_logs WHERE event_type='anomaly_detected'"
+            ).fetchone()
+        assert row is not None
+        assert row[1] == "1.2.3.4"
