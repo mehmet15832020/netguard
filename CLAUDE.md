@@ -449,7 +449,6 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 
 | Sorun | Dosya | Çözüm |
 |-------|-------|-------|
-| Anomaly → kill chain bağlantısı yok | `server/anomaly/engine.py` | **P1** |
 | Threat intel → incident severity bağlantısı yok | `server/threat_intel.py` | **P2** |
 | Web scan sigma kuralı yok | `config/sigma_rules/` | **P6** |
 | Cross-source korelasyon kuralı yok | `config/correlation_rules.json` | **P4** |
@@ -465,6 +464,7 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 - `config/sigma_rules/port_scan.yml` — id fix + 2m timeframe race condition fix (commit: 9480aea) ✅
 - `server/attack_chain.py` — STAGE_MAP'e correlated event prefix'leri eklendi (commit: 23fabbc) ✅
 - Compliance sidebar'dan kaldırıldı (commit: 6af811a) ✅
+- Anomaly → normalized_logs → kill chain bağlandı (commit: 0aa22f9) ✅ **P1**
 - vmware-netguard.service reboot testinde doğrulandı ✅
 
 ---
