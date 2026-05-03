@@ -280,3 +280,71 @@ class TestCorrelatorRun:
         assert len(db_events) == 1
         assert db_events[0].rule_id == "test_rule"
         assert db_events[0].severity == "critical"
+
+
+# ------------------------------------------------------------------ #
+#  Threat Intel Escalation testleri
+# ------------------------------------------------------------------ #
+
+class TestThreatIntelEscalation:
+    @pytest.fixture
+    def setup(self, tmp_path, monkeypatch):
+        import server.database as db_module
+        test_db = DatabaseManager(str(tmp_path / "test.db"))
+        monkeypatch.setattr(db_module, "db", test_db)
+        import server.correlator as corr_module
+        monkeypatch.setattr(corr_module, "db", test_db)
+        c = Correlator(rules_path=str(tmp_path / "empty.json"))
+        c._rules = []
+        return c, test_db
+
+    def test_high_ti_score_escalates_to_critical(self, setup, monkeypatch):
+        correlator, test_db = setup
+        rule = _make_rule(threshold=3, severity="warning")
+        correlator._rules = [rule]
+
+        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(3)]
+        _store_logs(test_db, logs)
+
+        import server.threat_intel as ti_module
+        monkeypatch.setattr(ti_module, "lookup", lambda ip: {"score": 85})
+
+        correlator.run()
+
+        incidents = test_db.get_incidents()
+        assert len(incidents) == 1
+        assert incidents[0]["severity"] == "critical"
+
+    def test_low_ti_score_no_escalation(self, setup, monkeypatch):
+        correlator, test_db = setup
+        rule = _make_rule(threshold=3, severity="warning")
+        correlator._rules = [rule]
+
+        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(3)]
+        _store_logs(test_db, logs)
+
+        import server.threat_intel as ti_module
+        monkeypatch.setattr(ti_module, "lookup", lambda ip: {"score": 30})
+
+        correlator.run()
+
+        incidents = test_db.get_incidents()
+        assert len(incidents) == 1
+        assert incidents[0]["severity"] == "warning"
+
+    def test_no_ti_result_no_escalation(self, setup, monkeypatch):
+        correlator, test_db = setup
+        rule = _make_rule(threshold=3, severity="warning")
+        correlator._rules = [rule]
+
+        logs = [_make_normalized_log("ssh_failure", src_ip="10.0.0.1") for _ in range(3)]
+        _store_logs(test_db, logs)
+
+        import server.threat_intel as ti_module
+        monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
+
+        correlator.run()
+
+        incidents = test_db.get_incidents()
+        assert len(incidents) == 1
+        assert incidents[0]["severity"] == "warning"

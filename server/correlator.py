@@ -265,6 +265,7 @@ class Correlator:
         try:
             from server.database import db
             from shared.models import Incident, IncidentStatus
+            from server import threat_intel
 
             last_seen_iso = event.last_seen.isoformat() if hasattr(event.last_seen, "isoformat") else event.last_seen
             existing_id = db.find_open_incident_for_rule(event.rule_id, event.group_value)
@@ -278,6 +279,7 @@ class Correlator:
                     message=event.message,
                     occurred_at=last_seen_iso,
                 )
+                incident_id = existing_id
             else:
                 incident = Incident(
                     incident_id=str(uuid.uuid4()),
@@ -299,6 +301,14 @@ class Correlator:
                     severity=event.severity,
                     message=event.message,
                     occurred_at=last_seen_iso,
+                )
+                incident_id = incident.incident_id
+
+            ti = threat_intel.lookup(event.group_value)
+            if ti and ti.get("score", 0) >= 70:
+                db.escalate_incident_severity(incident_id, "critical")
+                logger.warning(
+                    f"TI escalation: {event.group_value} AbuseIPDB score={ti['score']} → incident critical"
                 )
         except Exception as exc:
             logger.error(f"Otomatik incident oluşturulamadı [{event.rule_id}]: {exc}")
