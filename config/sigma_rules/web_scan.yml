@@ -1,0 +1,21 @@
+title: Web Tarama / HTTP Flood Girişimi
+id: web_scan
+status: stable
+description: Aynı IP'den 60 saniye içinde 50+ HTTP isteği — web tarayıcısı veya flood
+logsource:
+    category: network
+    product: netguard
+    service: web
+detection:
+    selection:
+        event_type: web_
+    condition: selection | count() by src_ip > 50
+    timeframe: 1m
+level: medium
+tags:
+    - attack.reconnaissance
+    - attack.t1595.003
+falsepositives:
+    - Yetkili web güvenlik taramaları
+    - Yük testleri
+    - Arama motoru botları

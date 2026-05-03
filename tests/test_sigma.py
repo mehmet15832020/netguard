@@ -356,3 +356,18 @@ def test_real_windows_sigma_rules_load():
     sus = next(r for r in rules if r.rule_id == "windows_suspicious_process")
     assert sus.keywords is not None
     assert "mimikatz" in sus.keywords
+
+
+def test_web_scan_rule_loads_correctly():
+    """web_scan kuralı doğru parse edilmeli ve prefix match_event_type içermeli."""
+    sigma_dir = Path(__file__).parent.parent / "config" / "sigma_rules"
+    if not sigma_dir.exists():
+        pytest.skip("config/sigma_rules/ dizini yok")
+
+    rules = load_sigma_rules_from_dir(str(sigma_dir))
+    rule = next((r for r in rules if r.rule_id == "web_scan"), None)
+    assert rule is not None, "web_scan kuralı yüklenemedi"
+    assert rule.match_event_type == "web_"
+    assert rule.threshold == 50
+    assert rule.window_seconds == 60
+    assert rule.output_event_type == "web_scan_detected"
