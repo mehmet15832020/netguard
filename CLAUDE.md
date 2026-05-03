@@ -115,21 +115,20 @@ HTTP içeriği (tüm hostlar)               ❌ görünmez
 
 | Modül | Durum |
 |-------|-------|
-| Sigma kuralları (count-based) | ✅ 13 kural aktif |
+| Sigma kuralları (count-based) | ✅ 14 kural aktif (web_scan eklendi) |
 | Korelasyon motoru | ✅ 60s döngü |
 | Kill chain RECON+WEAPONIZE+ACCESS | ✅ lab'da doğrulandı |
 | MITRE ATT&CK heatmap | ✅ |
 | ARP/DNS/ICMP dedektörler | ✅ normalized_logs'a yazıyor |
-| Threat intel (AbuseIPDB) | ✅ cache çalışıyor |
-| Anomaly (IsolationForest + Welford) | ✅ çalışıyor ama kopuk |
+| Threat intel (AbuseIPDB) | ✅ score ≥ 70 → incident critical escalation |
+| Anomaly (IsolationForest + Welford) | ✅ normalized_logs'a yazıyor → kill chain RECON |
+| nginx access log ayrıştırma | ✅ syslog üzerinden web_request/web_client_error/web_auth_fail |
 
 **Kopuk / eksik:**
 
 | Sorun | Etki | Çözüm |
 |-------|------|-------|
 | Sigma engine sadece `count() by field > N` | Topluluk kuralları (10K+) kullanılamıyor | V1-3: pySigma |
-| Anomaly → normalized_logs'a yazmıyor | Kill chain ML sonuçlarını göremez | **P1 görevi** |
-| Threat intel → incident severity'yi değiştirmiyor | Bilinen kötü IP sessiz kalıyor | **P2 görevi** |
 | Lateral movement dedektörü yok | LATERAL stage hiç tetiklenemiyor | **P5 görevi** |
 | EXECUTE dedektörü yok | 4. kill chain aşaması boş | V1 kapsamı |
 | Cross-source korelasyon kuralı yok | Aynı IP syslog+NetFlow+agent'ta tespit edilemiyor | **P4 görevi** |
@@ -465,6 +464,7 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 - Anomaly → normalized_logs → kill chain bağlandı (commit: 0aa22f9) ✅ **P1**
 - Threat intel AbuseIPDB score ≥ 70 → incident critical escalation (commit: 75c504f) ✅ **P2**
 - web_scan sigma kuralı: 60sn/50+ HTTP → web_scan_detected → RECON (commit: f880c5c) ✅ **P6**
+- nginx syslog → log_normalizer bağlantısı: web_request/web_client_error/web_auth_fail (commit: 48daf41) ✅ **P6 tamamlama**
 - vmware-netguard.service reboot testinde doğrulandı ✅
 
 ---
