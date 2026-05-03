@@ -55,18 +55,41 @@ Hikaye:
 Bu bölüm NSM/NDR tanımı gereği olması gereken ama hiç uygulanmamış veya yüzeysel kalmış şeyleri belgeler.
 **Geliştirme kararı verirken bu listeye bak — hangi eksik gerçek değer katıyor?**
 
-### COLLECT — Veri Kalitesi (Temelsiz Analiz Riski)
+### COLLECT — Veri Toplama Yöntemleri ve Kapsamı
 
 > Kural: Yanlış veya eksik veri → yanlış tespit. Toplama katmanı doğruysa detect ve respond otomatik güçlenir.
 
-| Eksik | Olması gereken | Şu an | Etki |
-|-------|---------------|-------|------|
-| **Tutarsız şema** | Her kaynaktan gelen log aynı alanlara sahip olmalı (ECS) | Syslog'da dst_ip çoğu zaman boş, NetFlow'da dolu | Aynı saldırı farklı kaynaklarda eşleştirilemiyor |
-| **DNS çözümleme** | Her IP → hostname eşlenmeli, logda hem IP hem hostname olmalı | Yok — sadece IP var | "192.168.1.5" yerine "accounting-pc" diyemiyoruz |
-| **Asset baseline** | Her cihazın normal trafik davranışı bilinmeli | Yok — anomaly detection temelsiz çalışıyor | "Normal dışı" neye göre belirleniyor? |
-| **İç ağ görünürlüğü** | East-west trafik izlenmeli (sadece perimeter değil) | Yok — sadece VyOS/OPNsense syslog var | Perimeter geçen saldırgan içeride görünmez |
-| **Veri doğrulama** | Geçersiz IP, gelecek timestamp, eksik zorunlu alan reddedilmeli | Zayıf — NTP validator sadece tag ekliyor, logu atmıyor | Hatalı log → hatalı korelasyon |
-| **NetFlow doğrulanmadı** | Flow verisi gerçekten geliyor mu teyit edilmeli | Konfigüre ama doğrulanmadı | Kör nokta olabilir |
+**NetGuard'ın toplama yöntemleri:**
+
+| Yöntem | Nasıl çalışır | Şu an | Standart ile fark |
+|--------|--------------|-------|-------------------|
+| **Syslog** | Cihaz logunu iter → UDP 514 | ✅ OPNsense/VyOS/nginx | Aynı — endüstri standardı |
+| **NetFlow** | Router trafik özetini iter → UDP 2055 | ✅ konfigüre, ⚠️ doğrulanmadı | Aynı — endüstri standardı |
+| **SNMP** | Biz cihazı sorgularız → 60s poll | ✅ çalışıyor | NDR için değil, monitoring — fazla vurgulanıyor |
+| **pyshark TAP** | Kendi interface'imizi dinleriz | ⚠️ sadece SYN paketi | Zeek tüm trafiği görür: DNS/HTTP/SSL/SSH log üretir |
+| **Agent** | Host'a kurulu yazılım iter | ⚠️ sadece metrik (CPU/RAM) | Wazuh/Elastic process+file+login olaylarını toplar |
+
+**Toplama kapsamı haritası:**
+
+```
+[Kali] ──────────────────────────────► [NetGuard] görüyor ✅
+[Kali] ──────────────────────────────► [Agent VM] görmüyor ❌
+[Kali] ──── VyOS syslog ─────────────► [NetGuard] log akıyor ✅
+[Kali] ──── VyOS NetFlow ────────────► [NetGuard] flow özeti ✅
+[Agent VM] ─ iç trafik ──────────────► görünmüyor ❌ (east-west kör nokta)
+Tüm hostlar ─ DNS sorguları ─────────► görünmüyor ❌
+Tüm hostlar ─ HTTP içeriği ──────────► görünmüyor ❌
+```
+
+**Veri kalitesi eksikleri:**
+
+| Eksik | Şu an | Etki |
+|-------|-------|------|
+| **Tutarsız şema** | Syslog'da dst_ip çoğu zaman boş, NetFlow'da dolu | Aynı saldırı farklı kaynaklarda eşleştirilemiyor |
+| **DNS sorgu içeriği** | Yok — sadece DNS bağlantı sayısı var | C2 domain'leri, data exfil tespit edilemiyor |
+| **İç ağ görünürlüğü** | Yok — sadece perimeter | Perimeter geçen saldırgan içeride kaybolur |
+| **Asset baseline** | Yok | Anomaly detection'da "normal" tanımsız |
+| **Veri doğrulama** | Zayıf — geçersiz log atılmıyor | Hatalı log → hatalı korelasyon |
 
 ### DETECT — Analiz Derinliği
 
