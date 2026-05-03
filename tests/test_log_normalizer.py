@@ -230,3 +230,48 @@ class TestProcessAndStore:
         assert result is None
         norm_logs = test_db.get_normalized_logs(limit=10)
         assert len(norm_logs) == 0
+
+
+# ------------------------------------------------------------------ #
+#  nginx web log — kaynak tespiti ve parse
+# ------------------------------------------------------------------ #
+
+class TestNginxWebLog:
+    # Alpine nginx'in syslog'a yazdığı tipik format:
+    # <priority>TIMESTAMP HOST nginx: ACCESS_LOG_LINE
+    NGINX_SYSLOG = (
+        '<134>May  3 12:00:00 alpine nginx: '
+        '192.168.1.50 - - [03/May/2026:12:00:00 +0000] '
+        '"GET /index.html HTTP/1.1" 200 615 "-" "Mozilla/5.0"'
+    )
+    NGINX_404 = (
+        'nginx: 10.0.0.5 - - [03/May/2026:12:00:01 +0000] '
+        '"GET /admin HTTP/1.1" 404 162 "-" "nikto/2.1.6"'
+    )
+
+    def test_nginx_syslog_identified(self):
+        assert identify_source(self.NGINX_SYSLOG) == LogSourceType.NGINX
+
+    def test_nginx_plain_identified(self):
+        assert identify_source(self.NGINX_404) == LogSourceType.NGINX
+
+    def test_nginx_200_parsed_as_web_request(self):
+        norm = normalize(self.NGINX_SYSLOG, source_host="10.0.10.2")
+        assert norm is not None
+        assert norm.event_type == "web_request"
+        assert norm.src_ip == "192.168.1.50"
+
+    def test_nginx_404_parsed_as_web_client_error(self):
+        norm = normalize(self.NGINX_404, source_host="10.0.10.2")
+        assert norm is not None
+        assert norm.event_type == "web_client_error"
+        assert norm.src_ip == "10.0.0.5"
+
+    def test_nginx_auth_fail_401(self):
+        raw = (
+            'nginx: 10.0.0.9 - - [03/May/2026:12:00:02 +0000] '
+            '"GET /secret HTTP/1.1" 401 162 "-" "scanner/1.0"'
+        )
+        norm = normalize(raw, source_host="10.0.10.2")
+        assert norm is not None
+        assert norm.event_type == "web_auth_fail"

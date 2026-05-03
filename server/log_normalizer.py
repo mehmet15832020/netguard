@@ -23,6 +23,7 @@ from typing import Optional
 from server.database import db
 from server.ntp_validator import ntp_validator
 from server.parsers.firewall import detect_and_parse as _fw_detect_and_parse
+from server.parsers.web_log import detect_and_parse as _web_detect_and_parse
 from shared.models import (
     LogCategory,
     LogSourceType,
@@ -50,6 +51,8 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     (LogSourceType.CISCO_ASA, re.compile(r'%ASA-')),
     (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
     (LogSourceType.VYOS,      re.compile(r'kernel:.*SRC=[\d.]+.*DST=[\d.]+')),
+    # nginx access/error log — "nginx:" process tag + combined log format IP
+    (LogSourceType.NGINX,     re.compile(r'\bnginx\b.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')),
     # auth.log — sshd veya sudo içerir
     (LogSourceType.AUTH_LOG,  re.compile(r'\b(sshd|sudo|su)\b')),
 ]
@@ -284,6 +287,39 @@ def _parse_syslog(raw: str, source_host: str) -> Optional[dict]:
     )
 
 
+# nginx combined log: "IP - user [timestamp] ..." — syslog header öncesinde olabilir
+_COMBINED_IP_RE = re.compile(r'(\d{1,3}(?:\.\d{1,3}){3}\s+-\s+\S+\s+\[)')
+_NGINX_ERROR_START_RE = re.compile(r'(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})')
+
+
+def _parse_web_log(raw: str, source_host: str) -> Optional[dict]:
+    """nginx access/error log satırını parse et — syslog başlığını soyarak."""
+    m = _COMBINED_IP_RE.search(raw)
+    if m:
+        line = raw[m.start():]
+    else:
+        m2 = _NGINX_ERROR_START_RE.search(raw)
+        line = raw[m2.start():] if m2 else raw
+
+    norm = _web_detect_and_parse(line, source_host)
+    if norm is None:
+        return None
+    return {
+        "timestamp":  norm.timestamp,
+        "severity":   norm.severity,
+        "category":   norm.category,
+        "event_type": norm.event_type,
+        "src_ip":     norm.src_ip,
+        "dst_ip":     norm.dst_ip,
+        "src_port":   norm.src_port,
+        "dst_port":   norm.dst_port,
+        "protocol":   norm.protocol,
+        "message":    norm.message,
+        "tags":       list(norm.tags),
+        "extra":      dict(norm.extra),
+    }
+
+
 def _parse_firewall(raw: str, source_host: str) -> Optional[dict]:
     """Firewall log satırını parsers.firewall modülüyle işle."""
     norm = _fw_detect_and_parse(raw)
@@ -317,6 +353,7 @@ _PARSERS = {
     LogSourceType.CISCO_ASA : _parse_firewall,
     LogSourceType.FORTIGATE : _parse_firewall,
     LogSourceType.VYOS      : _parse_firewall,
+    LogSourceType.NGINX     : _parse_web_log,
 }
 
 
