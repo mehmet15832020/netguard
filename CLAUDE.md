@@ -252,34 +252,42 @@ EVTX (Windows)          ARP/DNS/ICMP det.
 
 **Kural: Teslim öncesi bu geçişi başlatma. Ama geçişi zorlaştıracak kararlar alma.**
 
-### Hedef Mimari (Teslim Sonrası)
+### Öncelikli Adım Sırası (Sıra kritik — atlanırsa sonraki adım temelsiz kalır)
 
-| Şu an | Version 1 |
-|-------|-----------|
-| SQLite WAL | PostgreSQL + TimescaleDB |
-| `sigma_parser.py` (sadece count-based) | pySigma (400+ topluluk kuralı) |
-| Elle yazılmış parsers | Fluent Bit (ECS normalize) |
-| ECS uyumsuz şema | `event.original`, `source.ip`, `destination.ip` alanları |
-| Pasif yanıt | Aktif yanıt (firewall API, IP blok) |
-| pyshark SYN tespiti | Full PCAP + retention policy |
+| Adım | Yapılacak | Neden Bu Sırada |
+|------|-----------|-----------------|
+| **V1-1** | **ECS şema + veri tutarlılığı** | Temel — dst_ip, protocol tüm kaynaklarda dolu olmalı. Bunu düzeltmeden üstüne ne inşa edilse eksik veriyle çalışır. |
+| **V1-2** | **DNS çözümleme** | Her IP → hostname eşlenmeli. "192.168.1.5" yerine "muhasebe-pc" — tüm alertler anında okunabilir hale gelir. |
+| **V1-3** | **pySigma entegrasyonu** | Sigma engine'i gerçek hale getir → 10.000+ topluluk kuralı import edilebilir. Tespit kapsamı dramatik artar. |
+| **V1-4** | **Incident enrichment** | Incident açılınca ilgili tüm loglar + MITRE tekniği + threat intel otomatik bağlanır. IT yöneticisi için en somut iyileştirme. |
+| **V1-5** | **Asset baseline** | Her cihazın normal trafik davranışı öğrenilir. Ancak bundan sonra anomaly detection güvenilir olur. |
+| **V1-6** | **False positive yönetimi** | Bilinen iyi davranışlar (yetkili port tarama, monitoring araçları) whitelist'e alınır. Alert yorgunluğu azalır. |
+| **V1-7** | **PostgreSQL + TimescaleDB** | Veri hacmi büyüdüğünde. SQLite 10M satıra kadar dayanır — önce diğerleri. |
+| **V1-8** | **Zeek/Suricata TAP entegrasyonu** | Span port üzerinden tüm trafik görünür. Şu anki pyshark SYN tespitinin çok ötesinde görünürlük. |
+| **V1-9** | **Aktif yanıt** | Ancak pasif yanıt mükemmel olduktan sonra. Firewall API, IP blok, otomatik playbook. |
 
-### Açık Kapıyı Koruma Kararları
+### Şu an ile V1 Karşılaştırması
 
-Bu kararlar şu an hayata geçirilmez ama geçişi engellemez:
+| Katman | Şu an | Version 1 |
+|--------|-------|-----------|
+| **Collect** | Syslog/SNMP/NetFlow/pyshark SYN | + DNS çözümleme, ECS şema, Zeek/Suricata TAP |
+| **Detect** | count-based sigma, ML kopuk | pySigma (10K+ kural), asset baseline, false positive mgmt |
+| **Respond** | İnce incident, pasif | Zengin incident (log+MITRE+intel), aktif yanıt |
+| **Altyapı** | SQLite + InfluxDB | PostgreSQL + TimescaleDB |
 
-1. **`normalized_logs` tek merkezi tablo** — PostgreSQL'e geçince sadece bu tablo migrate edilir, üstündeki tüm modüller aynı kalır.
-2. **`sigma_parser.py` interface'i sabit** — `parse_rule(path) → rule_obj` imzası değişmez. pySigma aynı imzayla drop-in replacement olur.
-3. **docker-compose'daki `postgres` servisi silinmez** — Şu an opsiyonel, ileride primary olur.
-4. **Yeni kod SQLite'a özgü query yazmaz** — Standart SQL kullan, `GLOB` veya `PRAGMA` gibi SQLite-only syntax'ı yeni modüllere ekleme.
-5. **ECS alan adlarını yorum olarak not et** — Yeni detector yazarken `src_ip` → ileride `source.ip` olacağını bil.
+### Açık Kapıyı Koruma Kararları (Şu An Uygulanacak)
 
-### Version 1'in SMB için anlamı
+1. **`normalized_logs` tek merkezi tablo** — PostgreSQL'e geçince sadece bu tablo migrate edilir.
+2. **`sigma_parser.py` interface'i sabit** — `parse_rule(path) → rule_obj` imzası değişmez, pySigma drop-in olur.
+3. **docker-compose'daki `postgres` servisi silinmez** — Şu an opsiyonel, V1-7'de primary olur.
+4. **Yeni kod SQLite'a özgü syntax yazmaz** — GLOB, PRAGMA gibi şeyler yeni modüllere eklenmez.
+5. **Yeni detector yazarken field adlarını not et** — `src_ip` → V1'de `source.ip` (ECS) olacak.
 
-Teslim sonrası Version 1 mimarisiyle NetGuard:
-- 400+ sigma topluluk kuralını import edebilir
-- Milyonlarca satır veriyi sorgulayabilir
-- "30 dakika Docker kurulum" garantisi korunur (PostgreSQL Docker'da kolay çalışır)
-- pySigma sayesinde sigma-cli ekosistemiyle uyumlu hale gelir
+### Version 1 Sonucunda NetGuard
+
+- Syslog + NetFlow + TAP → ECS normalize → PostgreSQL → pySigma (10K+ kural) → kill chain → zengin incident → aktif yanıt
+- sigma-cli ekosistemiyle uyumlu
+- SMB segmentte Security Onion ile rekabet edebilir, daha kolay kurulumla
 
 ---
 
