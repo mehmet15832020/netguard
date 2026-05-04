@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from server.auth import User, get_current_user, tenant_scope
 from server.database import db
+from server.incident_enricher import enrich_incident
 from shared.models import Incident, IncidentStatus
 
 router = APIRouter()
@@ -113,7 +114,8 @@ def _check_incident_access(incident_id: str, current_user: User) -> dict:
 
 @router.get("/incidents/{incident_id}")
 def get_incident(incident_id: str, current_user: User = Depends(get_current_user)):
-    return _check_incident_access(incident_id, current_user)
+    row = _check_incident_access(incident_id, current_user)
+    return enrich_incident(row)
 
 
 @router.patch("/incidents/{incident_id}")

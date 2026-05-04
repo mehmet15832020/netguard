@@ -1002,6 +1002,41 @@ class DatabaseManager:
             ).fetchall()
         return [self._row_to_correlated_event(r) for r in rows]
 
+    def get_correlated_event_by_id(self, corr_id: str) -> Optional["CorrelatedEvent"]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM correlated_events WHERE corr_id=?", (corr_id,)
+            ).fetchone()
+        return self._row_to_correlated_event(row) if row else None
+
+    def get_related_logs_for_incident(
+        self,
+        src_ip: str,
+        around_iso: str,
+        window_minutes: int = 30,
+        limit: int = 20,
+    ) -> list["NormalizedLog"]:
+        """src_ip'e ait ±window_minutes dakika aralığındaki normalize logları döner."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT * FROM normalized_logs
+                WHERE src_ip = ?
+                  AND datetime(timestamp) BETWEEN
+                      datetime(?, ?)
+                      AND datetime(?, ?)
+                ORDER BY timestamp DESC
+                LIMIT ?
+                """,
+                (
+                    src_ip,
+                    around_iso, f"-{window_minutes} minutes",
+                    around_iso, f"+{window_minutes} minutes",
+                    limit,
+                ),
+            ).fetchall()
+        return [self._row_to_normalized_log(r) for r in rows]
+
     def _row_to_correlated_event(self, row: sqlite3.Row) -> CorrelatedEvent:
         def _split(val: str) -> list[str]:
             return [v for v in (val or "").split(",") if v]

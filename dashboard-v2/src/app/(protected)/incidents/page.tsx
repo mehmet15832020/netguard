@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShieldAlert, RefreshCw, Plus, X } from 'lucide-react'
-import { incidentApi, type Incident, type IncidentEvent } from '@/lib/api'
+import { incidentApi, type Incident, type IncidentEvent, type IncidentEnrichment } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -52,6 +52,91 @@ function EventTimeline({ incidentId }: { incidentId: string }) {
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function EnrichmentPanel({ enrichment, incidentId }: { enrichment?: IncidentEnrichment; incidentId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['incident-detail', incidentId],
+    queryFn:  () => incidentApi.get(incidentId),
+    refetchInterval: 30_000,
+  })
+
+  const enr: IncidentEnrichment | undefined = data?.enrichment ?? enrichment
+
+  if (isLoading && !enr) return <p className="text-xs text-zinc-500 py-2">Yükleniyor...</p>
+  if (!enr) return null
+
+  const hasMitre = enr.mitre_techniques.length > 0 || enr.mitre_tactics.length > 0
+  const hasTI    = !!enr.threat_intel
+  const hasLogs  = enr.related_logs.length > 0
+
+  if (!hasMitre && !hasTI && !hasLogs) return null
+
+  return (
+    <div className="space-y-4">
+      {hasMitre && (
+        <div>
+          <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wide">MITRE ATT&CK</p>
+          <div className="flex flex-wrap gap-1.5">
+            {enr.mitre_techniques.map(t => (
+              <span key={t} className="px-2 py-0.5 rounded bg-purple-900/50 text-purple-300 text-xs font-mono border border-purple-700/40">
+                {t}
+              </span>
+            ))}
+            {enr.mitre_tactics.map(t => (
+              <span key={t} className="px-2 py-0.5 rounded bg-zinc-700/60 text-zinc-300 text-xs">
+                {t.replace(/_/g, ' ')}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {hasTI && enr.threat_intel && (
+        <div>
+          <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wide">Threat Intelligence</p>
+          <div className="flex items-center gap-3 p-2 rounded bg-zinc-800/60 border border-zinc-700/40">
+            <div className="text-center">
+              <p className={`text-xl font-bold ${enr.threat_intel.score >= 70 ? 'text-red-400' : enr.threat_intel.score >= 30 ? 'text-yellow-400' : 'text-emerald-400'}`}>
+                {enr.threat_intel.score}
+              </p>
+              <p className="text-[10px] text-zinc-500">AbuseIPDB</p>
+            </div>
+            <div className="text-xs text-zinc-400 space-y-0.5">
+              {enr.threat_intel.country_code && <p>Ülke: <span className="text-zinc-200">{enr.threat_intel.country_code}</span></p>}
+              {enr.threat_intel.isp && <p>ISP: <span className="text-zinc-200 truncate max-w-[200px] inline-block align-bottom">{enr.threat_intel.isp}</span></p>}
+              <p>Raporlar: <span className="text-zinc-200">{enr.threat_intel.total_reports}</span></p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hasLogs && (
+        <div>
+          <p className="text-xs text-zinc-500 mb-2 font-medium uppercase tracking-wide">
+            İlgili Loglar <span className="text-zinc-600 normal-case">({enr.related_logs.length})</span>
+          </p>
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+            {enr.related_logs.map(log => (
+              <div key={log.log_id} className="flex gap-2 items-start p-1.5 rounded bg-zinc-800/40 border border-zinc-700/30">
+                <span className={`mt-0.5 w-1.5 h-1.5 rounded-full flex-shrink-0 ${SEV_DOT[log.severity] ?? 'bg-zinc-500'}`} />
+                <div className="min-w-0">
+                  <p className="text-xs text-zinc-300 truncate">{log.message}</p>
+                  <p className="text-[10px] text-zinc-600 font-mono mt-0.5">
+                    {new Date(log.timestamp).toLocaleString('tr-TR')}
+                    {' · '}
+                    <span className="uppercase">{log.event_type}</span>
+                    {' · '}
+                    {log.source_type}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -325,6 +410,7 @@ export default function IncidentsPage() {
                 Çözüm: {new Date(selected.resolved_at).toLocaleString('tr-TR')}
               </p>
             )}
+            <EnrichmentPanel enrichment={selected.enrichment} incidentId={selected.incident_id} />
             <div>
               <p className="text-xs text-zinc-500 mb-1 font-medium uppercase tracking-wide">Event Timeline</p>
               <EventTimeline incidentId={selected.incident_id} />

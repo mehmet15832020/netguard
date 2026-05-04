@@ -35,4 +35,5 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.routes.topology.db", test_db)
     monkeypatch.setattr("server.routes.incidents.db", test_db)
     monkeypatch.setattr("server.routes.tenants.db", test_db)
+    monkeypatch.setattr("server.incident_enricher.db", test_db)
     return test_db

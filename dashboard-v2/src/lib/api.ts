@@ -448,6 +448,31 @@ export const threatIntelApi = {
     request<ThreatIntel & { cached: boolean; message?: string }>(`/threat-intel/${encodeURIComponent(ip)}`),
 }
 
+export interface IncidentRelatedLog {
+  log_id: string
+  timestamp: string
+  event_type: string
+  severity: string
+  source_type: string
+  src_ip: string | null
+  dst_ip: string | null
+  message: string
+}
+
+export interface IncidentThreatIntel {
+  score: number
+  total_reports: number
+  country_code: string
+  isp: string
+}
+
+export interface IncidentEnrichment {
+  mitre_techniques: string[]
+  mitre_tactics: string[]
+  related_logs: IncidentRelatedLog[]
+  threat_intel: IncidentThreatIntel | null
+}
+
 export interface Incident {
   incident_id: string
   title: string
@@ -462,6 +487,7 @@ export interface Incident {
   created_at: string
   updated_at: string
   resolved_at: string | null
+  enrichment?: IncidentEnrichment
 }
 
 export interface IncidentSummary {
