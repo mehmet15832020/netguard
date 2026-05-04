@@ -772,7 +772,7 @@ class DatabaseManager:
     #  NORMALIZED LOGS
     # ------------------------------------------------------------------ #
 
-    def save_normalized_log(self, log: NormalizedLog) -> None:
+    def save_normalized_log(self, log: NormalizedLog, tenant_id: str = "default") -> None:
         """Normalize edilmiş logu kaydet."""
         with self._lock:
             with self._connect() as conn:
@@ -781,8 +781,8 @@ class DatabaseManager:
                         (log_id, raw_id, source_type, source_host, timestamp,
                          received_at, severity, category, event_type,
                          src_ip, dst_ip, src_port, dst_port, protocol,
-                         username, message, tags, extra, processed_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         username, message, tags, extra, processed_at, tenant_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     log.log_id,
                     log.raw_id,
@@ -803,6 +803,7 @@ class DatabaseManager:
                     json.dumps(log.tags),
                     json.dumps(log.extra),
                     log.processed_at.isoformat(),
+                    tenant_id,
                 ))
 
     def get_normalized_logs(
@@ -1419,7 +1420,7 @@ class DatabaseManager:
             logger.warning(f"Plaintext API key'ler silindi (agent'lar yeniden kayıt yaptırmalı): {stale}")
 
     def _migrate_normalized_logs_columns(self) -> None:
-        """normalized_logs tablosuna protocol ve extra kolonlarını ekle."""
+        """normalized_logs tablosuna eksik kolonları ekle ve NULL tenant_id'leri düzelt."""
         with self._connect() as conn:
             cols = {row[1] for row in conn.execute("PRAGMA table_info(normalized_logs)").fetchall()}
             if "protocol" not in cols:
@@ -1428,6 +1429,12 @@ class DatabaseManager:
             if "extra" not in cols:
                 conn.execute("ALTER TABLE normalized_logs ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
                 logger.info("normalized_logs: 'extra' kolonu eklendi")
+            if "tenant_id" in cols:
+                result = conn.execute(
+                    "UPDATE normalized_logs SET tenant_id='default' WHERE tenant_id IS NULL"
+                )
+                if result.rowcount:
+                    logger.info(f"normalized_logs: {result.rowcount} kayıt tenant_id='default' olarak güncellendi")
 
     def _migrate_incidents_columns(self) -> None:
         """incidents tablosuna rule_id ve group_value kolonlarını ekle."""
