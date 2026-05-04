@@ -129,7 +129,6 @@ HTTP içeriği (tüm hostlar)               ❌ görünmez
 | Sorun | Etki | Çözüm |
 |-------|------|-------|
 | Sigma engine sadece `count() by field > N` | Topluluk kuralları (10K+) kullanılamıyor | V1-3: pySigma |
-| Lateral movement dedektörü yok | LATERAL stage hiç tetiklenemiyor | **P5 görevi** |
 | EXECUTE dedektörü yok | 4. kill chain aşaması boş | V1 kapsamı |
 | Cross-source korelasyon kuralı yok | Aynı IP syslog+NetFlow+agent'ta tespit edilemiyor | **P4 görevi** |
 | Zaman penceresi max 2 dakika | APT ve yavaş saldırılar kaçırılıyor | V1 kapsamı |
@@ -448,7 +447,6 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 
 | Sorun | Dosya | Çözüm |
 |-------|-------|-------|
-| Cross-source korelasyon kuralı yok | `config/correlation_rules.json` | **P4** |
 | Lateral movement dedektörü yok | `server/detectors/` | **P5** |
 | Incident enrichment zayıf | `server/routes/incidents.py` | **P11** |
 | Sigma engine sadece count-based | `server/sigma_parser.py` | V1-3: pySigma |
@@ -465,6 +463,8 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 - Threat intel AbuseIPDB score ≥ 70 → incident critical escalation (commit: 75c504f) ✅ **P2**
 - web_scan sigma kuralı: 60sn/50+ HTTP → web_scan_detected → RECON (commit: f880c5c) ✅ **P6**
 - nginx syslog → log_normalizer bağlantısı: web_request/web_client_error/web_auth_fail (commit: 48daf41) ✅ **P6 tamamlama**
+- Cross-source korelasyon: 5dk/2+ source_type → multi_source_attack_detected → RECON (commit: a08e54c) ✅ **P4**
+- Lateral movement dedektörü: iç→iç SSH/SMB/RDP tarama → LATERAL aşaması (commit: f99f6e9) ✅ **P5**
 - vmware-netguard.service reboot testinde doğrulandı ✅
 
 ---
