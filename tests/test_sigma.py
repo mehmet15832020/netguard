@@ -371,3 +371,19 @@ def test_web_scan_rule_loads_correctly():
     assert rule.threshold == 50
     assert rule.window_seconds == 60
     assert rule.output_event_type == "web_scan_detected"
+
+
+def test_multi_source_attack_rule_loads_correctly():
+    """multi_source_attack kuralı distinct source_type ile yüklenmeli."""
+    sigma_dir = Path(__file__).parent.parent / "config" / "sigma_rules"
+    if not sigma_dir.exists():
+        pytest.skip("config/sigma_rules/ dizini yok")
+
+    rules = load_sigma_rules_from_dir(str(sigma_dir))
+    rule = next((r for r in rules if r.rule_id == "multi_source_attack"), None)
+    assert rule is not None, "multi_source_attack kuralı yüklenemedi"
+    assert rule.match_event_type == ""
+    assert rule.distinct_by == "source_type"
+    assert rule.threshold == 2
+    assert rule.window_seconds == 300
+    assert rule.output_event_type == "multi_source_attack_detected"

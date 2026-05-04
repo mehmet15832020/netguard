@@ -348,3 +348,88 @@ class TestThreatIntelEscalation:
         incidents = test_db.get_incidents()
         assert len(incidents) == 1
         assert incidents[0]["severity"] == "warning"
+
+
+# ------------------------------------------------------------------ #
+#  Cross-source (distinct source_type) korelasyon testleri
+# ------------------------------------------------------------------ #
+
+class TestCrossSourceCorrelation:
+    @pytest.fixture
+    def setup(self, tmp_path, monkeypatch):
+        import server.database as db_module
+        test_db = DatabaseManager(str(tmp_path / "test.db"))
+        monkeypatch.setattr(db_module, "db", test_db)
+        import server.correlator as corr_module
+        monkeypatch.setattr(corr_module, "db", test_db)
+        c = Correlator(rules_path=str(tmp_path / "empty.json"))
+        c._rules = []
+        return c, test_db
+
+    def _cross_source_rule(self):
+        from server.correlator import CorrelationRule
+        return CorrelationRule(
+            rule_id          = "multi_source_attack",
+            name             = "Çok Kaynaklı Saldırı",
+            description      = "Test",
+            match_event_type = "",
+            group_by         = "src_ip",
+            window_seconds   = 300,
+            threshold        = 2,
+            severity         = "critical",
+            output_event_type= "multi_source_attack_detected",
+            enabled          = True,
+            distinct_by      = "source_type",
+        )
+
+    def test_fires_when_ip_in_two_source_types(self, setup, monkeypatch):
+        correlator, test_db = setup
+        correlator._rules = [self._cross_source_rule()]
+
+        import server.threat_intel as ti_module
+        monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
+
+        # Aynı src_ip, farklı source_type
+        log1 = _make_normalized_log("port_scan_attempt", src_ip="1.2.3.4")
+        log1 = log1.model_copy(update={"source_type": LogSourceType.NETGUARD})
+        log2 = _make_normalized_log("ssh_failure", src_ip="1.2.3.4")
+        # log2 varsayılan AUTH_LOG source_type'ı kullanır
+        _store_logs(test_db, [log1, log2])
+
+        events = correlator.run()
+        assert len(events) == 1
+        assert events[0].event_type == "multi_source_attack_detected"
+        assert events[0].group_value == "1.2.3.4"
+
+    def test_no_fire_when_single_source_type(self, setup, monkeypatch):
+        correlator, test_db = setup
+        correlator._rules = [self._cross_source_rule()]
+
+        import server.threat_intel as ti_module
+        monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
+
+        # Aynı src_ip, aynı source_type (AUTH_LOG)
+        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(5)]
+        _store_logs(test_db, logs)
+
+        events = correlator.run()
+        assert len(events) == 0
+
+    def test_different_ips_tracked_separately(self, setup, monkeypatch):
+        correlator, test_db = setup
+        correlator._rules = [self._cross_source_rule()]
+
+        import server.threat_intel as ti_module
+        monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
+
+        # 1.2.3.4: 2 farklı source_type → tetiklenmeli
+        log_a = _make_normalized_log("port_scan_attempt", src_ip="1.2.3.4")
+        log_a = log_a.model_copy(update={"source_type": LogSourceType.NETGUARD})
+        log_b = _make_normalized_log("ssh_failure", src_ip="1.2.3.4")
+        # 5.6.7.8: tek source_type → tetiklenmemeli
+        log_c = _make_normalized_log("ssh_failure", src_ip="5.6.7.8")
+        _store_logs(test_db, [log_a, log_b, log_c])
+
+        events = correlator.run()
+        assert len(events) == 1
+        assert events[0].group_value == "1.2.3.4"

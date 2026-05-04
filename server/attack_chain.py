@@ -56,8 +56,9 @@ STAGE_MAP: dict[str, str] = {
     "port_scan_detected":        "recon",
     "arp_attack":                "recon",
     "ssh_lateral":               "lateral",
-    "anomaly_detected":          "recon",
-    "web_scan_detected":         "recon",
+    "anomaly_detected":              "recon",
+    "web_scan_detected":             "recon",
+    "multi_source_attack_detected":  "recon",
 }
 
 STAGE_LABELS = {
