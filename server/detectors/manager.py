@@ -14,6 +14,7 @@ from server.database import db
 from server.detectors.arp_spoof import ARPSpoofDetector
 from server.detectors.dns_anomaly import DNSAnomalyDetector
 from server.detectors.icmp_flood import ICMPFloodDetector
+from server.detectors.lateral import LateralMovementDetector
 from server.detectors.port_scan import PortScanDetector
 from shared.models import NormalizedLog, SecurityEvent, SecurityEventType
 
@@ -29,6 +30,7 @@ class DetectorManager:
             ARPSpoofDetector(),
             ICMPFloodDetector(),
             DNSAnomalyDetector(),
+            LateralMovementDetector(),
         ]
 
     def run_all(self) -> list[NormalizedLog]:
@@ -62,6 +64,7 @@ _EVENT_TYPE_MAP = {
     "arp_spoof":         SecurityEventType.ARP_SPOOF,
     "icmp_flood":        SecurityEventType.ICMP_FLOOD,
     "dns_anomaly":       SecurityEventType.DNS_ANOMALY,
+    "lateral_movement":  SecurityEventType.LATERAL_MOVEMENT,
 }
 
 

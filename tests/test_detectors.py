@@ -343,3 +343,96 @@ class TestDetectorManager:
         # Hata fırlatmamalı
         logs = manager.run_all()
         assert isinstance(logs, list)
+
+
+# ------------------------------------------------------------------ #
+#  Lateral Movement Dedektörü
+# ------------------------------------------------------------------ #
+
+class TestLateralMovementDetector:
+    """
+    Sniffer thread başlatmadan _history'e doğrudan veri enjekte ederek
+    yanal hareket karar mantığını test eder.
+    """
+
+    def _make_detector(self, threshold=3, window=120):
+        from server.detectors.lateral import LateralMovementDetector
+        with patch.object(LateralMovementDetector, "_start_sniffer", return_value=None):
+            return LateralMovementDetector(threshold=threshold, window_seconds=window)
+
+    def _inject(self, detector, src_ip: str, targets: list[tuple[str, int]], age: float = 0.0):
+        """_history'e sahte iç→iç SYN kayıtları ekle."""
+        import time
+        now = time.monotonic()
+        with detector._lock:
+            for dst_ip, dst_port in targets:
+                detector._history[src_ip].append((now - age, dst_ip, dst_port))
+
+    def test_no_alert_below_threshold(self):
+        detector = self._make_detector(threshold=3)
+        self._inject(detector, "192.168.1.10", [
+            ("192.168.1.1", 22), ("192.168.1.2", 22),
+        ])
+        assert detector.detect() == []
+
+    def test_alert_at_threshold(self):
+        detector = self._make_detector(threshold=3)
+        self._inject(detector, "192.168.1.10", [
+            ("192.168.1.1", 22), ("192.168.1.2", 22), ("192.168.1.3", 445),
+        ])
+        logs = detector.detect()
+        assert len(logs) == 1
+        assert logs[0].event_type == "lateral_movement"
+        assert logs[0].src_ip == "192.168.1.10"
+
+    def test_same_host_repeated_does_not_count_extra(self):
+        detector = self._make_detector(threshold=3)
+        # 3 kez aynı hedefe bağlantı — sadece 1 benzersiz hedef
+        self._inject(detector, "192.168.1.10", [
+            ("192.168.1.1", 22), ("192.168.1.1", 22), ("192.168.1.1", 445),
+        ])
+        assert detector.detect() == []
+
+    def test_no_duplicate_alert_same_ip(self):
+        detector = self._make_detector(threshold=2)
+        self._inject(detector, "192.168.1.20", [
+            ("192.168.1.1", 22), ("192.168.1.2", 22),
+        ])
+        first  = detector.detect()
+        second = detector.detect()
+        assert len(first) == 1
+        assert len(second) == 0
+
+    def test_old_entries_outside_window_ignored(self):
+        detector = self._make_detector(threshold=2, window=60)
+        self._inject(detector, "192.168.1.30", [
+            ("192.168.1.1", 22), ("192.168.1.2", 22),
+        ], age=61.0)
+        assert detector.detect() == []
+
+    def test_log_fields_correct(self):
+        detector = self._make_detector(threshold=2)
+        self._inject(detector, "192.168.1.40", [
+            ("192.168.1.5", 22), ("192.168.1.6", 445),
+        ])
+        logs = detector.detect()
+        assert len(logs) == 1
+        log = logs[0]
+        assert log.severity == "critical"
+        assert log.category == LogCategory.INTRUSION
+        assert "lateral_movement" in log.tags
+        assert "192.168.1.40" in log.message
+
+    def test_multiple_ips_tracked_independently(self):
+        detector = self._make_detector(threshold=2)
+        # 192.168.1.50: 2 hedef → tetiklenmeli
+        self._inject(detector, "192.168.1.50", [
+            ("192.168.1.1", 22), ("192.168.1.2", 22),
+        ])
+        # 192.168.1.60: 1 hedef → tetiklenmemeli
+        self._inject(detector, "192.168.1.60", [
+            ("192.168.1.1", 22),
+        ])
+        logs = detector.detect()
+        assert len(logs) == 1
+        assert logs[0].src_ip == "192.168.1.50"
