@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldAlert, RefreshCw, Plus, X } from 'lucide-react'
+import { ShieldAlert, RefreshCw, Plus, X, CheckCheck } from 'lucide-react'
 import { incidentApi, type Incident, type IncidentEvent, type IncidentEnrichment } from '@/lib/api'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -220,6 +220,16 @@ export default function IncidentsPage() {
     },
   })
 
+  const resolveAllMutation = useMutation({
+    mutationFn: () => incidentApi.resolveAll(),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['incidents'] })
+      qc.invalidateQueries({ queryKey: ['incident-summary'] })
+      qc.invalidateQueries({ queryKey: ['security-status'] })
+      setSelected(null)
+    },
+  })
+
   const incidents = data?.incidents ?? []
 
   return (
@@ -232,6 +242,15 @@ export default function IncidentsPage() {
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => { refetch(); refetchSummary() }}>
             <RefreshCw className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="outline" size="sm"
+            className="border-emerald-700/50 text-emerald-400 hover:bg-emerald-500/10"
+            disabled={resolveAllMutation.isPending || (summary?.open ?? 0) + (summary?.investigating ?? 0) === 0}
+            onClick={() => resolveAllMutation.mutate()}
+          >
+            <CheckCheck className="w-4 h-4 mr-1" />
+            Tümünü Çözüldü Yap
           </Button>
           <Button size="sm" onClick={() => setShowCreate(true)}>
             <Plus className="w-4 h-4 mr-1" /> Yeni Incident

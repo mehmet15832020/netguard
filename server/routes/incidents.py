@@ -72,6 +72,21 @@ def create_incident(
     return incident
 
 
+@router.post("/incidents/resolve-all")
+def resolve_all_incidents(current_user: User = Depends(get_current_user)):
+    """Tüm açık ve inceleniyor incident'ları resolved yapar."""
+    if current_user.role not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Sadece admin kullanabilir")
+    count = db.resolve_all_incidents(tenant_id=tenant_scope(current_user))
+    db.save_audit_event(
+        actor=current_user.username,
+        action="incidents_bulk_resolved",
+        resource="incidents:all",
+        detail=f"{count} incident resolved",
+    )
+    return {"resolved": count}
+
+
 @router.get("/incidents/summary")
 def incidents_summary(current_user: User = Depends(get_current_user)):
     """Her durum için incident sayısını döner."""

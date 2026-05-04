@@ -1935,6 +1935,22 @@ class DatabaseManager:
             ).fetchone()
             return dict(row) if row else None
 
+    def resolve_all_incidents(self, tenant_id: Optional[str] = None) -> int:
+        """Açık ve inceleniyor durumdaki tüm incident'ları resolved yapar. Kaç tane güncellendi döner."""
+        now = datetime.now(timezone.utc).isoformat()
+        clause = "WHERE status IN ('open','investigating')"
+        params: list = [now, now]
+        if tenant_id is not None:
+            clause += " AND tenant_id=?"
+            params.append(tenant_id)
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    f"UPDATE incidents SET status='resolved', resolved_at=?, updated_at=? {clause}",
+                    params,
+                )
+                return cur.rowcount
+
     def update_incident(
         self,
         incident_id: str,

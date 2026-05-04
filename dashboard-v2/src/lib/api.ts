@@ -545,6 +545,9 @@ export const incidentApi = {
   delete: (id: string) =>
     request<void>(`/incidents/${id}`, { method: 'DELETE' }),
 
+  resolveAll: () =>
+    request<{ resolved: number }>('/incidents/resolve-all', { method: 'POST' }),
+
   getEvents: (id: string) =>
     request<{ incident_id: string; count: number; events: IncidentEvent[] }>(`/incidents/${id}/events`),
 }
