@@ -24,6 +24,15 @@ def list_alerts(
     }
 
 
+@router.post("/alerts/resolve-all")
+def resolve_all_alerts(current_user: User = Depends(get_current_user)):
+    """Tüm aktif alertları resolved yapar."""
+    if current_user.role not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Sadece admin kullanabilir")
+    count = db.resolve_all_alerts(tenant_id=tenant_scope(current_user))
+    return {"resolved": count}
+
+
 @router.get("/alerts/summary")
 def alert_summary(current_user: User = Depends(get_current_user)):
     tid = tenant_scope(current_user)

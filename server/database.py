@@ -612,6 +612,17 @@ class DatabaseManager:
             resolved_at = datetime.fromisoformat(row["resolved_at"]) if row["resolved_at"] else None,
         )
 
+    def resolve_all_alerts(self, tenant_id: str = "default") -> int:
+        """Tüm aktif alertları resolved yapar. Etkilenen satır sayısını döndürür."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    "UPDATE alerts SET status='resolved', resolved_at=? WHERE status='active' AND tenant_id=?",
+                    (now, tenant_id),
+                )
+                return cur.rowcount
+
     # ------------------------------------------------------------------ #
     #  SECURITY EVENTS
     # ------------------------------------------------------------------ #

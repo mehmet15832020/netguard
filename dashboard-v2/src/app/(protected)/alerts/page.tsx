@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, RefreshCw } from 'lucide-react'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Bell, RefreshCw, CheckCheck } from 'lucide-react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { alertsApi } from '@/lib/api'
 import { useAlertStore } from '@/store/alertStore'
 import { SeverityBadge } from '@/components/ui/severity-badge'
@@ -60,6 +60,14 @@ export default function AlertsPage() {
   const activeCount   = all.filter((a) => a.status === 'active').length
   const criticalCount = all.filter((a) => a.severity === 'critical' && a.status === 'active').length
 
+  const resolveAllMutation = useMutation({
+    mutationFn: () => alertsApi.resolveAll(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      queryClient.invalidateQueries({ queryKey: ['security-status'] })
+    },
+  })
+
   const handleRefresh = () => {
     markAllRead()
     queryClient.invalidateQueries({ queryKey: ['alerts'] })
@@ -76,15 +84,26 @@ export default function AlertsPage() {
             {activeCount} aktif · {criticalCount} kritik
           </p>
         </div>
-        <Button
-          variant="outline" size="sm"
-          onClick={handleRefresh}
-          disabled={isFetching}
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-        >
-          <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-          <span className="ml-1.5">Yenile</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline" size="sm"
+            onClick={() => resolveAllMutation.mutate()}
+            disabled={resolveAllMutation.isPending || activeCount === 0}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            <CheckCheck size={14} />
+            <span className="ml-1.5">Tümünü Çözüldü Yap</span>
+          </Button>
+          <Button
+            variant="outline" size="sm"
+            onClick={handleRefresh}
+            disabled={isFetching}
+            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+          >
+            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
+            <span className="ml-1.5">Yenile</span>
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-3 gap-3">

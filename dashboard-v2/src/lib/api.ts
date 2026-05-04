@@ -147,6 +147,8 @@ export const alertsApi = {
     if (params?.limit) q.set('limit', String(params.limit))
     return request<{ count: number; alerts: Alert[] }>(`/alerts?${q}`)
   },
+  resolveAll: () =>
+    request<{ resolved: number }>('/alerts/resolve-all', { method: 'POST' }),
 }
 
 // ------------------------------------------------------------------ //
