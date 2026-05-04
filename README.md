@@ -70,14 +70,14 @@ NetGuard, ağ trafiğini ve host loglarını birden fazla protokolden toplar; ko
 
 - **Korelasyon Motoru** — `config/correlation_rules.json` dosyasından okunan threshold tabanlı kurallar; kodda değişiklik yapmadan kural eklenebilir
 - **Sigma Kural Desteği** — SIGMA YAML formatındaki kuralları NetGuard motoruna dönüştüren parser; `config/sigma_rules/` dizininden yüklenir
-- **Kill Chain Dedektörü** — Aynı kaynak IP'den 30 dakika içinde birden fazla saldırı aşaması tespit edildiğinde otomatik uyarı üretir
+- **Kill Chain Dedektörü** — Aynı kaynak IP'den 30 dakika içinde birden fazla saldırı aşaması tespit edildiğinde otomatik uyarı üretir; 4+ aşamada `FULL_ATTACK_CHAIN` tetiklenerek kritik incident açılır ve bildirim gönderilir
 
   | Aşama | Tetikleyen event tipleri |
   |-------|--------------------------|
-  | RECON | port_scan, dns_anomaly |
-  | WEAPONIZE | ssh_failure, windows_logon_failure, brute_force |
+  | RECON | port_scan_attempt, dns_anomaly, anomaly_detected, web_scan_detected, multi_source_attack_detected |
+  | WEAPONIZE | ssh_failure, windows_logon_failure, brute_force_detected |
   | ACCESS | ssh_success, windows_logon_success |
-  | EXECUTE | windows_process_create, sudo_abuse |
+  | EXECUTE | sudo_usage, windows_process_create |
   | LATERAL | lateral_movement, windows_lateral |
 
 - **MITRE ATT&CK Eşleme** — Tespit edilen event tipleri ATT&CK taktik ve tekniklerine otomatik eşlenir
@@ -85,25 +85,46 @@ NetGuard, ağ trafiğini ve host loglarını birden fazla protokolden toplar; ko
 - **Tehdit İstihbaratı** — Şüpheli IP'ler AbuseIPDB'ye sorgulanır; risk skoru, ülke, kategori kayıt edilir
 - **Ağ Dedektörleri** — ARP spoofing, ICMP flood, DNS sorgu patlaması
 
-### Aktif Korelasyon Kuralları
+### Aktif Sigma Kuralları (15 Kural)
 
-| Kural | Eşik | Önem |
-|-------|------|------|
-| SSH Brute Force | 5+ başarısız giriş / 60s | Kritik |
-| Port Tarama | 15+ farklı port / 60s | Yüksek |
-| ARP Spoofing | 1 tespit / 120s | Kritik |
-| ICMP Flood | 1 tespit / 120s | Yüksek |
-| DNS Patlaması | 20+ sorgu / 60s | Orta |
-| Sudo Kötüye Kullanım | 5+ kullanım / 120s | Uyarı |
-| Lateral Movement | 3+ ssh_success farklı hedefe / 300s | Yüksek |
+| Kural | Eşik / Pencere | Önem |
+|-------|----------------|------|
+| SSH Brute Force | 5+ başarısız giriş / 5dk | Yüksek |
+| Port Tarama | 1+ tespit / 2dk | Orta |
+| ARP Saldırısı | 2+ tespit / 2dk | Yüksek |
+| ICMP Flood | 3+ tespit / 1dk | Orta |
+| DNS Patlaması | 3+ sorgu / 1dk | Orta |
+| Web Tarama / HTTP Flood | 50+ istek / 1dk | Orta |
+| Çok Kaynaklı Saldırı | 2+ farklı kaynak tipi / 5dk | Yüksek |
+| Windows Brute Force | 5+ başarısız giriş / 1dk | Yüksek |
+| Windows Yanal Hareket | 3+ lateral event / 5dk | Yüksek |
+| Pass-the-Hash | 2+ tespit / 5dk | Kritik |
+| Password Spray | 5+ farklı kullanıcı / 5dk | Yüksek |
+| Şüpheli Süreç (LOLBin) | 1+ tespit / 5dk | Kritik |
+| SNMP Trap Patlaması | 5+ trap / 5dk | Orta |
+| Cihaz Kesintisi | 2+ erişilemezlik / 2dk | Orta |
+| Başarılı SSH Girişi | her tespit | Bilgi |
+
+**Ağ Dedektörleri (pyshark tabanlı, eşik bağımsız):**
+
+| Dedektör | Mantık | Önem |
+|----------|--------|------|
+| Port Scan | TCP SYN, farklı portlara → kill chain RECON | Yüksek |
+| ARP Spoof | ARP yanıt anomalisi → kill chain RECON | Kritik |
+| ICMP Flood | Yüksek frekanslı ICMP → kill chain RECON | Yüksek |
+| DNS Anomaly | DNS sorgu patlaması → kill chain RECON | Orta |
+| Lateral Movement | İç→iç SSH/SMB/RDP (3+ hedef / 120s) → kill chain LATERAL | Kritik |
 
 ### Yanıt
 
-- **Incident Yönetimi** — Alert → Incident dönüşümü; open / investigating / resolved durumları; kullanıcı atama; notlar
+- **Incident Yönetimi** — Alert → Incident dönüşümü; open / investigating / resolved durumları; kullanıcı atama; notlar; incident detayında otomatik zenginleştirme:
+  - **MITRE ATT&CK** — Tetikleyen kural etiketlerinden otomatik teknik/taktik eşleme (T1046, T1110.001…)
+  - **İlgili Loglar** — Aynı src\_ip'den ±30 dk normalize log listesi (max 20 kayıt)
+  - **Threat Intel** — AbuseIPDB risk skoru, ülke, ISP (API key opsiyonel)
 - **Saldırı Zaman Çizelgesi** — Kill chain aşamalarını zaman ekseninde görselleştirir; hangi IP hangi aşamayı ne zaman tamamladı
 - **Webhook + Email** — Kritik korelasyon olaylarında Discord/Slack webhook veya SMTP bildirimi
-- **Compliance Raporu** — PCI DSS v4.0 ve ISO 27001:2022 maddelerini mevcut loglarla otomatik eşleştirir; PDF/JSON export
-- **Audit Log** — Tüm admin işlemleri (giriş, cihaz ekleme, kural değiştirme) kayıt altında
+- **Audit Log** — Tüm yönetici işlemleri kayıt altında (giriş, cihaz ekleme, kural değiştirme, incident güncelleme)
+- **Compliance API** — PCI DSS v4.0 ve ISO 27001:2022 maddelerini mevcut loglarla eşleştiren backend API; JSON export
 
 ### Platform
 
@@ -260,22 +281,38 @@ Agent VM Ubuntu (192.168.203.142)   — host agent
 | Alpine nginx | Syslog | Web erişim logları |
 | Agent VM | HTTP API | CPU, RAM, disk, network metrikleri |
 
-### Demo Saldırı Senaryosu
+### Demo Saldırı Senaryosu (5 Aşamalı Kill Chain)
 
 ```bash
-# Kali'den (192.168.203.132)
-
-# 1. RECON — Port tarama
+# ── RECON ───────────────────────────────────────────────────────
+# Kali'den port tarama
 nmap -sS 192.168.203.134
+# → pyshark SYN yakalar → port_scan_attempt → kill chain: RECON ✓
 
-# 2. WEAPONIZE — SSH brute force
-hydra -l root -P /usr/share/wordlists/rockyou.txt ssh://192.168.203.134
+# ── WEAPONIZE ───────────────────────────────────────────────────
+# SSH brute force (5+ başarısız giriş)
+hydra -l root -P /usr/share/wordlists/rockyou.txt \
+      -t 4 ssh://192.168.203.134
+# → syslog: ssh_failure × 5 → sigma kural tetiklenir → kill chain: WEAPONIZE ✓
 
-# 3. NetGuard'da beklenen:
-#    → port_scan_attempt → korelasyon tetikler
-#    → ssh_failure × 5+ → "SSH Brute Force" incident açılır
-#    → kill chain: RECON + WEAPONIZE → PARTIAL_ATTACK_CHAIN uyarısı
-#    → Webhook bildirimi gönderilir
+# ── ACCESS ──────────────────────────────────────────────────────
+# Başarılı SSH girişi
+ssh netguard@192.168.203.134
+# → syslog: ssh_success → kill chain: ACCESS ✓
+
+# ── LATERAL ─────────────────────────────────────────────────────
+# Agent VM'e bağlanıp iç ağı tara
+ssh netguard@192.168.203.142
+bash ~/netguard/scripts/lateral_movement_test.sh
+# → pyshark: 192.168.203.142 → 3+ iç hedefe SSH/SMB/RDP
+# → LateralMovementDetector tetiklenir → kill chain: LATERAL ✓
+
+# ── NetGuard'da beklenen ────────────────────────────────────────
+# → 4 aşama tamamlandı → FULL_ATTACK_CHAIN tetiklenir
+# → critical incident otomatik açılır
+# → Email + webhook bildirimi gönderilir
+# → Incident detayında: MITRE T1046 (Network Service Scanning),
+#   ilgili loglar, threat intel skoru
 ```
 
 ---
@@ -347,7 +384,9 @@ netguard/
 │   │   ├── port_scan.py            # pyshark SYN analizi
 │   │   ├── arp_spoof.py
 │   │   ├── icmp_flood.py
-│   │   └── dns_anomaly.py
+│   │   ├── dns_anomaly.py
+│   │   ├── lateral.py              # İç→iç SSH/SMB/RDP tarama (pyshark)
+│   │   └── manager.py              # Tüm dedektörleri çalıştırır
 │   ├── parsers/                    # Log ayrıştırıcılar
 │   │   ├── firewall.py             # OPNsense/VyOS/pfSense/ASA/FortiGate
 │   │   ├── netflow.py              # NetFlow v5/v9 binary parser
@@ -381,6 +420,7 @@ netguard/
 │   │   └── ws.py                   # WebSocket (gerçek zamanlı akış)
 │   ├── compliance.py               # Compliance hesaplama motoru
 │   ├── evtx_parser.py              # EVTX binary parser
+│   ├── incident_enricher.py        # Incident → MITRE + related logs + threat intel
 │   ├── influx_writer.py            # InfluxDB yazma katmanı
 │   ├── log_normalizer.py           # Raw log → NormalizedLog dönüşümü
 │   ├── mitre.py                    # MITRE ATT&CK veri ve eşleme
@@ -407,7 +447,7 @@ netguard/
 ├── nginx/                          # nginx TLS yapılandırması
 ├── docker-compose.yml              # Tek komut deployment
 ├── Dockerfile                      # Backend image
-├── tests/                          # ~620 pytest testi
+├── tests/                          # 721 pytest testi
 └── docs/                           # Teknik belgeler
 ```
 
