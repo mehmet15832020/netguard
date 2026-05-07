@@ -139,6 +139,8 @@ export interface NormalizedLog {
   event_action: string
   source_ip: string | null
   destination_ip: string | null
+  source_hostname: string | null
+  destination_hostname: string | null
   source_port: number | null
   destination_port: number | null
   network_protocol: string | null

@@ -203,7 +203,11 @@ export default function LogsPage() {
                       {CATEGORY_LABELS[log.event_category] ?? log.event_category}
                     </TableCell>
                     <TableCell className="text-sm text-zinc-200 max-w-xs truncate">{log.message}</TableCell>
-                    <TableCell className="text-xs text-zinc-400 font-mono">{log.source_ip ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-zinc-400 font-mono">
+                      {log.source_hostname
+                        ? <><span className="text-zinc-200">{log.source_hostname}</span><span className="text-zinc-600 ml-1">({log.source_ip})</span></>
+                        : log.source_ip ?? '—'}
+                    </TableCell>
                     <TableCell className="text-xs text-zinc-500">{formatDate(log.timestamp)}</TableCell>
                   </TableRow>
                 ))}

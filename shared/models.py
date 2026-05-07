@@ -269,6 +269,8 @@ class NormalizedLog(BaseModel):
     event_action: str = Field(description="Spesifik olay tipi, örn: ssh_failure")
     source_ip: Optional[str] = None
     destination_ip: Optional[str] = None
+    source_hostname: Optional[str] = None
+    destination_hostname: Optional[str] = None
     source_port: Optional[int] = None
     destination_port: Optional[int] = None
     network_protocol: Optional[str] = None

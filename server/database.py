@@ -101,11 +101,13 @@ CREATE TABLE IF NOT EXISTS normalized_logs (
     severity     TEXT NOT NULL,
     event_category     TEXT NOT NULL,
     event_action   TEXT NOT NULL,
-    source_ip       TEXT,
+    source_ip            TEXT,
     destination_ip       TEXT,
-    source_port     INTEGER,
+    source_hostname      TEXT,
+    destination_hostname TEXT,
+    source_port          INTEGER,
     destination_port     INTEGER,
-    network_protocol TEXT,
+    network_protocol     TEXT,
     username     TEXT,
     message      TEXT NOT NULL,
     tags         TEXT NOT NULL DEFAULT '[]',
@@ -537,6 +539,7 @@ class DatabaseManager:
         self._migrate_ecs_field_rename()
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
+        self._migrate_dns_hostname_columns()
         self.ensure_default_tenant()
         self._init_fts()
         self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
@@ -818,9 +821,10 @@ class DatabaseManager:
                     INSERT OR IGNORE INTO normalized_logs
                         (log_id, raw_id, source_type, observer_hostname, timestamp,
                          received_at, severity, event_category, event_action,
-                         source_ip, destination_ip, source_port, destination_port, network_protocol,
+                         source_ip, destination_ip, source_hostname, destination_hostname,
+                         source_port, destination_port, network_protocol,
                          username, message, tags, extra, processed_at, tenant_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     log.log_id,
                     log.raw_id,
@@ -833,6 +837,8 @@ class DatabaseManager:
                     log.event_action,
                     log.source_ip,
                     log.destination_ip,
+                    log.source_hostname,
+                    log.destination_hostname,
                     log.source_port,
                     log.destination_port,
                     log.network_protocol,
@@ -925,11 +931,13 @@ class DatabaseManager:
             severity     = row["severity"],
             event_category     = LogCategory(row["event_category"]),
             event_action   = row["event_action"],
-            source_ip        = row["source_ip"],
-            destination_ip   = row["destination_ip"],
-            source_port      = row["source_port"],
-            destination_port = row["destination_port"],
-            network_protocol = row["network_protocol"] if "network_protocol" in row.keys() else None,
+            source_ip            = row["source_ip"],
+            destination_ip       = row["destination_ip"],
+            source_hostname      = row["source_hostname"]      if "source_hostname"      in row.keys() else None,
+            destination_hostname = row["destination_hostname"] if "destination_hostname" in row.keys() else None,
+            source_port          = row["source_port"],
+            destination_port     = row["destination_port"],
+            network_protocol     = row["network_protocol"]     if "network_protocol"     in row.keys() else None,
             username         = row["username"],
             message      = row["message"],
             tags         = json.loads(row["tags"]),
@@ -1608,6 +1616,18 @@ class DatabaseManager:
                             f"ALTER TABLE {table} ADD COLUMN tenant_id TEXT DEFAULT 'default'"
                         )
                         logger.info(f"{table}: 'tenant_id' kolonu eklendi")
+
+    def _migrate_dns_hostname_columns(self) -> None:
+        """normalized_logs tablosuna source_hostname ve destination_hostname kolonlarını ekle."""
+        with self._lock:
+            with self._connect() as conn:
+                cols = {row[1] for row in conn.execute("PRAGMA table_info(normalized_logs)").fetchall()}
+                if "source_hostname" not in cols:
+                    conn.execute("ALTER TABLE normalized_logs ADD COLUMN source_hostname TEXT")
+                    logger.info("normalized_logs: 'source_hostname' kolonu eklendi")
+                if "destination_hostname" not in cols:
+                    conn.execute("ALTER TABLE normalized_logs ADD COLUMN destination_hostname TEXT")
+                    logger.info("normalized_logs: 'destination_hostname' kolonu eklendi")
 
     # ------------------------------------------------------------------ #
     #  TENANTS

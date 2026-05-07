@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from server.database import db
+from server.dns_resolver import resolve_hostname
 from server.ntp_validator import ntp_validator
 from server.parsers.firewall import detect_and_parse as _fw_detect_and_parse
 from server.parsers.web_log import detect_and_parse as _web_detect_and_parse
@@ -428,7 +429,11 @@ def process_and_store(raw_content: str, observer_hostname: str) -> Optional[Norm
 
     norm.raw_id = raw_id
 
-    # 3. Normalize logu kaydet
+    # 3. DNS çözümle
+    norm.source_hostname      = resolve_hostname(norm.source_ip)      if norm.source_ip      else None
+    norm.destination_hostname = resolve_hostname(norm.destination_ip) if norm.destination_ip else None
+
+    # 4. Normalize logu kaydet
     db.save_normalized_log(norm)
 
     # 4. Ham logu normalize edildi olarak işaretle
