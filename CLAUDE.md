@@ -99,7 +99,7 @@ HTTP içeriği (tüm hostlar)               ❌ görünmez
 
 | Sorun | Etki |
 |-------|------|
-| Tutarsız şema: syslog'da dst_ip genellikle boş, NetFlow'da dolu | Aynı saldırı farklı kaynaklarda eşleştirilemiyor |
+| Tutarsız şema: syslog'da destination_ip genellikle boş, NetFlow'da dolu | Aynı saldırı farklı kaynaklarda eşleştirilemiyor |
 | DNS sorgu içeriği yok | C2 domain'leri, data exfil tespit edilemiyor |
 | İç ağ görünürlüğü yok | Perimeter'ı geçen saldırgan içeride kaybolur |
 | Asset baseline yok | Anomaly detection'da "normal" tanımsız |
@@ -260,7 +260,7 @@ Tüm P görevleri tamamlandıktan sonra aşağıdaki senaryo eksiksiz çalışma
 ```
 1. Kali → port scan (252 port)
         → pyshark SYN yakalar
-        → normalized_logs: event_type=port_scan_attempt
+        → normalized_logs: event_action=port_scan_attempt
         → sigma kural tetiklenir: port_scan_detected
         → kill chain: RECON ✅
 
@@ -303,7 +303,7 @@ Tüm P görevleri tamamlandıktan sonra aşağıdaki senaryo eksiksiz çalışma
 
 | Adım | Yapılacak | Neden Bu Sırada |
 |------|-----------|----------------|
-| **V1-1** | **ECS şema + veri tutarlılığı** | Temel — dst_ip ve protocol tüm kaynaklarda dolu olmalı. Bunu atlarsan her şey eksik veriyle çalışır. |
+| **V1-1** | **ECS şema + veri tutarlılığı** ✅ | Tamamlandı: 8 kolon ECS-aligned isimlere yeniden adlandırıldı (source_ip, destination_ip, network_protocol, observer_hostname, event_action, event_category, source_port, destination_port). DB migration, FTS rebuild, frontend TypeScript tipleri dahil. |
 | **V1-2** | **DNS çözümleme** | Her IP → hostname. "192.168.1.5" yerine "muhasebe-pc" — tüm alertler anında okunabilir. |
 | **V1-3** | **pySigma entegrasyonu** | Sigma engine gerçek olur → 10.000+ topluluk kuralı. Tespit kapsamı dramatik artar. |
 | **V1-4** | **Incident enrichment (derinleştirilmiş)** | P11'in ötesinde: kapanış notu zorunlu, SLA takibi, önceliklendirme. |
@@ -328,7 +328,7 @@ Tüm P görevleri tamamlandıktan sonra aşağıdaki senaryo eksiksiz çalışma
 2. **`sigma_parser.py` interface'i sabit** — `parse_rule(path) → rule_obj` imzası değişmez; pySigma drop-in olur.
 3. **docker-compose'daki `postgres` servisi silinmez** — Şu an opsiyonel, V1-7'de primary olur.
 4. **Yeni kod SQLite'a özgü syntax yazmaz** — GLOB, PRAGMA yeni modüllere eklenmez.
-5. **Yeni detector yazarken field adlarını not et** — `src_ip` ileride `source.ip` (ECS) olacak.
+5. **Yeni detector yazarken ECS alan adlarını kullan** — `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category` (V1-1 ile tamamlandı).
 
 ### V1 Sonucunda NetGuard
 
@@ -499,13 +499,14 @@ Claude Code'da MCP sunucuları iki seviyede yapılandırılır:
 - `server/notifier.py` — `_send_anomaly_email`/`_send_anomaly_webhook` retry eksikti; `_send_msg`/`_post_payload` helper'larıyla 4 yerdeki tekrar tek noktaya toplandı (commit: 6eb285f) ✅
 - `server/attack_chain.py` — trigger yolunda `db.save_chain_stage()` atlanıyordu (race condition); lock dışına taşınarak düzeltildi (commit: e8a20c9) ✅
 - `server/correlator.py` — `COUNT(DISTINCT {col})` f-string SQL injection riski; `_COUNT_DISTINCT_EXPRS` module-level dict ile giderildi (commit: e8a20c9) ✅
-- `server/database.py` — `mark_raw_parse_failed()` eklendi + `idx_norm_corr_query` composite index (event_type, timestamp, src_ip) eklendi (commit: e8a20c9) ✅
+- `server/database.py` — `mark_raw_parse_failed()` eklendi + `idx_norm_corr_query` composite index (event_action, timestamp, source_ip) eklendi (commit: e8a20c9) ✅
 - `tests/test_pipeline_integration.py` — 24 entegrasyon testi: normalize→correlate→kill_chain→incident→alert full pipeline (commit: e8a20c9) ✅
 - `tests/test_incidents.py` — FSM geçiş testleri (5 adet) eklendi (commit: 6eb285f) ✅
 - `tests/test_log_normalizer.py` — parse fail flag + başarılı parse testleri eklendi (commit: 6eb285f) ✅
 - `tests/test_correlation_routes.py` — PUT /rules testleri `monkeypatch` ile tmp_path'e izole edildi; `correlation_rules.json` kirletme sorunu giderildi (commit: 9b21289) ✅
 - `.claude/agents/` — 4 agent tanımı eklendi: backend-worker, detection-worker, frontend-worker, quality-auditor (commit: e8a20c9) ✅
 - `.claude/settings.local.json` — `"defaultMode": "acceptEdits"` — subagent'ların dosya düzenleyebilmesi sağlandı ✅
+- **V1-1 ECS field rename** — 8 kolon tüm katmanlarda yeniden adlandırıldı: `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category`, `source_port`, `destination_port`. DB migration (RENAME COLUMN), FTS rebuild, 100 dosya, 763 test geçiyor (commit: 2fc5e70) ✅
 
 ---
 
@@ -523,7 +524,7 @@ Claude Code'da MCP sunucuları iki seviyede yapılandırılır:
 - Yeni route → `routes/` altına, router'ı `main.py`'a ekle
 - Yeni UI sayfası → `dashboard-v2/src/app/(protected)/` altına
 - **Yeni kod SQLite'a özgü syntax yazmaz** (GLOB, PRAGMA) — V1 geçişini kolaylaştırır
-- **Yeni detector'da field adlarını not et** — `src_ip` ileride `source.ip` olacak (ECS)
+- **ECS alan adlarını kullan** — `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category` (V1-1 tamamlandı)
 
 ## Test Çalıştırma
 
