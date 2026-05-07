@@ -55,6 +55,11 @@ SIGMA_RULES_DIR = os.getenv(
     str(Path(__file__).parent.parent / "config" / "sigma_rules"),
 )
 
+SIGMA_RULES_V2_DIR = os.getenv(
+    "NETGUARD_SIGMA_RULES_V2_DIR",
+    str(Path(__file__).parent.parent / "config" / "sigma_rules_v2"),
+)
+
 _VALID_GROUP_COLS: frozenset[str] = frozenset({
     "source_ip", "destination_ip", "observer_hostname", "username", "hostname",
     "event_action", "event_category", "tenant_id", "source_type",
@@ -96,10 +101,19 @@ class Correlator:
     aktif kurallara göre korelasyon olayları üretir.
     """
 
-    def __init__(self, rules_path: str = RULES_PATH, sigma_dir: str = SIGMA_RULES_DIR):
-        self._rules_path = rules_path
-        self._sigma_dir  = sigma_dir
+    def __init__(
+        self,
+        rules_path:     str = RULES_PATH,
+        sigma_dir:      str = SIGMA_RULES_DIR,
+        sigma_v2_dir:   Optional[str] = None,
+    ):
+        self._rules_path   = rules_path
+        self._sigma_dir    = sigma_dir
+        # None → runtime'da SIGMA_RULES_V2_DIR okunur (monkeypatch uyumlu)
+        self._sigma_v2_dir = sigma_v2_dir if sigma_v2_dir is not None else SIGMA_RULES_V2_DIR
         self._rules: list[CorrelationRule] = []
+        from server.sigma_executor import SigmaExecutor
+        self._sigma_executor = SigmaExecutor(rules_dir=self._sigma_v2_dir)
         self.load_rules()
 
     # ------------------------------------------------------------------ #
@@ -166,13 +180,81 @@ class Correlator:
 
     def run(self) -> list[CorrelatedEvent]:
         """
-        Tüm aktif kuralları çalıştır.
+        Tüm aktif kuralları çalıştır — eski format (JSON/sigma_v1) + pySigma (sigma_v2).
         Üretilen CorrelatedEvent listesini döner.
         """
         produced: list[CorrelatedEvent] = []
+
+        # Mevcut CorrelationRule akışı (JSON + sigma_v1 YAML)
         for rule in self._rules:
             events = self._apply_rule(rule)
             produced.extend(events)
+
+        # pySigma akışı (sigma_v2 YAML)
+        if self._sigma_executor.rules:
+            produced.extend(self._run_sigma_v2())
+
+        return produced
+
+    def _run_sigma_v2(self) -> list[CorrelatedEvent]:
+        """pySigma (sigma_rules_v2) kurallarını çalıştırır."""
+        from server.mitre import parse_mitre_tags
+        produced: list[CorrelatedEvent] = []
+
+        with db._connect() as conn:
+            for rule in self._sigma_executor.rules:
+                rows = self._sigma_executor.execute_rule(rule, conn)
+                for row in rows:
+                    group_val = str(row.get("group_value") or "unknown")
+                    count     = int(row.get("event_count", 1))
+                    now       = datetime.now(timezone.utc)
+
+                    event = CorrelatedEvent(
+                        corr_id        = str(uuid.uuid4()),
+                        rule_id        = rule.rule_id,
+                        rule_name      = rule.title,
+                        event_action   = rule.output_event_action,
+                        severity       = rule.severity,
+                        group_value    = group_val,
+                        matched_count  = count,
+                        window_seconds = rule.window_seconds,
+                        first_seen     = now,
+                        last_seen      = now,
+                        message        = (
+                            f"{rule.title}: {group_val} kaynağından "
+                            f"{rule.window_seconds}s içinde {count} olay"
+                        ),
+                        **parse_mitre_tags(rule.tags),
+                    )
+
+                    saved = db.save_correlated_event(event)
+                    if saved:
+                        produced.append(event)
+                        logger.warning(
+                            "pySigma tetiklendi [%s]: %s — %d olay / %ds",
+                            rule.rule_id, group_val, count, rule.window_seconds,
+                        )
+                        try:
+                            from server.ws_manager import ws_manager
+                            ws_manager.broadcast_from_thread(
+                                "correlated_event", event.model_dump(mode="json")
+                            )
+                        except Exception:
+                            pass
+                        self._create_alert(event)
+                        self._create_incident_from_corr(event)
+                        self._check_attack_chain(event)
+                        try:
+                            from server.notifier import notifier
+                            notifier.notify_correlated(event)
+                        except Exception as exc:
+                            logger.warning("Notifier hatası: %s", exc)
+                        if group_val:
+                            import threading
+                            threading.Thread(
+                                target=_ti_lookup_bg, args=(group_val,), daemon=True
+                            ).start()
+
         return produced
 
     def _apply_rule(self, rule: CorrelationRule) -> list[CorrelatedEvent]:

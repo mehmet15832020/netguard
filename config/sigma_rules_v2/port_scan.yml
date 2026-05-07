@@ -1,0 +1,25 @@
+title: Port Scan Base
+name: ng_port_scan_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: port_scan_attempt
+    condition: selection
+level: low
+---
+title: Port Scan Detection
+id: c4b8f3e2-5a6d-7f8b-9c0e-1d2e3f4a5b6c
+correlation:
+    type: event_count
+    rules: ng_port_scan_base
+    group-by:
+        - source_ip
+    timespan: 2m
+    condition:
+        gte: 10
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1046

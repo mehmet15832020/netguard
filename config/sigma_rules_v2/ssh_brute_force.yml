@@ -1,0 +1,25 @@
+title: SSH Brute Force (Base)
+name: ng_ssh_brute_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: ssh_failure
+    condition: selection
+level: medium
+---
+title: SSH Brute Force
+id: b3a7e2d1-4f5c-6e7a-8b9d-0a1b2c3d4e5f
+correlation:
+    type: event_count
+    rules: ng_ssh_brute_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110

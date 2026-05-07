@@ -1,0 +1,20 @@
+title: SQL Injection Attempt
+id: d5c9a4f3-6b7e-8f9c-0d1f-2e3a4b5c6d7e
+status: stable
+logsource:
+    category: webserver
+detection:
+    sqli_keywords:
+        event_action: web_request
+        message|contains:
+            - "union select"
+            - "or 1=1"
+            - "drop table"
+            - "'; --"
+            - "1' or '1'='1"
+    condition: sqli_keywords
+level: high
+tags:
+    - attack.initial_access
+    - attack.t1190
+    - attack.sql_injection

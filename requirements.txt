@@ -46,3 +46,5 @@ uvicorn[standard]
 wrapt==2.1.2
 numpy>=2.0
 scikit-learn>=1.5
+pySigma==1.3.3
+pySigma-backend-sqlite==1.1.3
