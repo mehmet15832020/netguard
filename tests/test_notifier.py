@@ -2,8 +2,8 @@
 
 import uuid
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch, MagicMock
-from server.notifier import Notifier
+from unittest.mock import patch, MagicMock, call
+from server.notifier import Notifier, EmailNotifier, WebhookNotifier
 from shared.models import CorrelatedEvent
 
 
@@ -165,3 +165,84 @@ class TestNotifierAnomaly:
         payload = mock_post.call_args.kwargs.get("json") or mock_post.call_args[1].get("json")
         assert "text" in payload
         assert "Anomali" in payload["text"]
+
+    def test_notify_anomaly_webhook_retries_on_failure(self):
+        """Anomaly webhook geçici hata sonrası yeniden dener."""
+        n = Notifier()
+        n.webhook.enabled = True
+        n.webhook.webhook_url = "http://localhost:9999/webhook"
+        n.webhook.webhook_type = "discord"
+
+        ok = MagicMock(status_code=200, raise_for_status=lambda: None)
+        with patch("httpx.post", side_effect=[Exception("timeout"), ok]) as mock_post:
+            with patch("time.sleep"):
+                with patch.object(n, "_get_min_severity", return_value="warning"):
+                    n.notify_anomaly(_make_anomaly())
+
+        assert mock_post.call_count == 2
+
+    def test_notify_anomaly_email_retries_on_failure(self):
+        """Anomaly email geçici SMTP hatası sonrası yeniden dener."""
+        import smtplib
+        n = Notifier()
+        n.email.enabled = True
+        n.email.smtp_host = "smtp.test"
+        n.email.smtp_port = 587
+        n.email.smtp_user = "u"
+        n.email.smtp_password = "p"
+        n.email.from_email = "u@test"
+        n.email.to_emails = ["dest@test"]
+
+        call_count = {"n": 0}
+
+        class _FakeSMTP:
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def starttls(self): pass
+            def login(self, *a): pass
+            def send_message(self, msg):
+                call_count["n"] += 1
+                if call_count["n"] < 2:
+                    raise smtplib.SMTPException("transient")
+
+        with patch("smtplib.SMTP", return_value=_FakeSMTP()):
+            with patch("time.sleep"):
+                with patch.object(n, "_get_min_severity", return_value="warning"):
+                    n.notify_anomaly(_make_anomaly())
+
+        assert call_count["n"] == 2
+
+
+class TestRetryHelpers:
+    """EmailNotifier._send_msg ve WebhookNotifier._post_payload retry davranışı."""
+
+    def test_webhook_succeeds_on_first_try(self):
+        w = WebhookNotifier()
+        w.enabled = True
+        w.webhook_url = "http://x"
+        ok = MagicMock(raise_for_status=lambda: None)
+        with patch("httpx.post", return_value=ok) as mock_post:
+            result = w._post_payload({"x": 1}, "ctx")
+        assert result is True
+        assert mock_post.call_count == 1
+
+    def test_webhook_retries_twice_then_fails(self):
+        w = WebhookNotifier()
+        w.enabled = True
+        w.webhook_url = "http://x"
+        with patch("httpx.post", side_effect=Exception("err")) as mock_post:
+            with patch("time.sleep"):
+                result = w._post_payload({"x": 1}, "ctx")
+        assert result is False
+        assert mock_post.call_count == 3
+
+    def test_webhook_succeeds_on_second_try(self):
+        w = WebhookNotifier()
+        w.enabled = True
+        w.webhook_url = "http://x"
+        ok = MagicMock(raise_for_status=lambda: None)
+        with patch("httpx.post", side_effect=[Exception("err"), ok]) as mock_post:
+            with patch("time.sleep"):
+                result = w._post_payload({"x": 1}, "ctx")
+        assert result is True
+        assert mock_post.call_count == 2

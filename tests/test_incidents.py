@@ -133,6 +133,45 @@ class TestUpdateIncident:
         r = client.patch("/api/v1/incidents/nonexistent", json={"status": "resolved"}, headers=_auth())
         assert r.status_code == 404
 
+    # --- FSM geçiş doğrulaması ---
+
+    def test_fsm_open_to_investigating(self, tmp_db):
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "info"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        r2 = client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "investigating"}, headers=_auth())
+        assert r2.status_code == 200
+        assert r2.json()["status"] == "investigating"
+
+    def test_fsm_investigating_to_resolved(self, tmp_db):
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "info"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "investigating"}, headers=_auth())
+        r2 = client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "resolved"}, headers=_auth())
+        assert r2.status_code == 200
+        assert r2.json()["status"] == "resolved"
+
+    def test_fsm_resolved_to_open_allowed(self, tmp_db):
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "info"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "resolved"}, headers=_auth())
+        r2 = client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "open"}, headers=_auth())
+        assert r2.status_code == 200
+        assert r2.json()["status"] == "open"
+
+    def test_fsm_resolved_to_investigating_rejected(self, tmp_db):
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "info"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "resolved"}, headers=_auth())
+        r2 = client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "investigating"}, headers=_auth())
+        assert r2.status_code == 400
+        assert "Geçersiz geçiş" in r2.json()["detail"]
+
+    def test_fsm_open_to_open_rejected(self, tmp_db):
+        r = client.post("/api/v1/incidents", json={"title": "Inc", "severity": "info"}, headers=_auth())
+        inc_id = r.json()["incident_id"]
+        r2 = client.patch(f"/api/v1/incidents/{inc_id}", json={"status": "open"}, headers=_auth())
+        assert r2.status_code == 400
+
 
 class TestDeleteIncident:
     def test_admin_can_delete(self, tmp_db):
