@@ -201,68 +201,73 @@ class Correlator:
         from server.mitre import parse_mitre_tags
         produced: list[CorrelatedEvent] = []
 
+        # Önce tüm satırları topla — read connection'ı yazma işlemlerinden önce kapat
+        rule_hits: list[tuple] = []
         with db._connect() as conn:
             for rule in self._sigma_executor.rules:
                 rows = self._sigma_executor.execute_rule(rule, conn, tenant_id="default")
-                for row in rows:
-                    group_val = str(row.get("group_value") or "unknown")
-                    count     = int(row.get("event_count", 1))
-                    now       = datetime.now(timezone.utc)
+                rule_hits.extend((rule, row) for row in rows)
 
-                    first_seen = (
-                        datetime.fromisoformat(row["first_ts"]).replace(tzinfo=timezone.utc)
-                        if row.get("first_ts") else now
-                    )
-                    last_seen = (
-                        datetime.fromisoformat(row["last_ts"]).replace(tzinfo=timezone.utc)
-                        if row.get("last_ts") else now
-                    )
+        # Read connection kapatıldı — şimdi güvenle write işlemleri yapılabilir
+        for rule, row in rule_hits:
+            group_val = str(row.get("group_value") or "unknown")
+            count     = int(row.get("event_count", 1))
+            now       = datetime.now(timezone.utc)
 
-                    event = CorrelatedEvent(
-                        corr_id        = str(uuid.uuid4()),
-                        rule_id        = rule.rule_id,
-                        rule_name      = rule.title,
-                        event_action   = rule.output_event_action,
-                        severity       = rule.severity,
-                        group_value    = group_val,
-                        matched_count  = count,
-                        window_seconds = rule.window_seconds,
-                        first_seen     = first_seen,
-                        last_seen      = last_seen,
-                        message        = (
-                            f"{rule.title}: {group_val} kaynağından "
-                            f"{rule.window_seconds}s içinde {count} olay"
-                        ),
-                        **parse_mitre_tags(rule.tags),
-                    )
+            first_seen = (
+                datetime.fromisoformat(row["first_ts"]).replace(tzinfo=timezone.utc)
+                if row.get("first_ts") else now
+            )
+            last_seen = (
+                datetime.fromisoformat(row["last_ts"]).replace(tzinfo=timezone.utc)
+                if row.get("last_ts") else now
+            )
 
-                    saved = db.save_correlated_event(event)
-                    if saved:
-                        produced.append(event)
-                        logger.warning(
-                            "pySigma tetiklendi [%s]: %s — %d olay / %ds",
-                            rule.rule_id, group_val, count, rule.window_seconds,
-                        )
-                        try:
-                            from server.ws_manager import ws_manager
-                            ws_manager.broadcast_from_thread(
-                                "correlated_event", event.model_dump(mode="json")
-                            )
-                        except Exception:
-                            pass
-                        self._create_alert(event)
-                        self._create_incident_from_corr(event)
-                        self._check_attack_chain(event)
-                        try:
-                            from server.notifier import notifier
-                            notifier.notify_correlated(event)
-                        except Exception as exc:
-                            logger.warning("Notifier hatası: %s", exc)
-                        if group_val:
-                            import threading
-                            threading.Thread(
-                                target=_ti_lookup_bg, args=(group_val,), daemon=True
-                            ).start()
+            event = CorrelatedEvent(
+                corr_id        = str(uuid.uuid4()),
+                rule_id        = rule.rule_id,
+                rule_name      = rule.title,
+                event_action   = rule.output_event_action,
+                severity       = rule.severity,
+                group_value    = group_val,
+                matched_count  = count,
+                window_seconds = rule.window_seconds,
+                first_seen     = first_seen,
+                last_seen      = last_seen,
+                message        = (
+                    f"{rule.title}: {group_val} kaynağından "
+                    f"{rule.window_seconds}s içinde {count} olay"
+                ),
+                **parse_mitre_tags(rule.tags),
+            )
+
+            saved = db.save_correlated_event(event)
+            if saved:
+                produced.append(event)
+                logger.warning(
+                    "pySigma tetiklendi [%s]: %s — %d olay / %ds",
+                    rule.rule_id, group_val, count, rule.window_seconds,
+                )
+                try:
+                    from server.ws_manager import ws_manager
+                    ws_manager.broadcast_from_thread(
+                        "correlated_event", event.model_dump(mode="json")
+                    )
+                except Exception:
+                    pass
+                self._create_alert(event)
+                self._create_incident_from_corr(event)
+                self._check_attack_chain(event)
+                try:
+                    from server.notifier import notifier
+                    notifier.notify_correlated(event)
+                except Exception as exc:
+                    logger.warning("Notifier hatası: %s", exc)
+                if group_val:
+                    import threading
+                    threading.Thread(
+                        target=_ti_lookup_bg, args=(group_val,), daemon=True
+                    ).start()
 
         return produced
 
@@ -322,8 +327,8 @@ class Correlator:
         for row in rows:
             group_value = row["grp_val"]
             count       = row["cnt"]
-            first_seen  = datetime.fromisoformat(row["first_ts"])
-            last_seen   = datetime.fromisoformat(row["last_ts"])
+            first_seen  = datetime.fromisoformat(row["first_ts"]).replace(tzinfo=timezone.utc)
+            last_seen   = datetime.fromisoformat(row["last_ts"]).replace(tzinfo=timezone.utc)
 
             event = CorrelatedEvent(
                 corr_id        = str(uuid.uuid4()),
@@ -399,6 +404,9 @@ class Correlator:
                     message=event.message,
                     occurred_at=last_seen_iso,
                 )
+                # Severity yükseldiyse priority_score'u da güncelle
+                effective_sev = "critical" if ti_score >= 70 else event.severity
+                db.update_incident(existing_id, priority_score=compute_priority_score(effective_sev, ti_score))
                 incident_id = existing_id
             else:
                 effective_severity = "critical" if ti_score >= 70 else event.severity

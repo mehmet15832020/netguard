@@ -55,14 +55,14 @@ def _fill_mitre(enrichment: dict, source_event_id: Optional[str]) -> None:
 
 def _fill_related_logs(
     enrichment: dict,
-    source_ip: Optional[str],
+    group_value: Optional[str],
     around_iso: Optional[str],
 ) -> None:
-    if not source_ip or not around_iso:
+    if not group_value or not around_iso:
         return
     try:
         logs = db.get_related_logs_for_incident(
-            source_ip=source_ip,
+            source_ip=group_value,
             around_iso=around_iso,
             window_minutes=_WINDOW_MINUTES,
             limit=_MAX_RELATED_LOGS,

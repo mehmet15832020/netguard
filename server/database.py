@@ -1120,12 +1120,15 @@ class DatabaseManager:
         window_minutes: int = 30,
         limit: int = 20,
     ) -> list["NormalizedLog"]:
-        """source_ip'e ait ±window_minutes dakika aralığındaki normalize logları döner."""
+        """
+        group_value'ya (source_ip veya observer_hostname) ait ±window_minutes
+        aralığındaki normalize logları döner.
+        """
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM normalized_logs
-                WHERE source_ip = ?
+                WHERE (source_ip = ? OR observer_hostname = ?)
                   AND datetime(timestamp) BETWEEN
                       datetime(?, ?)
                       AND datetime(?, ?)
@@ -1133,7 +1136,7 @@ class DatabaseManager:
                 LIMIT ?
                 """,
                 (
-                    source_ip,
+                    source_ip, source_ip,
                     around_iso, f"-{window_minutes} minutes",
                     around_iso, f"+{window_minutes} minutes",
                     limit,
@@ -2163,11 +2166,9 @@ class DatabaseManager:
                 fields.append("resolved_at=?")
                 params.append(now)
             if status == "investigating":
-                # acknowledged_at sadece ilk geçişte set edilir
-                row = self.get_incident(incident_id)
-                if row and not row.get("acknowledged_at"):
-                    fields.append("acknowledged_at=?")
-                    params.append(now)
+                # COALESCE: acknowledged_at NULL ise set et, dolu ise dokunma (tek sorgu)
+                fields.append("acknowledged_at=COALESCE(acknowledged_at,?)")
+                params.append(now)
         if assigned_to is not None:
             fields.append("assigned_to=?")
             params.append(assigned_to)

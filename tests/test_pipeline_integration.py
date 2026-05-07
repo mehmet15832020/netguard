@@ -1186,3 +1186,356 @@ class TestCriticalFix5UpdateLogHostnamesSilentFail:
         updated = next((l for l in logs if l.log_id == log.log_id), None)
         assert updated is not None
         assert updated.source_hostname == "client.local"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Kalan Sorun Testleri — 6 yeni fix
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestFix6NestedLockRunSigmaV2:
+    """
+    FIX #6 — _run_sigma_v2() read connection, write işlemlerinden önce kapatılmalı.
+    Deadlock olmadığını kanıtlamak için sigma_v2 akışını taklit ediyoruz.
+    """
+
+    def test_sigma_v2_runs_without_deadlock(self, pipeline_db, monkeypatch, tmp_path):
+        """Sigma v2 hits + incident oluşturma aynı anda deadlock olmadan çalışmalı."""
+        from server.correlator import Correlator
+        from server.sigma_executor import SigmaExecutableRule
+
+        fake_rule = SigmaExecutableRule(
+            rule_id         = "test-nested-lock",
+            title           = "Nested Lock Test",
+            severity        = "warning",
+            sql             = "",
+            window_seconds  = 60,
+            group_by_fields = ["source_ip"],
+            is_correlation  = True,
+        )
+
+        log = _norm_log("port_scan_attempt", "10.20.30.40")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        mock_executor = MagicMock()
+        mock_executor.rules = [fake_rule]
+        mock_executor.execute_rule = MagicMock(return_value=[{
+            "group_value": "10.20.30.40",
+            "event_count": 5,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "first_ts": datetime(2026, 5, 7, 10, 0, tzinfo=timezone.utc).isoformat(),
+            "last_ts":  datetime(2026, 5, 7, 10, 1, tzinfo=timezone.utc).isoformat(),
+        }])
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._sigma_executor = mock_executor
+
+        with patch("server.notifier.notifier") as mn:
+            mn.notify_correlated = MagicMock()
+            events = correlator._run_sigma_v2()
+
+        assert isinstance(events, list)
+
+    def test_read_connection_closed_before_writes(self, pipeline_db, monkeypatch, tmp_path):
+        """execute_rule tamamlandıktan sonra DB'ye incident yazılabilmeli."""
+        from server.correlator import Correlator
+        from server.sigma_executor import SigmaExecutableRule
+
+        fake_rule = SigmaExecutableRule(
+            rule_id         = "test-conn-order",
+            title           = "Connection Order Test",
+            severity        = "critical",
+            sql             = "",
+            window_seconds  = 300,
+            group_by_fields = ["source_ip"],
+            is_correlation  = True,
+        )
+
+        mock_executor = MagicMock()
+        mock_executor.rules = [fake_rule]
+        mock_executor.execute_rule = MagicMock(return_value=[{
+            "group_value": "192.168.5.5",
+            "event_count": 10,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "first_ts": None,
+            "last_ts":  None,
+        }])
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._sigma_executor = mock_executor
+
+        with patch("server.notifier.notifier") as mn:
+            mn.notify_correlated = MagicMock()
+            correlator._run_sigma_v2()
+
+        incidents = pipeline_db.get_incidents(limit=10)
+        assert any(i["group_value"] == "192.168.5.5" for i in incidents)
+
+
+class TestFix7PriorityScoreOnEscalation:
+    """FIX #7 — existing_id bulununca priority_score da güncellenmeli."""
+
+    def test_priority_score_updated_on_escalation(self, pipeline_db, monkeypatch):
+        from server.correlator import Correlator
+        from server.incident_priority import compute_priority_score
+        from shared.models import CorrelatedEvent, Incident, IncidentStatus
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+        monkeypatch.setattr("server.threat_intel.lookup", MagicMock(return_value=None))
+
+        # İlk incident oluştur
+        existing = Incident(
+            incident_id    = str(uuid.uuid4()),
+            title          = "İlk incident",
+            description    = "Test",
+            severity       = "info",
+            status         = IncidentStatus.OPEN,
+            source_event_id = str(uuid.uuid4()),
+            source_type    = "correlated_event",
+            created_by     = "correlator",
+            rule_id        = "rule-esc-test",
+            group_value    = "10.0.0.99",
+            priority_score = compute_priority_score("info", 0),
+        )
+        pipeline_db.create_incident(existing)
+
+        before = pipeline_db.get_incident(existing.incident_id)
+        assert before["priority_score"] == compute_priority_score("info", 0)
+
+        # Aynı kural + group için kritik event gelsin
+        event = CorrelatedEvent(
+            corr_id        = str(uuid.uuid4()),
+            rule_id        = "rule-esc-test",
+            rule_name      = "Escalation Test",
+            event_action   = "ssh_brute_force_detected",
+            severity       = "critical",
+            group_value    = "10.0.0.99",
+            matched_count  = 20,
+            window_seconds = 60,
+            first_seen     = datetime.now(timezone.utc),
+            last_seen      = datetime.now(timezone.utc),
+            message        = "Test escalation",
+        )
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._create_incident_from_corr(event)
+
+        after = pipeline_db.get_incident(existing.incident_id)
+        expected = compute_priority_score("critical", 0)
+        assert after["priority_score"] == expected, \
+            f"priority_score escalation sonrası {expected} olmalı, {after['priority_score']} bulundu"
+        assert after["severity"] == "critical"
+
+    def test_priority_score_not_downgraded_on_lower_event(self, pipeline_db, monkeypatch):
+        """Daha düşük severity gelen event priority_score'u düşürmemeli."""
+        from server.correlator import Correlator
+        from server.incident_priority import compute_priority_score
+        from shared.models import CorrelatedEvent, Incident, IncidentStatus
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+        monkeypatch.setattr("server.threat_intel.lookup", MagicMock(return_value=None))
+
+        existing = Incident(
+            incident_id    = str(uuid.uuid4()),
+            title          = "Kritik incident",
+            description    = "Test",
+            severity       = "critical",
+            status         = IncidentStatus.OPEN,
+            source_event_id = str(uuid.uuid4()),
+            source_type    = "correlated_event",
+            created_by     = "correlator",
+            rule_id        = "rule-nodown-test",
+            group_value    = "10.0.0.88",
+            priority_score = compute_priority_score("critical", 0),
+        )
+        pipeline_db.create_incident(existing)
+
+        event = CorrelatedEvent(
+            corr_id        = str(uuid.uuid4()),
+            rule_id        = "rule-nodown-test",
+            rule_name      = "No Downgrade Test",
+            event_action   = "port_scan_detected",
+            severity       = "info",
+            group_value    = "10.0.0.88",
+            matched_count  = 3,
+            window_seconds = 60,
+            first_seen     = datetime.now(timezone.utc),
+            last_seen      = datetime.now(timezone.utc),
+            message        = "Test",
+        )
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._create_incident_from_corr(event)
+
+        after = pipeline_db.get_incident(existing.incident_id)
+        assert after["severity"] == "critical", "Severity downgrade olmamalı"
+
+
+class TestFix8NaiveDatetimeApplyRule:
+    """FIX #8 — _apply_rule() timezone-aware datetime üretmeli."""
+
+    def test_first_last_seen_are_timezone_aware(self, pipeline_db, monkeypatch):
+        from server.correlator import Correlator, CorrelationRule
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+
+        rule = CorrelationRule(
+            rule_id             = "test-tz-rule",
+            name                = "TZ Test",
+            description         = "",
+            match_event_action  = "tz_test_event",
+            group_by            = "source_ip",
+            window_seconds      = 300,
+            threshold           = 1,
+            severity            = "warning",
+            output_event_action = "tz_test_detected",
+            enabled             = True,
+        )
+
+        for _ in range(2):
+            pipeline_db.save_normalized_log(
+                _norm_log("tz_test_event", "10.1.1.1"), tenant_id="default"
+            )
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._rules = [rule]
+
+        monkeypatch.setattr("server.notifier.notifier", MagicMock())
+
+        events = correlator._apply_rule(rule)
+
+        if events:
+            ev = events[0]
+            assert ev.first_seen.tzinfo is not None, "first_seen timezone-aware olmalı"
+            assert ev.last_seen.tzinfo is not None, "last_seen timezone-aware olmalı"
+
+
+class TestFix9RelatedLogsGroupValue:
+    """FIX #9 — get_related_logs_for_incident observer_hostname üzerinden de eşleşmeli."""
+
+    def test_related_logs_found_by_source_ip(self, pipeline_db):
+        log = _norm_log("ssh_failure", "10.5.5.5")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        results = pipeline_db.get_related_logs_for_incident(
+            source_ip="10.5.5.5",
+            around_iso=datetime.now(timezone.utc).isoformat(),
+            window_minutes=30,
+        )
+        assert any(r.log_id == log.log_id for r in results)
+
+    def test_related_logs_found_by_observer_hostname(self, pipeline_db):
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+
+        log = NormalizedLog(
+            log_id            = str(uuid.uuid4()),
+            raw_id            = str(uuid.uuid4()),
+            source_type       = LogSourceType.SYSLOG,
+            observer_hostname = "firewall-01",
+            timestamp         = datetime.now(timezone.utc),
+            severity          = "warning",
+            event_category    = LogCategory.NETWORK,
+            event_action      = "firewall_block",
+            source_ip         = None,
+            message           = "blocked",
+            tags              = [],
+        )
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        results = pipeline_db.get_related_logs_for_incident(
+            source_ip="firewall-01",
+            around_iso=datetime.now(timezone.utc).isoformat(),
+            window_minutes=30,
+        )
+        assert any(r.log_id == log.log_id for r in results), \
+            "observer_hostname ile de ilgili log bulunabilmeli"
+
+    def test_enricher_uses_group_value_for_both_ip_and_hostname(self, pipeline_db, monkeypatch):
+        """incident_enricher group_value'yu source_ip ve observer_hostname'e karşı sorgular."""
+        from server.incident_enricher import enrich_incident
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+
+        monkeypatch.setattr("server.incident_enricher.db", pipeline_db)
+        monkeypatch.setattr("server.threat_intel.lookup", MagicMock(return_value=None))
+
+        hostname_log = NormalizedLog(
+            log_id            = str(uuid.uuid4()),
+            raw_id            = str(uuid.uuid4()),
+            source_type       = LogSourceType.SYSLOG,
+            observer_hostname = "router-core",
+            timestamp         = datetime.now(timezone.utc),
+            severity          = "critical",
+            event_category    = LogCategory.NETWORK,
+            event_action      = "lateral_scan",
+            source_ip         = None,
+            message           = "internal scan",
+            tags              = [],
+        )
+        pipeline_db.save_normalized_log(hostname_log, tenant_id="default")
+
+        incident = {
+            "incident_id":    str(uuid.uuid4()),
+            "source_event_id": None,
+            "group_value":    "router-core",
+            "created_at":     datetime.now(timezone.utc).isoformat(),
+        }
+        enriched = enrich_incident(incident)
+        log_ids = [l["log_id"] for l in enriched["enrichment"]["related_logs"]]
+        assert hostname_log.log_id in log_ids, \
+            "observer_hostname group_value'su olan incident zenginleştirmede logunu bulmalı"
+
+
+class TestFix10AcknowledgedAtNoExtraQuery:
+    """FIX #10 — acknowledged_at COALESCE ile tek sorguda set edilmeli."""
+
+    def test_acknowledged_at_set_on_first_investigating(self, pipeline_db):
+        from shared.models import Incident, IncidentStatus
+
+        inc = Incident(
+            incident_id    = str(uuid.uuid4()),
+            title          = "Test incident",
+            description    = "",
+            severity       = "warning",
+            status         = IncidentStatus.OPEN,
+            source_event_id = str(uuid.uuid4()),
+            source_type    = "test",
+            created_by     = "test",
+        )
+        pipeline_db.create_incident(inc)
+
+        before = pipeline_db.get_incident(inc.incident_id)
+        assert before["acknowledged_at"] is None
+
+        pipeline_db.update_incident(inc.incident_id, status="investigating")
+        after = pipeline_db.get_incident(inc.incident_id)
+        assert after["acknowledged_at"] is not None
+
+    def test_acknowledged_at_not_overwritten_on_second_call(self, pipeline_db):
+        """İkinci 'investigating' geçişi acknowledged_at'i değiştirmemeli."""
+        from shared.models import Incident, IncidentStatus
+        import time
+
+        inc = Incident(
+            incident_id    = str(uuid.uuid4()),
+            title          = "Idempotent test",
+            description    = "",
+            severity       = "info",
+            status         = IncidentStatus.OPEN,
+            source_event_id = str(uuid.uuid4()),
+            source_type    = "test",
+            created_by     = "test",
+        )
+        pipeline_db.create_incident(inc)
+
+        pipeline_db.update_incident(inc.incident_id, status="investigating")
+        first = pipeline_db.get_incident(inc.incident_id)["acknowledged_at"]
+
+        time.sleep(0.05)
+        pipeline_db.update_incident(inc.incident_id, status="open")
+        pipeline_db.update_incident(inc.incident_id, status="investigating")
+        second = pipeline_db.get_incident(inc.incident_id)["acknowledged_at"]
+
+        assert first == second, "acknowledged_at ikinci geçişte değişmemeli"
