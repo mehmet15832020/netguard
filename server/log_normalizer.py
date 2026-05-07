@@ -17,7 +17,7 @@ import json
 import logging
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from server.database import db
@@ -100,7 +100,10 @@ def _parse_auth_log_timestamp(month: str, day: str, time_str: str) -> datetime:
     now = datetime.now(timezone.utc)
     month_num = _MONTHS.get(month, 1)
     h, m, s = map(int, time_str.split(":"))
-    return datetime(now.year, month_num, int(day), h, m, s, tzinfo=timezone.utc)
+    dt = datetime(now.year, month_num, int(day), h, m, s, tzinfo=timezone.utc)
+    if dt > now + timedelta(days=1):
+        dt = dt.replace(year=now.year - 1)
+    return dt
 
 
 def _parse_auth_log(raw: str, source_host: str) -> Optional[dict]:
@@ -163,7 +166,7 @@ def _parse_suricata(raw: str, source_host: str) -> Optional[dict]:
         ts = datetime.now(timezone.utc)
 
     src_ip   = data.get("src_ip")
-    dst_ip   = data.get("dest_ip")
+    dst_ip   = data.get("dst_ip") or data.get("dest_ip")
     src_port = data.get("src_port")
     dst_port = data.get("dest_port")
 
