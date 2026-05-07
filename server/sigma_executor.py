@@ -33,6 +33,8 @@ Kural formatı (YAML multi-doc):
 import logging
 import re
 import uuid
+
+_SAFE_TENANT_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -268,6 +270,9 @@ class SigmaExecutor:
         tenant_id filtresi ve (korelasyon için) first_ts/last_ts dahil edilir.
         Her satır: {"group_value", "event_count", "timestamp", "first_ts"?, "last_ts"?}
         """
+        if not _SAFE_TENANT_RE.match(tenant_id):
+            logger.error("Geçersiz tenant_id reddedildi: %r", tenant_id)
+            return []
         sql = rule.sql.replace(
             "FROM normalized_logs WHERE",
             f"FROM normalized_logs WHERE tenant_id = '{tenant_id}' AND",

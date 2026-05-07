@@ -863,10 +863,12 @@ class DatabaseManager:
         """DNS arka plan çözümlemesi tamamlandığında hostname kolonlarını güncelle."""
         with self._lock:
             with self._connect() as conn:
-                conn.execute(
+                cur = conn.execute(
                     "UPDATE normalized_logs SET source_hostname = ?, destination_hostname = ? WHERE log_id = ?",
                     (src_host, dst_host, log_id),
                 )
+                if cur.rowcount == 0:
+                    logger.debug("update_log_hostnames: log_id bulunamadı: %s", log_id)
 
     def get_normalized_logs(
         self,
@@ -2129,14 +2131,14 @@ class DatabaseManager:
         """Açık ve inceleniyor durumdaki tüm incident'ları resolved yapar. Kaç tane güncellendi döner."""
         now = datetime.now(timezone.utc).isoformat()
         clause = "WHERE status IN ('open','investigating')"
-        params: list = [now, now]
+        params: list = [now, now, "Toplu çözümleme"]
         if tenant_id is not None:
             clause += " AND tenant_id=?"
             params.append(tenant_id)
         with self._lock:
             with self._connect() as conn:
                 cur = conn.execute(
-                    f"UPDATE incidents SET status='resolved', resolved_at=?, updated_at=? {clause}",
+                    f"UPDATE incidents SET status='resolved', resolved_at=?, updated_at=?, closure_note=? {clause}",
                     params,
                 )
                 return cur.rowcount

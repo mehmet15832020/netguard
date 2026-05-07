@@ -380,8 +380,12 @@ class Correlator:
             from server.incident_priority import compute_priority_score
 
             # TI lookup önce — priority score ve severity escalation için gerekli
-            ti = threat_intel.lookup(event.group_value)
-            ti_score = ti.get("score", 0) if ti else 0
+            try:
+                ti = threat_intel.lookup(event.group_value)
+                ti_score = ti.get("score", 0) if ti else 0
+            except Exception as exc:
+                logger.debug("TI lookup başarısız [%s]: %s", event.group_value, exc)
+                ti_score = 0
 
             last_seen_iso = event.last_seen.isoformat() if hasattr(event.last_seen, "isoformat") else event.last_seen
             existing_id = db.find_open_incident_for_rule(event.rule_id, event.group_value)

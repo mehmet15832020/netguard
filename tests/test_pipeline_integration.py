@@ -889,3 +889,300 @@ class TestSigmaExecutorPipeline:
         # first_ts < last_ts (sıralı timestamp'ler girildi)
         if row["first_ts"] and row["last_ts"]:
             assert row["first_ts"] <= row["last_ts"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Kritik Düzeltme Testleri — 5 güvenlik/güvenilirlik fix
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCriticalFix1SqlInjection:
+    """CRITICAL #1 — SigmaExecutor.execute_rule() geçersiz tenant_id reddetmeli."""
+
+    def test_invalid_tenant_id_rejected(self, pipeline_db, monkeypatch):
+        from pathlib import Path
+        from server.sigma_executor import SigmaExecutor
+
+        rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+        executor = SigmaExecutor(str(rules_dir))
+        if not executor.rules:
+            pytest.skip("sigma_rules_v2 kuralı yok")
+
+        rule = executor.rules[0]
+        with pipeline_db._connect() as conn:
+            result = executor.execute_rule(rule, conn, tenant_id="'; DROP TABLE normalized_logs; --")
+        assert result == [], "SQL injection payload reddedilmeli"
+
+    def test_valid_tenant_id_accepted(self, pipeline_db):
+        from pathlib import Path
+        from server.sigma_executor import SigmaExecutor
+
+        rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+        executor = SigmaExecutor(str(rules_dir))
+        if not executor.rules:
+            pytest.skip("sigma_rules_v2 kuralı yok")
+
+        rule = executor.rules[0]
+        with pipeline_db._connect() as conn:
+            result = executor.execute_rule(rule, conn, tenant_id="default")
+        assert isinstance(result, list)
+
+    def test_tenant_id_with_special_chars_rejected(self, pipeline_db):
+        from pathlib import Path
+        from server.sigma_executor import SigmaExecutor
+
+        rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+        executor = SigmaExecutor(str(rules_dir))
+        if not executor.rules:
+            pytest.skip("sigma_rules_v2 kuralı yok")
+
+        rule = executor.rules[0]
+        for bad in ["ten ant", "ten@ant", "ten'ant", 'ten"ant', "ten;ant"]:
+            with pipeline_db._connect() as conn:
+                result = executor.execute_rule(rule, conn, tenant_id=bad)
+            assert result == [], f"Geçersiz tenant_id kabul edilmemeli: {bad!r}"
+
+    def test_table_survives_sql_injection_attempt(self, pipeline_db):
+        """Injection denemesinden sonra normalized_logs tablosu sağlam kalmalı."""
+        from pathlib import Path
+        from server.sigma_executor import SigmaExecutor
+
+        log = _norm_log("ssh_failure", "10.0.0.1")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+        executor = SigmaExecutor(str(rules_dir))
+        if executor.rules:
+            with pipeline_db._connect() as conn:
+                executor.execute_rule(executor.rules[0], conn, tenant_id="'; DROP TABLE normalized_logs; --")
+
+        # Tablo hâlâ var ve log okunabilir
+        logs = pipeline_db.get_normalized_logs(limit=10)
+        assert any(l.log_id == log.log_id for l in logs)
+
+
+class TestCriticalFix2FirstTsNoneGuard:
+    """CRITICAL #2 — first_ts/last_ts None olduğunda datetime crash olmamalı."""
+
+    def test_correlator_run_sigma_v2_no_crash_when_no_min_max(self, pipeline_db, monkeypatch, tmp_path):
+        """
+        _inject_min_max_ts eşleşemezse first_ts=None → correlator 'now' kullanmalı, crash etmemeli.
+        """
+        from server.sigma_executor import SigmaExecutableRule, SigmaExecutor
+
+        # Zaman damgası içermeyen sahte bir correlation kuralı simüle et
+        fake_rule = SigmaExecutableRule(
+            rule_id         = "test-no-minmax",
+            title           = "Test No MinMax",
+            severity        = "warning",
+            sql             = "SELECT source_ip AS grp, COUNT(*) AS event_count FROM normalized_logs WHERE event_action='test_action' GROUP BY source_ip HAVING event_count >= 1",
+            window_seconds  = 300,
+            group_by_fields = ["source_ip"],
+            is_correlation  = True,
+        )
+
+        # DB'ye eşleşecek log ekle
+        log = _norm_log("test_action", "10.10.10.10")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        mock_executor = MagicMock()
+        mock_executor.rules = [fake_rule]
+
+        def fake_execute(rule, conn, tenant_id="default"):
+            return [{"group_value": "10.10.10.10", "event_count": 1, "timestamp": datetime.now(timezone.utc).isoformat(), "first_ts": None, "last_ts": None}]
+
+        mock_executor.execute_rule = fake_execute
+
+        monkeypatch.setattr("server.correlator.SIGMA_RULES_V2_DIR", str(tmp_path / "nonexistent"))
+
+        from server.correlator import Correlator
+        correlator = Correlator(sigma_v2_dir=str(tmp_path / "nonexistent"))
+        correlator._sigma_executor = mock_executor
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+
+        with patch("server.notifier.notifier") as mock_notifier:
+            mock_notifier.notify_correlated = MagicMock()
+            events = correlator._run_sigma_v2()
+
+        assert isinstance(events, list)
+
+
+class TestCriticalFix3ResolveAllClosure:
+    """CRITICAL #3 — resolve_all_incidents() closure_note set etmeli."""
+
+    def test_bulk_resolve_sets_closure_note(self, pipeline_db):
+        from shared.models import Incident, IncidentStatus
+
+        inc = Incident(
+            incident_id  = str(uuid.uuid4()),
+            title        = "Açık incident",
+            description  = "Test",
+            severity     = "warning",
+            status       = IncidentStatus.OPEN,
+            source_event_id = str(uuid.uuid4()),
+            source_type  = "test",
+            created_by   = "test",
+        )
+        pipeline_db.create_incident(inc)
+
+        count = pipeline_db.resolve_all_incidents(tenant_id=None)
+        assert count >= 1
+
+        resolved = pipeline_db.get_incident(inc.incident_id)
+        assert resolved["status"] == "resolved"
+        assert resolved["closure_note"], "Toplu çözümlemede closure_note boş olmamalı"
+        assert "Toplu" in resolved["closure_note"]
+
+    def test_bulk_resolve_sets_closure_note_with_tenant(self, pipeline_db):
+        from shared.models import Incident, IncidentStatus
+
+        inc = Incident(
+            incident_id  = str(uuid.uuid4()),
+            title        = "Tenant incident",
+            description  = "Test",
+            severity     = "info",
+            status       = IncidentStatus.INVESTIGATING,
+            source_event_id = str(uuid.uuid4()),
+            source_type  = "test",
+            created_by   = "test",
+        )
+        pipeline_db.create_incident(inc)
+
+        count = pipeline_db.resolve_all_incidents(tenant_id="default")
+        assert count >= 1
+
+        resolved = pipeline_db.get_incident(inc.incident_id)
+        assert resolved["closure_note"]
+
+    def test_bulk_resolve_does_not_overwrite_existing_closure_note(self, pipeline_db):
+        """Manuel çözümlenmiş incident'taki closure_note bulk resolve'da korunmalı."""
+        from shared.models import Incident, IncidentStatus
+
+        inc = Incident(
+            incident_id  = str(uuid.uuid4()),
+            title        = "Manuel resolved",
+            description  = "Test",
+            severity     = "critical",
+            status       = IncidentStatus.OPEN,
+            source_event_id = str(uuid.uuid4()),
+            source_type  = "test",
+            created_by   = "test",
+        )
+        pipeline_db.create_incident(inc)
+        pipeline_db.update_incident(inc.incident_id, status="resolved", closure_note="Manuel not")
+
+        # Zaten çözümlendi — bulk resolve etkilememeli (WHERE status IN ('open','investigating'))
+        pipeline_db.resolve_all_incidents(tenant_id=None)
+        final = pipeline_db.get_incident(inc.incident_id)
+        assert final["closure_note"] == "Manuel not", "Manuel closure_note üzerine yazılmamalı"
+
+
+class TestCriticalFix4TiExceptionHandling:
+    """CRITICAL #4 — TI exception → ti_score=0, incident yine de oluşturulmalı."""
+
+    def test_incident_created_even_when_ti_raises(self, pipeline_db, monkeypatch):
+        from server.correlator import Correlator
+        from shared.models import CorrelatedEvent
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+
+        def ti_raise(ip):
+            raise ConnectionError("AbuseIPDB timeout")
+
+        monkeypatch.setattr("server.threat_intel.lookup", ti_raise)
+
+        event = CorrelatedEvent(
+            corr_id        = str(uuid.uuid4()),
+            rule_id        = "test-rule",
+            rule_name      = "Test Rule",
+            event_action   = "ssh_brute_force_detected",
+            severity       = "warning",
+            group_value    = "192.168.1.100",
+            matched_count  = 10,
+            window_seconds = 60,
+            first_seen     = datetime.now(timezone.utc),
+            last_seen      = datetime.now(timezone.utc),
+            message        = "Test mesajı",
+        )
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._create_incident_from_corr(event)
+
+        incidents = pipeline_db.get_incidents(limit=10)
+        assert any(i["group_value"] == "192.168.1.100" for i in incidents), \
+            "TI hatası incident oluşturmayı engellememelidir"
+
+    def test_priority_score_is_base_when_ti_raises(self, pipeline_db, monkeypatch):
+        """TI exception → ti_score=0 → priority_score severity_base değerinde olmalı."""
+        from server.correlator import Correlator
+        from server.incident_priority import compute_priority_score
+        from shared.models import CorrelatedEvent
+
+        monkeypatch.setattr("server.correlator.db", pipeline_db)
+        monkeypatch.setattr("server.threat_intel.lookup", MagicMock(side_effect=RuntimeError("err")))
+
+        event = CorrelatedEvent(
+            corr_id        = str(uuid.uuid4()),
+            rule_id        = "test-ti-fallback",
+            rule_name      = "TI Fallback Test",
+            event_action   = "port_scan_detected",
+            severity       = "warning",
+            group_value    = "172.16.0.50",
+            matched_count  = 5,
+            window_seconds = 60,
+            first_seen     = datetime.now(timezone.utc),
+            last_seen      = datetime.now(timezone.utc),
+            message        = "Test",
+        )
+
+        correlator = Correlator.__new__(Correlator)
+        correlator._create_incident_from_corr(event)
+
+        incidents = pipeline_db.get_incidents(limit=10)
+        inc = next((i for i in incidents if i["group_value"] == "172.16.0.50"), None)
+        assert inc is not None
+        expected = compute_priority_score("warning", 0)
+        assert inc["priority_score"] == expected
+
+
+class TestCriticalFix5UpdateLogHostnamesSilentFail:
+    """CRITICAL #5 — update_log_hostnames() var olmayan log_id'de hata vermemeli."""
+
+    def test_nonexistent_log_id_no_exception(self, pipeline_db):
+        pipeline_db.update_log_hostnames(
+            log_id   = "nonexistent-log-id-00000",
+            src_host = "fake-host.local",
+            dst_host = None,
+        )
+
+    def test_existing_log_id_updates_hostname(self, pipeline_db):
+        log = _norm_log("ssh_failure", "10.0.0.5")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        pipeline_db.update_log_hostnames(
+            log_id   = log.log_id,
+            src_host = "attacker.example.com",
+            dst_host = "server.internal",
+        )
+
+        logs = pipeline_db.get_normalized_logs(limit=50)
+        updated = next((l for l in logs if l.log_id == log.log_id), None)
+        assert updated is not None
+        assert updated.source_hostname == "attacker.example.com"
+        assert updated.destination_hostname == "server.internal"
+
+    def test_partial_hostname_update(self, pipeline_db):
+        """Sadece src_host güncellenince dst_host None kalmalı."""
+        log = _norm_log("dns_query", "10.0.0.6")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        pipeline_db.update_log_hostnames(
+            log_id   = log.log_id,
+            src_host = "client.local",
+            dst_host = None,
+        )
+
+        logs = pipeline_db.get_normalized_logs(limit=50)
+        updated = next((l for l in logs if l.log_id == log.log_id), None)
+        assert updated is not None
+        assert updated.source_hostname == "client.local"
