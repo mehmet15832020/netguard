@@ -6,6 +6,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 from server.main import app
+import server.routes.correlation as _corr_route
 
 client = TestClient(app)
 
@@ -39,7 +40,11 @@ class TestCorrelationRoutes:
         assert r.status_code == 200
         assert "events" in r.json()
 
-    def test_update_rules_requires_admin(self, admin_token):
+    def test_update_rules_requires_admin(self, admin_token, tmp_path, monkeypatch):
+        """PUT /correlation/rules gerçek config dosyası yerine tmp dosyaya yazar."""
+        tmp_rules = tmp_path / "rules.json"
+        tmp_rules.write_text("[]")
+        monkeypatch.setattr(_corr_route, "RULES_PATH", str(tmp_rules))
         r = client.put(
             "/api/v1/correlation/rules",
             json={"rules": [VALID_RULE]},
@@ -50,7 +55,10 @@ class TestCorrelationRoutes:
         assert data["saved"] == 1
         assert data["loaded"] >= 1
 
-    def test_update_rules_rejects_missing_field(self, admin_token):
+    def test_update_rules_rejects_missing_field(self, admin_token, tmp_path, monkeypatch):
+        tmp_rules = tmp_path / "rules.json"
+        tmp_rules.write_text("[]")
+        monkeypatch.setattr(_corr_route, "RULES_PATH", str(tmp_rules))
         bad_rule = {k: v for k, v in VALID_RULE.items() if k != "output_event_type"}
         r = client.put(
             "/api/v1/correlation/rules",
