@@ -67,13 +67,13 @@ def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSumma
             log_id      = str(uuid.uuid4()),
             raw_id      = str(uuid.uuid4()),
             source_type = LogSourceType.NETGUARD,
-            source_host = hostname,
+            observer_hostname = hostname,
             timestamp   = summary.captured_at,
             received_at = now,
             severity    = severity,
-            category    = LogCategory.NETWORK,
-            event_type  = "suspicious_traffic",
-            src_ip      = summary.top_src_ips[0] if summary.top_src_ips else None,
+            event_category    = LogCategory.NETWORK,
+            event_action  = "suspicious_traffic",
+            source_ip      = summary.top_src_ips[0] if summary.top_src_ips else None,
             message     = (
                 f"{hostname}: {summary.suspicious_packet_count} şüpheli paket "
                 f"({summary.interface}, {summary.duration_sec:.0f}s)"
@@ -87,15 +87,15 @@ def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSumma
         )
 
         try:
-            for src_ip in summary.top_src_ips[:3]:
+            for source_ip in summary.top_src_ips[:3]:
                 trigger = attack_chain_tracker.record(
-                    src_ip=src_ip,
-                    event_type="port_scan",
+                    source_ip=source_ip,
+                    event_action="port_scan",
                     occurred_at=summary.captured_at,
                 )
                 if trigger:
                     chain_trigger_to_correlated_event(trigger, db_save=True)
-                    logger.warning(f"Kill chain (traffic): {src_ip} — {trigger['chain_type']}")
+                    logger.warning(f"Kill chain (traffic): {source_ip} — {trigger['chain_type']}")
         except Exception as exc:
             logger.debug(f"Kill chain feed hatası: {exc}")
 
@@ -128,7 +128,7 @@ async def receive_metrics(snapshot: MetricSnapshot):
     return {"status": "accepted", "alerts_triggered": len(alerts)}
 
 class SecurityEventItem(BaseModel):
-    event_type: str
+    event_action: str
     severity: str = "warning"
     source_ip: str | None = None
     username: str | None = None
@@ -155,7 +155,7 @@ def receive_security_events(
                 event_id    = str(uuid.uuid4()),
                 agent_id    = agent_id,
                 hostname    = batch.hostname,
-                event_type  = SecurityEventType(ev.event_type),
+                event_action  = SecurityEventType(ev.event_action),
                 severity    = ev.severity,
                 source_ip   = ev.source_ip,
                 username    = ev.username,
@@ -169,8 +169,8 @@ def receive_security_events(
                 try:
                     from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
                     trigger = attack_chain_tracker.record(
-                        src_ip=ev.source_ip,
-                        event_type=ev.event_type,
+                        source_ip=ev.source_ip,
+                        event_action=ev.event_action,
                         occurred_at=event.occurred_at,
                     )
                     if trigger:

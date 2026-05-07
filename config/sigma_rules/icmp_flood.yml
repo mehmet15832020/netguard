@@ -7,8 +7,8 @@ logsource:
     product: netguard
 detection:
     selection:
-        event_type: icmp_flood_attempt
-    condition: selection | count() by src_ip > 3
+        event_action: icmp_flood_attempt
+    condition: selection | count() by source_ip > 3
     timeframe: 1m
 level: medium
 tags:

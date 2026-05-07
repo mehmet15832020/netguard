@@ -1,6 +1,6 @@
 ---
 name: detection-worker
-description: NetGuard detection motoru uzmani. Sigma kurallari, korelasyon kurallari, kill chain dedektörleri, attack_chain.py degisiklikleri icin kullan.
+description: NetGuard tespit katmanı değişiklikleri için çağır: config/sigma_rules/, config/correlation_rules.json, server/correlator.py, server/sigma_parser.py, server/attack_chain.py, server/detectors/. Yeni sigma kuralı, korelasyon kuralı, kill chain aşaması, dedektör (port_scan, lateral, arp, dns, icmp) eklerken kullan. Tespit mantığıyla ilgisi olmayan backend değişikliklerinde backend-worker'ı tercih et.
 tools: Read, Edit, Write, Bash, Glob, Grep
 model: sonnet
 ---

@@ -18,7 +18,7 @@ def _make_chain_event(rule_id="full_attack_chain", severity="critical", group_va
         corr_id       = str(uuid.uuid4()),
         rule_id       = rule_id,
         rule_name     = rule_id.replace("_", " ").title(),
-        event_type    = rule_id + "_detected",
+        event_action    = rule_id + "_detected",
         severity      = severity,
         group_value   = group_value,
         matched_count = 3,
@@ -62,7 +62,7 @@ class TestAttackChainsEndpoints:
         data = resp.json()
         assert data["count"] == 1
         chain = data["chains"][0]
-        assert chain["src_ip"] == "192.168.1.5"
+        assert chain["source_ip"] == "192.168.1.5"
         assert chain["stage_count"] == 3
         assert chain["severity"] == "critical"
         assert chain["chain_type"] == "FULL_ATTACK_CHAIN"

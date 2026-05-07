@@ -8,8 +8,8 @@ logsource:
     service: web
 detection:
     selection:
-        event_type: web_
-    condition: selection | count() by src_ip > 50
+        event_action: web_
+    condition: selection | count() by source_ip > 50
     timeframe: 1m
 level: medium
 tags:

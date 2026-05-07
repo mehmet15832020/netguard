@@ -49,12 +49,12 @@ def test_parse_timeframe_invalid_empty():
 # ------------------------------------------------------------------ #
 
 @pytest.mark.parametrize("condition,expected", [
-    ("selection | count() by src_ip > 5",                          ("src_ip", 5, None)),
-    ("selection | count(src_ip) by src_ip > 5",                    ("src_ip", 5, None)),
-    ("selection | count() by source_host > 3",                     ("source_host", 3, None)),
-    ("selection | count() by src_ip >= 10",                        ("src_ip", 10, None)),
-    ("selection | count(distinct username) by src_ip > 10",        ("src_ip", 10, "username")),
-    ("selection | count(distinct source_host) by src_ip > 3",      ("src_ip", 3, "source_host")),
+    ("selection | count() by source_ip > 5",                          ("source_ip", 5, None)),
+    ("selection | count(source_ip) by source_ip > 5",                    ("source_ip", 5, None)),
+    ("selection | count() by observer_hostname > 3",                     ("observer_hostname", 3, None)),
+    ("selection | count() by source_ip >= 10",                        ("source_ip", 10, None)),
+    ("selection | count(distinct username) by source_ip > 10",        ("source_ip", 10, "username")),
+    ("selection | count(distinct observer_hostname) by source_ip > 3",      ("source_ip", 3, "observer_hostname")),
 ])
 def test_parse_condition_valid(condition, expected):
     assert parse_condition(condition) == expected
@@ -66,7 +66,7 @@ def test_parse_condition_invalid():
 
 
 def test_parse_condition_distinct_sets_distinct_by():
-    _, _, distinct_by = parse_condition("selection | count(distinct username) by src_ip > 5")
+    _, _, distinct_by = parse_condition("selection | count(distinct username) by source_ip > 5")
     assert distinct_by == "username"
 
 
@@ -92,12 +92,12 @@ VALID_SIGMA_YAML = textwrap.dedent("""\
     status: stable
     description: Test kuralı
     logsource:
-        category: authentication
+        event_category: authentication
         product: linux
     detection:
         selection:
-            event_type: ssh_failure
-        condition: selection | count() by src_ip > 5
+            event_action: ssh_failure
+        condition: selection | count() by source_ip > 5
         timeframe: 5m
     level: high
     tags:
@@ -122,7 +122,7 @@ def test_parse_sigma_file_valid():
         assert sigma.rule_id == "ssh_brute_force_test"
         assert sigma.title   == "SSH Brute Force Test"
         assert sigma.level   == "high"
-        assert sigma.detection["selection"]["event_type"] == "ssh_failure"
+        assert sigma.detection["selection"]["event_action"] == "ssh_failure"
     finally:
         path.unlink(missing_ok=True)
 
@@ -139,7 +139,7 @@ def test_parse_sigma_file_missing_required_field():
 
 def test_parse_sigma_file_invalid_condition():
     bad = VALID_SIGMA_YAML.replace(
-        "condition: selection | count() by src_ip > 5",
+        "condition: selection | count() by source_ip > 5",
         "condition: selection"
     )
     path = _write_tmp_yaml(bad)
@@ -178,12 +178,12 @@ def test_sigma_to_correlation_rule():
 
         assert rule.rule_id           == "ssh_brute_force_test"
         assert rule.name              == "SSH Brute Force Test"
-        assert rule.match_event_type  == "ssh_failure"
-        assert rule.group_by          == "src_ip"
+        assert rule.match_event_action  == "ssh_failure"
+        assert rule.group_by          == "source_ip"
         assert rule.window_seconds    == 300
         assert rule.threshold         == 5
         assert rule.severity          == "critical"
-        assert rule.output_event_type == "ssh_brute_force_test_detected"
+        assert rule.output_event_action == "ssh_brute_force_test_detected"
         assert rule.enabled           is True
         assert rule.match_severity    is None
     finally:
@@ -192,8 +192,8 @@ def test_sigma_to_correlation_rule():
 
 def test_sigma_to_correlation_rule_with_severity_filter():
     yaml_with_sev = VALID_SIGMA_YAML.replace(
-        "        event_type: ssh_failure",
-        "        event_type: ssh_failure\n        severity: warning"
+        "        event_action: ssh_failure",
+        "        event_action: ssh_failure\n        severity: warning"
     )
     path = _write_tmp_yaml(yaml_with_sev)
     try:
@@ -285,12 +285,12 @@ def test_windows_rules_load(tmp_path):
         status: stable
         description: Test
         logsource:
-            category: authentication
+            event_category: authentication
             product: windows
         detection:
             selection:
-                event_type: windows_logon_failure
-            condition: selection | count(distinct username) by src_ip > 5
+                event_action: windows_logon_failure
+            condition: selection | count(distinct username) by source_ip > 5
             timeframe: 5m
         level: high
         tags:
@@ -313,15 +313,15 @@ def test_keywords_parsed_from_sigma(tmp_path):
         status: stable
         description: Test
         logsource:
-            category: process_creation
+            event_category: process_creation
             product: windows
         detection:
             selection:
-                event_type: windows_process_create
+                event_action: windows_process_create
                 keywords:
                     - mimikatz
                     - lsass
-            condition: selection | count() by source_host > 1
+            condition: selection | count() by observer_hostname > 1
             timeframe: 5m
         level: critical
         falsepositives: []
@@ -359,7 +359,7 @@ def test_real_windows_sigma_rules_load():
 
 
 def test_web_scan_rule_loads_correctly():
-    """web_scan kuralı doğru parse edilmeli ve prefix match_event_type içermeli."""
+    """web_scan kuralı doğru parse edilmeli ve prefix match_event_action içermeli."""
     sigma_dir = Path(__file__).parent.parent / "config" / "sigma_rules"
     if not sigma_dir.exists():
         pytest.skip("config/sigma_rules/ dizini yok")
@@ -367,10 +367,10 @@ def test_web_scan_rule_loads_correctly():
     rules = load_sigma_rules_from_dir(str(sigma_dir))
     rule = next((r for r in rules if r.rule_id == "web_scan"), None)
     assert rule is not None, "web_scan kuralı yüklenemedi"
-    assert rule.match_event_type == "web_"
+    assert rule.match_event_action == "web_"
     assert rule.threshold == 50
     assert rule.window_seconds == 60
-    assert rule.output_event_type == "web_scan_detected"
+    assert rule.output_event_action == "web_scan_detected"
 
 
 def test_multi_source_attack_rule_loads_correctly():
@@ -382,8 +382,8 @@ def test_multi_source_attack_rule_loads_correctly():
     rules = load_sigma_rules_from_dir(str(sigma_dir))
     rule = next((r for r in rules if r.rule_id == "multi_source_attack"), None)
     assert rule is not None, "multi_source_attack kuralı yüklenemedi"
-    assert rule.match_event_type == ""
+    assert rule.match_event_action == ""
     assert rule.distinct_by == "source_type"
     assert rule.threshold == 2
     assert rule.window_seconds == 300
-    assert rule.output_event_type == "multi_source_attack_detected"
+    assert rule.output_event_action == "multi_source_attack_detected"

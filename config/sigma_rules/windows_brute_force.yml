@@ -10,8 +10,8 @@ logsource:
     service: security
 detection:
     selection:
-        event_type: windows_logon_failure
-    condition: selection | count() by src_ip > 5
+        event_action: windows_logon_failure
+    condition: selection | count() by source_ip > 5
     timeframe: 1m
 level: high
 tags:

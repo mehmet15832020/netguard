@@ -52,7 +52,7 @@ class TestScoreControl:
             title="Test",
             description="Test",
             framework="PCI DSS v4.0",
-            category="Test",
+            event_category="Test",
             netguard_features=["feature_a"],
             check_fn=check_fn,
         )

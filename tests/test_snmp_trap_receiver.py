@@ -44,7 +44,7 @@ class TestSNMPTrapProtocol:
         events = tmp_db.get_security_events(limit=10)
         # get_security_events SecurityEvent nesneleri döndürür
         assert any(
-            (e.event_type.value if hasattr(e.event_type, "value") else e.event_type) == "snmp_trap"
+            (e.event_action.value if hasattr(e.event_action, "value") else e.event_action) == "snmp_trap"
             for e in events
         )
 

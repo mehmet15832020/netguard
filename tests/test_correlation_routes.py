@@ -14,12 +14,12 @@ VALID_RULE = {
     "rule_id": "test_rule",
     "name": "Test Kuralı",
     "description": "Test amaçlı",
-    "match_event_type": "ssh_failure",
-    "group_by": "src_ip",
+    "match_event_action": "ssh_failure",
+    "group_by": "source_ip",
     "window_seconds": 60,
     "threshold": 3,
     "severity": "warning",
-    "output_event_type": "test_detected",
+    "output_event_action": "test_detected",
     "enabled": True,
 }
 
@@ -59,7 +59,7 @@ class TestCorrelationRoutes:
         tmp_rules = tmp_path / "rules.json"
         tmp_rules.write_text("[]")
         monkeypatch.setattr(_corr_route, "RULES_PATH", str(tmp_rules))
-        bad_rule = {k: v for k, v in VALID_RULE.items() if k != "output_event_type"}
+        bad_rule = {k: v for k, v in VALID_RULE.items() if k != "output_event_action"}
         r = client.put(
             "/api/v1/correlation/rules",
             json={"rules": [bad_rule]},

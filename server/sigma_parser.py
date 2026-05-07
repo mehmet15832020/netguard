@@ -8,7 +8,7 @@ Desteklenen SIGMA alt kümesi:
   - Aggregation condition: selection | count() by <field> > <N>
   - Timeframe: Ns / Nm / Nh / Nd
   - Level → severity mapping
-  - selection.event_type → match_event_type
+  - selection.event_action → match_event_action
   - selection.severity → match_severity (opsiyonel)
 """
 
@@ -57,8 +57,8 @@ def parse_timeframe(tf: str) -> int:
 
 def parse_condition(condition: str) -> tuple[str, int, Optional[str]]:
     """
-    'selection | count() by src_ip > 5'              → ('src_ip', 5, None)
-    'selection | count(distinct username) by src_ip > 10' → ('src_ip', 10, 'username')
+    'selection | count() by source_ip > 5'              → ('source_ip', 5, None)
+    'selection | count(distinct username) by source_ip > 10' → ('source_ip', 10, 'username')
     Döner: (group_by_field, threshold, distinct_by_or_None)
     """
     distinct_by: Optional[str] = None
@@ -81,7 +81,7 @@ def sigma_to_correlation_rule(sigma: SigmaRule):
     condition  = detection.get("condition", "")
     timeframe  = str(detection.get("timeframe", "5m"))
 
-    event_type     = selection.get("event_type", "")
+    event_action     = selection.get("event_action", "")
     match_severity = selection.get("severity")
     keywords       = selection.get("keywords") or None
 
@@ -90,18 +90,18 @@ def sigma_to_correlation_rule(sigma: SigmaRule):
     severity       = LEVEL_TO_SEVERITY.get(sigma.level.lower(), "warning")
 
     rule_id_slug       = re.sub(r"[^a-z0-9_]", "_", sigma.rule_id.lower())
-    output_event_type  = f"{rule_id_slug}_detected"
+    output_event_action  = f"{rule_id_slug}_detected"
 
     return CorrelationRule(
         rule_id           = sigma.rule_id,
         name              = sigma.title,
         description       = sigma.description,
-        match_event_type  = event_type,
+        match_event_action  = event_action,
         group_by          = group_by,
         window_seconds    = window_seconds,
         threshold         = threshold,
         severity          = severity,
-        output_event_type = output_event_type,
+        output_event_action = output_event_action,
         enabled           = sigma.enabled,
         match_severity    = match_severity,
         keywords          = keywords,

@@ -63,9 +63,9 @@ class ARPSpoofDetector(BaseDetector):
         self._arp_path  = arp_path
         self._known: dict[str, str] = {}  # {ip: mac} — öğrenilen eşlemeler
         try:
-            self.source_host = socket.gethostname()
+            self.observer_hostname = socket.gethostname()
         except Exception:
-            self.source_host = "localhost"
+            self.observer_hostname = "localhost"
 
     def detect(self) -> list[NormalizedLog]:
         current = _parse_arp_table(self._arp_path)
@@ -76,15 +76,15 @@ class ARPSpoofDetector(BaseDetector):
             if ip in self._known and self._known[ip] != mac:
                 old_mac = self._known[ip]
                 log = self._make_log(
-                    event_type = "arp_spoof_attempt",
+                    event_action = "arp_spoof_attempt",
                     message    = (
                         f"ARP spoofing tespiti: {ip} için MAC değişti "
                         f"{old_mac} → {mac}"
                     ),
-                    category   = LogCategory.NETWORK,
+                    event_category   = LogCategory.NETWORK,
                     severity   = "critical",
-                    src_ip     = ip,
-                    protocol   = "arp",
+                    source_ip     = ip,
+                    network_protocol   = "arp",
                     tags       = ["arp_spoof", "mitm", "network_attack"],
                 )
                 results.append(log)
@@ -98,14 +98,14 @@ class ARPSpoofDetector(BaseDetector):
         for mac, ips in mac_to_ips.items():
             if len(ips) > 1:
                 log = self._make_log(
-                    event_type = "arp_spoof_attempt",
+                    event_action = "arp_spoof_attempt",
                     message    = (
                         f"ARP anomalisi: {mac} MAC adresi birden fazla IP'de: "
                         f"{', '.join(ips)}"
                     ),
-                    category   = LogCategory.NETWORK,
+                    event_category   = LogCategory.NETWORK,
                     severity   = "critical",
-                    protocol   = "arp",
+                    network_protocol   = "arp",
                     tags       = ["arp_spoof", "duplicate_mac", "network_attack"],
                 )
                 results.append(log)

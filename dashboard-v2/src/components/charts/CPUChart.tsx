@@ -17,7 +17,7 @@ export function CPUChart({ snapshots }: CPUChartProps) {
     backgroundColor: 'transparent',
     grid: { top: 16, right: 16, bottom: 32, left: 48, containLabel: false },
     xAxis: {
-      type: 'category',
+      type: 'event_category',
       data: times,
       axisLabel: { color: '#71717a', fontSize: 10 },
       axisLine: { lineStyle: { color: '#3f3f46' } },

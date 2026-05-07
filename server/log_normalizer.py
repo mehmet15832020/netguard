@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 # Her kaynak için ayırt edici regex pattern
 _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     # Suricata EVE JSON formatı
-    (LogSourceType.SURICATA,  re.compile(r'"event_type"\s*:')),
+    (LogSourceType.SURICATA,  re.compile(r'"event_action"\s*:')),
     # Zeek TSV satırı — sekme ile ayrılmış, başında # veya zaman damgası
     (LogSourceType.ZEEK,      re.compile(r'^\d+\.\d+\t')),
     # Wazuh JSON — "rule" ve "agent" alanları içerir (çok satırlı JSON desteklenir)
@@ -75,13 +75,13 @@ def identify_source(raw_content: str) -> LogSourceType:
 _AUTH_FAILED = re.compile(
     r'(?P<month>\w+)\s+(?P<day>\d+)\s+(?P<time>[\d:]+)\s+(?P<host>\S+)\s+'
     r'sshd\[\d+\]:\s+Failed password for (?:invalid user )?(?P<user>\S+) '
-    r'from (?P<src_ip>[\d.]+) port (?P<src_port>\d+)'
+    r'from (?P<source_ip>[\d.]+) port (?P<source_port>\d+)'
 )
 
 _AUTH_SUCCESS = re.compile(
     r'(?P<month>\w+)\s+(?P<day>\d+)\s+(?P<time>[\d:]+)\s+(?P<host>\S+)\s+'
     r'sshd\[\d+\]:\s+Accepted \S+ for (?P<user>\S+) '
-    r'from (?P<src_ip>[\d.]+) port (?P<src_port>\d+)'
+    r'from (?P<source_ip>[\d.]+) port (?P<source_port>\d+)'
 )
 
 _AUTH_SUDO = re.compile(
@@ -106,22 +106,22 @@ def _parse_auth_log_timestamp(month: str, day: str, time_str: str) -> datetime:
     return dt
 
 
-def _parse_auth_log(raw: str, source_host: str) -> Optional[dict]:
+def _parse_auth_log(raw: str, observer_hostname: str) -> Optional[dict]:
     """auth.log satırını parse et."""
     m = _AUTH_FAILED.search(raw)
     if m:
         return dict(
             timestamp  = _parse_auth_log_timestamp(m["month"], m["day"], m["time"]),
             severity   = "warning",
-            category   = LogCategory.AUTHENTICATION,
-            event_type = "ssh_failure",
-            src_ip     = m["src_ip"],
-            src_port   = int(m["src_port"]),
-            dst_ip     = source_host,
-            dst_port   = 22,
-            protocol   = "tcp",
+            event_category   = LogCategory.AUTHENTICATION,
+            event_action = "ssh_failure",
+            source_ip     = m["source_ip"],
+            source_port   = int(m["source_port"]),
+            destination_ip     = observer_hostname,
+            destination_port   = 22,
+            network_protocol   = "tcp",
             username   = m["user"],
-            message    = f"SSH başarısız giriş: {m['user']}@{source_host} ({m['src_ip']})",
+            message    = f"SSH başarısız giriş: {m['user']}@{observer_hostname} ({m['source_ip']})",
             tags       = ["ssh", "failed_login"],
         )
 
@@ -130,15 +130,15 @@ def _parse_auth_log(raw: str, source_host: str) -> Optional[dict]:
         return dict(
             timestamp  = _parse_auth_log_timestamp(m["month"], m["day"], m["time"]),
             severity   = "info",
-            category   = LogCategory.AUTHENTICATION,
-            event_type = "ssh_success",
-            src_ip     = m["src_ip"],
-            src_port   = int(m["src_port"]),
-            dst_ip     = source_host,
-            dst_port   = 22,
-            protocol   = "tcp",
+            event_category   = LogCategory.AUTHENTICATION,
+            event_action = "ssh_success",
+            source_ip     = m["source_ip"],
+            source_port   = int(m["source_port"]),
+            destination_ip     = observer_hostname,
+            destination_port   = 22,
+            network_protocol   = "tcp",
             username   = m["user"],
-            message    = f"SSH başarılı giriş: {m['user']}@{source_host} ({m['src_ip']})",
+            message    = f"SSH başarılı giriş: {m['user']}@{observer_hostname} ({m['source_ip']})",
             tags       = ["ssh", "login_success"],
         )
 
@@ -147,8 +147,8 @@ def _parse_auth_log(raw: str, source_host: str) -> Optional[dict]:
         return dict(
             timestamp  = _parse_auth_log_timestamp(m["month"], m["day"], m["time"]),
             severity   = "warning",
-            category   = LogCategory.SYSTEM,
-            event_type = "sudo_usage",
+            event_category   = LogCategory.SYSTEM,
+            event_action = "sudo_usage",
             username   = m["user"],
             message    = f"Sudo kullanımı: {m['user']} → {m['command'].strip()}",
             tags       = ["sudo", "privilege_escalation"],
@@ -157,49 +157,49 @@ def _parse_auth_log(raw: str, source_host: str) -> Optional[dict]:
     return None
 
 
-def _parse_suricata(raw: str, source_host: str) -> Optional[dict]:
+def _parse_suricata(raw: str, observer_hostname: str) -> Optional[dict]:
     """Suricata EVE JSON formatını parse et."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return None
 
-    event_type = data.get("event_type", "unknown")
+    event_action = data.get("event_action", "unknown")
     timestamp_str = data.get("timestamp", "")
     try:
         ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
     except (ValueError, AttributeError):
         ts = datetime.now(timezone.utc)
 
-    src_ip   = data.get("src_ip")
-    dst_ip   = data.get("dst_ip") or data.get("dest_ip")
-    src_port = data.get("src_port")
-    dst_port = data.get("dest_port")
+    source_ip   = data.get("source_ip")
+    destination_ip   = data.get("destination_ip") or data.get("dest_ip")
+    source_port = data.get("source_port")
+    destination_port = data.get("dest_port")
 
-    if event_type == "alert":
+    if event_action == "alert":
         rule = data.get("alert", {})
         return dict(
             timestamp  = ts,
             severity   = "critical" if rule.get("severity", 3) <= 1 else "warning",
-            category   = LogCategory.INTRUSION,
-            event_type = "suricata_alert",
-            src_ip     = src_ip,
-            dst_ip     = dst_ip,
-            src_port   = src_port,
-            dst_port   = dst_port,
+            event_category   = LogCategory.INTRUSION,
+            event_action = "suricata_alert",
+            source_ip     = source_ip,
+            destination_ip     = destination_ip,
+            source_port   = source_port,
+            destination_port   = destination_port,
             message    = rule.get("signature", "Suricata alert"),
-            tags       = ["suricata", "ids_alert", rule.get("category", "")],
+            tags       = ["suricata", "ids_alert", rule.get("event_category", "")],
         )
 
-    if event_type == "dns":
+    if event_action == "dns":
         dns = data.get("dns", {})
         return dict(
             timestamp  = ts,
             severity   = "info",
-            category   = LogCategory.NETWORK,
-            event_type = "dns_query",
-            src_ip     = src_ip,
-            dst_ip     = dst_ip,
+            event_category   = LogCategory.NETWORK,
+            event_action = "dns_query",
+            source_ip     = source_ip,
+            destination_ip     = destination_ip,
             message    = f"DNS sorgusu: {dns.get('rrname', '')} ({dns.get('rrtype', '')})",
             tags       = ["suricata", "dns"],
         )
@@ -208,18 +208,18 @@ def _parse_suricata(raw: str, source_host: str) -> Optional[dict]:
     return dict(
         timestamp  = ts,
         severity   = "info",
-        category   = LogCategory.NETWORK,
-        event_type = f"suricata_{event_type}",
-        src_ip     = src_ip,
-        dst_ip     = dst_ip,
-        src_port   = src_port,
-        dst_port   = dst_port,
-        message    = f"Suricata {event_type} olayı",
-        tags       = ["suricata", event_type],
+        event_category   = LogCategory.NETWORK,
+        event_action = f"suricata_{event_action}",
+        source_ip     = source_ip,
+        destination_ip     = destination_ip,
+        source_port   = source_port,
+        destination_port   = destination_port,
+        message    = f"Suricata {event_action} olayı",
+        tags       = ["suricata", event_action],
     )
 
 
-def _parse_zeek(raw: str, source_host: str) -> Optional[dict]:
+def _parse_zeek(raw: str, observer_hostname: str) -> Optional[dict]:
     """Zeek TSV conn.log satırını parse et."""
     # Zeek conn.log sütunları: ts uid id.orig_h id.orig_p id.resp_h id.resp_p proto ...
     parts = raw.strip().split("\t")
@@ -231,27 +231,27 @@ def _parse_zeek(raw: str, source_host: str) -> Optional[dict]:
     except (ValueError, IndexError):
         ts = datetime.now(timezone.utc)
 
-    src_ip   = parts[2] if len(parts) > 2 else None
-    src_port = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
-    dst_ip   = parts[4] if len(parts) > 4 else None
-    dst_port = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else None
+    source_ip   = parts[2] if len(parts) > 2 else None
+    source_port = int(parts[3]) if len(parts) > 3 and parts[3].isdigit() else None
+    destination_ip   = parts[4] if len(parts) > 4 else None
+    destination_port = int(parts[5]) if len(parts) > 5 and parts[5].isdigit() else None
     proto    = parts[6] if len(parts) > 6 else "unknown"
 
     return dict(
         timestamp  = ts,
         severity   = "info",
-        category   = LogCategory.NETWORK,
-        event_type = "zeek_connection",
-        src_ip     = src_ip,
-        dst_ip     = dst_ip,
-        src_port   = src_port,
-        dst_port   = dst_port,
-        message    = f"Zeek bağlantı: {src_ip}:{src_port} → {dst_ip}:{dst_port} ({proto})",
+        event_category   = LogCategory.NETWORK,
+        event_action = "zeek_connection",
+        source_ip     = source_ip,
+        destination_ip     = destination_ip,
+        source_port   = source_port,
+        destination_port   = destination_port,
+        message    = f"Zeek bağlantı: {source_ip}:{source_port} → {destination_ip}:{destination_port} ({proto})",
         tags       = ["zeek", "connection", proto],
     )
 
 
-def _parse_wazuh(raw: str, source_host: str) -> Optional[dict]:
+def _parse_wazuh(raw: str, observer_hostname: str) -> Optional[dict]:
     """Wazuh JSON alert formatını parse et."""
     try:
         data = json.loads(raw)
@@ -274,23 +274,23 @@ def _parse_wazuh(raw: str, source_host: str) -> Optional[dict]:
     return dict(
         timestamp  = ts,
         severity   = severity,
-        category   = LogCategory.SYSTEM,
-        event_type = f"wazuh_rule_{rule.get('id', 'unknown')}",
-        src_ip     = data.get("srcip"),
+        event_category   = LogCategory.SYSTEM,
+        event_action = f"wazuh_rule_{rule.get('id', 'unknown')}",
+        source_ip     = data.get("srcip"),
         username   = data.get("srcuser"),
         message    = rule.get("description", full_log[:200]),
         tags       = ["wazuh"] + rule.get("groups", []),
     )
 
 
-def _parse_syslog(raw: str, source_host: str) -> Optional[dict]:
+def _parse_syslog(raw: str, observer_hostname: str) -> Optional[dict]:
     """Genel syslog satırını parse et — bilinen bir format bulunamazsa."""
     return dict(
         timestamp  = datetime.now(timezone.utc),
         severity   = "info",
-        category   = LogCategory.SYSTEM,
-        event_type = "syslog",
-        src_ip     = source_host,
+        event_category   = LogCategory.SYSTEM,
+        event_action = "syslog",
+        source_ip     = observer_hostname,
         message    = raw[:500],
         tags       = ["syslog"],
     )
@@ -301,7 +301,7 @@ _COMBINED_IP_RE = re.compile(r'(\d{1,3}(?:\.\d{1,3}){3}\s+-\s+\S+\s+\[)')
 _NGINX_ERROR_START_RE = re.compile(r'(\d{4}/\d{2}/\d{2}\s+\d{2}:\d{2}:\d{2})')
 
 
-def _parse_web_log(raw: str, source_host: str) -> Optional[dict]:
+def _parse_web_log(raw: str, observer_hostname: str) -> Optional[dict]:
     """nginx access/error log satırını parse et — syslog başlığını soyarak."""
     m = _COMBINED_IP_RE.search(raw)
     if m:
@@ -310,26 +310,26 @@ def _parse_web_log(raw: str, source_host: str) -> Optional[dict]:
         m2 = _NGINX_ERROR_START_RE.search(raw)
         line = raw[m2.start():] if m2 else raw
 
-    norm = _web_detect_and_parse(line, source_host)
+    norm = _web_detect_and_parse(line, observer_hostname)
     if norm is None:
         return None
     return {
         "timestamp":  norm.timestamp,
         "severity":   norm.severity,
-        "category":   norm.category,
-        "event_type": norm.event_type,
-        "src_ip":     norm.src_ip,
-        "dst_ip":     norm.dst_ip,
-        "src_port":   norm.src_port,
-        "dst_port":   norm.dst_port,
-        "protocol":   norm.protocol,
+        "event_category":   norm.event_category,
+        "event_action": norm.event_action,
+        "source_ip":     norm.source_ip,
+        "destination_ip":     norm.destination_ip,
+        "source_port":   norm.source_port,
+        "destination_port":   norm.destination_port,
+        "network_protocol":   norm.network_protocol,
         "message":    norm.message,
         "tags":       list(norm.tags),
         "extra":      dict(norm.extra),
     }
 
 
-def _parse_firewall(raw: str, source_host: str) -> Optional[dict]:
+def _parse_firewall(raw: str, observer_hostname: str) -> Optional[dict]:
     """Firewall log satırını parsers.firewall modülüyle işle."""
     norm = _fw_detect_and_parse(raw)
     if norm is None:
@@ -337,13 +337,13 @@ def _parse_firewall(raw: str, source_host: str) -> Optional[dict]:
     return {
         "timestamp": norm.timestamp,
         "severity":  norm.severity,
-        "category":  norm.category,
-        "event_type": norm.event_type,
-        "src_ip":    norm.src_ip,
-        "dst_ip":    norm.dst_ip,
-        "src_port":  norm.src_port,
-        "dst_port":  norm.dst_port,
-        "protocol":  norm.protocol,
+        "event_category":  norm.event_category,
+        "event_action": norm.event_action,
+        "source_ip":    norm.source_ip,
+        "destination_ip":    norm.destination_ip,
+        "source_port":  norm.source_port,
+        "destination_port":  norm.destination_port,
+        "network_protocol":  norm.network_protocol,
         "message":   norm.message,
         "tags":      list(norm.tags),
         "extra":     dict(norm.extra),
@@ -370,7 +370,7 @@ _PARSERS = {
 #  Ana normalize fonksiyonu
 # ------------------------------------------------------------------ #
 
-def normalize(raw_content: str, source_host: str) -> Optional[NormalizedLog]:
+def normalize(raw_content: str, observer_hostname: str) -> Optional[NormalizedLog]:
     """
     Ham log içeriğini alır, kaynağı tespit eder, parse eder,
     NormalizedLog döndürür.
@@ -378,10 +378,10 @@ def normalize(raw_content: str, source_host: str) -> Optional[NormalizedLog]:
     """
     source_type = identify_source(raw_content)
     parser = _PARSERS.get(source_type, _parse_syslog)
-    parsed = parser(raw_content, source_host)
+    parsed = parser(raw_content, observer_hostname)
 
     if parsed is None:
-        logger.debug(f"Parse başarısız: {source_host} / {source_type.value}")
+        logger.debug(f"Parse başarısız: {observer_hostname} / {source_type.value}")
         return None
 
     # Log timestamp doğrulaması
@@ -391,19 +391,19 @@ def normalize(raw_content: str, source_host: str) -> Optional[NormalizedLog]:
         valid, reason = ntp_validator.validate_log_timestamp(ts)
         if not valid:
             tags.append(f"timestamp_anomaly:{reason}")
-            logger.warning(f"Log timestamp anomalisi ({source_host}): {reason}")
+            logger.warning(f"Log timestamp anomalisi ({observer_hostname}): {reason}")
     parsed["tags"] = tags
 
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
         raw_id      = "",           # Çağıran tarafından doldurulur
         source_type = source_type,
-        source_host = source_host,
+        observer_hostname = observer_hostname,
         **parsed,
     )
 
 
-def process_and_store(raw_content: str, source_host: str) -> Optional[NormalizedLog]:
+def process_and_store(raw_content: str, observer_hostname: str) -> Optional[NormalizedLog]:
     """
     Ham logu al → normalize et → ikisini de DB'ye yaz.
     Dışarıdan çağrılacak ana fonksiyon budur.
@@ -415,13 +415,13 @@ def process_and_store(raw_content: str, source_host: str) -> Optional[Normalized
     raw = RawLog(
         raw_id      = raw_id,
         source_type = source_type,
-        source_host = source_host,
+        observer_hostname = observer_hostname,
         raw_content = raw_content,
     )
     db.save_raw_log(raw)
 
     # 2. Normalize et
-    norm = normalize(raw_content, source_host)
+    norm = normalize(raw_content, observer_hostname)
     if norm is None:
         db.mark_raw_parse_failed(raw_id)
         return None
@@ -434,5 +434,5 @@ def process_and_store(raw_content: str, source_host: str) -> Optional[Normalized
     # 4. Ham logu normalize edildi olarak işaretle
     db.mark_raw_normalized(raw_id, norm.log_id)
 
-    logger.info(f"Log normalize edildi: {source_host} / {source_type.value} / {norm.event_type}")
+    logger.info(f"Log normalize edildi: {observer_hostname} / {source_type.value} / {norm.event_action}")
     return norm

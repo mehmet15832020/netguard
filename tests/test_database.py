@@ -56,7 +56,7 @@ def _make_event(**kwargs) -> SecurityEvent:
         event_id    = str(uuid.uuid4()),
         agent_id    = "agent-test",
         hostname    = "testhost",
-        event_type  = SecurityEventType.SSH_FAILURE,
+        event_action  = SecurityEventType.SSH_FAILURE,
         severity    = "warning",
         source_ip   = "10.0.0.1",
         username    = "root",
@@ -137,10 +137,10 @@ class TestSecurityEvents:
         assert len(db_manager.get_security_events()) == 1
 
     def test_filter_by_type(self, db_manager):
-        db_manager.save_security_event(_make_event(event_type=SecurityEventType.SSH_FAILURE))
-        db_manager.save_security_event(_make_event(event_type=SecurityEventType.SUDO_USAGE))
+        db_manager.save_security_event(_make_event(event_action=SecurityEventType.SSH_FAILURE))
+        db_manager.save_security_event(_make_event(event_action=SecurityEventType.SUDO_USAGE))
 
-        failures = db_manager.get_security_events(event_type="ssh_failure")
+        failures = db_manager.get_security_events(event_action="ssh_failure")
         assert len(failures) == 1
 
     def test_filter_by_ip(self, db_manager):
@@ -240,7 +240,7 @@ class TestPortMonitor:
         pm.check("agent-1")  # baseline
         events = pm.check("agent-1")
         assert len(events) == 1
-        assert events[0].event_type == SecurityEventType.PORT_OPENED
+        assert events[0].event_action == SecurityEventType.PORT_OPENED
         assert "9999" in events[0].message
 
     def test_closed_port_detected(self, monkeypatch, monkeypatch_db):
@@ -257,7 +257,7 @@ class TestPortMonitor:
         pm.check("agent-1")
         events = pm.check("agent-1")
         assert len(events) == 1
-        assert events[0].event_type == SecurityEventType.PORT_CLOSED
+        assert events[0].event_action == SecurityEventType.PORT_CLOSED
 
 
 # ------------------------------------------------------------------ #
@@ -283,7 +283,7 @@ class TestConfigMonitor:
         watched.write_text("modified content")
         events = cm.check("agent-1")
         assert len(events) == 1
-        assert events[0].event_type == SecurityEventType.CHECKSUM_CHANGED
+        assert events[0].event_action == SecurityEventType.CHECKSUM_CHANGED
 
     def test_no_change_no_event(self, tmp_path):
         watched = tmp_path / "test.conf"

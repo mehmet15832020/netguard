@@ -39,7 +39,7 @@ class PortScanDetector(BaseDetector):
     Arka planda tshark ile SYN paketlerini dinler.
     detect() çağrıldığında biriken veriyi değerlendirir.
 
-    _history: {src_ip: [(timestamp, dst_port), ...]}
+    _history: {source_ip: [(timestamp, destination_port), ...]}
     """
 
     name = "port_scan"
@@ -55,9 +55,9 @@ class PortScanDetector(BaseDetector):
         self._alerted: set[str] = set()
         self._lock = threading.Lock()
         try:
-            self.source_host = socket.gethostname()
+            self.observer_hostname = socket.gethostname()
         except Exception:
-            self.source_host = "localhost"
+            self.observer_hostname = "localhost"
         self._start_sniffer()
 
     def _start_sniffer(self) -> None:
@@ -87,11 +87,11 @@ class PortScanDetector(BaseDetector):
         try:
             for packet in capture.sniff_continuously():
                 try:
-                    src_ip   = packet.ip.src
-                    dst_port = int(packet.tcp.dstport)
+                    source_ip   = packet.ip.src
+                    destination_port = int(packet.tcp.dstport)
                     now      = time.monotonic()
                     with self._lock:
-                        self._history[src_ip].append((now, dst_port))
+                        self._history[source_ip].append((now, destination_port))
                 except AttributeError:
                     pass  # IP veya TCP katmanı yoksa atla
         except Exception as exc:
@@ -114,30 +114,30 @@ class PortScanDetector(BaseDetector):
             snapshot = {ip: list(entries) for ip, entries in self._history.items()}
 
         results = []
-        for src_ip, entries in snapshot.items():
+        for source_ip, entries in snapshot.items():
             unique_ports = {p for _, p in entries}
-            if len(unique_ports) >= self._threshold and src_ip not in self._alerted:
+            if len(unique_ports) >= self._threshold and source_ip not in self._alerted:
                 with self._lock:
-                    self._alerted.add(src_ip)
+                    self._alerted.add(source_ip)
                 sorted_ports = sorted(unique_ports)
                 log = self._make_log(
-                    event_type = "port_scan_attempt",
+                    event_action = "port_scan_attempt",
                     message    = (
-                        f"Port tarama tespiti: {src_ip} → "
+                        f"Port tarama tespiti: {source_ip} → "
                         f"{len(unique_ports)} farklı port / {self._window}s "
                         f"(eşik: {self._threshold}) | "
                         f"Portlar: {sorted_ports[:10]}"
                         f"{'...' if len(sorted_ports) > 10 else ''}"
                     ),
-                    category = LogCategory.NETWORK,
+                    event_category = LogCategory.NETWORK,
                     severity = "warning",
-                    src_ip   = src_ip,
-                    protocol = "tcp",
+                    source_ip   = source_ip,
+                    network_protocol = "tcp",
                     tags     = ["port_scan", "network_attack"],
                 )
                 results.append(log)
                 logger.warning(
-                    f"PORT TARAMA: {src_ip} — {len(unique_ports)} port / {self._window}s"
+                    f"PORT TARAMA: {source_ip} — {len(unique_ports)} port / {self._window}s"
                 )
 
         return results

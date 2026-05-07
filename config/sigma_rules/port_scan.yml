@@ -7,8 +7,8 @@ logsource:
     product: netguard
 detection:
     selection:
-        event_type: port_scan_attempt
-    condition: selection | count() by src_ip > 0
+        event_action: port_scan_attempt
+    condition: selection | count() by source_ip > 0
     timeframe: 2m
 level: medium
 tags:

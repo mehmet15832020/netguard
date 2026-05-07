@@ -12,11 +12,11 @@ logsource:
     service: security
 detection:
     selection:
-        event_type: windows_logon_success
+        event_action: windows_logon_success
         keywords:
             - NtLmSsP
             - NTLM
-    condition: selection | count() by src_ip > 2
+    condition: selection | count() by source_ip > 2
     timeframe: 5m
 level: critical
 tags:

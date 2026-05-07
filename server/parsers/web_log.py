@@ -60,7 +60,7 @@ def _parse_combined_time(raw: str) -> datetime:
 
 
 def _status_to_event(status: int) -> tuple[str, str]:
-    """(event_type, severity)"""
+    """(event_action, severity)"""
     if status in (401, 403):
         return "web_auth_fail", "warning"
     if 400 <= status < 500:
@@ -72,36 +72,36 @@ def _status_to_event(status: int) -> tuple[str, str]:
 
 def _make_log(
     source_type: LogSourceType,
-    source_host: str,
-    event_type: str,
+    observer_hostname: str,
+    event_action: str,
     severity: str,
     message: str,
     raw_content: str,
     timestamp: Optional[datetime] = None,
-    src_ip: Optional[str] = None,
+    source_ip: Optional[str] = None,
     username: Optional[str] = None,
-    protocol: Optional[str] = None,
+    network_protocol: Optional[str] = None,
     extra: Optional[dict] = None,
 ) -> NormalizedLog:
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
         raw_id      = str(uuid.uuid4()),
         source_type = source_type,
-        source_host = source_host,
+        observer_hostname = observer_hostname,
         timestamp   = timestamp or datetime.now(timezone.utc),
         severity    = severity,
-        category    = LogCategory.NETWORK,
-        event_type  = event_type,
-        src_ip      = src_ip,
+        event_category    = LogCategory.NETWORK,
+        event_action  = event_action,
+        source_ip      = source_ip,
         username    = None if username in (None, "-") else username,
-        protocol    = protocol,
+        network_protocol    = network_protocol,
         message     = message,
         tags        = [],
         extra       = extra or {},
     )
 
 
-def parse_access_log(line: str, source_host: str = "webserver") -> Optional[NormalizedLog]:
+def parse_access_log(line: str, observer_hostname: str = "webserver") -> Optional[NormalizedLog]:
     """nginx veya Apache Combined Log Format access satırı."""
     m = _COMBINED_RE.match(line)
     if not m:
@@ -118,20 +118,20 @@ def parse_access_log(line: str, source_host: str = "webserver") -> Optional[Norm
     referer  = m.group("referer") or ""
     ts       = _parse_combined_time(raw_time)
 
-    event_type, severity = _status_to_event(status)
+    event_action, severity = _status_to_event(status)
     msg = f'{method} {path} → {status}'
 
     return _make_log(
         source_type = LogSourceType.NGINX,
-        source_host = source_host,
-        event_type  = event_type,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
         severity    = severity,
         message     = msg,
         raw_content = line,
         timestamp   = ts,
-        src_ip      = ip,
+        source_ip      = ip,
         username    = user,
-        protocol    = proto.split("/")[0].lower() if "/" in proto else proto.lower(),
+        network_protocol    = proto.split("/")[0].lower() if "/" in proto else proto.lower(),
         extra       = {
             "method": method,
             "path": path,
@@ -142,7 +142,7 @@ def parse_access_log(line: str, source_host: str = "webserver") -> Optional[Norm
     )
 
 
-def parse_nginx_error(line: str, source_host: str = "webserver") -> Optional[NormalizedLog]:
+def parse_nginx_error(line: str, observer_hostname: str = "webserver") -> Optional[NormalizedLog]:
     """nginx error log satırı."""
     m = _NGINX_ERROR_RE.match(line)
     if not m:
@@ -162,23 +162,23 @@ def parse_nginx_error(line: str, source_host: str = "webserver") -> Optional[Nor
 
     return _make_log(
         source_type = LogSourceType.NGINX,
-        source_host = source_host,
-        event_type  = "web_error",
+        observer_hostname = observer_hostname,
+        event_action  = "web_error",
         severity    = severity,
         message     = f"nginx [{level}]: {msg_raw}",
         raw_content = line,
         timestamp   = ts,
-        src_ip      = ip,
+        source_ip      = ip,
         extra       = {"level": level, "raw_msg": msg_raw},
     )
 
 
-def detect_and_parse(line: str, source_host: str = "webserver") -> Optional[NormalizedLog]:
+def detect_and_parse(line: str, observer_hostname: str = "webserver") -> Optional[NormalizedLog]:
     """Web log satırını otomatik tespit et ve parse et."""
     stripped = line.strip()
     if not stripped:
         return None
     # nginx error log: yıl/ay/gün formatıyla başlar
     if re.match(r'^\d{4}/\d{2}/\d{2}', stripped):
-        return parse_nginx_error(stripped, source_host)
-    return parse_access_log(stripped, source_host)
+        return parse_nginx_error(stripped, observer_hostname)
+    return parse_access_log(stripped, observer_hostname)

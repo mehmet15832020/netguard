@@ -8,8 +8,8 @@ logsource:
     service: ssh
 detection:
     selection:
-        event_type: ssh_failure
-    condition: selection | count() by src_ip > 5
+        event_action: ssh_failure
+    condition: selection | count() by source_ip > 5
     timeframe: 5m
 level: high
 tags:

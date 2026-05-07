@@ -34,7 +34,7 @@ def _parse_line(line: str) -> Optional[dict]:
     """Tek bir auth.log satırını parse eder. Tanınamazsa None döner."""
     if m := _RE_FAILED.search(line):
         return {
-            "event_type": "ssh_failure",
+            "event_action": "ssh_failure",
             "severity":   "warning",
             "username":   m.group(1),
             "source_ip":  m.group(2),
@@ -44,7 +44,7 @@ def _parse_line(line: str) -> Optional[dict]:
         }
     if m := _RE_ACCEPTED.search(line):
         return {
-            "event_type": "ssh_success",
+            "event_action": "ssh_success",
             "severity":   "info",
             "username":   m.group(1),
             "source_ip":  m.group(2),
@@ -54,7 +54,7 @@ def _parse_line(line: str) -> Optional[dict]:
         }
     if m := _RE_SUDO.search(line):
         return {
-            "event_type": "sudo_usage",
+            "event_action": "sudo_usage",
             "severity":   "info",
             "username":   m.group(1),
             "source_ip":  None,

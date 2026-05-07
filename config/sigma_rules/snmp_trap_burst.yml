@@ -8,8 +8,8 @@ logsource:
     service: snmp
 detection:
     selection:
-        event_type: snmp_trap
-    condition: selection | count() by source_host > 5
+        event_action: snmp_trap
+    condition: selection | count() by observer_hostname > 5
     timeframe: 5m
 level: medium
 tags:

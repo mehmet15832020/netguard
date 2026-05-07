@@ -62,16 +62,16 @@ class TestPfSenseParser:
     def test_block_parsed(self):
         log = parse_pfsense(PFSENSE_BLOCK)
         assert log is not None
-        assert log.event_type == "fw_block"
+        assert log.event_action == "fw_block"
         assert log.severity == "warning"
-        assert log.src_ip == "1.2.3.4"
-        assert log.dst_ip == "192.168.1.1"
-        assert log.src_port == 12345
+        assert log.source_ip == "1.2.3.4"
+        assert log.destination_ip == "192.168.1.1"
+        assert log.source_port == 12345
 
     def test_pass_parsed(self):
         log = parse_pfsense(PFSENSE_PASS)
         assert log is not None
-        assert log.event_type == "fw_allow"
+        assert log.event_action == "fw_allow"
         assert log.severity == "info"
 
     def test_non_pfsense_returns_none(self):
@@ -86,16 +86,16 @@ class TestCiscoASAParser:
     def test_deny_parsed(self):
         log = parse_cisco_asa(ASA_DENY)
         assert log is not None
-        assert log.event_type == "fw_block"
-        assert log.src_ip == "1.2.3.4"
-        assert log.src_port == 80
-        assert log.dst_ip == "192.168.1.1"
-        assert log.dst_port == 443
+        assert log.event_action == "fw_block"
+        assert log.source_ip == "1.2.3.4"
+        assert log.source_port == 80
+        assert log.destination_ip == "192.168.1.1"
+        assert log.destination_port == 443
 
     def test_permit_parsed(self):
         log = parse_cisco_asa(ASA_PERMIT)
         assert log is not None
-        assert log.event_type == "fw_allow"
+        assert log.event_action == "fw_allow"
 
     def test_severity_from_level(self):
         log = parse_cisco_asa(ASA_DENY)
@@ -109,19 +109,19 @@ class TestFortiGateParser:
     def test_deny_parsed(self):
         log = parse_fortigate(FORTI_DENY)
         assert log is not None
-        assert log.event_type == "fw_block"
-        assert log.src_ip == "5.6.7.8"
-        assert log.dst_port == 443
+        assert log.event_action == "fw_block"
+        assert log.source_ip == "5.6.7.8"
+        assert log.destination_port == 443
         assert log.severity == "warning"
 
     def test_allow_parsed(self):
         log = parse_fortigate(FORTI_ALLOW)
         assert log is not None
-        assert log.event_type == "fw_allow"
+        assert log.event_action == "fw_allow"
 
     def test_devname_as_source_host(self):
         log = parse_fortigate(FORTI_DENY)
-        assert log.source_host == "FGT"
+        assert log.observer_hostname == "FGT"
 
     def test_non_forti_returns_none(self):
         assert parse_fortigate("random line") is None
@@ -131,19 +131,19 @@ class TestOPNsenseParser:
     def test_block_parsed(self):
         log = parse_opnsense(OPNSENSE_BLOCK)
         assert log is not None
-        assert log.event_type == "fw_block"
+        assert log.event_action == "fw_block"
         assert log.severity == "warning"
-        assert log.src_ip == "1.2.3.4"
-        assert log.dst_ip == "10.0.30.1"
-        assert log.src_port == 54321
-        assert log.dst_port == 53
+        assert log.source_ip == "1.2.3.4"
+        assert log.destination_ip == "10.0.30.1"
+        assert log.source_port == 54321
+        assert log.destination_port == 53
 
     def test_pass_parsed(self):
         log = parse_opnsense(OPNSENSE_PASS)
         assert log is not None
-        assert log.event_type == "fw_allow"
+        assert log.event_action == "fw_allow"
         assert log.severity == "info"
-        assert log.dst_port == 443
+        assert log.destination_port == 443
 
     def test_source_type_is_opnsense(self):
         log = parse_opnsense(OPNSENSE_BLOCK)
@@ -151,7 +151,7 @@ class TestOPNsenseParser:
 
     def test_source_host_extracted(self):
         log = parse_opnsense(OPNSENSE_BLOCK)
-        assert log.source_host == "OPNsense"
+        assert log.observer_hostname == "OPNsense"
 
     def test_non_opnsense_returns_none(self):
         assert parse_opnsense("Apr 24 10:00:01 pfsense filterlog: 5,,,123,em0") is None
@@ -161,20 +161,20 @@ class TestVyOSParser:
     def test_drop_parsed(self):
         log = parse_vyos(VYOS_DROP)
         assert log is not None
-        assert log.event_type == "fw_block"
+        assert log.event_action == "fw_block"
         assert log.severity == "warning"
-        assert log.src_ip == "10.0.30.1"
-        assert log.dst_ip == "192.168.1.1"
-        assert log.src_port == 12345
-        assert log.dst_port == 443
+        assert log.source_ip == "10.0.30.1"
+        assert log.destination_ip == "192.168.1.1"
+        assert log.source_port == 12345
+        assert log.destination_port == 443
 
     def test_accept_parsed(self):
         log = parse_vyos(VYOS_ACCEPT)
         assert log is not None
-        assert log.event_type == "fw_allow"
+        assert log.event_action == "fw_allow"
         assert log.severity == "info"
-        assert log.src_ip == "10.0.10.2"
-        assert log.dst_port == 53
+        assert log.source_ip == "10.0.10.2"
+        assert log.destination_port == 53
 
     def test_source_type_is_vyos(self):
         log = parse_vyos(VYOS_DROP)
@@ -182,9 +182,9 @@ class TestVyOSParser:
 
     def test_protocol_extracted(self):
         log = parse_vyos(VYOS_DROP)
-        assert log.protocol == "tcp"
+        assert log.network_protocol == "tcp"
         log2 = parse_vyos(VYOS_ACCEPT)
-        assert log2.protocol == "udp"
+        assert log2.network_protocol == "udp"
 
     def test_non_vyos_returns_none(self):
         assert parse_vyos("random syslog line without SRC DST") is None

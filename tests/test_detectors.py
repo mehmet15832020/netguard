@@ -29,13 +29,13 @@ class TestPortScanDetector:
         with patch.object(PortScanDetector, "_start_sniffer", return_value=None):
             return PortScanDetector(threshold=threshold, window_seconds=window)
 
-    def _inject(self, detector, src_ip: str, ports: list[int], age: float = 0.0):
+    def _inject(self, detector, source_ip: str, ports: list[int], age: float = 0.0):
         """_history'e sahte SYN kayıtları ekle. age=0 → şu an, age>0 → X saniye önce."""
         import time
         now = time.monotonic()
         with detector._lock:
             for port in ports:
-                detector._history[src_ip].append((now - age, port))
+                detector._history[source_ip].append((now - age, port))
 
     def test_no_alert_below_threshold(self):
         detector = self._make_detector(threshold=10)
@@ -47,8 +47,8 @@ class TestPortScanDetector:
         self._inject(detector, "1.2.3.4", list(range(10)))
         logs = detector.detect()
         assert len(logs) == 1
-        assert logs[0].event_type == "port_scan_attempt"
-        assert logs[0].src_ip == "1.2.3.4"
+        assert logs[0].event_action == "port_scan_attempt"
+        assert logs[0].source_ip == "1.2.3.4"
 
     def test_multiple_ips_tracked_independently(self):
         detector = self._make_detector(threshold=5)
@@ -56,7 +56,7 @@ class TestPortScanDetector:
         self._inject(detector, "2.2.2.2", list(range(3)))  # eşiğin altında
         logs = detector.detect()
         assert len(logs) == 1
-        assert logs[0].src_ip == "1.1.1.1"
+        assert logs[0].source_ip == "1.1.1.1"
 
     def test_old_entries_outside_window_ignored(self):
         detector = self._make_detector(threshold=5, window=30)
@@ -79,7 +79,7 @@ class TestPortScanDetector:
         logs = detector.detect()
         assert len(logs) == 1
         log = logs[0]
-        assert log.category == LogCategory.NETWORK
+        assert log.event_category == LogCategory.NETWORK
         assert log.severity == "warning"
         assert "port_scan" in log.tags
         assert "5.5.5.5" in log.message
@@ -88,7 +88,7 @@ class TestPortScanDetector:
         detector = self._make_detector(threshold=3)
         self._inject(detector, "6.6.6.6", [22, 80, 443])
         log = detector.detect()[0]
-        assert log.protocol == "tcp"
+        assert log.network_protocol == "tcp"
 
 
 # ------------------------------------------------------------------ #
@@ -139,7 +139,7 @@ class TestARPSpoofDetector:
         assert len(logs) >= 1
         mac_change_logs = [l for l in logs if "spoofing" in l.message.lower() or "değişti" in l.message]
         assert len(mac_change_logs) >= 1
-        assert logs[0].event_type == "arp_spoof_attempt"
+        assert logs[0].event_action == "arp_spoof_attempt"
         assert logs[0].severity == "critical"
 
     def test_alert_on_duplicate_mac(self, tmp_path):
@@ -181,7 +181,7 @@ class TestARPSpoofDetector:
         arp_file.write_text(ARP_TABLE_CHANGED_MAC)
         logs = detector.detect()
         assert len(logs) >= 1
-        assert logs[0].protocol == "arp"
+        assert logs[0].network_protocol == "arp"
 
 
 # ------------------------------------------------------------------ #
@@ -241,7 +241,7 @@ class TestICMPFloodDetector:
         logs = detector.detect()
 
         assert len(logs) == 1
-        assert logs[0].event_type == "icmp_flood_attempt"
+        assert logs[0].event_action == "icmp_flood_attempt"
         assert logs[0].severity == "critical"
         assert "icmp_flood" in logs[0].tags
 
@@ -255,7 +255,7 @@ class TestICMPFloodDetector:
         detector._prev_time -= 1.0
         logs = detector.detect()
         assert len(logs) == 1
-        assert logs[0].protocol == "icmp"
+        assert logs[0].network_protocol == "icmp"
 
     def test_missing_snmp_file_returns_empty(self):
         from server.detectors.icmp_flood import ICMPFloodDetector
@@ -269,9 +269,9 @@ class TestICMPFloodDetector:
 # ------------------------------------------------------------------ #
 
 class TestDNSAnomalyDetector:
-    def _make_dns_conn(self, src_ip: str):
+    def _make_dns_conn(self, source_ip: str):
         conn = MagicMock()
-        conn.laddr = MagicMock(ip=src_ip, port=54321)
+        conn.laddr = MagicMock(ip=source_ip, port=54321)
         conn.raddr = MagicMock(ip="8.8.8.8", port=53)
         return conn
 
@@ -293,9 +293,9 @@ class TestDNSAnomalyDetector:
             logs = detector.detect()
 
         assert len(logs) == 1
-        assert logs[0].event_type == "dns_query_burst"
-        assert logs[0].src_ip == "10.0.0.1"
-        assert logs[0].dst_port == 53
+        assert logs[0].event_action == "dns_query_burst"
+        assert logs[0].source_ip == "10.0.0.1"
+        assert logs[0].destination_port == 53
 
     def test_multiple_sources_tracked(self):
         from server.detectors.dns_anomaly import DNSAnomalyDetector
@@ -309,7 +309,7 @@ class TestDNSAnomalyDetector:
             logs = detector.detect()
 
         assert len(logs) == 2
-        ips = {l.src_ip for l in logs}
+        ips = {l.source_ip for l in logs}
         assert "10.0.0.1" in ips
         assert "10.0.0.2" in ips
 
@@ -336,11 +336,11 @@ class TestDetectorManager:
         mock_log = NormalizedLog(
             log_id="test", raw_id="raw",
             source_type=LogSourceType.NETGUARD,
-            source_host="host",
+            observer_hostname="host",
             timestamp=__import__('datetime').datetime.now(__import__('datetime').timezone.utc),
             severity="warning",
-            category=LogCategory.NETWORK,
-            event_type="test_event",
+            event_category=LogCategory.NETWORK,
+            event_action="test_event",
             message="test",
         )
 
@@ -389,13 +389,13 @@ class TestLateralMovementDetector:
         with patch.object(LateralMovementDetector, "_start_sniffer", return_value=None):
             return LateralMovementDetector(threshold=threshold, window_seconds=window)
 
-    def _inject(self, detector, src_ip: str, targets: list[tuple[str, int]], age: float = 0.0):
+    def _inject(self, detector, source_ip: str, targets: list[tuple[str, int]], age: float = 0.0):
         """_history'e sahte iç→iç SYN kayıtları ekle."""
         import time
         now = time.monotonic()
         with detector._lock:
-            for dst_ip, dst_port in targets:
-                detector._history[src_ip].append((now - age, dst_ip, dst_port))
+            for destination_ip, destination_port in targets:
+                detector._history[source_ip].append((now - age, destination_ip, destination_port))
 
     def test_no_alert_below_threshold(self):
         detector = self._make_detector(threshold=3)
@@ -411,8 +411,8 @@ class TestLateralMovementDetector:
         ])
         logs = detector.detect()
         assert len(logs) == 1
-        assert logs[0].event_type == "lateral_movement"
-        assert logs[0].src_ip == "192.168.1.10"
+        assert logs[0].event_action == "lateral_movement"
+        assert logs[0].source_ip == "192.168.1.10"
 
     def test_same_host_repeated_does_not_count_extra(self):
         detector = self._make_detector(threshold=3)
@@ -448,7 +448,7 @@ class TestLateralMovementDetector:
         assert len(logs) == 1
         log = logs[0]
         assert log.severity == "critical"
-        assert log.category == LogCategory.INTRUSION
+        assert log.event_category == LogCategory.INTRUSION
         assert "lateral_movement" in log.tags
         assert "192.168.1.40" in log.message
 
@@ -458,8 +458,8 @@ class TestLateralMovementDetector:
             ("192.168.1.7", 22), ("192.168.1.8", 445),
         ])
         log = detector.detect()[0]
-        assert log.protocol == "tcp"
-        assert log.dst_ip is not None
+        assert log.network_protocol == "tcp"
+        assert log.destination_ip is not None
 
     def test_multiple_ips_tracked_independently(self):
         detector = self._make_detector(threshold=2)
@@ -473,4 +473,4 @@ class TestLateralMovementDetector:
         ])
         logs = detector.detect()
         assert len(logs) == 1
-        assert logs[0].src_ip == "192.168.1.50"
+        assert logs[0].source_ip == "192.168.1.50"

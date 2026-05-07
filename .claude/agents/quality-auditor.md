@@ -1,6 +1,6 @@
 ---
 name: quality-auditor
-description: NetGuard kalite denetcisi. Kod degisikliklerini endustri standartlarina gore degerlendirir. KOD YAZMAZ, sadece analiz ve rapor uretir.
+description: Tamamlanan bir özelliğin veya modülün kalitesini bağımsız olarak denetlemek için çağır. "Bu profesyonel mi?", "Geçici çözüm var mı?", "Endüstri standardına uygun mu?" sorularında kullan. KOD YAZMAZ — yalnızca bulgularını JSON raporla sunar: severity (critical/high/medium), dosya, satır, sorun, önerilen düzeltme, referans kaynak. Opus modeli kullanır, pahalıdır; rutin geliştirmede değil, önemli modüller tamamlandıktan sonra çağır.
 tools: Read, Bash, Glob, Grep, WebSearch, WebFetch
 model: opus
 ---

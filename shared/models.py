@@ -195,7 +195,7 @@ class SecurityEvent(BaseModel):
     event_id: str = Field(description="Benzersiz olay ID")
     agent_id: str
     hostname: str
-    event_type: SecurityEventType
+    event_action: SecurityEventType
     severity: str = Field(description="info | warning | critical")
     source_ip: Optional[str] = None
     username: Optional[str] = None
@@ -246,7 +246,7 @@ class RawLog(BaseModel):
     """
     raw_id: str = Field(description="Benzersiz ham log ID")
     source_type: Optional[LogSourceType] = None
-    source_host: str = Field(description="Logu gönderen host/IP")
+    observer_hostname: str = Field(description="Logu gönderen host/IP")
     received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     raw_content: str = Field(description="Ham log satırı veya JSON içerik")
     parse_status: ParseStatus = Field(default=ParseStatus.PENDING, description="İşlenme durumu")
@@ -261,17 +261,17 @@ class NormalizedLog(BaseModel):
     log_id: str = Field(description="Benzersiz normalize log ID")
     raw_id: str = Field(description="Kaynak ham log ID")
     source_type: LogSourceType
-    source_host: str
+    observer_hostname: str
     timestamp: datetime = Field(description="Olayın gerçekleştiği zaman (UTC)")
     received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     severity: str = Field(description="info | warning | critical")
-    category: LogCategory
-    event_type: str = Field(description="Spesifik olay tipi, örn: ssh_failure")
-    src_ip: Optional[str] = None
-    dst_ip: Optional[str] = None
-    src_port: Optional[int] = None
-    dst_port: Optional[int] = None
-    protocol: Optional[str] = None
+    event_category: LogCategory
+    event_action: str = Field(description="Spesifik olay tipi, örn: ssh_failure")
+    source_ip: Optional[str] = None
+    destination_ip: Optional[str] = None
+    source_port: Optional[int] = None
+    destination_port: Optional[int] = None
+    network_protocol: Optional[str] = None
     username: Optional[str] = None
     message: str = Field(description="İnsan okunabilir normalize edilmiş mesaj")
     tags: list[str] = Field(default_factory=list, description="Ek etiketler")
@@ -287,7 +287,7 @@ class CorrelatedEvent(BaseModel):
     corr_id: str = Field(description="Benzersiz korelasyon ID")
     rule_id: str = Field(description="Tetikleyen kural ID")
     rule_name: str
-    event_type: str = Field(description="Korelasyon olay tipi, örn: brute_force_detected")
+    event_action: str = Field(description="Korelasyon olay tipi, örn: brute_force_detected")
     severity: str = Field(description="info | warning | critical")
     group_value: str = Field(description="Gruplanma değeri, örn: kaynak IP")
     matched_count: int = Field(ge=1, description="Zaman penceresindeki eşleşen log sayısı")

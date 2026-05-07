@@ -64,7 +64,7 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
     if eid not in _EID_MAP:
         return None
 
-    event_type, severity = _EID_MAP[eid]
+    event_action, severity = _EID_MAP[eid]
     time_str = root.findtext(".//{%s}TimeCreated" % _NS) or ""
     el_time = root.find(".//{%s}TimeCreated" % _NS)
     occurred_at = el_time.get("SystemTime", "") if el_time is not None else ""
@@ -79,11 +79,11 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         if source_ip in ("-", ""):
             source_ip = None
         return {
-            "event_type":  event_type,
+            "event_action":  event_action,
             "severity":    severity,
             "username":    username,
             "source_ip":   source_ip,
-            "source_host": computer,
+            "observer_hostname": computer,
             "message":     f"Windows oturum açma başarısız: kullanıcı={username}",
             "raw_data":    xml_str[:500],
             "occurred_at": occurred_at,
@@ -99,11 +99,11 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         if logon_label in ("service", "batch"):
             return None
         return {
-            "event_type":  event_type,
+            "event_action":  event_action,
             "severity":    severity,
             "username":    username,
             "source_ip":   source_ip,
-            "source_host": computer,
+            "observer_hostname": computer,
             "message":     f"Windows oturum açıldı: kullanıcı={username} tür={logon_label}",
             "raw_data":    xml_str[:500],
             "occurred_at": occurred_at,
@@ -114,11 +114,11 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         process_name = _get_data(root, "NewProcessName")
         cmdline      = _get_data(root, "CommandLine")
         return {
-            "event_type":  event_type,
+            "event_action":  event_action,
             "severity":    severity,
             "username":    subject_user,
             "source_ip":   None,
-            "source_host": computer,
+            "observer_hostname": computer,
             "message":     f"Süreç oluşturuldu: {process_name}",
             "raw_data":    f"EventID=4688 user={subject_user} process={process_name} cmd={cmdline}"[:500],
             "occurred_at": occurred_at,
@@ -130,8 +130,8 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
 def parse_evtx_bytes(data: bytes) -> list[dict]:
     """
     .evtx dosya içeriğini (bytes) parse eder.
-    Her tanınan event için dict döner: event_type, severity, username, source_ip,
-    source_host, message, raw_data, occurred_at.
+    Her tanınan event için dict döner: event_action, severity, username, source_ip,
+    observer_hostname, message, raw_data, occurred_at.
     """
     try:
         from Evtx.Evtx import FileHeader

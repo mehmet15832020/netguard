@@ -67,7 +67,7 @@ class TestParseAuthLog:
     def test_failed_ssh_detected(self):
         lines = [_make_failed_line("root", "192.168.1.100")]
         events, _ = self._run(lines)
-        ssh_failures = [e for e in events if e.event_type == SecurityEventType.SSH_FAILURE]
+        ssh_failures = [e for e in events if e.event_action == SecurityEventType.SSH_FAILURE]
         assert len(ssh_failures) == 1
         assert ssh_failures[0].source_ip == "192.168.1.100"
         assert ssh_failures[0].username == "root"
@@ -77,7 +77,7 @@ class TestParseAuthLog:
         """'invalid user' ifadesi içeren satır da tespit edilmeli."""
         lines = [_make_invalid_user_line("hacker", "10.0.0.5")]
         events, _ = self._run(lines)
-        ssh_failures = [e for e in events if e.event_type == SecurityEventType.SSH_FAILURE]
+        ssh_failures = [e for e in events if e.event_action == SecurityEventType.SSH_FAILURE]
         assert len(ssh_failures) == 1
         assert ssh_failures[0].username == "hacker"
         assert ssh_failures[0].source_ip == "10.0.0.5"
@@ -85,7 +85,7 @@ class TestParseAuthLog:
     def test_accepted_password_detected(self):
         lines = [_make_accepted_line("mehmet", "192.168.1.50")]
         events, _ = self._run(lines)
-        successes = [e for e in events if e.event_type == SecurityEventType.SSH_SUCCESS]
+        successes = [e for e in events if e.event_action == SecurityEventType.SSH_SUCCESS]
         assert len(successes) == 1
         assert successes[0].source_ip == "192.168.1.50"
         assert successes[0].username == "mehmet"
@@ -94,14 +94,14 @@ class TestParseAuthLog:
     def test_accepted_publickey_detected(self):
         lines = [_make_publickey_line("admin", "192.168.1.51")]
         events, _ = self._run(lines)
-        successes = [e for e in events if e.event_type == SecurityEventType.SSH_SUCCESS]
+        successes = [e for e in events if e.event_action == SecurityEventType.SSH_SUCCESS]
         assert len(successes) == 1
         assert successes[0].username == "admin"
 
     def test_sudo_usage_detected(self):
         lines = [_make_sudo_line("mehmet", "/usr/bin/apt")]
         events, _ = self._run(lines)
-        sudo_events = [e for e in events if e.event_type == SecurityEventType.SUDO_USAGE]
+        sudo_events = [e for e in events if e.event_action == SecurityEventType.SUDO_USAGE]
         assert len(sudo_events) == 1
         assert sudo_events[0].username == "mehmet"
         assert sudo_events[0].severity == "warning"
@@ -135,7 +135,7 @@ class TestParseAuthLog:
         lines = [_make_failed_line("root", "10.10.10.10")]
         # DB'den 5 kayıt geldiğini simüle et (eşik = 5)
         events, _ = self._run(lines, count_recent=5)
-        brute_force_events = [e for e in events if e.event_type == SecurityEventType.BRUTE_FORCE]
+        brute_force_events = [e for e in events if e.event_action == SecurityEventType.BRUTE_FORCE]
         assert len(brute_force_events) == 1
         assert brute_force_events[0].severity == "critical"
         assert "10.10.10.10" in brute_force_events[0].message
@@ -144,14 +144,14 @@ class TestParseAuthLog:
         """4 başarısız giriş — eşik aşılmadı, brute force alarmı olmamalı."""
         lines = [_make_failed_line("root", "10.10.10.11")]
         events, _ = self._run(lines, count_recent=4)
-        brute_force_events = [e for e in events if e.event_type == SecurityEventType.BRUTE_FORCE]
+        brute_force_events = [e for e in events if e.event_action == SecurityEventType.BRUTE_FORCE]
         assert len(brute_force_events) == 0
 
     def test_brute_force_message_includes_count(self):
         """Brute force mesajı kaç başarısız giriş olduğunu içermeli."""
         lines = [_make_failed_line("admin", "172.16.0.1")]
         events, _ = self._run(lines, count_recent=10)
-        bf_events = [e for e in events if e.event_type == SecurityEventType.BRUTE_FORCE]
+        bf_events = [e for e in events if e.event_action == SecurityEventType.BRUTE_FORCE]
         assert len(bf_events) == 1
         assert "10" in bf_events[0].message
 
@@ -175,8 +175,8 @@ class TestParseAuthLog:
                 with patch("pathlib.Path.exists", return_value=True):
                     events = parser_module.parse_auth_log("agent-1", "/fake/auth.log")
 
-        ssh_failures = [e for e in events if e.event_type == SecurityEventType.SSH_FAILURE]
-        brute_events = [e for e in events if e.event_type == SecurityEventType.BRUTE_FORCE]
+        ssh_failures = [e for e in events if e.event_action == SecurityEventType.SSH_FAILURE]
+        brute_events = [e for e in events if e.event_action == SecurityEventType.BRUTE_FORCE]
 
         assert len(ssh_failures) == 8            # Her deneme kaydedildi
         assert len(brute_events) >= 1            # En az bir brute force alarmı
@@ -198,7 +198,7 @@ class TestParseAuthLog:
                 with patch("pathlib.Path.exists", return_value=True):
                     events = parser_module.parse_auth_log("agent-1", "/fake/auth.log")
 
-        failures = [e for e in events if e.event_type == SecurityEventType.SSH_FAILURE]
+        failures = [e for e in events if e.event_action == SecurityEventType.SSH_FAILURE]
         assert len(failures) == 2
         ips = {e.source_ip for e in failures}
         assert "10.0.0.1" in ips

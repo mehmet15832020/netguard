@@ -33,7 +33,7 @@ def list_controls(
                 "title":             c.title,
                 "description":       c.description,
                 "framework":         c.framework,
-                "category":          c.category,
+                "event_category":          c.event_category,
                 "netguard_features": c.netguard_features,
             }
             for c in controls

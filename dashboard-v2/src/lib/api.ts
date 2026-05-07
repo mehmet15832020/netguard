@@ -156,9 +156,9 @@ export const alertsApi = {
 // ------------------------------------------------------------------ //
 
 export const securityApi = {
-  listEvents: (params?: { event_type?: string; source_ip?: string; limit?: number }) => {
+  listEvents: (params?: { event_action?: string; source_ip?: string; limit?: number }) => {
     const q = new URLSearchParams()
-    if (params?.event_type) q.set('event_type', params.event_type)
+    if (params?.event_action) q.set('event_action', params.event_action)
     if (params?.source_ip) q.set('source_ip', params.source_ip)
     if (params?.limit) q.set('limit', String(params.limit))
     return request<{ count: number; events: SecurityEvent[] }>(`/security/events?${q}`)
@@ -180,16 +180,16 @@ export const securityApi = {
 export const logsApi = {
   listNormalized: (params?: {
     source_type?: string
-    category?: string
-    src_ip?: string
-    event_type?: string
+    event_category?: string
+    source_ip?: string
+    event_action?: string
     limit?: number
   }) => {
     const q = new URLSearchParams()
     if (params?.source_type) q.set('source_type', params.source_type)
-    if (params?.category) q.set('category', params.category)
-    if (params?.src_ip) q.set('src_ip', params.src_ip)
-    if (params?.event_type) q.set('event_type', params.event_type)
+    if (params?.event_category) q.set('event_category', params.event_category)
+    if (params?.source_ip) q.set('source_ip', params.source_ip)
+    if (params?.event_action) q.set('event_action', params.event_action)
     if (params?.limit) q.set('limit', String(params.limit))
     return request<{ count: number; logs: NormalizedLog[] }>(`/logs/normalized?${q}`)
   },
@@ -197,13 +197,13 @@ export const logsApi = {
   searchLogs: (params: {
     q: string
     source_type?: string
-    category?: string
+    event_category?: string
     severity?: string
     limit?: number
   }) => {
     const query = new URLSearchParams({ q: params.q })
     if (params.source_type) query.set('source_type', params.source_type)
-    if (params.category)    query.set('category', params.category)
+    if (params.event_category)    query.set('event_category', params.event_category)
     if (params.severity)    query.set('severity', params.severity)
     if (params.limit)       query.set('limit', String(params.limit))
     return request<{ query: string; count: number; logs: NormalizedLog[] }>(
@@ -214,7 +214,7 @@ export const logsApi = {
   ingest: (rawContent: string, sourceHost: string) =>
     request('/logs/ingest', {
       method: 'POST',
-      body: JSON.stringify({ raw_content: rawContent, source_host: sourceHost }),
+      body: JSON.stringify({ raw_content: rawContent, observer_hostname: sourceHost }),
     }),
 }
 
@@ -453,11 +453,11 @@ export const threatIntelApi = {
 export interface IncidentRelatedLog {
   log_id: string
   timestamp: string
-  event_type: string
+  event_action: string
   severity: string
   source_type: string
-  src_ip: string | null
-  dst_ip: string | null
+  source_ip: string | null
+  destination_ip: string | null
   message: string
 }
 
@@ -503,7 +503,7 @@ export interface IncidentEvent {
   id: number
   incident_id: string
   event_id: string
-  event_type: string
+  event_action: string
   severity: string
   message: string
   occurred_at: string
@@ -589,7 +589,7 @@ export interface ComplianceControl {
   control_id: string
   title: string
   framework: string
-  category: string
+  event_category: string
   status: 'compliant' | 'partial' | 'gap'
   score: number
   evidence: string[]
@@ -690,7 +690,7 @@ export const metricsApi = {
 }
 
 export interface ActiveChain {
-  src_ip:       string
+  source_ip:       string
   stages:       Record<string, number>
   stage_labels: Record<string, string>
   stage_count:  number

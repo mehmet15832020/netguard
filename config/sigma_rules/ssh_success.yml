@@ -8,8 +8,8 @@ logsource:
     service: ssh
 detection:
     selection:
-        event_type: ssh_success
-    condition: selection | count() by src_ip > 0
+        event_action: ssh_success
+    condition: selection | count() by source_ip > 0
     timeframe: 5m
 level: info
 tags:

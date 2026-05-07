@@ -92,12 +92,12 @@ def validate_sigma_rule(body: SigmaRuleUpload, _: User = Depends(get_current_use
             "valid": True,
             "rule_id":           rule.rule_id,
             "name":              rule.name,
-            "match_event_type":  rule.match_event_type,
+            "match_event_action":  rule.match_event_action,
             "group_by":          rule.group_by,
             "window_seconds":    rule.window_seconds,
             "threshold":         rule.threshold,
             "severity":          rule.severity,
-            "output_event_type": rule.output_event_type,
+            "output_event_action": rule.output_event_action,
         }
     finally:
         os.unlink(tmp_path)

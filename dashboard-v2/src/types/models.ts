@@ -114,7 +114,7 @@ export interface SecurityEvent {
   event_id: string
   agent_id: string
   hostname: string
-  event_type: SecurityEventType
+  event_action: SecurityEventType
   severity: Severity
   source_ip: string | null
   username: string | null
@@ -125,22 +125,23 @@ export interface SecurityEvent {
 }
 
 // ------------------------------------------------------------------ //
-//  Log normalizasyon
+//  Log normalizasyon (ECS-aligned field names)
 // ------------------------------------------------------------------ //
 
 export interface NormalizedLog {
   log_id: string
   raw_id: string
   source_type: LogSourceType
-  source_host: string
+  observer_hostname: string
   timestamp: string
   severity: Severity
-  category: LogCategory
-  event_type: string
-  src_ip: string | null
-  dst_ip: string | null
-  src_port: number | null
-  dst_port: number | null
+  event_category: LogCategory
+  event_action: string
+  source_ip: string | null
+  destination_ip: string | null
+  source_port: number | null
+  destination_port: number | null
+  network_protocol: string | null
   username: string | null
   message: string
   tags: string[]
@@ -155,7 +156,7 @@ export interface CorrelatedEvent {
   corr_id: string
   rule_id: string
   rule_name: string
-  event_type: string
+  event_action: string
   severity: Severity
   group_value: string
   matched_count: number
@@ -172,12 +173,12 @@ export interface CorrelationRule {
   rule_id: string
   name: string
   description: string
-  match_event_type: string
+  match_event_action: string
   group_by: string
   window_seconds: number
   threshold: number
   severity: Severity
-  output_event_type: string
+  output_event_action: string
 }
 
 // ------------------------------------------------------------------ //

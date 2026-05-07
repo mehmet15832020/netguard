@@ -52,8 +52,8 @@ async def upload_evtx(
             event = SecurityEvent(
                 event_id    = str(uuid.uuid4()),
                 agent_id    = f"evtx:{current_user.username}",
-                hostname    = rec.get("source_host") or hostname,
-                event_type  = SecurityEventType(rec["event_type"]),
+                hostname    = rec.get("observer_hostname") or hostname,
+                event_action  = SecurityEventType(rec["event_action"]),
                 severity    = rec["severity"],
                 source_ip   = rec.get("source_ip"),
                 username    = rec.get("username"),
@@ -83,7 +83,7 @@ async def upload_evtx(
 
 @router.get("/evtx/events")
 def list_evtx_events(
-    event_type: str | None = None,
+    event_action: str | None = None,
     limit: int = 200,
     current_user: User = Depends(get_current_user),
 ):
@@ -92,14 +92,14 @@ def list_evtx_events(
         raise HTTPException(status_code=400, detail="limit 1-1000 arasında olmalı")
     tid = tenant_scope(current_user)
     win_types = ["windows_logon_success", "windows_logon_failure", "windows_process_create"]
-    if event_type:
-        if event_type not in win_types:
+    if event_action:
+        if event_action not in win_types:
             raise HTTPException(status_code=400, detail=f"Geçerli tipler: {win_types}")
-        events = db.get_security_events(event_type=event_type, limit=limit, tenant_id=tid)
+        events = db.get_security_events(event_action=event_action, limit=limit, tenant_id=tid)
     else:
         events = []
         for wt in win_types:
-            events.extend(db.get_security_events(event_type=wt, limit=limit, tenant_id=tid))
+            events.extend(db.get_security_events(event_action=wt, limit=limit, tenant_id=tid))
         events.sort(key=lambda e: e.occurred_at, reverse=True)
         events = events[:limit]
     return {"count": len(events), "events": [e.model_dump() for e in events]}

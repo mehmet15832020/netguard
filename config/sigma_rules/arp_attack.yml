@@ -7,8 +7,8 @@ logsource:
     product: netguard
 detection:
     selection:
-        event_type: arp_spoof_attempt
-    condition: selection | count() by src_ip > 2
+        event_action: arp_spoof_attempt
+    condition: selection | count() by source_ip > 2
     timeframe: 2m
 level: high
 tags:

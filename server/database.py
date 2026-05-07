@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS security_events (
     event_id     TEXT UNIQUE NOT NULL,
     agent_id     TEXT NOT NULL,
     hostname     TEXT NOT NULL,
-    event_type   TEXT NOT NULL,
+    event_action   TEXT NOT NULL,
     severity     TEXT NOT NULL,
     source_ip    TEXT,
     username     TEXT,
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS security_events (
     occurred_at  TEXT NOT NULL,
     created_at   TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_sec_type    ON security_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_sec_type    ON security_events(event_action);
 CREATE INDEX IF NOT EXISTS idx_sec_agent   ON security_events(agent_id);
 CREATE INDEX IF NOT EXISTS idx_sec_time    ON security_events(occurred_at);
 CREATE INDEX IF NOT EXISTS idx_sec_srcip   ON security_events(source_ip);
@@ -79,13 +79,13 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     id                 INTEGER PRIMARY KEY AUTOINCREMENT,
     raw_id             TEXT UNIQUE NOT NULL,
     source_type        TEXT,
-    source_host        TEXT NOT NULL,
+    observer_hostname        TEXT NOT NULL,
     received_at        TEXT NOT NULL,
     raw_content        TEXT NOT NULL,
     parse_status       TEXT NOT NULL DEFAULT 'pending',
     normalized_log_id  TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_raw_host     ON raw_logs(source_host);
+CREATE INDEX IF NOT EXISTS idx_raw_host     ON raw_logs(observer_hostname);
 CREATE INDEX IF NOT EXISTS idx_raw_received ON raw_logs(received_at);
 """
 
@@ -95,17 +95,17 @@ CREATE TABLE IF NOT EXISTS normalized_logs (
     log_id       TEXT UNIQUE NOT NULL,
     raw_id       TEXT NOT NULL,
     source_type  TEXT NOT NULL,
-    source_host  TEXT NOT NULL,
+    observer_hostname  TEXT NOT NULL,
     timestamp    TEXT NOT NULL,
     received_at  TEXT NOT NULL,
     severity     TEXT NOT NULL,
-    category     TEXT NOT NULL,
-    event_type   TEXT NOT NULL,
-    src_ip       TEXT,
-    dst_ip       TEXT,
-    src_port     INTEGER,
-    dst_port     INTEGER,
-    protocol     TEXT,
+    event_category     TEXT NOT NULL,
+    event_action   TEXT NOT NULL,
+    source_ip       TEXT,
+    destination_ip       TEXT,
+    source_port     INTEGER,
+    destination_port     INTEGER,
+    network_protocol TEXT,
     username     TEXT,
     message      TEXT NOT NULL,
     tags         TEXT NOT NULL DEFAULT '[]',
@@ -114,10 +114,10 @@ CREATE TABLE IF NOT EXISTS normalized_logs (
 );
 CREATE INDEX IF NOT EXISTS idx_norm_timestamp   ON normalized_logs(timestamp);
 CREATE INDEX IF NOT EXISTS idx_norm_source_type ON normalized_logs(source_type);
-CREATE INDEX IF NOT EXISTS idx_norm_category    ON normalized_logs(category);
-CREATE INDEX IF NOT EXISTS idx_norm_src_ip      ON normalized_logs(src_ip);
-CREATE INDEX IF NOT EXISTS idx_norm_event_type  ON normalized_logs(event_type);
-CREATE INDEX IF NOT EXISTS idx_norm_corr_query  ON normalized_logs(event_type, timestamp, src_ip);
+CREATE INDEX IF NOT EXISTS idx_norm_category    ON normalized_logs(event_category);
+CREATE INDEX IF NOT EXISTS idx_norm_src_ip      ON normalized_logs(source_ip);
+CREATE INDEX IF NOT EXISTS idx_norm_event_type  ON normalized_logs(event_action);
+CREATE INDEX IF NOT EXISTS idx_norm_corr_query  ON normalized_logs(event_action, timestamp, source_ip);
 """
 
 
@@ -283,7 +283,7 @@ CREATE TABLE IF NOT EXISTS incident_events (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     incident_id TEXT NOT NULL,
     event_id    TEXT NOT NULL,
-    event_type  TEXT NOT NULL,
+    event_action  TEXT NOT NULL,
     severity    TEXT NOT NULL,
     message     TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
@@ -299,7 +299,7 @@ CREATE TABLE IF NOT EXISTS correlated_events (
     corr_id          TEXT UNIQUE NOT NULL,
     rule_id          TEXT NOT NULL,
     rule_name        TEXT NOT NULL,
-    event_type       TEXT NOT NULL,
+    event_action       TEXT NOT NULL,
     severity         TEXT NOT NULL,
     group_value      TEXT NOT NULL,
     matched_count    INTEGER NOT NULL,
@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS correlated_events (
     mitre_tactics    TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS idx_corr_rule_id     ON correlated_events(rule_id);
-CREATE INDEX IF NOT EXISTS idx_corr_event_type  ON correlated_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_corr_event_type  ON correlated_events(event_action);
 CREATE INDEX IF NOT EXISTS idx_corr_group_value ON correlated_events(group_value);
 CREATE INDEX IF NOT EXISTS idx_corr_created_at  ON correlated_events(created_at);
 """
@@ -352,11 +352,11 @@ CREATE INDEX IF NOT EXISTS idx_db_users_tenant ON db_users(tenant_id);
 _CREATE_FTS5 = """
 CREATE VIRTUAL TABLE IF NOT EXISTS normalized_logs_fts USING fts5(
     message,
-    src_ip,
-    dst_ip,
-    source_host,
+    source_ip,
+    destination_ip,
+    observer_hostname,
     username,
-    event_type,
+    event_action,
     content='normalized_logs',
     content_rowid='id'
 );
@@ -364,26 +364,26 @@ CREATE VIRTUAL TABLE IF NOT EXISTS normalized_logs_fts USING fts5(
 
 _CREATE_FTS5_TRIGGERS = """
 CREATE TRIGGER IF NOT EXISTS fts_insert AFTER INSERT ON normalized_logs BEGIN
-    INSERT INTO normalized_logs_fts(rowid, message, src_ip, dst_ip, source_host, username, event_type)
-    VALUES (new.id, new.message, new.src_ip, new.dst_ip, new.source_host, new.username, new.event_type);
+    INSERT INTO normalized_logs_fts(rowid, message, source_ip, destination_ip, observer_hostname, username, event_action)
+    VALUES (new.id, new.message, new.source_ip, new.destination_ip, new.observer_hostname, new.username, new.event_action);
 END;
 
 CREATE TRIGGER IF NOT EXISTS fts_delete AFTER DELETE ON normalized_logs BEGIN
-    INSERT INTO normalized_logs_fts(normalized_logs_fts, rowid, message, src_ip, dst_ip, source_host, username, event_type)
-    VALUES ('delete', old.id, old.message, old.src_ip, old.dst_ip, old.source_host, old.username, old.event_type);
+    INSERT INTO normalized_logs_fts(normalized_logs_fts, rowid, message, source_ip, destination_ip, observer_hostname, username, event_action)
+    VALUES ('delete', old.id, old.message, old.source_ip, old.destination_ip, old.observer_hostname, old.username, old.event_action);
 END;
 """
 
 _CREATE_CHAIN_STATE = """
 CREATE TABLE IF NOT EXISTS attack_chain_state (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    src_ip      TEXT NOT NULL,
+    source_ip      TEXT NOT NULL,
     stage       TEXT NOT NULL,
     occurred_at TEXT NOT NULL,
     tenant_id   TEXT NOT NULL DEFAULT 'default',
     created_at  TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_chain_state_src_ip ON attack_chain_state(src_ip);
+CREATE INDEX IF NOT EXISTS idx_chain_state_src_ip ON attack_chain_state(source_ip);
 CREATE INDEX IF NOT EXISTS idx_chain_state_occurred ON attack_chain_state(occurred_at);
 """
 
@@ -429,8 +429,8 @@ class DatabaseManager:
                 count = conn.execute("SELECT COUNT(*) FROM normalized_logs_fts").fetchone()[0]
                 if count == 0:
                     conn.execute("""
-                        INSERT INTO normalized_logs_fts(rowid, message, src_ip, dst_ip, source_host, username, event_type)
-                        SELECT id, message, src_ip, dst_ip, source_host, username, event_type
+                        INSERT INTO normalized_logs_fts(rowid, message, source_ip, destination_ip, observer_hostname, username, event_action)
+                        SELECT id, message, source_ip, destination_ip, observer_hostname, username, event_action
                         FROM normalized_logs
                     """)
                     rebuilt = conn.execute("SELECT COUNT(*) FROM normalized_logs_fts").fetchone()[0]
@@ -441,23 +441,23 @@ class DatabaseManager:
         self,
         query: str,
         source_type: Optional[str] = None,
-        category: Optional[str] = None,
+        event_category: Optional[str] = None,
         severity: Optional[str] = None,
         limit: int = 100,
         tenant_id: Optional[str] = None,
     ) -> list:
-        """Full-text arama: message, src_ip, dst_ip, source_host, username, event_type içinde ara."""
+        """Full-text arama: message, source_ip, destination_ip, observer_hostname, username, event_action içinde ara."""
         q = query.strip()
         if not q:
             return self.get_normalized_logs(
-                source_type=source_type, category=category, limit=limit, tenant_id=tenant_id
+                source_type=source_type, event_category=event_category, limit=limit, tenant_id=tenant_id
             )
 
         clauses: list[str] = []
         params: list = []
 
         if _IP_RE.match(q):
-            clauses.append("(src_ip LIKE ? OR dst_ip LIKE ? OR source_host LIKE ?)")
+            clauses.append("(source_ip LIKE ? OR destination_ip LIKE ? OR observer_hostname LIKE ?)")
             pattern = f"{q}%"
             params.extend([pattern, pattern, pattern])
         else:
@@ -470,9 +470,9 @@ class DatabaseManager:
         if source_type:
             clauses.append("source_type = ?")
             params.append(source_type)
-        if category:
-            clauses.append("category = ?")
-            params.append(category)
+        if event_category:
+            clauses.append("event_category = ?")
+            params.append(event_category)
         if severity:
             clauses.append("severity = ?")
             params.append(severity)
@@ -534,6 +534,7 @@ class DatabaseManager:
         self._migrate_api_keys_to_hashed()
         self._migrate_raw_logs_parse_status()
         self._migrate_normalized_logs_columns()
+        self._migrate_ecs_field_rename()
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
         self.ensure_default_tenant()
@@ -649,7 +650,7 @@ class DatabaseManager:
             with self._connect() as conn:
                 conn.execute("""
                     INSERT OR IGNORE INTO security_events
-                        (event_id, agent_id, hostname, event_type, severity,
+                        (event_id, agent_id, hostname, event_action, severity,
                          source_ip, username, message, raw_data,
                          occurred_at, created_at, tenant_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -657,7 +658,7 @@ class DatabaseManager:
                     event.event_id,
                     event.agent_id,
                     event.hostname,
-                    event.event_type.value,
+                    event.event_action.value,
                     event.severity,
                     event.source_ip,
                     event.username,
@@ -670,16 +671,16 @@ class DatabaseManager:
 
     def get_security_events(
         self,
-        event_type: Optional[str] = None,
+        event_action: Optional[str] = None,
         source_ip: Optional[str] = None,
         limit: int = 100,
         tenant_id: Optional[str] = None,
     ) -> list[SecurityEvent]:
         """Güvenlik olaylarını filtreli getir."""
         clauses, params = [], []
-        if event_type:
-            clauses.append("event_type = ?")
-            params.append(event_type)
+        if event_action:
+            clauses.append("event_action = ?")
+            params.append(event_action)
         if source_ip:
             clauses.append("source_ip = ?")
             params.append(source_ip)
@@ -697,13 +698,13 @@ class DatabaseManager:
             ).fetchall()
         return [self._row_to_event(r) for r in rows]
 
-    def count_security_events(self, event_type: Optional[str] = None) -> int:
+    def count_security_events(self, event_action: Optional[str] = None) -> int:
         """Olay tipine göre toplam kayıt sayısı."""
         with self._connect() as conn:
-            if event_type:
+            if event_action:
                 row = conn.execute(
-                    "SELECT COUNT(*) FROM security_events WHERE event_type = ?",
-                    (event_type,),
+                    "SELECT COUNT(*) FROM security_events WHERE event_action = ?",
+                    (event_action,),
                 ).fetchone()
             else:
                 row = conn.execute("SELECT COUNT(*) FROM security_events").fetchone()
@@ -720,7 +721,7 @@ class DatabaseManager:
                 """
                 SELECT COUNT(*) as cnt FROM security_events
                 WHERE source_ip = ?
-                  AND event_type = ?
+                  AND event_action = ?
                   AND occurred_at >= ?
                 """,
                 (source_ip, SecurityEventType.SSH_FAILURE.value, since_iso),
@@ -732,7 +733,7 @@ class DatabaseManager:
             event_id    = row["event_id"],
             agent_id    = row["agent_id"],
             hostname    = row["hostname"],
-            event_type  = SecurityEventType(row["event_type"]),
+            event_action  = SecurityEventType(row["event_action"]),
             severity    = row["severity"],
             source_ip   = row["source_ip"],
             username    = row["username"],
@@ -753,13 +754,13 @@ class DatabaseManager:
             with self._connect() as conn:
                 conn.execute("""
                     INSERT OR IGNORE INTO raw_logs
-                        (raw_id, source_type, source_host, received_at,
+                        (raw_id, source_type, observer_hostname, received_at,
                          raw_content, parse_status, normalized_log_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     raw.raw_id,
                     raw.source_type.value if raw.source_type else None,
-                    raw.source_host,
+                    raw.observer_hostname,
                     raw.received_at.isoformat(),
                     raw.raw_content,
                     raw.parse_status.value,
@@ -798,7 +799,7 @@ class DatabaseManager:
         return RawLog(
             raw_id            = row["raw_id"],
             source_type       = LogSourceType(row["source_type"]) if row["source_type"] else None,
-            source_host       = row["source_host"],
+            observer_hostname       = row["observer_hostname"],
             received_at       = datetime.fromisoformat(row["received_at"]),
             raw_content       = row["raw_content"],
             parse_status      = ParseStatus(raw_status) if raw_status else ParseStatus.PENDING,
@@ -815,26 +816,26 @@ class DatabaseManager:
             with self._connect() as conn:
                 conn.execute("""
                     INSERT OR IGNORE INTO normalized_logs
-                        (log_id, raw_id, source_type, source_host, timestamp,
-                         received_at, severity, category, event_type,
-                         src_ip, dst_ip, src_port, dst_port, protocol,
+                        (log_id, raw_id, source_type, observer_hostname, timestamp,
+                         received_at, severity, event_category, event_action,
+                         source_ip, destination_ip, source_port, destination_port, network_protocol,
                          username, message, tags, extra, processed_at, tenant_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     log.log_id,
                     log.raw_id,
                     log.source_type.value,
-                    log.source_host,
+                    log.observer_hostname,
                     log.timestamp.isoformat(),
                     log.received_at.isoformat(),
                     log.severity,
-                    log.category.value,
-                    log.event_type,
-                    log.src_ip,
-                    log.dst_ip,
-                    log.src_port,
-                    log.dst_port,
-                    log.protocol,
+                    log.event_category.value,
+                    log.event_action,
+                    log.source_ip,
+                    log.destination_ip,
+                    log.source_port,
+                    log.destination_port,
+                    log.network_protocol,
                     log.username,
                     log.message,
                     json.dumps(log.tags),
@@ -846,9 +847,9 @@ class DatabaseManager:
     def get_normalized_logs(
         self,
         source_type: Optional[str] = None,
-        category: Optional[str] = None,
-        src_ip: Optional[str] = None,
-        event_type: Optional[str] = None,
+        event_category: Optional[str] = None,
+        source_ip: Optional[str] = None,
+        event_action: Optional[str] = None,
         limit: int = 100,
         tenant_id: Optional[str] = None,
     ) -> list[NormalizedLog]:
@@ -857,15 +858,15 @@ class DatabaseManager:
         if source_type:
             clauses.append("source_type = ?")
             params.append(source_type)
-        if category:
-            clauses.append("category = ?")
-            params.append(category)
-        if src_ip:
-            clauses.append("src_ip = ?")
-            params.append(src_ip)
-        if event_type:
-            clauses.append("event_type = ?")
-            params.append(event_type)
+        if event_category:
+            clauses.append("event_category = ?")
+            params.append(event_category)
+        if source_ip:
+            clauses.append("source_ip = ?")
+            params.append(source_ip)
+        if event_action:
+            clauses.append("event_action = ?")
+            params.append(event_action)
         if tenant_id is not None:
             clauses.append("tenant_id = ?")
             params.append(tenant_id)
@@ -882,7 +883,7 @@ class DatabaseManager:
 
     def get_normalized_logs_in_window(
         self,
-        event_type_prefix: str,
+        event_action_prefix: str,
         group_by: str,
         group_value: str,
         since_iso: str,
@@ -890,10 +891,10 @@ class DatabaseManager:
     ) -> list[NormalizedLog]:
         """
         Korelasyon için: belirli zaman penceresindeki eşleşen normalize logları getir.
-        event_type_prefix ile LIKE sorgusu yapılır (örn. 'wazuh_rule_' her wazuh kuralını yakalar).
+        event_action_prefix ile LIKE sorgusu yapılır (örn. 'wazuh_rule_' her wazuh kuralını yakalar).
         """
-        group_col = "src_ip" if group_by == "src_ip" else "source_host"
-        params = [f"{event_type_prefix}%", group_value, since_iso]
+        group_col = "source_ip" if group_by == "source_ip" else "observer_hostname"
+        params = [f"{event_action_prefix}%", group_value, since_iso]
         severity_clause = ""
         if severity:
             severity_clause = "AND severity = ?"
@@ -903,7 +904,7 @@ class DatabaseManager:
             rows = conn.execute(
                 f"""
                 SELECT * FROM normalized_logs
-                WHERE event_type LIKE ?
+                WHERE event_action LIKE ?
                   AND {group_col} = ?
                   AND timestamp >= ?
                   {severity_clause}
@@ -918,17 +919,18 @@ class DatabaseManager:
             log_id       = row["log_id"],
             raw_id       = row["raw_id"],
             source_type  = LogSourceType(row["source_type"]),
-            source_host  = row["source_host"],
+            observer_hostname  = row["observer_hostname"],
             timestamp    = datetime.fromisoformat(row["timestamp"]),
             received_at  = datetime.fromisoformat(row["received_at"]),
             severity     = row["severity"],
-            category     = LogCategory(row["category"]),
-            event_type   = row["event_type"],
-            src_ip       = row["src_ip"],
-            dst_ip       = row["dst_ip"],
-            src_port     = row["src_port"],
-            dst_port     = row["dst_port"],
-            username     = row["username"],
+            event_category     = LogCategory(row["event_category"]),
+            event_action   = row["event_action"],
+            source_ip        = row["source_ip"],
+            destination_ip   = row["destination_ip"],
+            source_port      = row["source_port"],
+            destination_port = row["destination_port"],
+            network_protocol = row["network_protocol"] if "network_protocol" in row.keys() else None,
+            username         = row["username"],
             message      = row["message"],
             tags         = json.loads(row["tags"]),
             processed_at = datetime.fromisoformat(row["processed_at"]),
@@ -988,7 +990,7 @@ class DatabaseManager:
 
                 conn.execute("""
                     INSERT INTO correlated_events
-                        (corr_id, rule_id, rule_name, event_type, severity,
+                        (corr_id, rule_id, rule_name, event_action, severity,
                          group_value, matched_count, window_seconds,
                          first_seen, last_seen, message, created_at,
                          mitre_techniques, mitre_tactics)
@@ -997,7 +999,7 @@ class DatabaseManager:
                     event.corr_id,
                     event.rule_id,
                     event.rule_name,
-                    event.event_type,
+                    event.event_action,
                     event.severity,
                     event.group_value,
                     event.matched_count,
@@ -1011,12 +1013,12 @@ class DatabaseManager:
                 ))
                 return True
 
-    def save_chain_stage(self, src_ip: str, stage: str, occurred_at: "datetime", tenant_id: str = "default") -> None:
+    def save_chain_stage(self, source_ip: str, stage: str, occurred_at: "datetime", tenant_id: str = "default") -> None:
         with self._lock:
             with self._connect() as conn:
                 conn.execute(
-                    "INSERT INTO attack_chain_state (src_ip, stage, occurred_at, tenant_id) VALUES (?, ?, ?, ?)",
-                    (src_ip, stage, occurred_at.isoformat(), tenant_id),
+                    "INSERT INTO attack_chain_state (source_ip, stage, occurred_at, tenant_id) VALUES (?, ?, ?, ?)",
+                    (source_ip, stage, occurred_at.isoformat(), tenant_id),
                 )
 
     def get_active_chain_stages(self, window_seconds: int = 1800) -> dict:
@@ -1025,7 +1027,7 @@ class DatabaseManager:
         since = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT src_ip, stage, occurred_at FROM attack_chain_state WHERE occurred_at >= ? ORDER BY occurred_at",
+                "SELECT source_ip, stage, occurred_at FROM attack_chain_state WHERE occurred_at >= ? ORDER BY occurred_at",
                 (since,),
             ).fetchall()
         result: dict = defaultdict(lambda: defaultdict(list))
@@ -1037,7 +1039,7 @@ class DatabaseManager:
                     dt = dt.replace(tzinfo=timezone.utc)
             except ValueError:
                 continue
-            result[row["src_ip"]][row["stage"]].append(dt)
+            result[row["source_ip"]][row["stage"]].append(dt)
         return result
 
     def purge_old_chain_stages(self, window_seconds: int = 1800) -> None:
@@ -1085,17 +1087,17 @@ class DatabaseManager:
 
     def get_related_logs_for_incident(
         self,
-        src_ip: str,
+        source_ip: str,
         around_iso: str,
         window_minutes: int = 30,
         limit: int = 20,
     ) -> list["NormalizedLog"]:
-        """src_ip'e ait ±window_minutes dakika aralığındaki normalize logları döner."""
+        """source_ip'e ait ±window_minutes dakika aralığındaki normalize logları döner."""
         with self._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM normalized_logs
-                WHERE src_ip = ?
+                WHERE source_ip = ?
                   AND datetime(timestamp) BETWEEN
                       datetime(?, ?)
                       AND datetime(?, ?)
@@ -1103,7 +1105,7 @@ class DatabaseManager:
                 LIMIT ?
                 """,
                 (
-                    src_ip,
+                    source_ip,
                     around_iso, f"-{window_minutes} minutes",
                     around_iso, f"+{window_minutes} minutes",
                     limit,
@@ -1118,7 +1120,7 @@ class DatabaseManager:
             corr_id           = row["corr_id"],
             rule_id           = row["rule_id"],
             rule_name         = row["rule_name"],
-            event_type        = row["event_type"],
+            event_action        = row["event_action"],
             severity          = row["severity"],
             group_value       = row["group_value"],
             matched_count     = row["matched_count"],
@@ -1514,9 +1516,6 @@ class DatabaseManager:
         """normalized_logs tablosuna eksik kolonları ekle ve NULL tenant_id'leri düzelt."""
         with self._connect() as conn:
             cols = {row[1] for row in conn.execute("PRAGMA table_info(normalized_logs)").fetchall()}
-            if "protocol" not in cols:
-                conn.execute("ALTER TABLE normalized_logs ADD COLUMN protocol TEXT")
-                logger.info("normalized_logs: 'protocol' kolonu eklendi")
             if "extra" not in cols:
                 conn.execute("ALTER TABLE normalized_logs ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
                 logger.info("normalized_logs: 'extra' kolonu eklendi")
@@ -1526,6 +1525,51 @@ class DatabaseManager:
                 )
                 if result.rowcount:
                     logger.info(f"normalized_logs: {result.rowcount} kayıt tenant_id='default' olarak güncellendi")
+
+    def _migrate_ecs_field_rename(self) -> None:
+        """ECS-aligned field rename: mevcut DB kolonlarını yeni isimlere taşır (SQLite RENAME COLUMN)."""
+        _normalized_renames = [
+            ("source_host", "observer_hostname"),
+            ("category",    "event_category"),
+            ("event_type",  "event_action"),
+            ("src_ip",      "source_ip"),
+            ("dst_ip",      "destination_ip"),
+            ("src_port",    "source_port"),
+            ("dst_port",    "destination_port"),
+            ("protocol",    "network_protocol"),
+        ]
+        _raw_renames      = [("source_host", "observer_hostname")]
+        _corr_renames     = [("event_type", "event_action")]
+        _sec_renames      = [("event_type", "event_action")]
+        _inc_ev_renames   = [("event_type", "event_action")]
+        _chain_renames    = [("src_ip", "source_ip")]
+
+        def _rename_cols(conn, table: str, renames: list[tuple[str, str]]) -> None:
+            cols = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for old, new in renames:
+                if old in cols and new not in cols:
+                    conn.execute(f"ALTER TABLE {table} RENAME COLUMN {old} TO {new}")
+                    logger.info(f"{table}: '{old}' → '{new}' yeniden adlandırıldı")
+
+        with self._connect() as conn:
+            _rename_cols(conn, "normalized_logs",    _normalized_renames)
+            _rename_cols(conn, "raw_logs",            _raw_renames)
+            _rename_cols(conn, "correlated_events",   _corr_renames)
+            _rename_cols(conn, "security_events",     _sec_renames)
+            _rename_cols(conn, "incident_events",     _inc_ev_renames)
+            _rename_cols(conn, "attack_chain_state",  _chain_renames)
+
+            fts_cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(normalized_logs_fts)").fetchall()
+            }
+            if fts_cols and "src_ip" in fts_cols:
+                conn.executescript("""
+                    DROP TRIGGER IF EXISTS fts_insert;
+                    DROP TRIGGER IF EXISTS fts_delete;
+                    DROP TABLE  IF EXISTS normalized_logs_fts;
+                """)
+                logger.info("FTS5 tablosu yeniden oluşturmak için silindi")
 
     def _migrate_incidents_columns(self) -> None:
         """incidents tablosuna rule_id ve group_value kolonlarını ekle."""
@@ -1969,7 +2013,7 @@ class DatabaseManager:
         self,
         incident_id: str,
         event_id: str,
-        event_type: str,
+        event_action: str,
         severity: str,
         message: str,
         occurred_at: str,
@@ -1979,9 +2023,9 @@ class DatabaseManager:
             with self._connect() as conn:
                 conn.execute(
                     """INSERT INTO incident_events
-                       (incident_id, event_id, event_type, severity, message, occurred_at, added_at)
+                       (incident_id, event_id, event_action, severity, message, occurred_at, added_at)
                        VALUES (?,?,?,?,?,?,?)""",
-                    (incident_id, event_id, event_type, severity, message, occurred_at, now),
+                    (incident_id, event_id, event_action, severity, message, occurred_at, now),
                 )
 
     def get_incident_events(self, incident_id: str) -> list[dict]:

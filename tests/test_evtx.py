@@ -43,17 +43,17 @@ class TestParseRecordXml:
         xml = _make_xml(4625, TargetUserName="jdoe", IpAddress="10.0.0.5")
         result = _parse_record_xml(xml)
         assert result is not None
-        assert result["event_type"] == "windows_logon_failure"
+        assert result["event_action"] == "windows_logon_failure"
         assert result["severity"] == "warning"
         assert result["username"] == "jdoe"
         assert result["source_ip"] == "10.0.0.5"
-        assert "WIN-SERVER01" in result["source_host"]
+        assert "WIN-SERVER01" in result["observer_hostname"]
 
     def test_4624_logon_success_interactive(self):
         xml = _make_xml(4624, TargetUserName="admin", IpAddress="192.168.1.1", LogonType="2")
         result = _parse_record_xml(xml)
         assert result is not None
-        assert result["event_type"] == "windows_logon_success"
+        assert result["event_action"] == "windows_logon_success"
         assert result["username"] == "admin"
 
     def test_4624_service_logon_ignored(self):
@@ -75,7 +75,7 @@ class TestParseRecordXml:
         )
         result = _parse_record_xml(xml)
         assert result is not None
-        assert result["event_type"] == "windows_process_create"
+        assert result["event_action"] == "windows_process_create"
         assert result["username"] == "administrator"
         assert "cmd.exe" in result["message"]
 
@@ -112,7 +112,7 @@ class TestParseEvtxXmlStrings:
         xml_fail = _make_xml(4625, TargetUserName="user", IpAddress="1.2.3.4")
         results = parse_evtx_xml_strings([xml_svc, xml_fail])
         assert len(results) == 1
-        assert results[0]["event_type"] == "windows_logon_failure"
+        assert results[0]["event_action"] == "windows_logon_failure"
 
     def test_empty_list(self):
         assert parse_evtx_xml_strings([]) == []
@@ -171,7 +171,7 @@ class TestEvtxEvents:
         assert r.status_code == 400
 
     def test_invalid_event_type(self, tmp_db):
-        r = client.get("/api/v1/evtx/events?event_type=ssh_failure", headers=_auth())
+        r = client.get("/api/v1/evtx/events?event_action=ssh_failure", headers=_auth())
         assert r.status_code == 400
 
     def test_requires_auth(self, tmp_db):

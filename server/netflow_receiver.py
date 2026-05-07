@@ -23,11 +23,11 @@ _flows_stored     = 0
 class _NetFlowProtocol(asyncio.DatagramProtocol):
     def datagram_received(self, data: bytes, addr: tuple) -> None:
         global _packets_received, _flows_stored
-        source_host = addr[0]
+        observer_hostname = addr[0]
         _packets_received += 1
         try:
             from server.database import db
-            logs = detect_and_parse(data, source_host)
+            logs = detect_and_parse(data, observer_hostname)
             for log in logs:
                 db.save_normalized_log(log)
             _flows_stored += len(logs)
@@ -37,7 +37,7 @@ class _NetFlowProtocol(asyncio.DatagramProtocol):
                     f"(toplam paket={_packets_received})"
                 )
         except Exception as exc:
-            logger.error(f"NetFlow işleme hatası ({source_host}): {exc}")
+            logger.error(f"NetFlow işleme hatası ({observer_hostname}): {exc}")
 
     def error_received(self, exc: Exception) -> None:
         logger.warning(f"NetFlow UDP hatası: {exc}")

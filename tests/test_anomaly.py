@@ -348,7 +348,7 @@ class TestAnomalyEngine:
 
         with sqlite3.connect(tmp_db) as conn:
             row = conn.execute(
-                "SELECT event_type, src_ip FROM normalized_logs WHERE event_type='anomaly_detected'"
+                "SELECT event_action, source_ip FROM normalized_logs WHERE event_action='anomaly_detected'"
             ).fetchone()
         assert row is not None
         assert row[1] == "1.2.3.4"

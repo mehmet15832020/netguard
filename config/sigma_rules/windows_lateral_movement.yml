@@ -11,8 +11,8 @@ logsource:
     service: security
 detection:
     selection:
-        event_type: windows_logon_success
-    condition: selection | count() by src_ip > 3
+        event_action: windows_logon_success
+    condition: selection | count() by source_ip > 3
     timeframe: 5m
 level: high
 tags:

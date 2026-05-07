@@ -82,7 +82,7 @@ def _parse_event(event) -> Optional[dict]:
             if source_ip in ("-", "", None):
                 source_ip = None
             return {
-                "event_type": "windows_logon_failure",
+                "event_action": "windows_logon_failure",
                 "severity":   "warning",
                 "username":   username,
                 "source_ip":  source_ip,
@@ -101,7 +101,7 @@ def _parse_event(event) -> Optional[dict]:
             if logon_label in ("service", "batch"):
                 return None
             return {
-                "event_type": "windows_logon_success",
+                "event_action": "windows_logon_success",
                 "severity":   "info",
                 "username":   username,
                 "source_ip":  source_ip,
@@ -115,7 +115,7 @@ def _parse_event(event) -> Optional[dict]:
             process_name = strings[5] if len(strings) > 5 else "unknown"
             cmdline      = strings[8] if len(strings) > 8 else ""
             return {
-                "event_type": "windows_process_create",
+                "event_action": "windows_process_create",
                 "severity":   "info",
                 "username":   subject_user,
                 "source_ip":  None,

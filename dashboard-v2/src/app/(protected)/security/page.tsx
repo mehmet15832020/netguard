@@ -43,7 +43,7 @@ export default function SecurityPage() {
     queryKey: ['security-events', eventTypeFilter, ipFilter],
     queryFn: () =>
       securityApi.listEvents({
-        event_type: eventTypeFilter !== 'all' ? eventTypeFilter : undefined,
+        event_action: eventTypeFilter !== 'all' ? eventTypeFilter : undefined,
         source_ip: ipFilter || undefined,
         limit: 200,
       }),
@@ -167,7 +167,7 @@ export default function SecurityPage() {
                   <TableRow key={ev.event_id} className="border-zinc-800 hover:bg-zinc-800/50">
                     <TableCell><SeverityBadge severity={ev.severity as Severity} /></TableCell>
                     <TableCell className="text-xs text-zinc-300">
-                      {EVENT_TYPE_LABELS[ev.event_type] ?? ev.event_type}
+                      {EVENT_TYPE_LABELS[ev.event_action] ?? ev.event_action}
                     </TableCell>
                     <TableCell className="text-sm text-zinc-200 max-w-xs truncate">{ev.message}</TableCell>
                     <TableCell className="text-xs text-zinc-400 font-mono">

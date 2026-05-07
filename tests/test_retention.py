@@ -44,12 +44,12 @@ class TestRetentionCleanup:
 
         with db._connect() as conn:
             conn.execute(
-                "INSERT INTO normalized_logs (log_id, raw_id, source_type, source_host, timestamp, received_at, severity, category, event_type, src_ip, dst_ip, src_port, dst_port, username, message, tags, processed_at) "
+                "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
                 "VALUES (?, 'r1', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'old', '[]', ?)",
                 ("old-1", old_ts, old_ts, old_ts),
             )
             conn.execute(
-                "INSERT INTO normalized_logs (log_id, raw_id, source_type, source_host, timestamp, received_at, severity, category, event_type, src_ip, dst_ip, src_port, dst_port, username, message, tags, processed_at) "
+                "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
                 "VALUES (?, 'r2', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'new', '[]', ?)",
                 ("new-1", new_ts, new_ts, new_ts),
             )
@@ -71,7 +71,7 @@ class TestRetentionCleanup:
         old_ts = _old_ts(5)
         with db._connect() as conn:
             conn.execute(
-                "INSERT INTO normalized_logs (log_id, raw_id, source_type, source_host, timestamp, received_at, severity, category, event_type, src_ip, dst_ip, src_port, dst_port, username, message, tags, processed_at) "
+                "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
                 "VALUES (?, 'r3', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'msg', '[]', ?)",
                 ("arch-1", old_ts, old_ts, old_ts),
             )
@@ -93,7 +93,7 @@ class TestRetentionCleanup:
         new_ts = _new_ts()
         with db._connect() as conn:
             conn.execute(
-                "INSERT INTO normalized_logs (log_id, raw_id, source_type, source_host, timestamp, received_at, severity, category, event_type, src_ip, dst_ip, src_port, dst_port, username, message, tags, processed_at) "
+                "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
                 "VALUES (?, 'r4', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'keep', '[]', ?)",
                 ("keep-1", new_ts, new_ts, new_ts),
             )
@@ -136,12 +136,12 @@ class TestRetentionCleanup:
         new_ts = _new_ts()
         with db._connect() as conn:
             conn.execute(
-                "INSERT INTO raw_logs (raw_id, source_host, received_at, raw_content) "
+                "INSERT INTO raw_logs (raw_id, observer_hostname, received_at, raw_content) "
                 "VALUES (?, 'host', ?, 'old log')",
                 ("raw-old", old_ts),
             )
             conn.execute(
-                "INSERT INTO raw_logs (raw_id, source_host, received_at, raw_content) "
+                "INSERT INTO raw_logs (raw_id, observer_hostname, received_at, raw_content) "
                 "VALUES (?, 'host', ?, 'new log')",
                 ("raw-new", new_ts),
             )

@@ -120,7 +120,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
 
   const { data: logsData } = useQuery({
     queryKey: ['device-logs', device?.ip],
-    queryFn: () => logsApi.listNormalized({ src_ip: device!.ip, limit: 10 }),
+    queryFn: () => logsApi.listNormalized({ source_ip: device!.ip, limit: 10 }),
     enabled: !!device?.ip,
     refetchInterval: 60_000,
   })
@@ -278,7 +278,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
               {logs.map((l) => (
                 <div key={l.log_id} className="px-4 py-2.5">
                   <div className="flex items-center justify-between mb-0.5">
-                    <span className="text-[11px] text-zinc-500 font-mono">{l.event_type}</span>
+                    <span className="text-[11px] text-zinc-500 font-mono">{l.event_action}</span>
                     <span className="text-[11px] text-zinc-600">
                       {new Date(l.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                     </span>

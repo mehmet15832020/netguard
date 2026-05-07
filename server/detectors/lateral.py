@@ -62,7 +62,7 @@ class LateralMovementDetector(BaseDetector):
     İç ağdan iç ağa hassas portlarda SYN paketlerini izler.
     Tek bir iç IP'den birden fazla farklı iç hedefe bağlantı = yanal hareket.
 
-    _history: {src_ip: [(monotonic_ts, dst_ip, dst_port), ...]}
+    _history: {source_ip: [(monotonic_ts, destination_ip, destination_port), ...]}
     """
 
     name = "lateral_movement"
@@ -78,9 +78,9 @@ class LateralMovementDetector(BaseDetector):
         self._alerted: set[str] = set()
         self._lock = threading.Lock()
         try:
-            self.source_host = socket.gethostname()
+            self.observer_hostname = socket.gethostname()
         except Exception:
-            self.source_host = "localhost"
+            self.observer_hostname = "localhost"
         self._start_sniffer()
 
     def _start_sniffer(self) -> None:
@@ -107,18 +107,18 @@ class LateralMovementDetector(BaseDetector):
         try:
             for packet in capture.sniff_continuously():
                 try:
-                    src_ip   = packet.ip.src
-                    dst_ip   = packet.ip.dst
-                    dst_port = int(packet.tcp.dstport)
+                    source_ip   = packet.ip.src
+                    destination_ip   = packet.ip.dst
+                    destination_port = int(packet.tcp.dstport)
                     if (
-                        _is_private(src_ip)
-                        and _is_private(dst_ip)
-                        and src_ip != dst_ip
-                        and dst_port in LATERAL_PORTS
+                        _is_private(source_ip)
+                        and _is_private(destination_ip)
+                        and source_ip != destination_ip
+                        and destination_port in LATERAL_PORTS
                     ):
                         now = time.monotonic()
                         with self._lock:
-                            self._history[src_ip].append((now, dst_ip, dst_port))
+                            self._history[source_ip].append((now, destination_ip, destination_port))
                 except AttributeError:
                     pass
         except Exception as exc:
@@ -139,31 +139,31 @@ class LateralMovementDetector(BaseDetector):
             snapshot = {ip: list(entries) for ip, entries in self._history.items()}
 
         results = []
-        for src_ip, entries in snapshot.items():
-            unique_hosts = {dst_ip for _, dst_ip, _ in entries}
-            if len(unique_hosts) >= self._threshold and src_ip not in self._alerted:
+        for source_ip, entries in snapshot.items():
+            unique_hosts = {destination_ip for _, destination_ip, _ in entries}
+            if len(unique_hosts) >= self._threshold and source_ip not in self._alerted:
                 with self._lock:
-                    self._alerted.add(src_ip)
+                    self._alerted.add(source_ip)
                 ports_seen   = sorted({port for _, _, port in entries})
                 target_hosts = sorted(unique_hosts)
                 log = self._make_log(
-                    event_type = "lateral_movement",
+                    event_action = "lateral_movement",
                     message    = (
-                        f"Yanal hareket tespiti: {src_ip} → "
+                        f"Yanal hareket tespiti: {source_ip} → "
                         f"{len(unique_hosts)} farklı iç hedef / {self._window}s "
                         f"(eşik: {self._threshold}) | "
                         f"Hedefler: {target_hosts} | Portlar: {ports_seen}"
                     ),
-                    category = LogCategory.INTRUSION,
+                    event_category = LogCategory.INTRUSION,
                     severity = "critical",
-                    src_ip   = src_ip,
-                    dst_ip   = target_hosts[0] if target_hosts else None,
-                    protocol = "tcp",
+                    source_ip   = source_ip,
+                    destination_ip   = target_hosts[0] if target_hosts else None,
+                    network_protocol = "tcp",
                     tags     = ["lateral_movement", "internal_scan"],
                 )
                 results.append(log)
                 logger.warning(
-                    f"YANAL HAREKET: {src_ip} → "
+                    f"YANAL HAREKET: {source_ip} → "
                     f"{len(unique_hosts)} iç hedef / {self._window}s | "
                     f"Portlar: {ports_seen}"
                 )

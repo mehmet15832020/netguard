@@ -65,21 +65,21 @@ def fresh_chain_tracker():
     return tracker
 
 
-def _norm_log(event_type: str, src_ip: str, severity: str = "warning",
-              category: LogCategory = LogCategory.NETWORK,
+def _norm_log(event_action: str, source_ip: str, severity: str = "warning",
+              event_category: LogCategory = LogCategory.NETWORK,
               timestamp: datetime | None = None) -> NormalizedLog:
     """Test normalize log fabrikası."""
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
         raw_id      = str(uuid.uuid4()),
         source_type = LogSourceType.SYSLOG,
-        source_host = "test-host",
+        observer_hostname = "test-host",
         timestamp   = timestamp or datetime.now(timezone.utc),
         severity    = severity,
-        category    = category,
-        event_type  = event_type,
-        src_ip      = src_ip,
-        message     = f"{event_type} from {src_ip}",
+        event_category    = event_category,
+        event_action  = event_action,
+        source_ip      = source_ip,
+        message     = f"{event_action} from {source_ip}",
         tags        = [],
     )
 
@@ -111,15 +111,15 @@ class TestNormalizePipeline:
         """Geçerli SSH failure log'u raw_logs'a VE normalized_logs'a yazılmalı."""
         monkeypatch.setattr("server.log_normalizer.db", pipeline_db)
         raw = "Apr 12 10:23:45 myhost sshd[1234]: Failed password for root from 10.0.0.1 port 22 ssh2"
-        norm = process_and_store(raw, source_host="myhost")
+        norm = process_and_store(raw, observer_hostname="myhost")
 
         assert norm is not None
-        assert norm.event_type == "ssh_failure"
-        assert norm.src_ip == "10.0.0.1"
+        assert norm.event_action == "ssh_failure"
+        assert norm.source_ip == "10.0.0.1"
 
         norm_logs = pipeline_db.get_normalized_logs(limit=10)
         assert len(norm_logs) == 1
-        assert norm_logs[0].event_type == "ssh_failure"
+        assert norm_logs[0].event_action == "ssh_failure"
 
         with pipeline_db._connect() as conn:
             row = conn.execute("SELECT parse_status FROM raw_logs LIMIT 1").fetchone()
@@ -129,7 +129,7 @@ class TestNormalizePipeline:
         """Parse edilemeyen log raw_logs'a yazılmalı, parse_status=failed, normalized_logs boş."""
         monkeypatch.setattr("server.log_normalizer.db", pipeline_db)
         raw = "1712915025.123\tOnlyTwoFields"  # Zeek formatı ama çok kısa
-        result = process_and_store(raw, source_host="host1")
+        result = process_and_store(raw, observer_hostname="host1")
 
         assert result is None
         assert len(pipeline_db.get_normalized_logs(limit=10)) == 0
@@ -181,7 +181,7 @@ class TestCorrelationPipeline:
         ):
             events = corr.run()
 
-        ssh_events = [e for e in events if "ssh" in e.rule_id.lower() or "ssh" in e.event_type.lower()]
+        ssh_events = [e for e in events if "ssh" in e.rule_id.lower() or "ssh" in e.event_action.lower()]
         assert len(ssh_events) >= 1, "SSH brute force kuralı tetiklenmeli"
         assert ssh_events[0].group_value == "10.0.0.50"
 
@@ -338,7 +338,7 @@ class TestKillChainPipeline:
         assert result is None
 
     def test_lateral_movement_stage_recorded(self, fresh_chain_tracker):
-        """lateral_movement event_type → 'lateral' aşamasına kaydedilmeli."""
+        """lateral_movement event_action → 'lateral' aşamasına kaydedilmeli."""
         fresh_chain_tracker.record("10.0.0.5", "port_scan_detected")
         fresh_chain_tracker.record("10.0.0.5", "ssh_failure")
         fresh_chain_tracker.record("10.0.0.5", "ssh_success")
@@ -454,10 +454,10 @@ class TestEndToEndPipeline:
         for _ in range(6):
             pipeline_db.save_normalized_log(
                 _norm_log("ssh_failure", "10.1.0.100",
-                          category=LogCategory.AUTHENTICATION)
+                          event_category=LogCategory.AUTHENTICATION)
             )
 
-        norm_logs = pipeline_db.get_normalized_logs(event_type="ssh_failure", limit=20)
+        norm_logs = pipeline_db.get_normalized_logs(event_action="ssh_failure", limit=20)
         assert len(norm_logs) >= 6, "6 normalize log DB'de olmalı"
 
         corr = Correlator()
@@ -495,13 +495,13 @@ class TestEndToEndPipeline:
         for _ in range(6):
             pipeline_db.save_normalized_log(
                 _norm_log("ssh_failure", src, severity="warning",
-                          category=LogCategory.AUTHENTICATION)
+                          event_category=LogCategory.AUTHENTICATION)
             )
 
         # ACCESS: SSH success
         pipeline_db.save_normalized_log(
             _norm_log("ssh_success", src, severity="info",
-                      category=LogCategory.AUTHENTICATION)
+                      event_category=LogCategory.AUTHENTICATION)
         )
 
         corr = Correlator()

@@ -28,15 +28,15 @@ router = APIRouter()
 
 class LogIngestRequest(BaseModel):
     raw_content: str
-    source_host: str = "unknown"
+    observer_hostname: str = "unknown"
 
 
 @router.get("/logs/normalized")
 def list_normalized_logs(
     source_type: str = None,
-    category: str = None,
-    src_ip: str = None,
-    event_type: str = None,
+    event_category: str = None,
+    source_ip: str = None,
+    event_action: str = None,
     limit: int = 100,
     current_user: User = Depends(get_current_user),
 ):
@@ -45,9 +45,9 @@ def list_normalized_logs(
         raise HTTPException(status_code=400, detail="limit 1-1000 arasında olmalı")
     logs = db.get_normalized_logs(
         source_type=source_type,
-        category=category,
-        src_ip=src_ip,
-        event_type=event_type,
+        event_category=event_category,
+        source_ip=source_ip,
+        event_action=event_action,
         limit=limit,
         tenant_id=tenant_scope(current_user),
     )
@@ -58,7 +58,7 @@ def list_normalized_logs(
 def search_logs(
     q: str = "",
     source_type: str = None,
-    category: str = None,
+    event_category: str = None,
     severity: str = None,
     limit: int = 100,
     current_user: User = Depends(get_current_user),
@@ -69,7 +69,7 @@ def search_logs(
     logs = db.search_logs(
         query=q,
         source_type=source_type,
-        category=category,
+        event_category=event_category,
         severity=severity,
         limit=limit,
         tenant_id=tenant_scope(current_user),
@@ -106,7 +106,7 @@ def ingest_log(
     _: User = Depends(get_current_user),
 ):
     """Tek log satırını normalize edip kaydet. Test ve debug için."""
-    norm = process_and_store(req.raw_content, req.source_host)
+    norm = process_and_store(req.raw_content, req.observer_hostname)
     if norm is None:
         return {"success": False, "message": "Log parse edilemedi, ham olarak kaydedildi."}
     return {"success": True, "normalized": norm}
@@ -114,12 +114,12 @@ def ingest_log(
 
 class FirewallLogRequest(BaseModel):
     line: str
-    source_host: str = "firewall"
+    observer_hostname: str = "firewall"
 
 
 class FirewallBatchRequest(BaseModel):
     lines: List[str]
-    source_host: str = "firewall"
+    observer_hostname: str = "firewall"
 
 
 @router.post("/logs/firewall", status_code=202)
@@ -131,10 +131,10 @@ def ingest_firewall_log(
     norm = detect_firewall(req.line)
     if norm is None:
         return {"success": False, "message": "Tanınan firewall formatı değil"}
-    if norm.source_host == norm.source_host:
-        norm.source_host = req.source_host
+    if norm.observer_hostname == norm.observer_hostname:
+        norm.observer_hostname = req.observer_hostname
     db.save_normalized_log(norm)
-    return {"success": True, "source_type": norm.source_type, "event_type": norm.event_type}
+    return {"success": True, "source_type": norm.source_type, "event_action": norm.event_action}
 
 
 @router.post("/logs/firewall/batch", status_code=202)
@@ -150,7 +150,7 @@ def ingest_firewall_batch(
     for line in req.lines:
         norm = detect_firewall(line)
         if norm:
-            norm.source_host = req.source_host
+            norm.observer_hostname = req.observer_hostname
             db.save_normalized_log(norm)
             parsed += 1
         else:
@@ -161,12 +161,12 @@ def ingest_firewall_batch(
 
 class WebLogRequest(BaseModel):
     line: str
-    source_host: str = "webserver"
+    observer_hostname: str = "webserver"
 
 
 class WebLogBatchRequest(BaseModel):
     lines: List[str]
-    source_host: str = "webserver"
+    observer_hostname: str = "webserver"
 
 
 @router.post("/logs/webserver", status_code=202)
@@ -175,11 +175,11 @@ def ingest_webserver_log(
     _: User = Depends(get_current_user),
 ):
     """Tek nginx/Apache log satırı al, parse et, normalize olarak kaydet."""
-    norm = detect_weblog(req.line, req.source_host)
+    norm = detect_weblog(req.line, req.observer_hostname)
     if norm is None:
         return {"success": False, "message": "Tanınan web log formatı değil"}
     db.save_normalized_log(norm)
-    return {"success": True, "source_type": norm.source_type, "event_type": norm.event_type}
+    return {"success": True, "source_type": norm.source_type, "event_action": norm.event_action}
 
 
 @router.post("/logs/webserver/batch", status_code=202)
@@ -193,7 +193,7 @@ def ingest_webserver_batch(
 
     parsed = skipped = 0
     for line in req.lines:
-        norm = detect_weblog(line, req.source_host)
+        norm = detect_weblog(line, req.observer_hostname)
         if norm:
             db.save_normalized_log(norm)
             parsed += 1

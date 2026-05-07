@@ -36,7 +36,7 @@ class TestProcessTrafficSummary:
             mock_influx.write_traffic.return_value = True
             _process_traffic_summary("agent-1", "host1", _make_summary(suspicious=0))
         logs = tmp_db.get_normalized_logs()
-        assert not any(l.event_type == "suspicious_traffic" for l in logs)
+        assert not any(l.event_action == "suspicious_traffic" for l in logs)
 
     def test_suspicious_traffic_creates_warning_log(self, tmp_db):
         from server.routes.agents import _process_traffic_summary
@@ -44,7 +44,7 @@ class TestProcessTrafficSummary:
             mock_influx.write_traffic.return_value = True
             _process_traffic_summary("agent-1", "host1", _make_summary(suspicious=7))
         logs = tmp_db.get_normalized_logs()
-        suspicious = [l for l in logs if l.event_type == "suspicious_traffic"]
+        suspicious = [l for l in logs if l.event_action == "suspicious_traffic"]
         assert len(suspicious) == 1
         assert suspicious[0].severity == "warning"
 
@@ -54,7 +54,7 @@ class TestProcessTrafficSummary:
             mock_influx.write_traffic.return_value = True
             _process_traffic_summary("agent-1", "host1", _make_summary(suspicious=20))
         logs = tmp_db.get_normalized_logs()
-        suspicious = [l for l in logs if l.event_type == "suspicious_traffic"]
+        suspicious = [l for l in logs if l.event_action == "suspicious_traffic"]
         assert len(suspicious) == 1
         assert suspicious[0].severity == "critical"
 
@@ -70,8 +70,8 @@ class TestProcessTrafficSummary:
                 _make_summary(suspicious=10, src_ips=["10.0.0.5"]),
             )
             mock_tracker.record.assert_called_with(
-                src_ip="10.0.0.5",
-                event_type="port_scan",
+                source_ip="10.0.0.5",
+                event_action="port_scan",
                 occurred_at=mock_tracker.record.call_args.kwargs["occurred_at"],
             )
 
@@ -143,4 +143,4 @@ class TestReceiveMetricsWithTraffic:
                 json=self._snapshot_payload(with_traffic=True, suspicious=10),
             )
         logs = tmp_db.get_normalized_logs()
-        assert any(l.event_type == "suspicious_traffic" for l in logs)
+        assert any(l.event_action == "suspicious_traffic" for l in logs)

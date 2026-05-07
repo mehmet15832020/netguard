@@ -47,7 +47,7 @@ function EventTimeline({ incidentId }: { incidentId: string }) {
             <p className="text-[10px] text-zinc-500 mt-0.5 font-mono">
               {new Date(ev.occurred_at).toLocaleString('tr-TR')}
               {' · '}
-              <span className="uppercase">{ev.event_type}</span>
+              <span className="uppercase">{ev.event_action}</span>
             </p>
           </div>
         </div>
@@ -127,7 +127,7 @@ function EnrichmentPanel({ enrichment, incidentId }: { enrichment?: IncidentEnri
                   <p className="text-[10px] text-zinc-600 font-mono mt-0.5">
                     {new Date(log.timestamp).toLocaleString('tr-TR')}
                     {' · '}
-                    <span className="uppercase">{log.event_type}</span>
+                    <span className="uppercase">{log.event_action}</span>
                     {' · '}
                     {log.source_type}
                   </p>

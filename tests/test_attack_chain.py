@@ -34,7 +34,7 @@ class TestPartialChain:
         assert result is not None
         assert result["chain_type"] == "PARTIAL_ATTACK_CHAIN"
         assert result["severity"] == "warning"
-        assert result["src_ip"] == "2.2.2.2"
+        assert result["source_ip"] == "2.2.2.2"
         assert "recon" in result["stages"]
         assert "weaponize" in result["stages"]
 
@@ -53,7 +53,7 @@ class TestPartialChain:
         result5 = t.record("5.5.5.5", "port_scan_attempt")  # 5.5.5.5 için recon + weaponize
         assert result4 is None   # 4.4.4.4 hâlâ tek aşama
         assert result5 is not None
-        assert result5["src_ip"] == "5.5.5.5"
+        assert result5["source_ip"] == "5.5.5.5"
 
 
 class TestFullChain:

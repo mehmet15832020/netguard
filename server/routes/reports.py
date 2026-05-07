@@ -118,7 +118,7 @@ def report_summary(current_user: User = Depends(get_current_user)):
 
     sec_by_type: dict[str, int] = {}
     for e in sec_events:
-        _et = getattr(e, "event_type", e.get("event_type", "") if isinstance(e, dict) else "")
+        _et = getattr(e, "event_action", e.get("event_action", "") if isinstance(e, dict) else "")
         et = _et.value if hasattr(_et, "value") else str(_et)
         sec_by_type[et] = sec_by_type.get(et, 0) + 1
 
@@ -190,7 +190,7 @@ def report_security(
     raw = _db_mod.db.get_security_events(limit=limit, tenant_id=tenant_scope(current_user))
     rows = [{
         "event_id":   e.event_id if not isinstance(e, dict) else e.get("event_id", ""),
-        "event_type": e.event_type.value if (not isinstance(e, dict) and hasattr(e.event_type, "value")) else (e.get("event_type", "") if isinstance(e, dict) else str(e.event_type)),
+        "event_action": e.event_action.value if (not isinstance(e, dict) and hasattr(e.event_action, "value")) else (e.get("event_action", "") if isinstance(e, dict) else str(e.event_action)),
         "source_ip":  (e.source_ip if not isinstance(e, dict) else e.get("source_ip", "")) or "",
         "username":   (e.username if not isinstance(e, dict) else e.get("username", "")) or "",
         "message":    (e.message if not isinstance(e, dict) else e.get("message", "")) or "",

@@ -11,13 +11,13 @@ Kural şeması (JSON):
   rule_id         — benzersiz kural kimliği
   name            — okunabilir isim
   description     — açıklama
-  match_event_type — normalize logda eşleşecek event_type (prefix LIKE)
+  match_event_action — normalize logda eşleşecek event_action (prefix LIKE)
   match_severity  — (opsiyonel) sadece bu severity'deki logları say
-  group_by        — "src_ip" veya "source_host"
+  group_by        — "source_ip" veya "observer_hostname"
   window_seconds  — zaman penceresi
   threshold       — eşik — bu kadar log gelirse tetikle
   severity        — üretilen CorrelatedEvent'in severity'si
-  output_event_type — üretilen CorrelatedEvent'in event_type'ı
+  output_event_action — üretilen CorrelatedEvent'in event_action'ı
   enabled         — true/false
 """
 
@@ -56,9 +56,9 @@ SIGMA_RULES_DIR = os.getenv(
 )
 
 _VALID_GROUP_COLS: frozenset[str] = frozenset({
-    "src_ip", "dst_ip", "source_host", "username", "hostname",
-    "event_type", "category", "tenant_id", "source_type",
-    "protocol", "src_port", "dst_port", "device_id",
+    "source_ip", "destination_ip", "observer_hostname", "username", "hostname",
+    "event_action", "event_category", "tenant_id", "source_type",
+    "network_protocol", "source_port", "destination_port", "device_id",
 })
 # Pre-built COUNT(DISTINCT col) ifadeleri — runtime f-string interpolasyon riski yok
 _COUNT_DISTINCT_EXPRS: dict[str, str] = {col: f"COUNT(DISTINCT {col})" for col in _VALID_GROUP_COLS}
@@ -73,12 +73,12 @@ class CorrelationRule:
     rule_id: str
     name: str
     description: str
-    match_event_type: str      # prefix — LIKE sorgusu için
-    group_by: str              # "src_ip" | "source_host"
+    match_event_action: str      # prefix — LIKE sorgusu için
+    group_by: str              # "source_ip" | "observer_hostname"
     window_seconds: int
     threshold: int
     severity: str
-    output_event_type: str
+    output_event_action: str
     enabled: bool
     match_severity: Optional[str] = None   # opsiyonel severity filtresi
     keywords: Optional[list] = None        # mesajda aranacak anahtar kelimeler (OR)
@@ -128,12 +128,12 @@ class Correlator:
                             rule_id           = item["rule_id"],
                             name              = item["name"],
                             description       = item.get("description", ""),
-                            match_event_type  = item["match_event_type"],
-                            group_by          = item.get("group_by", "src_ip"),
+                            match_event_action  = item["match_event_action"],
+                            group_by          = item.get("group_by", "source_ip"),
                             window_seconds    = int(item["window_seconds"]),
                             threshold         = int(item["threshold"]),
                             severity          = item.get("severity", "warning"),
-                            output_event_type = item["output_event_type"],
+                            output_event_action = item["output_event_action"],
                             enabled           = True,
                             match_severity    = item.get("match_severity"),
                         )
@@ -210,7 +210,7 @@ class Correlator:
                        {count_expr} as cnt,
                        MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
                 FROM normalized_logs
-                WHERE event_type LIKE ?
+                WHERE event_action LIKE ?
                   AND timestamp >= ?
                   {"AND severity = ?" if rule.match_severity else ""}
                   AND {group_col} IS NOT NULL
@@ -219,7 +219,7 @@ class Correlator:
                 HAVING cnt >= ?
                 """,
                 (
-                    f"{rule.match_event_type}%",
+                    f"{rule.match_event_action}%",
                     since_iso,
                     *(([rule.match_severity]) if rule.match_severity else []),
                     *kw_params,
@@ -238,7 +238,7 @@ class Correlator:
                 corr_id        = str(uuid.uuid4()),
                 rule_id        = rule.rule_id,
                 rule_name      = rule.name,
-                event_type     = rule.output_event_type,
+                event_action     = rule.output_event_action,
                 severity       = rule.severity,
                 group_value    = group_value,
                 matched_count  = count,
@@ -294,7 +294,7 @@ class Correlator:
                 db.add_incident_event(
                     incident_id=existing_id,
                     event_id=event.corr_id,
-                    event_type=event.event_type,
+                    event_action=event.event_action,
                     severity=event.severity,
                     message=event.message,
                     occurred_at=last_seen_iso,
@@ -304,7 +304,7 @@ class Correlator:
                 incident = Incident(
                     incident_id=str(uuid.uuid4()),
                     title=event.message,
-                    description=f"Otomatik: {event.event_type} — {event.group_value}",
+                    description=f"Otomatik: {event.event_action} — {event.group_value}",
                     severity=event.severity,
                     status=IncidentStatus.OPEN,
                     source_event_id=event.corr_id,
@@ -317,7 +317,7 @@ class Correlator:
                 db.add_incident_event(
                     incident_id=incident.incident_id,
                     event_id=event.corr_id,
-                    event_type=event.event_type,
+                    event_action=event.event_action,
                     severity=event.severity,
                     message=event.message,
                     occurred_at=last_seen_iso,
@@ -347,8 +347,8 @@ class Correlator:
         try:
             from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
             trigger = attack_chain_tracker.record(
-                src_ip=event.group_value,
-                event_type=event.event_type,
+                source_ip=event.group_value,
+                event_action=event.event_action,
             )
             if trigger:
                 chain_event = chain_trigger_to_correlated_event(trigger, db_save=True)
@@ -378,7 +378,7 @@ class Correlator:
                 hostname     = event.group_value,
                 severity     = severity_map.get(event.severity, AlertSeverity.WARNING),
                 status       = AlertStatus.ACTIVE,
-                metric       = event.event_type,
+                metric       = event.event_action,
                 message      = event.message,
                 value        = float(event.matched_count),
                 threshold    = 0.0,

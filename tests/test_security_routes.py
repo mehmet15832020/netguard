@@ -44,11 +44,11 @@ class TestSecurityEventsEndpoint:
         assert resp.status_code == 200
 
     def test_filter_by_event_type(self, auth):
-        resp = client.get("/api/v1/security/events?event_type=ssh_failure", headers=auth)
+        resp = client.get("/api/v1/security/events?event_action=ssh_failure", headers=auth)
         assert resp.status_code == 200
         # Dönen tüm event'lar doğru tipte olmalı
         for ev in resp.json()["events"]:
-            assert ev["event_type"] == "ssh_failure"
+            assert ev["event_action"] == "ssh_failure"
 
     def test_filter_by_source_ip(self, auth):
         resp = client.get("/api/v1/security/events?source_ip=1.2.3.4", headers=auth)

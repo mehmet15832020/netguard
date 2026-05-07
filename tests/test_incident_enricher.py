@@ -20,18 +20,18 @@ from shared.models import (
 )
 
 
-def _make_normalized_log(src_ip: str = "1.2.3.4", event_type: str = "port_scan_attempt") -> NormalizedLog:
+def _make_normalized_log(source_ip: str = "1.2.3.4", event_action: str = "port_scan_attempt") -> NormalizedLog:
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
         raw_id      = str(uuid.uuid4()),
         source_type = LogSourceType.NETGUARD,
-        source_host = "test-host",
+        observer_hostname = "test-host",
         timestamp   = datetime.now(timezone.utc),
         severity    = "warning",
-        category    = LogCategory.INTRUSION,
-        event_type  = event_type,
-        src_ip      = src_ip,
-        message     = f"Test event from {src_ip}",
+        event_category    = LogCategory.INTRUSION,
+        event_action  = event_action,
+        source_ip      = source_ip,
+        message     = f"Test event from {source_ip}",
     )
 
 
@@ -46,7 +46,7 @@ def _make_correlated_event(
         corr_id         = str(uuid.uuid4()),
         rule_id         = rule_id,
         rule_name       = "Port Scan Detected",
-        event_type      = "port_scan_detected",
+        event_action      = "port_scan_detected",
         severity        = "warning",
         group_value     = group_value,
         matched_count   = 5,
@@ -121,7 +121,7 @@ class TestEnrichMitre:
 
 class TestEnrichRelatedLogs:
     def test_related_logs_fetched_for_group_value(self, tmp_db):
-        log = _make_normalized_log(src_ip="1.2.3.4")
+        log = _make_normalized_log(source_ip="1.2.3.4")
         tmp_db.save_normalized_log(log)
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -132,11 +132,11 @@ class TestEnrichRelatedLogs:
         })
         logs = result["enrichment"]["related_logs"]
         assert len(logs) == 1
-        assert logs[0]["src_ip"] == "1.2.3.4"
-        assert logs[0]["event_type"] == "port_scan_attempt"
+        assert logs[0]["source_ip"] == "1.2.3.4"
+        assert logs[0]["event_action"] == "port_scan_attempt"
 
     def test_no_related_logs_for_different_ip(self, tmp_db):
-        log = _make_normalized_log(src_ip="5.6.7.8")
+        log = _make_normalized_log(source_ip="5.6.7.8")
         tmp_db.save_normalized_log(log)
 
         now_iso = datetime.now(timezone.utc).isoformat()
@@ -152,12 +152,12 @@ class TestEnrichRelatedLogs:
             log_id      = str(uuid.uuid4()),
             raw_id      = str(uuid.uuid4()),
             source_type = LogSourceType.NETGUARD,
-            source_host = "host",
+            observer_hostname = "host",
             timestamp   = datetime.now(timezone.utc),
             severity    = "info",
-            category    = LogCategory.NETWORK,
-            event_type  = "test_event",
-            src_ip      = "1.2.3.4",
+            event_category    = LogCategory.NETWORK,
+            event_action  = "test_event",
+            source_ip      = "1.2.3.4",
             message     = "A" * 300,
         )
         tmp_db.save_normalized_log(log)
@@ -171,7 +171,7 @@ class TestEnrichRelatedLogs:
         assert len(result["enrichment"]["related_logs"][0]["message"]) <= 200
 
     def test_no_logs_when_group_value_missing(self, tmp_db):
-        log = _make_normalized_log(src_ip="1.2.3.4")
+        log = _make_normalized_log(source_ip="1.2.3.4")
         tmp_db.save_normalized_log(log)
 
         result = enrich_incident({

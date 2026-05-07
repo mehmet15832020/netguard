@@ -235,7 +235,7 @@ class TestAutoIncidentCreation:
             event_id=str(uuid.uuid4()),
             rule_id=rule_id,
             rule_name="SSH Brute Force",
-            event_type="ssh_brute_force",
+            event_action="ssh_brute_force",
             severity=severity,
             group_value=group_value,
             matched_count=5,

@@ -76,9 +76,9 @@ class ICMPFloodDetector(BaseDetector):
         self._prev_count: Optional[int] = None
         self._prev_time:  Optional[float] = None
         try:
-            self.source_host = socket.gethostname()
+            self.observer_hostname = socket.gethostname()
         except Exception:
-            self.source_host = "localhost"
+            self.observer_hostname = "localhost"
 
     def detect(self) -> list[NormalizedLog]:
         current_count = _read_icmp_in_msgs(self._snmp_path)
@@ -97,14 +97,14 @@ class ICMPFloodDetector(BaseDetector):
 
                 if rate >= self._threshold:
                     log = self._make_log(
-                        event_type = "icmp_flood_attempt",
+                        event_action = "icmp_flood_attempt",
                         message    = (
                             f"ICMP flood tespiti: {rate:.1f} paket/s "
                             f"(eşik: {self._threshold} paket/s)"
                         ),
-                        category   = LogCategory.NETWORK,
+                        event_category   = LogCategory.NETWORK,
                         severity   = "critical",
-                        protocol   = "icmp",
+                        network_protocol   = "icmp",
                         tags       = ["icmp_flood", "dos_attack", "network_attack"],
                     )
                     results.append(log)

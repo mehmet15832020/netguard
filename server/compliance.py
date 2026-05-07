@@ -17,7 +17,7 @@ class ComplianceControl:
     title: str
     description: str
     framework: str           # "PCI DSS v4.0" | "ISO 27001:2022"
-    category: str
+    event_category: str
     netguard_features: list[str]   # Bu kontrolü karşılayan NetGuard özellikleri
     check_fn: Optional[str] = None # DB'den kontrol edilecek metrik adı
 
@@ -27,7 +27,7 @@ class ControlResult:
     control_id: str
     title: str
     framework: str
-    category: str
+    event_category: str
     status: str              # "compliant" | "partial" | "gap"
     score: int               # 0-100
     evidence: list[str] = field(default_factory=list)
@@ -44,7 +44,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Ağ Erişim Kontrolü",
         description="Ağ güvenlik kontrollerini kur ve sürdür",
         framework="PCI DSS v4.0",
-        category="Ağ Güvenliği",
+        event_category="Ağ Güvenliği",
         netguard_features=["device_discovery", "topology", "snmp_monitoring"],
         check_fn="device_count",
     ),
@@ -53,7 +53,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Sistem Sertleştirme",
         description="Tüm sistem bileşenleri için güvenlik yapılandırma standartları",
         framework="PCI DSS v4.0",
-        category="Sistem Güvenliği",
+        event_category="Sistem Güvenliği",
         netguard_features=["security_events", "log_monitoring"],
         check_fn="security_event_count",
     ),
@@ -62,7 +62,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Web Uygulama Güvenliği",
         description="Web uygulamalarını saldırılara karşı koru",
         framework="PCI DSS v4.0",
-        category="Uygulama Güvenliği",
+        event_category="Uygulama Güvenliği",
         netguard_features=["web_log_parser", "correlation_rules"],
         check_fn="web_log_count",
     ),
@@ -71,7 +71,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Erişim Kontrol Sistemi",
         description="Sistem bileşenlerine erişimi iş gereksinimiyle sınırla",
         framework="PCI DSS v4.0",
-        category="Erişim Yönetimi",
+        event_category="Erişim Yönetimi",
         netguard_features=["auth_log_monitoring", "brute_force_detection"],
         check_fn="auth_event_count",
     ),
@@ -80,7 +80,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Kullanıcı Kimlik Doğrulama",
         description="Tüm kullanıcılar için güçlü kimlik doğrulama",
         framework="PCI DSS v4.0",
-        category="Kimlik Yönetimi",
+        event_category="Kimlik Yönetimi",
         netguard_features=["brute_force_detection", "ssh_monitoring", "windows_logon"],
         check_fn="brute_force_event_count",
     ),
@@ -89,7 +89,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Denetim Günlükleri — Kritik Olaylar",
         description="Tüm bireysel kullanıcı erişimlerini ve kritik olayları kaydet",
         framework="PCI DSS v4.0",
-        category="Log Yönetimi",
+        event_category="Log Yönetimi",
         netguard_features=["audit_log", "security_events", "normalized_logs"],
         check_fn="audit_log_count",
     ),
@@ -98,7 +98,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Denetim Günlükleri — Bütünlük",
         description="Denetim günlüklerini değişiklik ve imhadan koru",
         framework="PCI DSS v4.0",
-        category="Log Yönetimi",
+        event_category="Log Yönetimi",
         netguard_features=["audit_log", "retention_policy"],
         check_fn="audit_log_count",
     ),
@@ -107,7 +107,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Anormallik ve Tehdit Tespiti",
         description="Anormallikleri ve şüpheli etkinlikleri tespit et",
         framework="PCI DSS v4.0",
-        category="İzleme",
+        event_category="İzleme",
         netguard_features=["correlation_engine", "attack_chain", "sigma_rules"],
         check_fn="correlated_event_count",
     ),
@@ -116,7 +116,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Güvenlik İhlali Tespiti",
         description="Kritik kontrol sistemlerindeki hataları tespit et ve raporla",
         framework="PCI DSS v4.0",
-        category="İzleme",
+        event_category="İzleme",
         netguard_features=["alerts", "incidents", "notifier"],
         check_fn="active_alert_count",
     ),
@@ -125,7 +125,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Ağ İzinsiz Giriş Tespiti",
         description="Ağdaki yetkisiz erişimleri ve şüpheli etkinlikleri tespit et",
         framework="PCI DSS v4.0",
-        category="Saldırı Tespiti",
+        event_category="Saldırı Tespiti",
         netguard_features=["netflow", "correlation_rules", "firewall_parser"],
         check_fn="netflow_log_count",
     ),
@@ -134,7 +134,7 @@ PCI_CONTROLS: list[ComplianceControl] = [
         title="Olay Müdahale Planı",
         description="Güvenlik ihlallerine yanıt vermek için plan hazırla ve uygula",
         framework="PCI DSS v4.0",
-        category="Olay Müdahalesi",
+        event_category="Olay Müdahalesi",
         netguard_features=["incidents", "incident_assignment", "audit_log"],
         check_fn="incident_count",
     ),
@@ -150,7 +150,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Bulut Hizmetleri Güvenliği",
         description="Bulut hizmetlerinin edinimi, kullanımı ve yönetimi için süreçler",
         framework="ISO 27001:2022",
-        category="Organizasyonel Kontroller",
+        event_category="Organizasyonel Kontroller",
         netguard_features=["device_monitoring", "snmp_monitoring"],
         check_fn="device_count",
     ),
@@ -159,7 +159,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Bilgi Güvenliği Olay Raporlama",
         description="Çalışanların bilgi güvenliği olaylarını raporlama mekanizması",
         framework="ISO 27001:2022",
-        category="İnsan Kaynakları Güvenliği",
+        event_category="İnsan Kaynakları Güvenliği",
         netguard_features=["incidents", "security_events"],
         check_fn="incident_count",
     ),
@@ -168,7 +168,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Fiziksel Güvenlik İzleme",
         description="Tesislerin yetkisiz fiziksel erişime karşı sürekli izlenmesi",
         framework="ISO 27001:2022",
-        category="Fiziksel Kontroller",
+        event_category="Fiziksel Kontroller",
         netguard_features=["device_discovery", "network_monitoring"],
         check_fn="device_count",
     ),
@@ -177,7 +177,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Ayrıcalıklı Erişim Hakları",
         description="Ayrıcalıklı erişim haklarının tahsisi ve yönetimi",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["sudo_monitoring", "privilege_escalation_detection"],
         check_fn="sudo_event_count",
     ),
@@ -186,7 +186,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Güvenli Kimlik Doğrulama",
         description="Güvenli kimlik doğrulama teknolojileri ve prosedürleri",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["brute_force_detection", "ssh_monitoring", "windows_logon"],
         check_fn="brute_force_event_count",
     ),
@@ -195,7 +195,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Zararlı Yazılım Koruması",
         description="Zararlı yazılımlara karşı koruma",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["sigma_rules", "process_monitoring", "windows_events"],
         check_fn="windows_process_count",
     ),
@@ -204,7 +204,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Teknik Açıklık Yönetimi",
         description="Teknik açıklıkların zamanında tespiti ve yönetimi",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["threat_intel", "correlation_rules"],
         check_fn="threat_intel_count",
     ),
@@ -213,7 +213,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Log Kayıt",
         description="Etkinliklerin, istisnaların ve güvenlik olaylarının kaydedilmesi",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["normalized_logs", "audit_log", "security_events"],
         check_fn="normalized_log_count",
     ),
@@ -222,7 +222,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="İzleme Faaliyetleri",
         description="Ağ, sistem ve uygulama davranışının izlenmesi",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["snmp_monitoring", "netflow", "correlation_engine"],
         check_fn="correlated_event_count",
     ),
@@ -231,7 +231,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Ağ Güvenliği",
         description="Ağların ve ağ cihazlarının güvenliği",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["topology", "snmp_monitoring", "device_discovery"],
         check_fn="device_count",
     ),
@@ -240,7 +240,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Web Filtreleme",
         description="Zararlı içeriklere erişimi yönet",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["firewall_parser", "web_log_parser"],
         check_fn="firewall_log_count",
     ),
@@ -249,7 +249,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Bilgi Güvenliği Olaylarına Müdahale",
         description="Bilgi güvenliği olaylarına uygun şekilde müdahale edilmesi",
         framework="ISO 27001:2022",
-        category="Organizasyonel Kontroller",
+        event_category="Organizasyonel Kontroller",
         netguard_features=["incidents", "attack_chain", "notifier"],
         check_fn="incident_count",
     ),
@@ -258,7 +258,7 @@ ISO_CONTROLS: list[ComplianceControl] = [
         title="Veri Sızıntısı Önleme",
         description="Yetkisiz bilgi ifşasını tespit etmek ve önlemek için önlemler",
         framework="ISO 27001:2022",
-        category="Teknolojik Kontroller",
+        event_category="Teknolojik Kontroller",
         netguard_features=["netflow", "correlation_rules", "exfiltration_detection"],
         check_fn="netflow_log_count",
     ),
@@ -317,7 +317,7 @@ def _score_control(control: ComplianceControl, metrics: dict) -> ControlResult:
         control_id=control.control_id,
         title=control.title,
         framework=control.framework,
-        category=control.category,
+        event_category=control.event_category,
         status=status,
         score=score,
         evidence=evidence,
@@ -370,7 +370,7 @@ def evaluate_compliance(db, framework: Optional[str] = None) -> dict:
                 "control_id":      r.control_id,
                 "title":           r.title,
                 "framework":       r.framework,
-                "category":        r.category,
+                "event_category":        r.event_category,
                 "status":          r.status,
                 "score":           r.score,
                 "evidence":        r.evidence,
@@ -397,16 +397,16 @@ def _collect_metrics(db) -> dict:
     metrics["correlated_event_count"] = _count("SELECT COUNT(*) FROM correlated_events")
     metrics["incident_count"]         = _count("SELECT COUNT(*) FROM incidents")
     metrics["brute_force_event_count"] = _count(
-        "SELECT COUNT(*) FROM security_events WHERE event_type IN ('brute_force','windows_logon_failure')"
+        "SELECT COUNT(*) FROM security_events WHERE event_action IN ('brute_force','windows_logon_failure')"
     )
     metrics["sudo_event_count"]       = _count(
-        "SELECT COUNT(*) FROM security_events WHERE event_type = 'sudo_usage'"
+        "SELECT COUNT(*) FROM security_events WHERE event_action = 'sudo_usage'"
     )
     metrics["windows_process_count"]  = _count(
-        "SELECT COUNT(*) FROM security_events WHERE event_type = 'windows_process_create'"
+        "SELECT COUNT(*) FROM security_events WHERE event_action = 'windows_process_create'"
     )
     metrics["auth_event_count"]       = _count(
-        "SELECT COUNT(*) FROM security_events WHERE event_type LIKE 'ssh_%' OR event_type LIKE 'windows_logon%'"
+        "SELECT COUNT(*) FROM security_events WHERE event_action LIKE 'ssh_%' OR event_action LIKE 'windows_logon%'"
     )
     metrics["normalized_log_count"]   = _count("SELECT COUNT(*) FROM normalized_logs")
     metrics["netflow_log_count"]      = _count(

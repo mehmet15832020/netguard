@@ -7,8 +7,8 @@ logsource:
     product: netguard
 detection:
     selection:
-        event_type: device_down
-    condition: selection | count() by source_host > 2
+        event_action: device_down
+    condition: selection | count() by observer_hostname > 2
     timeframe: 2m
 level: medium
 tags:

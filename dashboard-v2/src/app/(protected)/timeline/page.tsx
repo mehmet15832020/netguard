@@ -40,7 +40,7 @@ function KillChainPipeline({ chain }: { chain: ActiveChain }) {
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot)} />
-          <span className="font-mono text-sm font-semibold text-zinc-100">{chain.src_ip}</span>
+          <span className="font-mono text-sm font-semibold text-zinc-100">{chain.source_ip}</span>
           <span className={cn('text-xs px-1.5 py-0.5 rounded border', cfg.text, cfg.border, cfg.bg)}>
             {chain.severity.toUpperCase()} · {chain.stage_count} AŞAMA
           </span>
@@ -237,7 +237,7 @@ export default function TimelinePage() {
         ) : (
           <div className="space-y-3">
             {activeChains.map((chain) => (
-              <KillChainPipeline key={chain.src_ip} chain={chain} />
+              <KillChainPipeline key={chain.source_ip} chain={chain} />
             ))}
           </div>
         )}

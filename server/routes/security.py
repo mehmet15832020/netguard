@@ -26,7 +26,7 @@ _AGENT_ID_FALLBACK = os.getenv("AGENT_ID", socket.gethostname())
 
 @router.get("/security/events")
 def list_security_events(
-    event_type: str = None,
+    event_action: str = None,
     source_ip: str = None,
     limit: int = 100,
     current_user: User = Depends(get_current_user),
@@ -35,7 +35,7 @@ def list_security_events(
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit 1-500 arasında olmalı")
     events = db.get_security_events(
-        event_type=event_type,
+        event_action=event_action,
         source_ip=source_ip,
         limit=limit,
         tenant_id=tenant_scope(current_user),
@@ -49,7 +49,7 @@ def security_summary(_: User = Depends(get_current_user)):
     from shared.models import SecurityEventType
     summary = {}
     for et in SecurityEventType:
-        summary[et.value] = db.count_security_events(event_type=et.value)
+        summary[et.value] = db.count_security_events(event_action=et.value)
     return {"summary": summary}
 
 

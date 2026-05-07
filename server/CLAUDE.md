@@ -4,7 +4,7 @@ NetGuard backend (Python 3.12 + FastAPI).
 
 ## Kritik Kurallar
 - SQLite-specific syntax yazma: GLOB, PRAGMA yeni modüllere eklenmez
-- Field adları: `src_ip`, `dst_ip`, `event_type`, `category`, `tenant_id`, `timestamp`
+- ECS field adları: `source_ip`, `destination_ip`, `event_action`, `event_category`, `observer_hostname`, `network_protocol`, `source_port`, `destination_port`, `tenant_id`, `timestamp`
 - Yeni route → `routes/` altına, router `main.py`'a eklenir
 - Her yeni modül için `tests/` altına test yaz — pytest tests/ -q geçmeli
 - Error handling sadece system boundary'de: user input, external API, UDP socket
@@ -22,7 +22,7 @@ attack_chain.py → incident (respond)
 ```
 
 ## Bilinen Sorunlar (Dokunma)
-- `log_normalizer.py:166` → Suricata parser `dest_ip` kullanıyor, `dst_ip` olmalı
+- `log_normalizer.py:166` → Suricata parser `dest_ip` kullanıyor, `destination_ip` olmalı
 
 ## Test Fixture
 ```python

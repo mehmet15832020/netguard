@@ -63,8 +63,8 @@ def _read_dns_connections_proc() -> dict[str, int]:
         if rem_port_hex.upper() == dns_port_hex:
             local = parts[1]
             src_ip_hex = local.split(":")[0]
-            src_ip = _hex_to_ip(src_ip_hex)
-            result[src_ip] += 1
+            source_ip = _hex_to_ip(src_ip_hex)
+            result[source_ip] += 1
 
     return result
 
@@ -79,9 +79,9 @@ class DNSAnomalyDetector(BaseDetector):
     def __init__(self, threshold: int = DNS_QUERY_THRESHOLD):
         self._threshold = threshold
         try:
-            self.source_host = socket.gethostname()
+            self.observer_hostname = socket.gethostname()
         except Exception:
-            self.source_host = "localhost"
+            self.observer_hostname = "localhost"
 
     def _get_dns_counts(self) -> dict[str, int]:
         """
@@ -92,8 +92,8 @@ class DNSAnomalyDetector(BaseDetector):
         try:
             for conn in psutil.net_connections(kind="udp"):
                 if conn.raddr and conn.raddr.port == DNS_PORT:
-                    src_ip = conn.laddr.ip if conn.laddr else "unknown"
-                    counts[src_ip] += 1
+                    source_ip = conn.laddr.ip if conn.laddr else "unknown"
+                    counts[source_ip] += 1
         except (psutil.AccessDenied, PermissionError):
             return _read_dns_connections_proc()
         return counts
@@ -102,22 +102,22 @@ class DNSAnomalyDetector(BaseDetector):
         counts = self._get_dns_counts()
         results = []
 
-        for src_ip, count in counts.items():
+        for source_ip, count in counts.items():
             if count >= self._threshold:
                 log = self._make_log(
-                    event_type = "dns_query_burst",
+                    event_action = "dns_query_burst",
                     message    = (
-                        f"DNS anomalisi: {src_ip} → {count} DNS sorgusu "
+                        f"DNS anomalisi: {source_ip} → {count} DNS sorgusu "
                         f"(eşik: {self._threshold})"
                     ),
-                    category   = LogCategory.NETWORK,
+                    event_category   = LogCategory.NETWORK,
                     severity   = "warning",
-                    src_ip     = src_ip,
-                    dst_port   = DNS_PORT,
-                    protocol   = "udp",
+                    source_ip     = source_ip,
+                    destination_port   = DNS_PORT,
+                    network_protocol   = "udp",
                     tags       = ["dns_anomaly", "network_attack"],
                 )
                 results.append(log)
-                logger.warning(f"DNS anomalisi: {src_ip} — {count} sorgu")
+                logger.warning(f"DNS anomalisi: {source_ip} — {count} sorgu")
 
         return results

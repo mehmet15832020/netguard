@@ -27,7 +27,7 @@ export function TimeSeriesChart({
     backgroundColor: 'transparent',
     grid: { top: 12, right: 12, bottom: 28, left: 44, containLabel: false },
     xAxis: {
-      type: 'category',
+      type: 'event_category',
       data: times,
       axisLabel: { color: '#71717a', fontSize: 10 },
       axisLine: { lineStyle: { color: '#3f3f46' } },

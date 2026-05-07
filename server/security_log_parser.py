@@ -75,7 +75,7 @@ _NORMALIZED_EVENT_TYPES = {
 
 
 def _make_event(
-    event_type: SecurityEventType,
+    event_action: SecurityEventType,
     severity: str,
     message: str,
     occurred_at: datetime,
@@ -89,7 +89,7 @@ def _make_event(
         event_id    = str(uuid.uuid4()),
         agent_id    = agent_id,
         hostname    = hostname,
-        event_type  = event_type,
+        event_action  = event_action,
         severity    = severity,
         source_ip   = source_ip,
         username    = username,
@@ -101,20 +101,20 @@ def _make_event(
 
 def _write_normalized(event: SecurityEvent) -> None:
     """SecurityEvent'i normalized_logs tablosuna da yazar — correlator için."""
-    mapping = _NORMALIZED_EVENT_TYPES.get(event.event_type)
+    mapping = _NORMALIZED_EVENT_TYPES.get(event.event_action)
     if mapping is None:
         return
-    norm_event_type, _, category = mapping
+    norm_event_type, _, event_category = mapping
     norm = NormalizedLog(
         log_id      = str(uuid.uuid4()),
         raw_id      = event.event_id,
         source_type = LogSourceType.AUTH_LOG,
-        source_host = event.hostname,
+        observer_hostname = event.hostname,
         timestamp   = event.occurred_at,
         severity    = event.severity,
-        category    = category,
-        event_type  = norm_event_type,
-        src_ip      = event.source_ip,
+        event_category    = event_category,
+        event_action  = norm_event_type,
+        source_ip      = event.source_ip,
         username    = event.username,
         message     = event.message,
     )
@@ -131,7 +131,7 @@ def _check_brute_force(source_ip: str, occurred_at: datetime, agent_id: str, hos
 
     if count >= BRUTE_FORCE_THRESHOLD:
         return _make_event(
-            event_type  = SecurityEventType.BRUTE_FORCE,
+            event_action  = SecurityEventType.BRUTE_FORCE,
             severity    = "critical",
             message     = (
                 f"Brute force saldırısı tespit edildi: {source_ip} → "
@@ -223,7 +223,7 @@ def parse_auth_log(
         if m:
             username, source_ip = m.group(1), m.group(2)
             event = _make_event(
-                event_type  = SecurityEventType.SSH_FAILURE,
+                event_action  = SecurityEventType.SSH_FAILURE,
                 severity    = "warning",
                 message     = f"Başarısız SSH girişi: kullanıcı={username} kaynak={source_ip}",
                 occurred_at = occurred_at,
@@ -249,7 +249,7 @@ def parse_auth_log(
         if m:
             username, source_ip = m.group(1), m.group(2)
             event = _make_event(
-                event_type  = SecurityEventType.SSH_SUCCESS,
+                event_action  = SecurityEventType.SSH_SUCCESS,
                 severity    = "info",
                 message     = f"Başarılı SSH girişi: kullanıcı={username} kaynak={source_ip}",
                 occurred_at = occurred_at,
@@ -269,7 +269,7 @@ def parse_auth_log(
         if m:
             username, command = m.group(1), m.group(2).strip()
             event = _make_event(
-                event_type  = SecurityEventType.SUDO_USAGE,
+                event_action  = SecurityEventType.SUDO_USAGE,
                 severity    = "warning",
                 message     = f"sudo kullanıldı: kullanıcı={username} komut={command}",
                 occurred_at = occurred_at,

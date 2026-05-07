@@ -22,18 +22,18 @@ def active_chains(current_user: User = Depends(get_current_user)):
     """Son 30 dakikadaki in-memory aktif saldırı zincirlerini döner."""
     raw = attack_chain_tracker.get_chains()
     chains = []
-    for src_ip, stage_counts in raw.items():
+    for source_ip, stage_counts in raw.items():
         stage_count = len(stage_counts)
         severity = "critical" if stage_count >= 3 else "warning"
         chains.append({
-            "src_ip":      src_ip,
+            "source_ip":      source_ip,
             "stages":      stage_counts,
             "stage_labels": {s: STAGE_LABELS.get(s, s) for s in stage_counts},
             "stage_count": stage_count,
             "severity":    severity,
             "chain_type":  "FULL_ATTACK_CHAIN" if stage_count >= 3 else "PARTIAL_ATTACK_CHAIN",
         })
-    chains.sort(key=lambda c: (-c["stage_count"], c["src_ip"]))
+    chains.sort(key=lambda c: (-c["stage_count"], c["source_ip"]))
     return {"count": len(chains), "chains": chains}
 
 

@@ -1,6 +1,6 @@
 ---
 name: frontend-worker
-description: NetGuard dashboard gelistirme ajani. Next.js, React, TanStack Query, Zustand degisiklikleri icin kullan.
+description: NetGuard dashboard UI değişiklikleri için çağır: dashboard-v2/src/ altındaki tüm dosyalar. Yeni sayfa, bileşen, API bağlantısı (TanStack Query), Zustand store, Tailwind stillendirme, WebSocket bağlantısı. Backend API'si hazır olduğunda ilgili UI'ı eklerken kullan. Backend veya tespit değişikliklerinde diğer worker'ları tercih et.
 tools: Read, Edit, Write, Bash, Glob, Grep
 model: sonnet
 ---

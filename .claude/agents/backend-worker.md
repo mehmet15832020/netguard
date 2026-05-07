@@ -1,6 +1,6 @@
 ---
 name: backend-worker
-description: NetGuard backend geliştirme ajani. Python/FastAPI, SQLite, korelasyon motoru, detection pipeline degisiklikleri icin kullan.
+description: NetGuard backend değişiklikleri için çağır: server/routes/, server/database.py, server/auth.py, server/notifier.py, server/log_normalizer.py, server/anomaly/, shared/models.py. API endpoint ekleme/değiştirme, DB şeması, JWT/API key, bildirim, retention, SNMP, NetFlow, agent raporlama görevlerinde kullan. Sigma/korelasyon/kill-chain değişikliklerinde detection-worker'ı tercih et.
 tools: Read, Edit, Write, Bash, Glob, Grep
 model: sonnet
 ---

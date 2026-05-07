@@ -60,33 +60,33 @@ class TestAccessLogParser:
     def test_200_parsed(self):
         log = parse_access_log(NGINX_200)
         assert log is not None
-        assert log.event_type == "web_request"
+        assert log.event_action == "web_request"
         assert log.severity == "info"
-        assert log.src_ip == "1.2.3.4"
+        assert log.source_ip == "1.2.3.4"
 
     def test_404_is_client_error(self):
         log = parse_access_log(NGINX_404)
         assert log is not None
-        assert log.event_type == "web_client_error"
+        assert log.event_action == "web_client_error"
         assert log.severity == "info"
-        assert log.src_ip == "5.6.7.8"
+        assert log.source_ip == "5.6.7.8"
 
     def test_401_is_auth_fail(self):
         log = parse_access_log(NGINX_401)
         assert log is not None
-        assert log.event_type == "web_auth_fail"
+        assert log.event_action == "web_auth_fail"
         assert log.severity == "warning"
 
     def test_403_is_auth_fail(self):
         log = parse_access_log(NGINX_403)
         assert log is not None
-        assert log.event_type == "web_auth_fail"
+        assert log.event_action == "web_auth_fail"
         assert log.severity == "warning"
 
     def test_500_is_server_error(self):
         log = parse_access_log(NGINX_500)
         assert log is not None
-        assert log.event_type == "web_server_error"
+        assert log.event_action == "web_server_error"
         assert log.severity == "warning"
 
     def test_username_extracted(self):
@@ -105,7 +105,7 @@ class TestAccessLogParser:
 
     def test_protocol_extracted(self):
         log = parse_access_log(NGINX_200)
-        assert log.protocol == "http"
+        assert log.network_protocol == "http"
 
     def test_source_type_nginx(self):
         log = parse_access_log(NGINX_200)
@@ -114,8 +114,8 @@ class TestAccessLogParser:
     def test_apache_combined_parsed(self):
         log = parse_access_log(APACHE_200)
         assert log is not None
-        assert log.event_type == "web_request"
-        assert log.src_ip == "10.0.0.5"
+        assert log.event_action == "web_request"
+        assert log.source_ip == "10.0.0.5"
         assert log.username == "frank"
 
     def test_referer_and_ua_in_extra(self):
@@ -132,15 +132,15 @@ class TestAccessLogParser:
         assert "200" in log.message
 
     def test_source_host_passed(self):
-        log = parse_access_log(NGINX_200, source_host="web-server-01")
-        assert log.source_host == "web-server-01"
+        log = parse_access_log(NGINX_200, observer_hostname="web-server-01")
+        assert log.observer_hostname == "web-server-01"
 
 
 class TestNginxErrorParser:
     def test_error_parsed(self):
         log = parse_nginx_error(NGINX_ERROR)
         assert log is not None
-        assert log.event_type == "web_error"
+        assert log.event_action == "web_error"
         assert log.severity == "high"
 
     def test_warn_severity(self):
@@ -150,7 +150,7 @@ class TestNginxErrorParser:
 
     def test_client_ip_extracted(self):
         log = parse_nginx_error(NGINX_ERROR)
-        assert log.src_ip == "1.2.3.4"
+        assert log.source_ip == "1.2.3.4"
 
     def test_message_contains_level(self):
         log = parse_nginx_error(NGINX_ERROR)
@@ -173,12 +173,12 @@ class TestAutoDetect:
     def test_detects_access_log(self):
         log = detect_and_parse(NGINX_200)
         assert log is not None
-        assert log.event_type == "web_request"
+        assert log.event_action == "web_request"
 
     def test_detects_nginx_error(self):
         log = detect_and_parse(NGINX_ERROR)
         assert log is not None
-        assert log.event_type == "web_error"
+        assert log.event_action == "web_error"
 
     def test_unknown_returns_none(self):
         assert detect_and_parse(INVALID) is None

@@ -22,17 +22,17 @@ logger = logging.getLogger(__name__)
 
 def _make_log(
     source_type: LogSourceType,
-    source_host: str,
-    event_type: str,
+    observer_hostname: str,
+    event_action: str,
     severity: str,
-    category: LogCategory,
+    event_category: LogCategory,
     message: str,
     raw_content: str,
-    src_ip: Optional[str] = None,
-    dst_ip: Optional[str] = None,
-    src_port: Optional[int] = None,
-    dst_port: Optional[int] = None,
-    protocol: Optional[str] = None,
+    source_ip: Optional[str] = None,
+    destination_ip: Optional[str] = None,
+    source_port: Optional[int] = None,
+    destination_port: Optional[int] = None,
+    network_protocol: Optional[str] = None,
     tags: Optional[list] = None,
     extra: Optional[dict] = None,
 ) -> NormalizedLog:
@@ -41,16 +41,16 @@ def _make_log(
         log_id      = str(uuid.uuid4()),
         raw_id      = str(uuid.uuid4()),
         source_type = source_type,
-        source_host = source_host,
+        observer_hostname = observer_hostname,
         timestamp   = now,
         severity    = severity,
-        category    = category,
-        event_type  = event_type,
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
-        protocol    = protocol,
+        event_category    = event_category,
+        event_action  = event_action,
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
+        network_protocol    = network_protocol,
         message     = message,
         tags        = tags or [],
         extra       = extra or {},
@@ -75,40 +75,40 @@ def parse_pfsense(line: str) -> Optional[NormalizedLog]:
         return None
 
     hm = _PFSENSE_HOST_RE.search(line)
-    source_host = hm.group(1) if hm else "pfsense"
+    observer_hostname = hm.group(1) if hm else "pfsense"
 
     try:
         action    = parts[6].lower()
         direction = parts[7].lower()
-        protocol  = parts[16].lower()
-        src_ip    = parts[18]
-        dst_ip    = parts[19] if len(parts) > 19 else None
-        src_port  = int(parts[20]) if len(parts) > 20 and parts[20].isdigit() else None
-        dst_port  = int(parts[21]) if len(parts) > 21 and parts[21].isdigit() else None
+        network_protocol  = parts[16].lower()
+        source_ip    = parts[18]
+        destination_ip    = parts[19] if len(parts) > 19 else None
+        source_port  = int(parts[20]) if len(parts) > 20 and parts[20].isdigit() else None
+        destination_port  = int(parts[21]) if len(parts) > 21 and parts[21].isdigit() else None
     except (IndexError, ValueError):
         return None
 
     blocked   = action == "block"
     severity  = "warning" if blocked else "info"
-    event_type = "fw_block" if blocked else "fw_allow"
+    event_action = "fw_block" if blocked else "fw_allow"
     msg = (
         f"pfSense {action.upper()} {direction.upper()} "
-        f"{protocol.upper()} {src_ip}:{src_port} → {dst_ip}:{dst_port}"
+        f"{network_protocol.upper()} {source_ip}:{source_port} → {destination_ip}:{destination_port}"
     )
 
     return _make_log(
         source_type = LogSourceType.PFSENSE,
-        source_host = source_host,
-        event_type  = event_type,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
         severity    = severity,
-        category    = LogCategory.NETWORK,
+        event_category    = LogCategory.NETWORK,
         message     = msg,
         raw_content = line,
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
-        protocol    = protocol,
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
+        network_protocol    = network_protocol,
         tags        = [action, direction],
         extra       = {"action": action, "direction": direction, "interface": parts[4]},
     )
@@ -144,36 +144,36 @@ def parse_cisco_asa(line: str) -> Optional[NormalizedLog]:
     severity = _ASA_SEV_MAP.get(level, "info")
 
     hm = _ASA_HOST_RE.search(line)
-    source_host = hm.group(1) if hm else "cisco-asa"
+    observer_hostname = hm.group(1) if hm else "cisco-asa"
 
-    src_ip = dst_ip = None
-    src_port = dst_port = None
+    source_ip = destination_ip = None
+    source_port = destination_port = None
     blocked = False
 
     dm = _ASA_DENY_RE.search(msg_raw)
     if dm:
-        src_ip, src_port = dm.group("src"), int(dm.group("sport"))
-        dst_ip, dst_port = dm.group("dst"), int(dm.group("dport"))
+        source_ip, source_port = dm.group("src"), int(dm.group("sport"))
+        destination_ip, destination_port = dm.group("dst"), int(dm.group("dport"))
         blocked  = True
         severity = severity if severity in ("critical", "high") else "warning"
     else:
         pm = _ASA_PERMIT_RE.search(msg_raw)
         if pm:
-            src_ip, src_port = pm.group("src"), int(pm.group("sport"))
-            dst_ip, dst_port = pm.group("dst"), int(pm.group("dport"))
+            source_ip, source_port = pm.group("src"), int(pm.group("sport"))
+            destination_ip, destination_port = pm.group("dst"), int(pm.group("dport"))
 
     return _make_log(
         source_type = LogSourceType.CISCO_ASA,
-        source_host = source_host,
-        event_type  = "fw_block" if blocked else "fw_allow",
+        observer_hostname = observer_hostname,
+        event_action  = "fw_block" if blocked else "fw_allow",
         severity    = severity,
-        category    = LogCategory.NETWORK,
+        event_category    = LogCategory.NETWORK,
         message     = f"ASA-{level}-{code}: {msg_raw}",
         raw_content = line,
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
         tags        = [f"asa_code:{code}", f"level:{level}"],
         extra       = {"asa_code": code, "asa_level": level},
     )
@@ -199,10 +199,10 @@ def parse_fortigate(line: str) -> Optional[NormalizedLog]:
         return None
 
     action   = kv.get("action", "").lower()
-    src_ip   = kv.get("srcip")
-    dst_ip   = kv.get("dstip")
-    src_port = int(kv["srcport"]) if kv.get("srcport", "").isdigit() else None
-    dst_port = int(kv["dstport"]) if kv.get("dstport", "").isdigit() else None
+    source_ip   = kv.get("srcip")
+    destination_ip   = kv.get("dstip")
+    source_port = int(kv["srcport"]) if kv.get("srcport", "").isdigit() else None
+    destination_port = int(kv["dstport"]) if kv.get("dstport", "").isdigit() else None
     proto_n  = kv.get("proto", "")
     proto    = {"6": "tcp", "17": "udp", "1": "icmp"}.get(proto_n, proto_n or "")
     severity = _FORTI_LEVEL_MAP.get(kv.get("level", "").lower(), "info")
@@ -213,22 +213,22 @@ def parse_fortigate(line: str) -> Optional[NormalizedLog]:
     msg = (
         f"FortiGate {action.upper()} "
         f"{proto.upper() or 'PKT'} "
-        f"{src_ip}:{src_port} → {dst_ip}:{dst_port}"
+        f"{source_ip}:{source_port} → {destination_ip}:{destination_port}"
     )
 
     return _make_log(
         source_type = LogSourceType.FORTIGATE,
-        source_host = kv.get("devname", "fortigate"),
-        event_type  = "fw_block" if blocked else "fw_allow",
+        observer_hostname = kv.get("devname", "fortigate"),
+        event_action  = "fw_block" if blocked else "fw_allow",
         severity    = severity,
-        category    = LogCategory.NETWORK,
+        event_category    = LogCategory.NETWORK,
         message     = msg,
         raw_content = line,
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
-        protocol    = proto or None,
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
+        network_protocol    = proto or None,
         tags        = [action, proto, f"policy:{kv.get('policyid','?')}"],
         extra       = {"action": action, "policy": kv.get("policyid"), "devname": kv.get("devname")},
     )
@@ -253,40 +253,40 @@ def parse_opnsense(line: str) -> Optional[NormalizedLog]:
         return None
 
     hm = _OPNSENSE_HOST_RE.search(line)
-    source_host = hm.group(1) if hm else "opnsense"
+    observer_hostname = hm.group(1) if hm else "opnsense"
 
     try:
         action    = parts[6].lower()
         direction = parts[7].lower()
-        protocol  = parts[16].lower()
-        src_ip    = parts[18]
-        dst_ip    = parts[19] if len(parts) > 19 else None
-        src_port  = int(parts[20]) if len(parts) > 20 and parts[20].isdigit() else None
-        dst_port  = int(parts[21]) if len(parts) > 21 and parts[21].isdigit() else None
+        network_protocol  = parts[16].lower()
+        source_ip    = parts[18]
+        destination_ip    = parts[19] if len(parts) > 19 else None
+        source_port  = int(parts[20]) if len(parts) > 20 and parts[20].isdigit() else None
+        destination_port  = int(parts[21]) if len(parts) > 21 and parts[21].isdigit() else None
     except (IndexError, ValueError):
         return None
 
     blocked    = action == "block"
     severity   = "warning" if blocked else "info"
-    event_type = "fw_block" if blocked else "fw_allow"
+    event_action = "fw_block" if blocked else "fw_allow"
     msg = (
         f"OPNsense {action.upper()} {direction.upper()} "
-        f"{protocol.upper()} {src_ip}:{src_port} → {dst_ip}:{dst_port}"
+        f"{network_protocol.upper()} {source_ip}:{source_port} → {destination_ip}:{destination_port}"
     )
 
     return _make_log(
         source_type = LogSourceType.OPNSENSE,
-        source_host = source_host,
-        event_type  = event_type,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
         severity    = severity,
-        category    = LogCategory.NETWORK,
+        event_category    = LogCategory.NETWORK,
         message     = msg,
         raw_content = line,
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
-        protocol    = protocol,
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
+        network_protocol    = network_protocol,
         tags        = [action, direction],
         extra       = {"action": action, "direction": direction, "interface": parts[4]},
     )
@@ -312,7 +312,7 @@ def parse_vyos(line: str) -> Optional[NormalizedLog]:
         return None
 
     hm = _VYOS_HOST_RE.search(line)
-    source_host = hm.group(1) if hm else "vyos"
+    observer_hostname = hm.group(1) if hm else "vyos"
 
     am = _VYOS_ACTION_RE.search(line)
     action_tag = am.group(1) if am else ""
@@ -322,33 +322,33 @@ def parse_vyos(line: str) -> Optional[NormalizedLog]:
     if not fm:
         return None
 
-    src_ip   = fm.group("src")
-    dst_ip   = fm.group("dst")
-    protocol = fm.group("proto").lower()
-    src_port = int(fm.group("sport")) if fm.group("sport") else None
-    dst_port = int(fm.group("dport")) if fm.group("dport") else None
+    source_ip   = fm.group("src")
+    destination_ip   = fm.group("dst")
+    network_protocol = fm.group("proto").lower()
+    source_port = int(fm.group("sport")) if fm.group("sport") else None
+    destination_port = int(fm.group("dport")) if fm.group("dport") else None
 
     action     = "block" if blocked else "allow"
     severity   = "warning" if blocked else "info"
-    event_type = "fw_block" if blocked else "fw_allow"
+    event_action = "fw_block" if blocked else "fw_allow"
     msg = (
         f"VyOS {action.upper()} "
-        f"{protocol.upper()} {src_ip}:{src_port} → {dst_ip}:{dst_port}"
+        f"{network_protocol.upper()} {source_ip}:{source_port} → {destination_ip}:{destination_port}"
     )
 
     return _make_log(
         source_type = LogSourceType.VYOS,
-        source_host = source_host,
-        event_type  = event_type,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
         severity    = severity,
-        category    = LogCategory.NETWORK,
+        event_category    = LogCategory.NETWORK,
         message     = msg,
         raw_content = line,
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
-        protocol    = protocol,
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
+        network_protocol    = network_protocol,
         tags        = [action, action_tag.lower()],
         extra       = {"action": action, "action_tag": action_tag, "interface": ""},
     )

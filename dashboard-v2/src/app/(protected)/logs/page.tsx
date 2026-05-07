@@ -72,7 +72,7 @@ export default function LogsPage() {
     queryFn: () =>
       logsApi.listNormalized({
         source_type: sourceFilter !== 'all' ? sourceFilter : undefined,
-        category:    categoryFilter !== 'all' ? categoryFilter : undefined,
+        event_category:    categoryFilter !== 'all' ? categoryFilter : undefined,
         limit: 200,
       }),
     refetchInterval: 20_000,
@@ -85,7 +85,7 @@ export default function LogsPage() {
       logsApi.searchLogs({
         q:           debouncedSearch,
         source_type: sourceFilter !== 'all' ? sourceFilter : undefined,
-        category:    categoryFilter !== 'all' ? categoryFilter : undefined,
+        event_category:    categoryFilter !== 'all' ? categoryFilter : undefined,
         limit: 200,
       }),
     enabled: isSearching,
@@ -200,10 +200,10 @@ export default function LogsPage() {
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-zinc-400">
-                      {CATEGORY_LABELS[log.category] ?? log.category}
+                      {CATEGORY_LABELS[log.event_category] ?? log.event_category}
                     </TableCell>
                     <TableCell className="text-sm text-zinc-200 max-w-xs truncate">{log.message}</TableCell>
-                    <TableCell className="text-xs text-zinc-400 font-mono">{log.src_ip ?? '—'}</TableCell>
+                    <TableCell className="text-xs text-zinc-400 font-mono">{log.source_ip ?? '—'}</TableCell>
                     <TableCell className="text-xs text-zinc-500">{formatDate(log.timestamp)}</TableCell>
                   </TableRow>
                 ))}

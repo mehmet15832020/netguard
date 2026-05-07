@@ -21,7 +21,7 @@ class BaseDetector(ABC):
     """Tüm dedektörlerin ata sınıfı."""
 
     name: str = "base"
-    source_host: str = "localhost"
+    observer_hostname: str = "localhost"
 
     @abstractmethod
     def detect(self) -> list[NormalizedLog]:
@@ -33,15 +33,15 @@ class BaseDetector(ABC):
 
     def _make_log(
         self,
-        event_type: str,
+        event_action: str,
         message: str,
-        category: LogCategory,
+        event_category: LogCategory,
         severity: str = "warning",
-        src_ip: str = None,
-        dst_ip: str = None,
-        src_port: int = None,
-        dst_port: int = None,
-        protocol: str = None,
+        source_ip: str = None,
+        destination_ip: str = None,
+        source_port: int = None,
+        destination_port: int = None,
+        network_protocol: str = None,
         tags: list = None,
     ) -> NormalizedLog:
         """NormalizedLog üretmek için kısa yardımcı."""
@@ -49,16 +49,16 @@ class BaseDetector(ABC):
             log_id      = str(uuid.uuid4()),
             raw_id      = str(uuid.uuid4()),
             source_type = LogSourceType.NETGUARD,
-            source_host = self.source_host,
+            observer_hostname = self.observer_hostname,
             timestamp   = datetime.now(timezone.utc),
             severity    = severity,
-            category    = category,
-            event_type  = event_type,
-            src_ip      = src_ip,
-            dst_ip      = dst_ip,
-            src_port    = src_port,
-            dst_port    = dst_port,
-            protocol    = protocol,
+            event_category    = event_category,
+            event_action  = event_action,
+            source_ip      = source_ip,
+            destination_ip      = destination_ip,
+            source_port    = source_port,
+            destination_port    = destination_port,
+            network_protocol    = network_protocol,
             message     = message,
             tags        = tags or [self.name],
         )

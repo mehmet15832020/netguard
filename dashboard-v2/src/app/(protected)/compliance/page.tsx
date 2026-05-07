@@ -59,7 +59,7 @@ function ScoreRing({ score, size = 80 }: { score: number; size?: number }) {
 }
 
 function ControlRow({ ctrl }: { ctrl: {
-  control_id: string; title: string; framework: string; category: string;
+  control_id: string; title: string; framework: string; event_category: string;
   status: string; score: number; evidence: string[]; recommendations: string[]
 }}) {
   const [open, setOpen] = useState(false)
@@ -72,7 +72,7 @@ function ControlRow({ ctrl }: { ctrl: {
         <span className={`w-2 h-2 rounded-full flex-shrink-0 ${STATUS_DOT[ctrl.status] ?? 'bg-zinc-500'}`} />
         <span className="font-mono text-xs text-zinc-500 w-24 flex-shrink-0">{ctrl.control_id}</span>
         <span className="flex-1 text-sm text-zinc-200 min-w-0 truncate">{ctrl.title}</span>
-        <span className="text-xs text-zinc-500 hidden md:block w-32 flex-shrink-0">{ctrl.category}</span>
+        <span className="text-xs text-zinc-500 hidden md:block w-32 flex-shrink-0">{ctrl.event_category}</span>
         <span className={`text-xs px-2 py-0.5 rounded border flex-shrink-0 ${STATUS_STYLE[ctrl.status] ?? ''}`}>
           {STATUS_LABEL[ctrl.status] ?? ctrl.status}
         </span>
@@ -130,8 +130,8 @@ export default function CompliancePage() {
   )
 
   const byCategory = controls.reduce<Record<string, typeof controls>>((acc, c) => {
-    if (!acc[c.category]) acc[c.category] = []
-    acc[c.category].push(c)
+    if (!acc[c.event_category]) acc[c.event_category] = []
+    acc[c.event_category].push(c)
     return acc
   }, {})
 
@@ -247,10 +247,10 @@ export default function CompliancePage() {
           )}
 
           {/* Kontrol listesi — kategoriye göre gruplu */}
-          {Object.entries(byCategory).map(([category, items]) => (
-            <div key={category}>
+          {Object.entries(byCategory).map(([event_category, items]) => (
+            <div key={event_category}>
               <h2 className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-2">
-                {category} ({items.length})
+                {event_category} ({items.length})
               </h2>
               <Card className="bg-zinc-900 border-zinc-800">
                 <CardContent className="p-0">

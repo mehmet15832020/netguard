@@ -35,7 +35,7 @@ PARTIAL_THRESHOLD = 2     # uyarı eşiği
 FULL_THRESHOLD    = 3     # kritik eşiği
 
 STAGE_MAP: dict[str, str] = {
-    # event_type prefix → stage adı
+    # event_action prefix → stage adı
     # Raw log event types
     "port_scan":                 "recon",
     "dns_anomaly":               "recon",
@@ -70,25 +70,25 @@ STAGE_LABELS = {
 }
 
 
-def _resolve_stage(event_type: str) -> Optional[str]:
+def _resolve_stage(event_action: str) -> Optional[str]:
     for prefix, stage in STAGE_MAP.items():
-        if event_type.startswith(prefix):
+        if event_action.startswith(prefix):
             return stage
     return None
 
 
 class AttackChainTracker:
     """
-    Thread-safe. Her src_ip için aşama → zaman damgaları listesi tutar.
+    Thread-safe. Her source_ip için aşama → zaman damgaları listesi tutar.
     Periyodik temizlik için _purge() çağrısı dahilidir.
     """
 
     def __init__(self):
         self._lock = threading.Lock()
-        # {src_ip: {stage: [datetime, ...]}}
+        # {source_ip: {stage: [datetime, ...]}}
         self._chains: dict[str, dict[str, list[datetime]]] = defaultdict(lambda: defaultdict(list))
 
-    def record(self, src_ip: str, event_type: str, occurred_at: Optional[datetime] = None) -> Optional[dict]:
+    def record(self, source_ip: str, event_action: str, occurred_at: Optional[datetime] = None) -> Optional[dict]:
         """
         Yeni bir event kaydeder. Zincir tamamlanmışsa tetikleme dict'i döner,
         aksi hâlde None döner.
@@ -97,17 +97,17 @@ class AttackChainTracker:
           {
             "chain_type": "FULL_ATTACK_CHAIN",
             "severity":   "critical",
-            "src_ip":     "10.0.0.5",
+            "source_ip":     "10.0.0.5",
             "stages":     ["recon", "weaponize", "access"],
             "stage_labels": ["Keşif", "Erişim Denemeleri", "İlk Erişim"],
             "message":    "...",
-            "event_type": "full_attack_chain_detected",
+            "event_action": "full_attack_chain_detected",
           }
         """
-        if not src_ip or src_ip in ("-", "None", "none"):
+        if not source_ip or source_ip in ("-", "None", "none"):
             return None
 
-        stage = _resolve_stage(event_type)
+        stage = _resolve_stage(event_action)
         if not stage:
             return None
 
@@ -117,7 +117,7 @@ class AttackChainTracker:
         trigger: Optional[dict] = None
 
         with self._lock:
-            bucket = self._chains[src_ip]
+            bucket = self._chains[source_ip]
             bucket[stage].append(now)
 
             # Pencere dışı kayıtları temizle
@@ -130,32 +130,32 @@ class AttackChainTracker:
             stage_count = len(active_stages)
 
             if stage_count >= FULL_THRESHOLD:
-                trigger = self._build_trigger(src_ip, active_stages, "FULL_ATTACK_CHAIN", "critical")
+                trigger = self._build_trigger(source_ip, active_stages, "FULL_ATTACK_CHAIN", "critical")
             elif stage_count >= PARTIAL_THRESHOLD:
-                trigger = self._build_trigger(src_ip, active_stages, "PARTIAL_ATTACK_CHAIN", "warning")
+                trigger = self._build_trigger(source_ip, active_stages, "PARTIAL_ATTACK_CHAIN", "warning")
 
         # Lock dışında I/O — in-memory state ile tutarlı (lock içinde güncellendi)
         try:
             from server.database import db
-            db.save_chain_stage(src_ip, stage, now)
+            db.save_chain_stage(source_ip, stage, now)
         except Exception as exc:
-            logger.debug(f"Chain stage DB kaydedilemedi [{src_ip}/{stage}]: {exc}")
+            logger.debug(f"Chain stage DB kaydedilemedi [{source_ip}/{stage}]: {exc}")
 
         return trigger
 
-    def _build_trigger(self, src_ip: str, stages: list[str], chain_type: str, severity: str) -> dict:
+    def _build_trigger(self, source_ip: str, stages: list[str], chain_type: str, severity: str) -> dict:
         labels = [STAGE_LABELS.get(s, s) for s in stages]
         chain_str = " → ".join(labels)
         level = "TAM" if chain_type == "FULL_ATTACK_CHAIN" else "KISMİ"
         return {
             "chain_type":   chain_type,
             "severity":     severity,
-            "src_ip":       src_ip,
+            "source_ip":       source_ip,
             "stages":       stages,
             "stage_labels": labels,
-            "event_type":   chain_type.lower() + "_detected",
+            "event_action":   chain_type.lower() + "_detected",
             "message":      (
-                f"{level} SALDIRI ZİNCİRİ — {src_ip}: "
+                f"{level} SALDIRI ZİNCİRİ — {source_ip}: "
                 f"{chain_str} "
                 f"({len(stages)} aşama / {CHAIN_WINDOW_SEC // 60} dakika)"
             ),
@@ -201,9 +201,9 @@ class AttackChainTracker:
             stages = db.get_active_chain_stages(CHAIN_WINDOW_SEC)
             with self._lock:
                 self._chains = defaultdict(lambda: defaultdict(list))
-                for src_ip, stage_dict in stages.items():
+                for source_ip, stage_dict in stages.items():
                     for stage, timestamps in stage_dict.items():
-                        self._chains[src_ip][stage] = list(timestamps)
+                        self._chains[source_ip][stage] = list(timestamps)
             count = len(self._chains)
             if count:
                 logger.info(f"Attack chain restore: {count} aktif IP DB'den yüklendi")
@@ -222,9 +222,9 @@ def chain_trigger_to_correlated_event(trigger: dict, db_save: bool = True):
         corr_id        = str(uuid.uuid4()),
         rule_id        = trigger["chain_type"].lower(),
         rule_name      = trigger["chain_type"].replace("_", " ").title(),
-        event_type     = trigger["event_type"],
+        event_action     = trigger["event_action"],
         severity       = trigger["severity"],
-        group_value    = trigger["src_ip"],
+        group_value    = trigger["source_ip"],
         matched_count  = len(trigger["stages"]),
         window_seconds = CHAIN_WINDOW_SEC,
         first_seen     = now,

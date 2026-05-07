@@ -97,7 +97,7 @@ class ConfigMonitor:
                     event_id   = str(uuid.uuid4()),
                     agent_id   = agent_id,
                     hostname   = hostname,
-                    event_type = SecurityEventType.CHECKSUM_CHANGED,
+                    event_action = SecurityEventType.CHECKSUM_CHANGED,
                     severity   = severity,
                     message    = f"Kritik dosya değişti: {file_path}",
                     raw_data   = (

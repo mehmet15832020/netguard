@@ -10,19 +10,19 @@ WINDOW_MINUTES = 5
 
 _QUERY = f"""
 SELECT
-    src_ip AS entity_id,
+    source_ip AS entity_id,
     COUNT(*)                                                           AS total_events,
-    SUM(CASE WHEN event_type = 'fw_block'                   THEN 1 ELSE 0 END) AS fw_blocks,
-    SUM(CASE WHEN event_type IN ('ssh_failure','auth_fail','web_auth_fail')
+    SUM(CASE WHEN event_action = 'fw_block'                   THEN 1 ELSE 0 END) AS fw_blocks,
+    SUM(CASE WHEN event_action IN ('ssh_failure','auth_fail','web_auth_fail')
                                                             THEN 1 ELSE 0 END) AS auth_failures,
-    COUNT(DISTINCT dst_ip)                                             AS unique_dsts,
-    COUNT(DISTINCT dst_port)                                           AS unique_ports
+    COUNT(DISTINCT destination_ip)                                             AS unique_dsts,
+    COUNT(DISTINCT destination_port)                                           AS unique_ports
 FROM normalized_logs
 WHERE
     datetime(timestamp) >= datetime('now', '-{WINDOW_MINUTES} minutes')
-    AND src_ip IS NOT NULL
-    AND category = 'network'
-GROUP BY src_ip
+    AND source_ip IS NOT NULL
+    AND event_category = 'network'
+GROUP BY source_ip
 HAVING total_events >= 2
 """
 
@@ -30,7 +30,7 @@ HAVING total_events >= 2
 class MetricsCollector:
     """
     normalized_logs tablosundan son {WINDOW_MINUTES} dakikanın
-    entity (src_ip) başına metrik değerlerini toplar.
+    entity (source_ip) başına metrik değerlerini toplar.
     """
 
     def __init__(self, db_path: str):

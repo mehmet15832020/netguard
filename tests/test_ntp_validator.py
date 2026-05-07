@@ -155,7 +155,7 @@ class TestNTPIntegrationInNormalizer:
         # Çok eski timestamp içeren auth.log satırı oluştur
         # (Yıl 2020 — kesinlikle geçmişte)
         raw = "Jan  1 00:00:00 myhost sshd[1]: Failed password for root from 1.2.3.4 port 22 ssh2"
-        norm = normalize(raw, source_host="myhost")
+        norm = normalize(raw, observer_hostname="myhost")
         # Parse başarılı olmalı (auth.log formatı doğru)
         assert norm is not None
         # Timestamp 2020 yılı olarak yorumlanır — anomali tag'i bekliyoruz

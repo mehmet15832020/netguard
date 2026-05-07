@@ -21,8 +21,8 @@ def make_v5_packet(flows: list[dict]) -> bytes:
     )
     records = b""
     for f in flows:
-        src = struct.unpack("!I", socket.inet_aton(f["src_ip"]))[0]
-        dst = struct.unpack("!I", socket.inet_aton(f["dst_ip"]))[0]
+        src = struct.unpack("!I", socket.inet_aton(f["source_ip"]))[0]
+        dst = struct.unpack("!I", socket.inet_aton(f["destination_ip"]))[0]
         records += struct.pack(
             "!IIIHHIIIIHHBBBBHHBBxx",
             src, dst, 0,
@@ -30,8 +30,8 @@ def make_v5_packet(flows: list[dict]) -> bytes:
             f.get("pkts", 10),
             f.get("bytes", 1000),
             59_000, 60_000,
-            f.get("src_port", 12345),
-            f.get("dst_port", 80),
+            f.get("source_port", 12345),
+            f.get("destination_port", 80),
             0,
             f.get("tcp_flags", 0x18),
             f.get("proto", 6),
@@ -69,10 +69,10 @@ def make_v9_packet_with_template(flows: list[dict]) -> bytes:
     # Data FlowSet
     data_body = b""
     for f in flows:
-        data_body += socket.inet_aton(f["src_ip"])
-        data_body += socket.inet_aton(f["dst_ip"])
-        data_body += struct.pack("!H", f.get("src_port", 12345))
-        data_body += struct.pack("!H", f.get("dst_port", 80))
+        data_body += socket.inet_aton(f["source_ip"])
+        data_body += socket.inet_aton(f["destination_ip"])
+        data_body += struct.pack("!H", f.get("source_port", 12345))
+        data_body += struct.pack("!H", f.get("destination_port", 80))
         data_body += struct.pack("!B", f.get("proto", 6))
         data_body += struct.pack("!I", f.get("pkts", 10))
         data_body += struct.pack("!I", f.get("bytes", 1000))
@@ -94,70 +94,70 @@ def make_v9_packet_with_template(flows: list[dict]) -> bytes:
 
 class TestNetFlowV5:
     def test_single_tcp_flow(self):
-        pkt = make_v5_packet([{"src_ip": "1.2.3.4", "dst_ip": "5.6.7.8", "proto": 6}])
+        pkt = make_v5_packet([{"source_ip": "1.2.3.4", "destination_ip": "5.6.7.8", "proto": 6}])
         logs = parse_v5(pkt, "router1")
         assert len(logs) == 1
         log = logs[0]
-        assert log.src_ip == "1.2.3.4"
-        assert log.dst_ip == "5.6.7.8"
-        assert log.protocol == "tcp"
+        assert log.source_ip == "1.2.3.4"
+        assert log.destination_ip == "5.6.7.8"
+        assert log.network_protocol == "tcp"
 
     def test_multiple_flows(self):
         flows = [
-            {"src_ip": "10.0.0.1", "dst_ip": "8.8.8.8", "proto": 17, "dst_port": 53},
-            {"src_ip": "10.0.0.2", "dst_ip": "1.1.1.1", "proto": 6,  "dst_port": 443},
+            {"source_ip": "10.0.0.1", "destination_ip": "8.8.8.8", "proto": 17, "destination_port": 53},
+            {"source_ip": "10.0.0.2", "destination_ip": "1.1.1.1", "proto": 6,  "destination_port": 443},
         ]
         logs = parse_v5(make_v5_packet(flows), "router1")
         assert len(logs) == 2
 
     def test_udp_protocol_mapped(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2", "proto": 17}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 17}])
         log = parse_v5(pkt, "r1")[0]
-        assert log.protocol == "udp"
+        assert log.network_protocol == "udp"
 
     def test_icmp_protocol_mapped(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2", "proto": 1}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 1}])
         log = parse_v5(pkt, "r1")[0]
-        assert log.protocol == "icmp"
+        assert log.network_protocol == "icmp"
 
     def test_ports_extracted(self):
         pkt = make_v5_packet([{
-            "src_ip": "1.1.1.1", "dst_ip": "2.2.2.2",
-            "src_port": 54321, "dst_port": 443, "proto": 6,
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "source_port": 54321, "destination_port": 443, "proto": 6,
         }])
         log = parse_v5(pkt, "r1")[0]
-        assert log.src_port == 54321
-        assert log.dst_port == 443
+        assert log.source_port == 54321
+        assert log.destination_port == 443
 
     def test_suspicious_port_is_warning(self):
         pkt = make_v5_packet([{
-            "src_ip": "1.1.1.1", "dst_ip": "192.168.1.1",
-            "dst_port": 22, "proto": 6,
+            "source_ip": "1.1.1.1", "destination_ip": "192.168.1.1",
+            "destination_port": 22, "proto": 6,
         }])
         log = parse_v5(pkt, "r1")[0]
         assert log.severity == "warning"
 
     def test_normal_port_is_info(self):
         pkt = make_v5_packet([{
-            "src_ip": "1.1.1.1", "dst_ip": "2.2.2.2",
-            "dst_port": 80, "proto": 6,
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "destination_port": 80, "proto": 6,
         }])
         log = parse_v5(pkt, "r1")[0]
         assert log.severity == "info"
 
     def test_source_type_netflow(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
         log = parse_v5(pkt, "r1")[0]
         assert log.source_type == "netflow"
 
     def test_extra_contains_version(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
         log = parse_v5(pkt, "r1")[0]
         assert log.extra["version"] == 5
 
     def test_packets_and_bytes_in_extra(self):
         pkt = make_v5_packet([{
-            "src_ip": "1.1.1.1", "dst_ip": "2.2.2.2",
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
             "pkts": 42, "bytes": 9999,
         }])
         log = parse_v5(pkt, "r1")[0]
@@ -172,17 +172,17 @@ class TestNetFlowV5:
         assert parse_v5(b"\x00\x05", "r") == []
 
     def test_source_host_set(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
         log = parse_v5(pkt, "vyos-router")[0]
-        assert log.source_host == "vyos-router"
+        assert log.observer_hostname == "vyos-router"
 
     def test_event_type(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
         log = parse_v5(pkt, "r1")[0]
-        assert log.event_type == "netflow_flow"
+        assert log.event_action == "netflow_flow"
 
     def test_message_contains_ips(self):
-        pkt = make_v5_packet([{"src_ip": "10.0.0.1", "dst_ip": "8.8.8.8"}])
+        pkt = make_v5_packet([{"source_ip": "10.0.0.1", "destination_ip": "8.8.8.8"}])
         log = parse_v5(pkt, "r1")[0]
         assert "10.0.0.1" in log.message
         assert "8.8.8.8" in log.message
@@ -196,30 +196,30 @@ class TestNetFlowV9:
 
     def test_single_flow(self):
         pkt = make_v9_packet_with_template([
-            {"src_ip": "1.2.3.4", "dst_ip": "5.6.7.8", "proto": 6}
+            {"source_ip": "1.2.3.4", "destination_ip": "5.6.7.8", "proto": 6}
         ])
         logs = parse_v9(pkt, "router1")
         assert len(logs) == 1
-        assert logs[0].src_ip == "1.2.3.4"
-        assert logs[0].dst_ip == "5.6.7.8"
+        assert logs[0].source_ip == "1.2.3.4"
+        assert logs[0].destination_ip == "5.6.7.8"
 
     def test_protocol_mapped(self):
         pkt = make_v9_packet_with_template([
-            {"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2", "proto": 17}
+            {"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 17}
         ])
         logs = parse_v9(pkt, "r1")
-        assert logs[0].protocol == "udp"
+        assert logs[0].network_protocol == "udp"
 
     def test_source_type_netflow(self):
         pkt = make_v9_packet_with_template([
-            {"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}
+            {"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}
         ])
         logs = parse_v9(pkt, "r1")
         assert logs[0].source_type == "netflow"
 
     def test_extra_version_is_9(self):
         pkt = make_v9_packet_with_template([
-            {"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}
+            {"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}
         ])
         logs = parse_v9(pkt, "r1")
         assert logs[0].extra["version"] == 9
@@ -239,14 +239,14 @@ class TestAutoDetect:
         _v9_templates.clear()
 
     def test_detects_v5(self):
-        pkt = make_v5_packet([{"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}])
+        pkt = make_v5_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
         logs = detect_and_parse(pkt, "r1")
         assert len(logs) == 1
         assert logs[0].extra["version"] == 5
 
     def test_detects_v9(self):
         pkt = make_v9_packet_with_template([
-            {"src_ip": "1.1.1.1", "dst_ip": "2.2.2.2"}
+            {"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}
         ])
         logs = detect_and_parse(pkt, "r1")
         assert len(logs) == 1

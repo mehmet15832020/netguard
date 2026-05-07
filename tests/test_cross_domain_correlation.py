@@ -22,40 +22,40 @@ from shared.models import NormalizedLog, LogSourceType, LogCategory
 
 def _make_rule(
     rule_id="r1",
-    match_event_type="ssh_failure",
-    group_by="src_ip",
+    match_event_action="ssh_failure",
+    group_by="source_ip",
     window_seconds=300,
     threshold=3,
     severity="critical",
-    output_event_type="brute_force_detected",
+    output_event_action="brute_force_detected",
 ):
     return CorrelationRule(
         rule_id=rule_id,
         name="Test",
         description="",
-        match_event_type=match_event_type,
+        match_event_action=match_event_action,
         group_by=group_by,
         window_seconds=window_seconds,
         threshold=threshold,
         severity=severity,
-        output_event_type=output_event_type,
+        output_event_action=output_event_action,
         enabled=True,
     )
 
 
-def _norm_log(event_type, src_ip="1.2.3.4", source_host="host1", minutes_ago=0):
+def _norm_log(event_action, source_ip="1.2.3.4", observer_hostname="host1", minutes_ago=0):
     ts = datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
         raw_id=str(uuid.uuid4()),
         source_type=LogSourceType.NETGUARD,
-        source_host=source_host,
+        observer_hostname=observer_hostname,
         timestamp=ts,
         severity="warning",
-        category=LogCategory.NETWORK,
-        event_type=event_type,
-        src_ip=src_ip,
-        message=f"test {event_type}",
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=source_ip,
+        message=f"test {event_action}",
     )
 
 
@@ -81,16 +81,16 @@ class TestSSHBruteForceCorrelation:
     def test_ssh_failures_trigger_brute_force_rule(self, corr_setup):
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
-            match_event_type="ssh_failure", group_by="src_ip",
-            threshold=3, output_event_type="brute_force_detected",
+            match_event_action="ssh_failure", group_by="source_ip",
+            threshold=3, output_event_action="brute_force_detected",
         )]
 
         for _ in range(3):
-            test_db.save_normalized_log(_norm_log("ssh_failure", src_ip="10.0.0.5"))
+            test_db.save_normalized_log(_norm_log("ssh_failure", source_ip="10.0.0.5"))
 
         events = correlator.run()
         assert len(events) == 1
-        assert events[0].event_type == "brute_force_detected"
+        assert events[0].event_action == "brute_force_detected"
         assert events[0].group_value == "10.0.0.5"
 
     def test_ssh_failures_below_threshold_no_event(self, corr_setup):
@@ -98,18 +98,18 @@ class TestSSHBruteForceCorrelation:
         correlator._rules = [_make_rule(threshold=5)]
 
         for _ in range(4):
-            test_db.save_normalized_log(_norm_log("ssh_failure", src_ip="10.0.0.5"))
+            test_db.save_normalized_log(_norm_log("ssh_failure", source_ip="10.0.0.5"))
 
         assert correlator.run() == []
 
     def test_ssh_success_not_counted_for_brute_force(self, corr_setup):
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
-            match_event_type="ssh_failure", threshold=3,
+            match_event_action="ssh_failure", threshold=3,
         )]
 
         for _ in range(3):
-            test_db.save_normalized_log(_norm_log("ssh_success", src_ip="10.0.0.5"))
+            test_db.save_normalized_log(_norm_log("ssh_success", source_ip="10.0.0.5"))
 
         assert correlator.run() == []
 
@@ -123,19 +123,19 @@ class TestPortScanCorrelation:
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
             rule_id="port_scan",
-            match_event_type="port_scan_attempt",
-            group_by="src_ip",
+            match_event_action="port_scan_attempt",
+            group_by="source_ip",
             threshold=3,
-            output_event_type="port_scan_detected",
+            output_event_action="port_scan_detected",
             severity="warning",
         )]
 
         for _ in range(3):
-            test_db.save_normalized_log(_norm_log("port_scan_attempt", src_ip="192.168.1.99"))
+            test_db.save_normalized_log(_norm_log("port_scan_attempt", source_ip="192.168.1.99"))
 
         events = correlator.run()
         assert len(events) == 1
-        assert events[0].event_type == "port_scan_detected"
+        assert events[0].event_action == "port_scan_detected"
         assert events[0].severity == "warning"
 
 
@@ -148,36 +148,36 @@ class TestDeviceDownCorrelation:
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
             rule_id="device_outage",
-            match_event_type="device_down",
-            group_by="source_host",
+            match_event_action="device_down",
+            group_by="observer_hostname",
             threshold=2,
-            output_event_type="sustained_outage_detected",
+            output_event_action="sustained_outage_detected",
             severity="warning",
         )]
 
         for _ in range(2):
             test_db.save_normalized_log(
-                _norm_log("device_down", source_host="router-core", src_ip="10.0.0.1")
+                _norm_log("device_down", observer_hostname="router-core", source_ip="10.0.0.1")
             )
 
         events = correlator.run()
         assert len(events) == 1
-        assert events[0].event_type == "sustained_outage_detected"
+        assert events[0].event_action == "sustained_outage_detected"
         assert events[0].group_value == "router-core"
 
     def test_device_up_not_counted_for_outage(self, corr_setup):
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
             rule_id="device_outage",
-            match_event_type="device_down",
-            group_by="source_host",
+            match_event_action="device_down",
+            group_by="observer_hostname",
             threshold=2,
-            output_event_type="sustained_outage_detected",
+            output_event_action="sustained_outage_detected",
         )]
 
         for _ in range(3):
             test_db.save_normalized_log(
-                _norm_log("device_up", source_host="router-core")
+                _norm_log("device_up", observer_hostname="router-core")
             )
 
         assert correlator.run() == []
@@ -192,21 +192,21 @@ class TestSNMPTrapCorrelation:
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
             rule_id="snmp_burst",
-            match_event_type="snmp_trap",
-            group_by="source_host",
+            match_event_action="snmp_trap",
+            group_by="observer_hostname",
             threshold=5,
-            output_event_type="snmp_trap_burst_detected",
+            output_event_action="snmp_trap_burst_detected",
             severity="warning",
         )]
 
         for _ in range(5):
             test_db.save_normalized_log(
-                _norm_log("snmp_trap", source_host="switch-01", src_ip="10.0.0.2")
+                _norm_log("snmp_trap", observer_hostname="switch-01", source_ip="10.0.0.2")
             )
 
         events = correlator.run()
         assert len(events) == 1
-        assert events[0].event_type == "snmp_trap_burst_detected"
+        assert events[0].event_action == "snmp_trap_burst_detected"
 
 
 # ------------------------------------------------------------------ #
@@ -218,20 +218,20 @@ class TestARPSpoofCorrelation:
         correlator, test_db = corr_setup
         correlator._rules = [_make_rule(
             rule_id="arp_attack",
-            match_event_type="arp_spoof_attempt",
-            group_by="src_ip",
+            match_event_action="arp_spoof_attempt",
+            group_by="source_ip",
             threshold=2,
-            output_event_type="arp_attack_detected",
+            output_event_action="arp_attack_detected",
             severity="critical",
         )]
 
         for _ in range(2):
-            test_db.save_normalized_log(_norm_log("arp_spoof_attempt", src_ip="10.0.0.55"))
+            test_db.save_normalized_log(_norm_log("arp_spoof_attempt", source_ip="10.0.0.55"))
 
         events = correlator.run()
         assert len(events) == 1
         assert events[0].severity == "critical"
-        assert events[0].event_type == "arp_attack_detected"
+        assert events[0].event_action == "arp_attack_detected"
 
 
 # ------------------------------------------------------------------ #
@@ -244,27 +244,27 @@ class TestMultiDomainCorrelation:
         correlator._rules = [
             _make_rule(
                 rule_id="ssh_bf",
-                match_event_type="ssh_failure",
-                group_by="src_ip",
+                match_event_action="ssh_failure",
+                group_by="source_ip",
                 threshold=3,
-                output_event_type="brute_force_detected",
+                output_event_action="brute_force_detected",
             ),
             _make_rule(
                 rule_id="port_scan",
-                match_event_type="port_scan_attempt",
-                group_by="src_ip",
+                match_event_action="port_scan_attempt",
+                group_by="source_ip",
                 threshold=3,
-                output_event_type="port_scan_detected",
+                output_event_action="port_scan_detected",
             ),
         ]
 
         attacker_ip = "172.16.0.99"
         for _ in range(3):
-            test_db.save_normalized_log(_norm_log("ssh_failure", src_ip=attacker_ip))
-            test_db.save_normalized_log(_norm_log("port_scan_attempt", src_ip=attacker_ip))
+            test_db.save_normalized_log(_norm_log("ssh_failure", source_ip=attacker_ip))
+            test_db.save_normalized_log(_norm_log("port_scan_attempt", source_ip=attacker_ip))
 
         events = correlator.run()
-        event_types = {e.event_type for e in events}
+        event_types = {e.event_action for e in events}
         assert "brute_force_detected" in event_types
         assert "port_scan_detected" in event_types
         assert len(events) == 2
@@ -275,7 +275,7 @@ class TestMultiDomainCorrelation:
 
         for ip in ["10.0.0.1", "10.0.0.2", "10.0.0.3"]:
             for _ in range(3):
-                test_db.save_normalized_log(_norm_log("ssh_failure", src_ip=ip))
+                test_db.save_normalized_log(_norm_log("ssh_failure", source_ip=ip))
 
         events = correlator.run()
         assert len(events) == 3
@@ -303,10 +303,10 @@ class TestSecurityLogParserNormalization:
 
         slp_module.parse_auth_log(agent_id="test-agent", log_path=str(log_file))
 
-        norm_logs = test_db.get_normalized_logs(event_type="ssh_failure")
+        norm_logs = test_db.get_normalized_logs(event_action="ssh_failure")
         assert len(norm_logs) >= 1
-        assert norm_logs[0].src_ip == "1.2.3.4"
-        assert norm_logs[0].event_type == "ssh_failure"
+        assert norm_logs[0].source_ip == "1.2.3.4"
+        assert norm_logs[0].event_action == "ssh_failure"
 
     def test_ssh_success_writes_to_normalized_logs(self, tmp_path, monkeypatch):
         import server.database as db_module
@@ -323,9 +323,9 @@ class TestSecurityLogParserNormalization:
 
         slp_module.parse_auth_log(agent_id="test-agent", log_path=str(log_file))
 
-        norm_logs = test_db.get_normalized_logs(event_type="ssh_success")
+        norm_logs = test_db.get_normalized_logs(event_action="ssh_success")
         assert len(norm_logs) >= 1
-        assert norm_logs[0].src_ip == "192.168.1.5"
+        assert norm_logs[0].source_ip == "192.168.1.5"
 
     def test_multiple_ssh_failures_enable_brute_force_rule(self, tmp_path, monkeypatch):
         import server.database as db_module
@@ -348,13 +348,13 @@ class TestSecurityLogParserNormalization:
 
         slp_module.parse_auth_log(agent_id="test-agent", log_path=str(log_file))
 
-        norm_logs = test_db.get_normalized_logs(event_type="ssh_failure")
+        norm_logs = test_db.get_normalized_logs(event_action="ssh_failure")
         assert len(norm_logs) >= 5
 
         c = Correlator(rules_path=str(tmp_path / "empty.json"))
         c._rules = [_make_rule(
-            match_event_type="ssh_failure", threshold=5,
-            output_event_type="brute_force_detected",
+            match_event_action="ssh_failure", threshold=5,
+            output_event_action="brute_force_detected",
         )]
         events = c.run()
         assert len(events) == 1

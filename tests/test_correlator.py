@@ -20,9 +20,9 @@ from shared.models import NormalizedLog, LogSourceType, LogCategory
 # ------------------------------------------------------------------ #
 
 def _make_normalized_log(
-    event_type: str,
-    src_ip: str = "10.0.0.1",
-    source_host: str = "sensor1",
+    event_action: str,
+    source_ip: str = "10.0.0.1",
+    observer_hostname: str = "sensor1",
     severity: str = "warning",
     minutes_ago: int = 0,
 ) -> NormalizedLog:
@@ -31,13 +31,13 @@ def _make_normalized_log(
         log_id      = str(uuid.uuid4()),
         raw_id      = str(uuid.uuid4()),
         source_type = LogSourceType.AUTH_LOG,
-        source_host = source_host,
+        observer_hostname = observer_hostname,
         timestamp   = ts,
         severity    = severity,
-        category    = LogCategory.AUTHENTICATION,
-        event_type  = event_type,
-        src_ip      = src_ip,
-        message     = f"Test log: {event_type}",
+        event_category    = LogCategory.AUTHENTICATION,
+        event_action  = event_action,
+        source_ip      = source_ip,
+        message     = f"Test log: {event_action}",
     )
 
 
@@ -48,24 +48,24 @@ def _store_logs(test_db: DatabaseManager, logs: list[NormalizedLog]) -> None:
 
 def _make_rule(
     rule_id: str = "test_rule",
-    match_event_type: str = "ssh_failure",
-    group_by: str = "src_ip",
+    match_event_action: str = "ssh_failure",
+    group_by: str = "source_ip",
     window_seconds: int = 300,
     threshold: int = 5,
     severity: str = "critical",
-    output_event_type: str = "brute_force_detected",
+    output_event_action: str = "brute_force_detected",
     match_severity: str = None,
 ) -> CorrelationRule:
     return CorrelationRule(
         rule_id          = rule_id,
         name             = "Test Kuralı",
         description      = "Test",
-        match_event_type = match_event_type,
+        match_event_action = match_event_action,
         group_by         = group_by,
         window_seconds   = window_seconds,
         threshold        = threshold,
         severity         = severity,
-        output_event_type= output_event_type,
+        output_event_action= output_event_action,
         enabled          = True,
         match_severity   = match_severity,
     )
@@ -81,9 +81,9 @@ class TestRuleLoading:
         rules_file.write_text(json.dumps([
             {
                 "rule_id": "r1", "name": "Rule 1", "description": "",
-                "match_event_type": "ssh_failure", "group_by": "src_ip",
+                "match_event_action": "ssh_failure", "group_by": "source_ip",
                 "window_seconds": 300, "threshold": 5,
-                "severity": "critical", "output_event_type": "brute_force",
+                "severity": "critical", "output_event_action": "brute_force",
                 "enabled": True,
             }
         ]))
@@ -97,16 +97,16 @@ class TestRuleLoading:
         rules_file.write_text(json.dumps([
             {
                 "rule_id": "r1", "name": "Active", "description": "",
-                "match_event_type": "ssh_failure", "group_by": "src_ip",
+                "match_event_action": "ssh_failure", "group_by": "source_ip",
                 "window_seconds": 60, "threshold": 3,
-                "severity": "warning", "output_event_type": "test",
+                "severity": "warning", "output_event_action": "test",
                 "enabled": True,
             },
             {
                 "rule_id": "r2", "name": "Disabled", "description": "",
-                "match_event_type": "ssh_failure", "group_by": "src_ip",
+                "match_event_action": "ssh_failure", "group_by": "source_ip",
                 "window_seconds": 60, "threshold": 3,
-                "severity": "warning", "output_event_type": "test",
+                "severity": "warning", "output_event_action": "test",
                 "enabled": False,
             },
         ]))
@@ -130,9 +130,9 @@ class TestRuleLoading:
         rules_file.write_text(json.dumps([
             {
                 "rule_id": "new_rule", "name": "New", "description": "",
-                "match_event_type": "ssh_failure", "group_by": "src_ip",
+                "match_event_action": "ssh_failure", "group_by": "source_ip",
                 "window_seconds": 60, "threshold": 3,
-                "severity": "warning", "output_event_type": "test",
+                "severity": "warning", "output_event_action": "test",
                 "enabled": True,
             }
         ]))
@@ -165,7 +165,7 @@ class TestCorrelatorRun:
         correlator._rules = [rule]
 
         # 4 log ekle (eşik 5)
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(4)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(4)]
         _store_logs(test_db, logs)
 
         events = correlator.run()
@@ -177,12 +177,12 @@ class TestCorrelatorRun:
         correlator._rules = [rule]
 
         # 5 log ekle (eşiğe tam ulaşır)
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(5)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(5)]
         _store_logs(test_db, logs)
 
         events = correlator.run()
         assert len(events) == 1
-        assert events[0].event_type == "brute_force_detected"
+        assert events[0].event_action == "brute_force_detected"
         assert events[0].group_value == "1.2.3.4"
         assert events[0].matched_count == 5
 
@@ -193,7 +193,7 @@ class TestCorrelatorRun:
 
         # İki farklı IP'den 3'er log
         for ip in ["1.1.1.1", "2.2.2.2"]:
-            logs = [_make_normalized_log("ssh_failure", src_ip=ip) for _ in range(3)]
+            logs = [_make_normalized_log("ssh_failure", source_ip=ip) for _ in range(3)]
             _store_logs(test_db, logs)
 
         events = correlator.run()
@@ -208,8 +208,8 @@ class TestCorrelatorRun:
         correlator._rules = [rule]
 
         # 2 taze log + 2 eski log (pencere dışı)
-        fresh = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4", minutes_ago=0) for _ in range(2)]
-        old   = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4", minutes_ago=5) for _ in range(2)]
+        fresh = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4", minutes_ago=0) for _ in range(2)]
+        old   = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4", minutes_ago=5) for _ in range(2)]
         _store_logs(test_db, fresh + old)
 
         events = correlator.run()
@@ -221,7 +221,7 @@ class TestCorrelatorRun:
         rule = _make_rule(threshold=3)
         correlator._rules = [rule]
 
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(5)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(5)]
         _store_logs(test_db, logs)
 
         events1 = correlator.run()
@@ -236,8 +236,8 @@ class TestCorrelatorRun:
         correlator._rules = [rule]
 
         # 3 warning + 3 critical log
-        warn_logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4", severity="warning") for _ in range(3)]
-        crit_logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4", severity="critical") for _ in range(3)]
+        warn_logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4", severity="warning") for _ in range(3)]
+        crit_logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4", severity="critical") for _ in range(3)]
         _store_logs(test_db, warn_logs + crit_logs)
 
         events = correlator.run()
@@ -245,20 +245,20 @@ class TestCorrelatorRun:
         assert events[0].matched_count == 3   # sadece critical'lar sayıldı
 
     def test_event_type_prefix_match(self, setup):
-        """match_event_type prefix ile farklı wazuh kurallarını yakalar."""
+        """match_event_action prefix ile farklı wazuh kurallarını yakalar."""
         correlator, test_db = setup
         rule = _make_rule(
-            match_event_type="wazuh_rule_",
-            group_by="source_host",
+            match_event_action="wazuh_rule_",
+            group_by="observer_hostname",
             threshold=3,
-            output_event_type="wazuh_burst",
+            output_event_action="wazuh_burst",
         )
         correlator._rules = [rule]
 
         logs = [
-            _make_normalized_log("wazuh_rule_5501", source_host="web01"),
-            _make_normalized_log("wazuh_rule_5502", source_host="web01"),
-            _make_normalized_log("wazuh_rule_1001", source_host="web01"),
+            _make_normalized_log("wazuh_rule_5501", observer_hostname="web01"),
+            _make_normalized_log("wazuh_rule_5502", observer_hostname="web01"),
+            _make_normalized_log("wazuh_rule_1001", observer_hostname="web01"),
         ]
         _store_logs(test_db, logs)
 
@@ -271,7 +271,7 @@ class TestCorrelatorRun:
         rule = _make_rule(threshold=3)
         correlator._rules = [rule]
 
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(3)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(3)]
         _store_logs(test_db, logs)
 
         correlator.run()
@@ -303,7 +303,7 @@ class TestThreatIntelEscalation:
         rule = _make_rule(threshold=3, severity="warning")
         correlator._rules = [rule]
 
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(3)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(3)]
         _store_logs(test_db, logs)
 
         import server.threat_intel as ti_module
@@ -320,7 +320,7 @@ class TestThreatIntelEscalation:
         rule = _make_rule(threshold=3, severity="warning")
         correlator._rules = [rule]
 
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(3)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(3)]
         _store_logs(test_db, logs)
 
         import server.threat_intel as ti_module
@@ -337,7 +337,7 @@ class TestThreatIntelEscalation:
         rule = _make_rule(threshold=3, severity="warning")
         correlator._rules = [rule]
 
-        logs = [_make_normalized_log("ssh_failure", src_ip="10.0.0.1") for _ in range(3)]
+        logs = [_make_normalized_log("ssh_failure", source_ip="10.0.0.1") for _ in range(3)]
         _store_logs(test_db, logs)
 
         import server.threat_intel as ti_module
@@ -372,12 +372,12 @@ class TestCrossSourceCorrelation:
             rule_id          = "multi_source_attack",
             name             = "Çok Kaynaklı Saldırı",
             description      = "Test",
-            match_event_type = "",
-            group_by         = "src_ip",
+            match_event_action = "",
+            group_by         = "source_ip",
             window_seconds   = 300,
             threshold        = 2,
             severity         = "critical",
-            output_event_type= "multi_source_attack_detected",
+            output_event_action= "multi_source_attack_detected",
             enabled          = True,
             distinct_by      = "source_type",
         )
@@ -389,16 +389,16 @@ class TestCrossSourceCorrelation:
         import server.threat_intel as ti_module
         monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
 
-        # Aynı src_ip, farklı source_type
-        log1 = _make_normalized_log("port_scan_attempt", src_ip="1.2.3.4")
+        # Aynı source_ip, farklı source_type
+        log1 = _make_normalized_log("port_scan_attempt", source_ip="1.2.3.4")
         log1 = log1.model_copy(update={"source_type": LogSourceType.NETGUARD})
-        log2 = _make_normalized_log("ssh_failure", src_ip="1.2.3.4")
+        log2 = _make_normalized_log("ssh_failure", source_ip="1.2.3.4")
         # log2 varsayılan AUTH_LOG source_type'ı kullanır
         _store_logs(test_db, [log1, log2])
 
         events = correlator.run()
         assert len(events) == 1
-        assert events[0].event_type == "multi_source_attack_detected"
+        assert events[0].event_action == "multi_source_attack_detected"
         assert events[0].group_value == "1.2.3.4"
 
     def test_no_fire_when_single_source_type(self, setup, monkeypatch):
@@ -408,8 +408,8 @@ class TestCrossSourceCorrelation:
         import server.threat_intel as ti_module
         monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
 
-        # Aynı src_ip, aynı source_type (AUTH_LOG)
-        logs = [_make_normalized_log("ssh_failure", src_ip="1.2.3.4") for _ in range(5)]
+        # Aynı source_ip, aynı source_type (AUTH_LOG)
+        logs = [_make_normalized_log("ssh_failure", source_ip="1.2.3.4") for _ in range(5)]
         _store_logs(test_db, logs)
 
         events = correlator.run()
@@ -423,11 +423,11 @@ class TestCrossSourceCorrelation:
         monkeypatch.setattr(ti_module, "lookup", lambda ip: None)
 
         # 1.2.3.4: 2 farklı source_type → tetiklenmeli
-        log_a = _make_normalized_log("port_scan_attempt", src_ip="1.2.3.4")
+        log_a = _make_normalized_log("port_scan_attempt", source_ip="1.2.3.4")
         log_a = log_a.model_copy(update={"source_type": LogSourceType.NETGUARD})
-        log_b = _make_normalized_log("ssh_failure", src_ip="1.2.3.4")
+        log_b = _make_normalized_log("ssh_failure", source_ip="1.2.3.4")
         # 5.6.7.8: tek source_type → tetiklenmemeli
-        log_c = _make_normalized_log("ssh_failure", src_ip="5.6.7.8")
+        log_c = _make_normalized_log("ssh_failure", source_ip="5.6.7.8")
         _store_logs(test_db, [log_a, log_b, log_c])
 
         events = correlator.run()

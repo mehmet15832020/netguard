@@ -248,10 +248,10 @@ class Notifier:
         if not self.email.enabled:
             return
         severity_prefix = {"critical": "🚨", "high": "🔴", "medium": "🟡", "warning": "⚠️"}.get(event.severity, "ℹ️")
-        subject = f"{severity_prefix} NetGuard Korelasyon — {event.severity.upper()}: {event.event_type}"
+        subject = f"{severity_prefix} NetGuard Korelasyon — {event.severity.upper()}: {event.event_action}"
         body = (
             f"NetGuard Korelasyon Alarmı\n{'='*40}\n\n"
-            f"Olay Tipi  : {event.event_type}\n"
+            f"Olay Tipi  : {event.event_action}\n"
             f"Kural      : {event.rule_id} ({event.rule_name})\n"
             f"Seviye     : {event.severity.upper()}\n"
             f"Kaynak     : {event.group_value}\n"
@@ -265,7 +265,7 @@ class Notifier:
         msg["To"]      = ", ".join(self.email.to_emails)
         msg["Subject"] = subject
         msg.attach(MIMEText(body, "plain", "utf-8"))
-        self.email._send_msg(msg, event.event_type)
+        self.email._send_msg(msg, event.event_action)
 
     def _send_correlated_webhook(self, event: CorrelatedEvent) -> None:
         if not self.webhook.enabled:
@@ -278,7 +278,7 @@ class Notifier:
                     "description": event.message,
                     "color": color_map.get(event.severity, 16776960),
                     "fields": [
-                        {"name": "Olay Tipi", "value": event.event_type,  "inline": True},
+                        {"name": "Olay Tipi", "value": event.event_action,  "inline": True},
                         {"name": "Kural",     "value": event.rule_id,     "inline": True},
                         {"name": "Kaynak",    "value": event.group_value,  "inline": True},
                     ],
@@ -290,7 +290,7 @@ class Notifier:
             payload = {
                 "text": f"🔔 *NetGuard Korelasyon — {event.severity.upper()}*\n{event.message}"
             }
-        self.webhook._post_payload(payload, event.event_type)
+        self.webhook._post_payload(payload, event.event_action)
 
     def _send_anomaly_email(self, result: "AnomalyResult") -> None:
         if not self.email.enabled:

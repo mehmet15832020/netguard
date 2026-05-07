@@ -2,14 +2,14 @@
   {
     "rule_id": "multi_source_attack",
     "name": "Çok Kaynaklı Koordineli Saldırı",
-    "description": "Aynı src_ip 5 dakika içinde 3+ farklı kaynak tipinden olay — koordineli saldırı göstergesi",
-    "match_event_type": "",
-    "group_by": "src_ip",
+    "description": "Aynı source_ip 5 dakika içinde 3+ farklı kaynak tipinden olay — koordineli saldırı göstergesi",
+    "match_event_action": "",
+    "group_by": "source_ip",
     "distinct_by": "source_type",
     "window_seconds": 300,
     "threshold": 3,
     "severity": "high",
-    "output_event_type": "multi_source_attack_detected",
+    "output_event_action": "multi_source_attack_detected",
     "enabled": true,
     "tags": ["attack.reconnaissance", "attack.t1595"]
   }

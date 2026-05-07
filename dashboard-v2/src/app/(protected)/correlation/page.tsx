@@ -116,7 +116,7 @@ export default function CorrelationPage() {
                         <TableCell><SeverityBadge severity={ev.severity as Severity} /></TableCell>
                         <TableCell>
                           <p className="text-sm text-zinc-200">{ev.rule_name}</p>
-                          <p className="text-xs text-zinc-500">{ev.event_type}</p>
+                          <p className="text-xs text-zinc-500">{ev.event_action}</p>
                         </TableCell>
                         <TableCell className="text-xs text-zinc-300 font-mono">{ev.group_value}</TableCell>
                         <TableCell>
@@ -170,7 +170,7 @@ export default function CorrelationPage() {
                         <p className="text-sm text-zinc-200">{rule.name}</p>
                         <p className="text-xs text-zinc-500">{rule.description}</p>
                       </TableCell>
-                      <TableCell className="text-xs text-zinc-400 font-mono">{rule.match_event_type}</TableCell>
+                      <TableCell className="text-xs text-zinc-400 font-mono">{rule.match_event_action}</TableCell>
                       <TableCell className="text-xs text-zinc-400">{rule.group_by}</TableCell>
                       <TableCell className="text-xs text-zinc-400">{rule.window_seconds}s</TableCell>
                       <TableCell className="text-xs text-zinc-400">{rule.threshold}</TableCell>

@@ -25,7 +25,7 @@ class _SyslogProtocol(asyncio.DatagramProtocol):
     """asyncio UDP protokolü — her gelen datagram bir log mesajı."""
 
     def datagram_received(self, data: bytes, addr: tuple) -> None:
-        source_host = addr[0]
+        observer_hostname = addr[0]
         try:
             raw_content = data.decode("utf-8", errors="replace").strip()
         except Exception:
@@ -35,9 +35,9 @@ class _SyslogProtocol(asyncio.DatagramProtocol):
             return
 
         try:
-            process_and_store(raw_content, source_host)
+            process_and_store(raw_content, observer_hostname)
         except Exception as exc:
-            logger.error(f"Syslog işleme hatası ({source_host}): {exc}")
+            logger.error(f"Syslog işleme hatası ({observer_hostname}): {exc}")
 
     def error_received(self, exc: Exception) -> None:
         logger.error(f"Syslog UDP hatası: {exc}")

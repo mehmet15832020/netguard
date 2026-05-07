@@ -15,27 +15,27 @@ from shared.models import (
 
 def _make_log(
     message="test message",
-    src_ip=None,
-    dst_ip=None,
-    source_host="firewall",
+    source_ip=None,
+    destination_ip=None,
+    observer_hostname="firewall",
     username=None,
-    event_type="firewall_allow",
+    event_action="firewall_allow",
     source_type=LogSourceType.SYSLOG,
-    category=LogCategory.NETWORK,
+    event_category=LogCategory.NETWORK,
 ) -> NormalizedLog:
     now = datetime.now(timezone.utc)
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
         raw_id=str(uuid.uuid4()),
         source_type=source_type,
-        source_host=source_host,
+        observer_hostname=observer_hostname,
         timestamp=now,
         received_at=now,
         severity="info",
-        category=category,
-        event_type=event_type,
-        src_ip=src_ip,
-        dst_ip=dst_ip,
+        event_category=event_category,
+        event_action=event_action,
+        source_ip=source_ip,
+        destination_ip=destination_ip,
         message=message,
         processed_at=now,
     )
@@ -60,17 +60,17 @@ class TestFTS5Search:
         assert "port scan" in results[0].message
 
     def test_ip_search_uses_like(self, tmp_db):
-        tmp_db.save_normalized_log(_make_log(src_ip="192.168.1.5",  message="traffic from attacker"))
-        tmp_db.save_normalized_log(_make_log(src_ip="10.0.0.1",     message="internal traffic"))
-        tmp_db.save_normalized_log(_make_log(dst_ip="192.168.1.5",  message="traffic to attacker"))
+        tmp_db.save_normalized_log(_make_log(source_ip="192.168.1.5",  message="traffic from attacker"))
+        tmp_db.save_normalized_log(_make_log(source_ip="10.0.0.1",     message="internal traffic"))
+        tmp_db.save_normalized_log(_make_log(destination_ip="192.168.1.5",  message="traffic to attacker"))
 
         results = tmp_db.search_logs("192.168.1.5")
         assert len(results) == 2
 
     def test_ip_prefix_search(self, tmp_db):
-        tmp_db.save_normalized_log(_make_log(src_ip="192.168.1.5",  message="a"))
-        tmp_db.save_normalized_log(_make_log(src_ip="192.168.1.10", message="b"))
-        tmp_db.save_normalized_log(_make_log(src_ip="10.0.0.1",     message="c"))
+        tmp_db.save_normalized_log(_make_log(source_ip="192.168.1.5",  message="a"))
+        tmp_db.save_normalized_log(_make_log(source_ip="192.168.1.10", message="b"))
+        tmp_db.save_normalized_log(_make_log(source_ip="10.0.0.1",     message="c"))
 
         results = tmp_db.search_logs("192.168.1")
         assert len(results) == 2
@@ -96,13 +96,13 @@ class TestFTS5Search:
 
     def test_search_with_category_filter(self, tmp_db):
         tmp_db.save_normalized_log(_make_log(
-            message="failed", category=LogCategory.AUTHENTICATION
+            message="failed", event_category=LogCategory.AUTHENTICATION
         ))
         tmp_db.save_normalized_log(_make_log(
-            message="failed", category=LogCategory.NETWORK
+            message="failed", event_category=LogCategory.NETWORK
         ))
 
-        results = tmp_db.search_logs("failed", category="authentication")
+        results = tmp_db.search_logs("failed", event_category="authentication")
         assert len(results) == 1
 
     def test_no_results_returns_empty(self, tmp_db):

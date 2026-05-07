@@ -53,12 +53,12 @@ def list_rules(_: User = Depends(get_current_user)):
             "rule_id":          r.rule_id,
             "name":             r.name,
             "description":      r.description,
-            "match_event_type": r.match_event_type,
+            "match_event_action": r.match_event_action,
             "group_by":         r.group_by,
             "window_seconds":   r.window_seconds,
             "threshold":        r.threshold,
             "severity":         r.severity,
-            "output_event_type":r.output_event_type,
+            "output_event_action":r.output_event_action,
         }
         for r in correlator.rules
     ]
@@ -71,7 +71,7 @@ def update_rules(
     _: User = Depends(require_admin),
 ):
     """Korelasyon kurallarını güncelle, dosyaya kaydet ve yeniden yükle."""
-    required_fields = {"rule_id", "name", "match_event_type", "window_seconds", "threshold", "output_event_type"}
+    required_fields = {"rule_id", "name", "match_event_action", "window_seconds", "threshold", "output_event_action"}
     for i, rule in enumerate(request.rules):
         missing = required_fields - rule.keys()
         if missing:

@@ -14,7 +14,7 @@ def _make_event(**kwargs) -> CorrelatedEvent:
         corr_id="test-corr-001",
         rule_id="ssh_brute_force",
         rule_name="SSH Brute Force",
-        event_type="brute_force_detected",
+        event_action="brute_force_detected",
         severity="critical",
         group_value="192.168.1.100",
         matched_count=5,

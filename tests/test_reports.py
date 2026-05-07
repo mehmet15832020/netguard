@@ -181,7 +181,7 @@ class TestCountCorrelatedEvents:
             corr_id=uid,
             rule_name="test_rule",
             rule_id=uid,
-            event_type="test_event",
+            event_action="test_event",
             severity=severity,
             group_value="192.168.1.1",
             matched_count=5,
@@ -208,7 +208,7 @@ class TestCountCorrelatedEvents:
         with tmp_db._connect() as conn:
             conn.execute(
                 """INSERT INTO correlated_events
-                   (corr_id, rule_id, rule_name, event_type, severity,
+                   (corr_id, rule_id, rule_name, event_action, severity,
                     group_value, matched_count, window_seconds,
                     first_seen, last_seen, message, created_at,
                     mitre_techniques, mitre_tactics)

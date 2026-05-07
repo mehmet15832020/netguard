@@ -69,16 +69,16 @@ _EVENT_TYPE_MAP = {
 
 
 def _save_as_security_event(log: NormalizedLog) -> None:
-    event_type = _EVENT_TYPE_MAP.get(log.event_type)
-    if event_type is None:
+    event_action = _EVENT_TYPE_MAP.get(log.event_action)
+    if event_action is None:
         return
     event = SecurityEvent(
         event_id   = str(uuid.uuid4()),
-        agent_id   = log.source_host,
-        hostname   = log.source_host,
-        event_type = event_type,
+        agent_id   = log.observer_hostname,
+        hostname   = log.observer_hostname,
+        event_action = event_action,
         severity   = log.severity,
-        source_ip  = log.src_ip,
+        source_ip  = log.source_ip,
         message    = log.message,
         raw_data   = log.message,
         occurred_at = log.timestamp,

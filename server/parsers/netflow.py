@@ -38,18 +38,18 @@ def _ip_from_int(n: int) -> str:
     return socket.inet_ntoa(struct.pack("!I", n))
 
 
-def _severity_for_flow(proto: str, dst_port: int, src_port: int) -> str:
-    if dst_port in _SUSPICIOUS_PORTS or src_port in _SUSPICIOUS_PORTS:
+def _severity_for_flow(proto: str, destination_port: int, source_port: int) -> str:
+    if destination_port in _SUSPICIOUS_PORTS or source_port in _SUSPICIOUS_PORTS:
         return "warning"
     return "info"
 
 
 def _make_log(
-    source_host: str,
-    src_ip: str,
-    dst_ip: str,
-    src_port: int,
-    dst_port: int,
+    observer_hostname: str,
+    source_ip: str,
+    destination_ip: str,
+    source_port: int,
+    destination_port: int,
     proto_num: int,
     packets: int,
     octets: int,
@@ -57,34 +57,34 @@ def _make_log(
     extra: dict,
 ) -> NormalizedLog:
     proto = _PROTO_MAP.get(proto_num, str(proto_num))
-    severity = _severity_for_flow(proto, dst_port, src_port)
+    severity = _severity_for_flow(proto, destination_port, source_port)
     ts = datetime.fromtimestamp(unix_secs, tz=timezone.utc)
 
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
         raw_id      = str(uuid.uuid4()),
         source_type = LogSourceType.NETFLOW,
-        source_host = source_host,
+        observer_hostname = observer_hostname,
         timestamp   = ts,
         severity    = severity,
-        category    = LogCategory.NETWORK,
-        event_type  = "netflow_flow",
-        src_ip      = src_ip,
-        dst_ip      = dst_ip,
-        src_port    = src_port,
-        dst_port    = dst_port,
-        protocol    = proto,
+        event_category    = LogCategory.NETWORK,
+        event_action  = "netflow_flow",
+        source_ip      = source_ip,
+        destination_ip      = destination_ip,
+        source_port    = source_port,
+        destination_port    = destination_port,
+        network_protocol    = proto,
         message     = (
             f"NetFlow {proto.upper()} "
-            f"{src_ip}:{src_port} → {dst_ip}:{dst_port} "
+            f"{source_ip}:{source_port} → {destination_ip}:{destination_port} "
             f"({packets} pkts, {octets} B)"
         ),
-        tags        = [proto, f"dst:{dst_port}"],
+        tags        = [proto, f"dst:{destination_port}"],
         extra       = {**extra, "packets": packets, "bytes": octets},
     )
 
 
-def parse_v5(data: bytes, source_host: str) -> list[NormalizedLog]:
+def parse_v5(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
     if len(data) < _V5_HEADER_SIZE:
         return []
     hdr = _V5_HEADER.unpack_from(data, 0)
@@ -110,11 +110,11 @@ def parse_v5(data: bytes, source_host: str) -> list[NormalizedLog]:
          src_as, dst_as, _smask, _dmask) = r
 
         logs.append(_make_log(
-            source_host = source_host,
-            src_ip      = _ip_from_int(srcaddr),
-            dst_ip      = _ip_from_int(dstaddr),
-            src_port    = srcport,
-            dst_port    = dstport,
+            observer_hostname = observer_hostname,
+            source_ip      = _ip_from_int(srcaddr),
+            destination_ip      = _ip_from_int(dstaddr),
+            source_port    = srcport,
+            destination_port    = dstport,
             proto_num   = prot,
             packets     = pkts,
             octets      = octets,
@@ -144,14 +144,14 @@ _V9_FLOWSET_HDR = struct.Struct("!HH")  # flowset_id(2) + length(2)
 _V9_FIELD_TYPES: dict[int, tuple[str, str]] = {
     1:  ("in_bytes",    "!I"),
     2:  ("in_pkts",     "!I"),
-    4:  ("protocol",    "!B"),
+    4:  ("network_protocol",    "!B"),
     5:  ("tos",         "!B"),
     6:  ("tcp_flags",   "!B"),
-    7:  ("src_port",    "!H"),
-    8:  ("src_ip",      "ipv4"),
+    7:  ("source_port",    "!H"),
+    8:  ("source_ip",      "ipv4"),
     10: ("input_snmp",  "!H"),
-    11: ("dst_port",    "!H"),
-    12: ("dst_ip",      "ipv4"),
+    11: ("destination_port",    "!H"),
+    12: ("destination_ip",      "ipv4"),
     14: ("output_snmp", "!H"),
     21: ("last_sw",     "!I"),
     22: ("first_sw",    "!I"),
@@ -189,7 +189,7 @@ def _parse_v9_data_flowset(
     template_id: int,
     source_id: int,
     unix_secs: int,
-    source_host: str,
+    observer_hostname: str,
 ) -> list[NormalizedLog]:
     template = _v9_templates.get((source_id, template_id))
     if template is None:
@@ -217,15 +217,15 @@ def _parse_v9_data_flowset(
             rec_off += flen
         offset += record_size
 
-        src_ip   = str(fields.get("src_ip", ""))
-        dst_ip   = str(fields.get("dst_ip", ""))
-        src_port = int(fields.get("src_port", 0))
-        dst_port = int(fields.get("dst_port", 0))
-        proto_n  = int(fields.get("protocol", 0))
+        source_ip   = str(fields.get("source_ip", ""))
+        destination_ip   = str(fields.get("destination_ip", ""))
+        source_port = int(fields.get("source_port", 0))
+        destination_port = int(fields.get("destination_port", 0))
+        proto_n  = int(fields.get("network_protocol", 0))
         packets  = int(fields.get("in_pkts", 0))
         octets   = int(fields.get("in_bytes", 0))
 
-        if not src_ip or not dst_ip:
+        if not source_ip or not destination_ip:
             continue
 
         extra = {
@@ -235,11 +235,11 @@ def _parse_v9_data_flowset(
             "tos":        fields.get("tos", 0),
         }
         logs.append(_make_log(
-            source_host = source_host,
-            src_ip      = src_ip,
-            dst_ip      = dst_ip,
-            src_port    = src_port,
-            dst_port    = dst_port,
+            observer_hostname = observer_hostname,
+            source_ip      = source_ip,
+            destination_ip      = destination_ip,
+            source_port    = source_port,
+            destination_port    = destination_port,
             proto_num   = proto_n,
             packets     = packets,
             octets      = octets,
@@ -249,7 +249,7 @@ def _parse_v9_data_flowset(
     return logs
 
 
-def parse_v9(data: bytes, source_host: str) -> list[NormalizedLog]:
+def parse_v9(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
     if len(data) < _V9_HEADER.size:
         return []
     hdr = _V9_HEADER.unpack_from(data, 0)
@@ -270,7 +270,7 @@ def parse_v9(data: bytes, source_host: str) -> list[NormalizedLog]:
             _parse_v9_template_flowset(payload, source_id)
         elif flowset_id >= 256:
             logs.extend(_parse_v9_data_flowset(
-                payload, flowset_id, source_id, unix_secs, source_host
+                payload, flowset_id, source_id, unix_secs, observer_hostname
             ))
         offset += length
     return logs
@@ -278,12 +278,12 @@ def parse_v9(data: bytes, source_host: str) -> list[NormalizedLog]:
 
 # ── Otomatik tespit ───────────────────────────────────────────────────────────
 
-def detect_and_parse(data: bytes, source_host: str) -> list[NormalizedLog]:
+def detect_and_parse(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
     if len(data) < 2:
         return []
     version = struct.unpack_from("!H", data, 0)[0]
     if version == 5:
-        return parse_v5(data, source_host)
+        return parse_v5(data, observer_hostname)
     if version == 9:
-        return parse_v9(data, source_host)
+        return parse_v9(data, observer_hostname)
     return []
