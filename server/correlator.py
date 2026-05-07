@@ -55,6 +55,12 @@ SIGMA_RULES_DIR = os.getenv(
     str(Path(__file__).parent.parent / "config" / "sigma_rules"),
 )
 
+_VALID_GROUP_COLS: frozenset[str] = frozenset({
+    "src_ip", "dst_ip", "source_host", "username", "hostname",
+    "event_type", "category", "tenant_id", "source_type",
+    "protocol", "src_port", "dst_port", "device_id",
+})
+
 
 # ------------------------------------------------------------------ #
 #  Kural veri yapısı
@@ -177,7 +183,14 @@ class Correlator:
         since = datetime.now(timezone.utc) - timedelta(seconds=rule.window_seconds)
         since_iso = since.isoformat()
 
-        group_col  = "src_ip" if rule.group_by == "src_ip" else "source_host"
+        if rule.group_by not in _VALID_GROUP_COLS:
+            logger.warning("Rule %s: geçersiz group_by '%s', atlanıyor", rule.rule_id, rule.group_by)
+            return []
+        group_col = rule.group_by
+
+        if rule.distinct_by and rule.distinct_by not in _VALID_GROUP_COLS:
+            logger.warning("Rule %s: geçersiz distinct_by '%s', atlanıyor", rule.rule_id, rule.distinct_by)
+            return []
         count_expr = f"COUNT(DISTINCT {rule.distinct_by})" if rule.distinct_by else "COUNT(*)"
 
         kw_clause  = ""
