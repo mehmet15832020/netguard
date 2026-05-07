@@ -50,6 +50,15 @@ class WebSocketManager:
             async with self._lock:
                 self._connections -= dead
 
+    def broadcast_from_thread(self, msg_type: str, data: Any) -> None:
+        """Thread context'inden (asyncio.to_thread içinden) broadcast zamanla."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                asyncio.run_coroutine_threadsafe(self.broadcast(msg_type, data), loop)
+        except Exception:
+            pass
+
     @property
     def connection_count(self) -> int:
         return len(self._connections)

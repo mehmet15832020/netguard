@@ -258,6 +258,11 @@ class Correlator:
                     f"Korelasyon tetiklendi [{rule.rule_id}]: "
                     f"{group_value} — {count} olay / {rule.window_seconds}s"
                 )
+                try:
+                    from server.ws_manager import ws_manager
+                    ws_manager.broadcast_from_thread("correlated_event", event.model_dump(mode="json"))
+                except Exception:
+                    pass
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
                 self._check_attack_chain(event)
@@ -316,6 +321,16 @@ class Correlator:
                     occurred_at=last_seen_iso,
                 )
                 incident_id = incident.incident_id
+                try:
+                    from server.ws_manager import ws_manager
+                    ws_manager.broadcast_from_thread("incident", {
+                        "incident_id": incident.incident_id,
+                        "severity": incident.severity,
+                        "status": incident.status.value,
+                        "title": incident.title,
+                    })
+                except Exception:
+                    pass
 
             ti = threat_intel.lookup(event.group_value)
             if ti and ti.get("score", 0) >= 70:

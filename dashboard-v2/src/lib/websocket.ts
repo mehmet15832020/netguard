@@ -6,7 +6,7 @@ import { auth } from '@/lib/api'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000'
 
-export type WSMessageType = 'alert' | 'metric' | 'security_event' | 'correlated_event' | 'ping'
+export type WSMessageType = 'alert' | 'metric' | 'security_event' | 'correlated_event' | 'incident' | 'ping'
 
 export interface WSMessage<T = unknown> {
   type: WSMessageType
