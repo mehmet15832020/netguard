@@ -132,6 +132,7 @@ class PortScanDetector(BaseDetector):
                     category = LogCategory.NETWORK,
                     severity = "warning",
                     src_ip   = src_ip,
+                    protocol = "tcp",
                     tags     = ["port_scan", "network_attack"],
                 )
                 results.append(log)

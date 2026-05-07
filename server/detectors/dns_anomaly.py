@@ -114,6 +114,7 @@ class DNSAnomalyDetector(BaseDetector):
                     severity   = "warning",
                     src_ip     = src_ip,
                     dst_port   = DNS_PORT,
+                    protocol   = "udp",
                     tags       = ["dns_anomaly", "network_attack"],
                 )
                 results.append(log)

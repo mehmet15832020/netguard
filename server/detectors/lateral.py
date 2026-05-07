@@ -157,6 +157,8 @@ class LateralMovementDetector(BaseDetector):
                     category = LogCategory.INTRUSION,
                     severity = "critical",
                     src_ip   = src_ip,
+                    dst_ip   = target_hosts[0] if target_hosts else None,
+                    protocol = "tcp",
                     tags     = ["lateral_movement", "internal_scan"],
                 )
                 results.append(log)

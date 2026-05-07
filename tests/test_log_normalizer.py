@@ -58,6 +58,13 @@ class TestAuthLogParse:
         assert norm.category == LogCategory.AUTHENTICATION
         assert "ssh" in norm.tags
 
+    def test_ssh_failure_has_dst_fields(self):
+        raw = "Apr 12 10:23:45 srv sshd[1234]: Failed password for root from 10.0.0.9 port 55123 ssh2"
+        norm = normalize(raw, source_host="srv")
+        assert norm.dst_ip == "srv"
+        assert norm.dst_port == 22
+        assert norm.protocol == "tcp"
+
     def test_ssh_success_parsed(self):
         raw = "Apr 12 11:00:00 myhost sshd[5678]: Accepted publickey for mehmet from 10.0.0.5 port 54321 ssh2"
         norm = normalize(raw, source_host="myhost")
@@ -65,6 +72,13 @@ class TestAuthLogParse:
         assert norm.event_type == "ssh_success"
         assert norm.username == "mehmet"
         assert norm.severity == "info"
+
+    def test_ssh_success_has_dst_fields(self):
+        raw = "Apr 12 11:00:00 srv sshd[5678]: Accepted publickey for mehmet from 10.0.0.5 port 54321 ssh2"
+        norm = normalize(raw, source_host="srv")
+        assert norm.dst_ip == "srv"
+        assert norm.dst_port == 22
+        assert norm.protocol == "tcp"
 
     def test_sudo_usage_parsed(self):
         raw = "Apr 12 12:00:00 myhost sudo: mehmet : TTY=pts/0 ; PWD=/home/mehmet ; USER=root ; COMMAND=/bin/bash"

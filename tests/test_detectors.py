@@ -84,6 +84,12 @@ class TestPortScanDetector:
         assert "port_scan" in log.tags
         assert "5.5.5.5" in log.message
 
+    def test_log_has_protocol_tcp(self):
+        detector = self._make_detector(threshold=3)
+        self._inject(detector, "6.6.6.6", [22, 80, 443])
+        log = detector.detect()[0]
+        assert log.protocol == "tcp"
+
 
 # ------------------------------------------------------------------ #
 #  ARP Spoof Dedektörü
@@ -166,6 +172,17 @@ class TestARPSpoofDetector:
         logs = detector.detect()
         assert logs == []
 
+    def test_log_has_protocol_arp(self, tmp_path):
+        arp_file = tmp_path / "arp"
+        arp_file.write_text(ARP_TABLE_NORMAL)
+        from server.detectors.arp_spoof import ARPSpoofDetector
+        detector = ARPSpoofDetector(arp_path=str(arp_file))
+        detector.detect()
+        arp_file.write_text(ARP_TABLE_CHANGED_MAC)
+        logs = detector.detect()
+        assert len(logs) >= 1
+        assert logs[0].protocol == "arp"
+
 
 # ------------------------------------------------------------------ #
 #  ICMP Flood Dedektörü
@@ -227,6 +244,18 @@ class TestICMPFloodDetector:
         assert logs[0].event_type == "icmp_flood_attempt"
         assert logs[0].severity == "critical"
         assert "icmp_flood" in logs[0].tags
+
+    def test_log_has_protocol_icmp(self, tmp_path):
+        snmp_file = tmp_path / "snmp"
+        snmp_file.write_text(SNMP_CONTENT_LOW)
+        from server.detectors.icmp_flood import ICMPFloodDetector
+        detector = ICMPFloodDetector(snmp_path=str(snmp_file), threshold=100)
+        detector.detect()
+        snmp_file.write_text(SNMP_CONTENT_HIGH)
+        detector._prev_time -= 1.0
+        logs = detector.detect()
+        assert len(logs) == 1
+        assert logs[0].protocol == "icmp"
 
     def test_missing_snmp_file_returns_empty(self):
         from server.detectors.icmp_flood import ICMPFloodDetector
@@ -422,6 +451,15 @@ class TestLateralMovementDetector:
         assert log.category == LogCategory.INTRUSION
         assert "lateral_movement" in log.tags
         assert "192.168.1.40" in log.message
+
+    def test_log_has_protocol_and_dst_ip(self):
+        detector = self._make_detector(threshold=2)
+        self._inject(detector, "192.168.1.50", [
+            ("192.168.1.7", 22), ("192.168.1.8", 445),
+        ])
+        log = detector.detect()[0]
+        assert log.protocol == "tcp"
+        assert log.dst_ip is not None
 
     def test_multiple_ips_tracked_independently(self):
         detector = self._make_detector(threshold=2)

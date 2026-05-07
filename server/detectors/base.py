@@ -41,6 +41,7 @@ class BaseDetector(ABC):
         dst_ip: str = None,
         src_port: int = None,
         dst_port: int = None,
+        protocol: str = None,
         tags: list = None,
     ) -> NormalizedLog:
         """NormalizedLog üretmek için kısa yardımcı."""
@@ -57,6 +58,7 @@ class BaseDetector(ABC):
             dst_ip      = dst_ip,
             src_port    = src_port,
             dst_port    = dst_port,
+            protocol    = protocol,
             message     = message,
             tags        = tags or [self.name],
         )

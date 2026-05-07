@@ -84,6 +84,7 @@ class ARPSpoofDetector(BaseDetector):
                     category   = LogCategory.NETWORK,
                     severity   = "critical",
                     src_ip     = ip,
+                    protocol   = "arp",
                     tags       = ["arp_spoof", "mitm", "network_attack"],
                 )
                 results.append(log)
@@ -104,6 +105,7 @@ class ARPSpoofDetector(BaseDetector):
                     ),
                     category   = LogCategory.NETWORK,
                     severity   = "critical",
+                    protocol   = "arp",
                     tags       = ["arp_spoof", "duplicate_mac", "network_attack"],
                 )
                 results.append(log)

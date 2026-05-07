@@ -104,6 +104,7 @@ class ICMPFloodDetector(BaseDetector):
                         ),
                         category   = LogCategory.NETWORK,
                         severity   = "critical",
+                        protocol   = "icmp",
                         tags       = ["icmp_flood", "dos_attack", "network_attack"],
                     )
                     results.append(log)
