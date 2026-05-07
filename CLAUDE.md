@@ -429,6 +429,37 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 
 ---
 
+## Claude Code Agent + MCP Altyapısı
+
+### Mevcut Agent Yapısı
+
+| Dosya | Rol | Ne Zaman Kullan |
+|-------|-----|-----------------|
+| `.claude/agents/backend-worker.md` | Python/FastAPI uzmanı | server/ değişiklikleri |
+| `.claude/agents/detection-worker.md` | Sigma/kill chain uzmanı | korelasyon, sigma kuralları |
+| `.claude/agents/frontend-worker.md` | Next.js/React uzmanı | dashboard-v2/ değişiklikleri |
+| `.claude/agents/quality-auditor.md` | Kalite denetçisi (opus modeli) | kod incelemesi, refactor önerisi |
+
+**Agent izolasyonu:** `.claude/settings.local.json` → `"defaultMode": "acceptEdits"` — subagent'lar dosya düzenleyebilir.
+**Paralel çalıştırma:** `/batch` komutu kullanılır (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS deprecated).
+**Worktree izolasyonu:** `isolation: "worktree"` ile her agent kendi git branch'inde çalışır.
+
+### MCP Server Durumu
+
+Claude Code'da MCP sunucuları iki seviyede yapılandırılır:
+- **Proje:** `.claude/mcp.json` — bu proje için geçerli
+- **Kullanıcı:** `~/.claude/mcp.json` — tüm projelerde geçerli
+
+**NetGuard'da MCP kullanımı:** Şu an aktif MCP sunucusu yok. Gereksinim doğmadı — mevcut araçlar (Read, Edit, Bash, Grep) yeterli.
+
+**Eklenebilecek MCP'ler (ileride, gerekirse):**
+- `@anthropic-ai/mcp-server-sqlite` — DB sorgularını doğrudan Claude'a açmak için
+- `@modelcontextprotocol/server-git` — git geçmişini daha derin analiz için
+
+**NotebookLM:** Google'ın not alma aracı. Claude Code ile entegrasyonu yok, API/MCP sunucusu yok. NetGuard geliştirme sürecinde kullanılmıyor.
+
+---
+
 ## Mimari Kararlar (Değiştirme)
 
 - **Kimlik:** NSM platformu + pasif NDR — NMS + SIEM + EDR değil
@@ -447,11 +478,10 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 
 | Sorun | Dosya | Çözüm |
 |-------|-------|-------|
-| Lateral movement dedektörü yok | `server/detectors/` | **P5** |
-| Incident enrichment zayıf | `server/routes/incidents.py` | **P11** |
+| Incident enrichment zayıf | `server/routes/incidents.py` | **P11** — V1-4 kapsamında |
 | Sigma engine sadece count-based | `server/sigma_parser.py` | V1-3: pySigma |
-| NetFlow akışı doğrulanmadı | `server/netflow_receiver.py` | Buffer haftası |
-| P5 için Kali test scripti yok | `scripts/` | P5 öncesi hazırla |
+| NetFlow akışı doğrulanmadı | `server/netflow_receiver.py` | `tcpdump -i eth0 port 2055` ile kontrol et |
+| Kali lateral movement test scripti yok | `scripts/` | Senaryo: Kali → Agent VM SSH → Agent VM'den iç tarama |
 
 ## Çözülmüş Sorunlar (Referans)
 
@@ -466,6 +496,16 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 - Cross-source korelasyon: 5dk/2+ source_type → multi_source_attack_detected → RECON (commit: a08e54c) ✅ **P4**
 - Lateral movement dedektörü: iç→iç SSH/SMB/RDP tarama → LATERAL aşaması (commit: f99f6e9) ✅ **P5**
 - vmware-netguard.service reboot testinde doğrulandı ✅
+- `server/notifier.py` — `_send_anomaly_email`/`_send_anomaly_webhook` retry eksikti; `_send_msg`/`_post_payload` helper'larıyla 4 yerdeki tekrar tek noktaya toplandı (commit: 6eb285f) ✅
+- `server/attack_chain.py` — trigger yolunda `db.save_chain_stage()` atlanıyordu (race condition); lock dışına taşınarak düzeltildi (commit: e8a20c9) ✅
+- `server/correlator.py` — `COUNT(DISTINCT {col})` f-string SQL injection riski; `_COUNT_DISTINCT_EXPRS` module-level dict ile giderildi (commit: e8a20c9) ✅
+- `server/database.py` — `mark_raw_parse_failed()` eklendi + `idx_norm_corr_query` composite index (event_type, timestamp, src_ip) eklendi (commit: e8a20c9) ✅
+- `tests/test_pipeline_integration.py` — 24 entegrasyon testi: normalize→correlate→kill_chain→incident→alert full pipeline (commit: e8a20c9) ✅
+- `tests/test_incidents.py` — FSM geçiş testleri (5 adet) eklendi (commit: 6eb285f) ✅
+- `tests/test_log_normalizer.py` — parse fail flag + başarılı parse testleri eklendi (commit: 6eb285f) ✅
+- `tests/test_correlation_routes.py` — PUT /rules testleri `monkeypatch` ile tmp_path'e izole edildi; `correlation_rules.json` kirletme sorunu giderildi (commit: 9b21289) ✅
+- `.claude/agents/` — 4 agent tanımı eklendi: backend-worker, detection-worker, frontend-worker, quality-auditor (commit: e8a20c9) ✅
+- `.claude/settings.local.json` — `"defaultMode": "acceptEdits"` — subagent'ların dosya düzenleyebilmesi sağlandı ✅
 
 ---
 

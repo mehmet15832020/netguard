@@ -22,9 +22,6 @@ attack_chain.py → incident (respond)
 ```
 
 ## Bilinen Sorunlar (Dokunma)
-- `correlator.py:192` → SQL injection riski (column whitelist fix gerekiyor)
-- `main.py` loops → asyncio içinde senkron blocking (asyncio.to_thread gerekiyor)
-- `attack_chain.py:86` → chain state sadece RAM'de (DB persist gerekiyor)
 - `log_normalizer.py:166` → Suricata parser `dest_ip` kullanıyor, `dst_ip` olmalı
 
 ## Test Fixture
