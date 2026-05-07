@@ -114,6 +114,8 @@ class AttackChainTracker:
         now = occurred_at or datetime.now(timezone.utc)
         cutoff = now - timedelta(seconds=CHAIN_WINDOW_SEC)
 
+        trigger: Optional[dict] = None
+
         with self._lock:
             bucket = self._chains[src_ip]
             bucket[stage].append(now)
@@ -128,17 +130,18 @@ class AttackChainTracker:
             stage_count = len(active_stages)
 
             if stage_count >= FULL_THRESHOLD:
-                return self._build_trigger(src_ip, active_stages, "FULL_ATTACK_CHAIN", "critical")
-            if stage_count >= PARTIAL_THRESHOLD:
-                return self._build_trigger(src_ip, active_stages, "PARTIAL_ATTACK_CHAIN", "warning")
+                trigger = self._build_trigger(src_ip, active_stages, "FULL_ATTACK_CHAIN", "critical")
+            elif stage_count >= PARTIAL_THRESHOLD:
+                trigger = self._build_trigger(src_ip, active_stages, "PARTIAL_ATTACK_CHAIN", "warning")
 
+        # Lock dışında I/O — in-memory state ile tutarlı (lock içinde güncellendi)
         try:
             from server.database import db
             db.save_chain_stage(src_ip, stage, now)
         except Exception as exc:
             logger.debug(f"Chain stage DB kaydedilemedi [{src_ip}/{stage}]: {exc}")
 
-        return None
+        return trigger
 
     def _build_trigger(self, src_ip: str, stages: list[str], chain_type: str, severity: str) -> dict:
         labels = [STAGE_LABELS.get(s, s) for s in stages]

@@ -118,6 +118,7 @@ CREATE INDEX IF NOT EXISTS idx_norm_source_type ON normalized_logs(source_type);
 CREATE INDEX IF NOT EXISTS idx_norm_category    ON normalized_logs(category);
 CREATE INDEX IF NOT EXISTS idx_norm_src_ip      ON normalized_logs(src_ip);
 CREATE INDEX IF NOT EXISTS idx_norm_event_type  ON normalized_logs(event_type);
+CREATE INDEX IF NOT EXISTS idx_norm_corr_query  ON normalized_logs(event_type, timestamp, src_ip);
 """
 
 

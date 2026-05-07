@@ -1,14 +1,16 @@
 [
   {
-    "rule_id": "test_rule",
-    "name": "Test Kuralı",
-    "description": "Test amaçlı",
-    "match_event_type": "ssh_failure",
+    "rule_id": "multi_source_attack",
+    "name": "Çok Kaynaklı Koordineli Saldırı",
+    "description": "Aynı src_ip 5 dakika içinde 3+ farklı kaynak tipinden olay — koordineli saldırı göstergesi",
+    "match_event_type": "",
     "group_by": "src_ip",
-    "window_seconds": 60,
+    "distinct_by": "source_type",
+    "window_seconds": 300,
     "threshold": 3,
-    "severity": "warning",
-    "output_event_type": "test_detected",
-    "enabled": true
+    "severity": "high",
+    "output_event_type": "multi_source_attack_detected",
+    "enabled": true,
+    "tags": ["attack.reconnaissance", "attack.t1595"]
   }
 ]

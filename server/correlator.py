@@ -60,6 +60,8 @@ _VALID_GROUP_COLS: frozenset[str] = frozenset({
     "event_type", "category", "tenant_id", "source_type",
     "protocol", "src_port", "dst_port", "device_id",
 })
+# Pre-built COUNT(DISTINCT col) ifadeleri — runtime f-string interpolasyon riski yok
+_COUNT_DISTINCT_EXPRS: dict[str, str] = {col: f"COUNT(DISTINCT {col})" for col in _VALID_GROUP_COLS}
 
 
 # ------------------------------------------------------------------ #
@@ -191,7 +193,7 @@ class Correlator:
         if rule.distinct_by and rule.distinct_by not in _VALID_GROUP_COLS:
             logger.warning("Rule %s: geçersiz distinct_by '%s', atlanıyor", rule.rule_id, rule.distinct_by)
             return []
-        count_expr = f"COUNT(DISTINCT {rule.distinct_by})" if rule.distinct_by else "COUNT(*)"
+        count_expr = _COUNT_DISTINCT_EXPRS[rule.distinct_by] if rule.distinct_by else "COUNT(*)"
 
         kw_clause  = ""
         kw_params: list = []
