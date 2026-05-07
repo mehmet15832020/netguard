@@ -377,6 +377,11 @@ class Correlator:
             from server.database import db
             from shared.models import Incident, IncidentStatus
             from server import threat_intel
+            from server.incident_priority import compute_priority_score
+
+            # TI lookup önce — priority score ve severity escalation için gerekli
+            ti = threat_intel.lookup(event.group_value)
+            ti_score = ti.get("score", 0) if ti else 0
 
             last_seen_iso = event.last_seen.isoformat() if hasattr(event.last_seen, "isoformat") else event.last_seen
             existing_id = db.find_open_incident_for_rule(event.rule_id, event.group_value)
@@ -392,17 +397,20 @@ class Correlator:
                 )
                 incident_id = existing_id
             else:
+                effective_severity = "critical" if ti_score >= 70 else event.severity
+                priority = compute_priority_score(effective_severity, ti_score)
                 incident = Incident(
                     incident_id=str(uuid.uuid4()),
                     title=event.message,
                     description=f"Otomatik: {event.event_action} — {event.group_value}",
-                    severity=event.severity,
+                    severity=effective_severity,
                     status=IncidentStatus.OPEN,
                     source_event_id=event.corr_id,
                     source_type="correlated_event",
                     created_by="correlator",
                     rule_id=event.rule_id,
                     group_value=event.group_value,
+                    priority_score=priority,
                 )
                 db.create_incident(incident)
                 db.add_incident_event(
@@ -421,15 +429,15 @@ class Correlator:
                         "severity": incident.severity,
                         "status": incident.status.value,
                         "title": incident.title,
+                        "priority_score": incident.priority_score,
                     })
                 except Exception:
                     pass
 
-            ti = threat_intel.lookup(event.group_value)
-            if ti and ti.get("score", 0) >= 70:
+            if ti_score >= 70:
                 db.escalate_incident_severity(incident_id, "critical")
                 logger.warning(
-                    f"TI escalation: {event.group_value} AbuseIPDB score={ti['score']} → incident critical"
+                    f"TI escalation: {event.group_value} AbuseIPDB score={ti_score} → incident critical"
                 )
         except Exception as exc:
             logger.error(f"Otomatik incident oluşturulamadı [{event.rule_id}]: {exc}")

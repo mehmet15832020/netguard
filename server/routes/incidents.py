@@ -46,6 +46,7 @@ class UpdateIncidentRequest(BaseModel):
     notes: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
+    closure_note: Optional[str] = None
 
 
 @router.post("/incidents", status_code=201)
@@ -159,6 +160,13 @@ def update_incident(
                 status_code=400,
                 detail=f"Geçersiz geçiş: {current_status} → {req.status}. İzin verilenler: {allowed}",
             )
+        if req.status == "resolved":
+            note = req.closure_note or (current.get("closure_note") if isinstance(current, dict) else "")
+            if not note or not note.strip():
+                raise HTTPException(
+                    status_code=422,
+                    detail="Kapatma notu (closure_note) zorunludur. Incident'ı çözmeden önce ne yapıldığını açıklayın.",
+                )
 
     updated = db.update_incident(
         incident_id,
@@ -167,6 +175,7 @@ def update_incident(
         notes=req.notes,
         title=req.title,
         description=req.description,
+        closure_note=req.closure_note,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Incident bulunamadı")

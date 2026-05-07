@@ -457,6 +457,7 @@ export interface IncidentRelatedLog {
   severity: string
   source_type: string
   source_ip: string | null
+  source_hostname: string | null
   destination_ip: string | null
   message: string
 }
@@ -486,9 +487,12 @@ export interface Incident {
   source_type: string | null
   created_by: string
   notes: string
+  priority_score: number
+  closure_note: string
   created_at: string
   updated_at: string
   resolved_at: string | null
+  acknowledged_at: string | null
   enrichment?: IncidentEnrichment
 }
 
@@ -542,6 +546,7 @@ export const incidentApi = {
     notes?: string
     title?: string
     description?: string
+    closure_note?: string
   }) => request<Incident>(`/incidents/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   delete: (id: string) =>

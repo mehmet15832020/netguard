@@ -323,9 +323,12 @@ class Incident(BaseModel):
     notes:           str = ""
     rule_id:         Optional[str] = None
     group_value:     Optional[str] = None
+    priority_score:  int = 0
+    closure_note:    str = ""
     created_at:      datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at:      datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     resolved_at:     Optional[datetime] = None
+    acknowledged_at: Optional[datetime] = None
 
 
 class AlertSeverity(str, Enum):

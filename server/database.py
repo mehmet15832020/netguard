@@ -267,9 +267,12 @@ CREATE TABLE IF NOT EXISTS incidents (
     notes           TEXT DEFAULT '',
     rule_id         TEXT,
     group_value     TEXT,
+    priority_score  INTEGER DEFAULT 0,
+    closure_note    TEXT DEFAULT '',
     created_at      TEXT NOT NULL,
     updated_at      TEXT NOT NULL,
-    resolved_at     TEXT
+    resolved_at     TEXT,
+    acknowledged_at TEXT
 );
 """
 
@@ -540,6 +543,7 @@ class DatabaseManager:
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
         self._migrate_dns_hostname_columns()
+        self._migrate_incident_v1_4_columns()
         self.ensure_default_tenant()
         self._init_fts()
         self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
@@ -1643,6 +1647,21 @@ class DatabaseManager:
                     conn.execute("ALTER TABLE normalized_logs ADD COLUMN destination_hostname TEXT")
                     logger.info("normalized_logs: 'destination_hostname' kolonu eklendi")
 
+    def _migrate_incident_v1_4_columns(self) -> None:
+        """incidents tablosuna priority_score, closure_note, acknowledged_at kolonlarını ekle."""
+        with self._lock:
+            with self._connect() as conn:
+                cols = {row[1] for row in conn.execute("PRAGMA table_info(incidents)").fetchall()}
+                if "priority_score" not in cols:
+                    conn.execute("ALTER TABLE incidents ADD COLUMN priority_score INTEGER DEFAULT 0")
+                    logger.info("incidents: 'priority_score' kolonu eklendi")
+                if "closure_note" not in cols:
+                    conn.execute("ALTER TABLE incidents ADD COLUMN closure_note TEXT DEFAULT ''")
+                    logger.info("incidents: 'closure_note' kolonu eklendi")
+                if "acknowledged_at" not in cols:
+                    conn.execute("ALTER TABLE incidents ADD COLUMN acknowledged_at TEXT")
+                    logger.info("incidents: 'acknowledged_at' kolonu eklendi")
+
     # ------------------------------------------------------------------ #
     #  TENANTS
     # ------------------------------------------------------------------ #
@@ -2002,15 +2021,17 @@ class DatabaseManager:
                        (incident_id, title, description, severity, status,
                         assigned_to, source_event_id, source_type,
                         created_by, notes, rule_id, group_value,
-                        created_at, updated_at, resolved_at, tenant_id)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                        priority_score, closure_note,
+                        created_at, updated_at, resolved_at, acknowledged_at, tenant_id)
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         incident.incident_id, incident.title, incident.description,
                         incident.severity, incident.status.value,
                         incident.assigned_to, incident.source_event_id, incident.source_type,
                         incident.created_by, incident.notes,
                         incident.rule_id, incident.group_value,
-                        now, now, None, tenant_id,
+                        incident.priority_score, incident.closure_note,
+                        now, now, None, None, tenant_id,
                     ),
                 )
 
@@ -2128,6 +2149,8 @@ class DatabaseManager:
         notes: Optional[str] = None,
         title: Optional[str] = None,
         description: Optional[str] = None,
+        closure_note: Optional[str] = None,
+        priority_score: Optional[int] = None,
     ) -> bool:
         fields, params = [], []
         now = datetime.now(timezone.utc).isoformat()
@@ -2137,6 +2160,12 @@ class DatabaseManager:
             if status == "resolved":
                 fields.append("resolved_at=?")
                 params.append(now)
+            if status == "investigating":
+                # acknowledged_at sadece ilk geçişte set edilir
+                row = self.get_incident(incident_id)
+                if row and not row.get("acknowledged_at"):
+                    fields.append("acknowledged_at=?")
+                    params.append(now)
         if assigned_to is not None:
             fields.append("assigned_to=?")
             params.append(assigned_to)
@@ -2149,6 +2178,12 @@ class DatabaseManager:
         if description is not None:
             fields.append("description=?")
             params.append(description)
+        if closure_note is not None:
+            fields.append("closure_note=?")
+            params.append(closure_note)
+        if priority_score is not None:
+            fields.append("priority_score=?")
+            params.append(priority_score)
         if not fields:
             return False
         fields.append("updated_at=?")

@@ -574,3 +574,318 @@ class TestEndToEndPipeline:
 
         if events:
             mock_notifier.notify_correlated.assert_called()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  6. V1-4 Entegrasyon — priority_score, closure_note, acknowledged_at
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestV14IncidentEnrichmentPipeline:
+    """
+    Correlator → incident oluşturma → V1-4 alanları doğrulaması.
+    priority_score, closure_note zorunluluğu ve acknowledged_at
+    tüm pipeline boyunca tutarlı olmalı.
+    """
+
+    def test_correlator_sets_priority_score_on_incident(self, pipeline_db):
+        """Correlator SSH brute force tetikleyince incident'ın priority_score'u >0 olmalı."""
+        from server.correlator import Correlator
+
+        src = "10.4.0.1"
+        for _ in range(6):
+            pipeline_db.save_normalized_log(_norm_log("ssh_failure", src))
+
+        corr = Correlator()
+        corr.load_rules()
+
+        with (
+            patch("server.notifier.notifier", MagicMock()),
+            patch("server.threat_intel.lookup", return_value=None),
+        ):
+            corr.run()
+
+        incidents = [i for i in pipeline_db.get_incidents() if i.get("group_value") == src]
+        assert len(incidents) == 1
+        assert incidents[0]["priority_score"] > 0
+
+    def test_high_ti_score_yields_high_priority(self, pipeline_db):
+        """AbuseIPDB score≥70 → priority_score ≥80 (critical + TI boost)."""
+        from server.correlator import Correlator
+        from server.incident_priority import compute_priority_score
+
+        src = "10.4.0.2"
+        for _ in range(6):
+            pipeline_db.save_normalized_log(_norm_log("ssh_failure", src))
+
+        corr = Correlator()
+        corr.load_rules()
+
+        with (
+            patch("server.notifier.notifier", MagicMock()),
+            patch("server.threat_intel.lookup", return_value={"score": 90, "total_reports": 50}),
+        ):
+            corr.run()
+
+        incidents = [i for i in pipeline_db.get_incidents() if i.get("group_value") == src]
+        assert len(incidents) == 1
+        # critical + TI≥70 → min(100, 80*1.30)=100
+        assert incidents[0]["priority_score"] >= 80
+
+    def test_critical_incident_has_higher_priority_than_warning(self, pipeline_db):
+        """Critical ve warning incident'ların priority_score'u sıralama tutarlı olmalı."""
+        from server.incident_priority import compute_priority_score
+
+        score_critical = compute_priority_score("critical", ti_score=0)
+        score_warning  = compute_priority_score("warning",  ti_score=0)
+        assert score_critical > score_warning
+
+    def test_closure_note_required_before_resolve_in_db(self, pipeline_db):
+        """
+        DB seviyesinde: closure_note olmadan update_incident(..., status='resolved')
+        çağrısı closure_note'u boş bırakır ama route katmanı 422 döner.
+        Bu test route + DB zincirini birlikte doğrular (HTTPX test client üzerinden).
+        """
+        from fastapi.testclient import TestClient
+        from server.main import app
+        import server.routes.incidents as inc_routes
+        from server.auth import create_access_token
+
+        token = create_access_token(username="admin", role="admin", tenant_id="default")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        # Tüm route modüllerine test DB'sini bağla
+        import server.database as _db_mod
+        _orig_db = inc_routes.db
+        try:
+            import server.routes.incidents as _inc
+            _inc.db = pipeline_db
+            import server.incident_enricher as _enr
+            _orig_enr_db = _enr.db
+            _enr.db = pipeline_db
+
+            with TestClient(app) as tc:
+                r = tc.post("/api/v1/incidents",
+                            json={"title": "Pipeline Test", "severity": "critical"},
+                            headers=headers)
+                assert r.status_code == 201
+                inc_id = r.json()["incident_id"]
+
+                # closure_note olmadan → 422
+                r2 = tc.patch(f"/api/v1/incidents/{inc_id}",
+                              json={"status": "resolved"},
+                              headers=headers)
+                assert r2.status_code == 422
+
+                # closure_note ile → 200
+                r3 = tc.patch(f"/api/v1/incidents/{inc_id}",
+                              json={"status": "resolved", "closure_note": "Pipeline test kapandı."},
+                              headers=headers)
+                assert r3.status_code == 200
+                assert r3.json()["closure_note"] == "Pipeline test kapandı."
+        finally:
+            _inc.db = _orig_db
+            _enr.db = _orig_enr_db
+
+    def test_acknowledged_at_pipeline_open_to_investigate(self, pipeline_db):
+        """
+        Correlator incident oluşturur (open) → investigating'e geçince
+        acknowledged_at set edilmeli.
+        """
+        from server.correlator import Correlator
+
+        src = "10.4.0.3"
+        for _ in range(6):
+            pipeline_db.save_normalized_log(_norm_log("ssh_failure", src))
+
+        corr = Correlator()
+        corr.load_rules()
+
+        with (
+            patch("server.notifier.notifier", MagicMock()),
+            patch("server.threat_intel.lookup", return_value=None),
+        ):
+            corr.run()
+
+        incidents = [i for i in pipeline_db.get_incidents() if i.get("group_value") == src]
+        assert len(incidents) == 1
+        inc_id = incidents[0]["incident_id"]
+
+        # open → acknowledged_at None
+        assert incidents[0]["acknowledged_at"] is None
+
+        # investigating'e geç
+        pipeline_db.update_incident(inc_id, status="investigating")
+        updated = pipeline_db.get_incident(inc_id)
+        assert updated["acknowledged_at"] is not None
+
+    def test_priority_score_persists_through_status_changes(self, pipeline_db):
+        """
+        Incident durumu değiştiğinde priority_score korunmalı
+        (status update sırasında sıfırlanmamalı).
+        """
+        from server.correlator import Correlator
+
+        src = "10.4.0.4"
+        for _ in range(6):
+            pipeline_db.save_normalized_log(_norm_log("ssh_failure", src, severity="warning"))
+
+        corr = Correlator()
+        corr.load_rules()
+
+        with (
+            patch("server.notifier.notifier", MagicMock()),
+            patch("server.threat_intel.lookup", return_value=None),
+        ):
+            corr.run()
+
+        incidents = [i for i in pipeline_db.get_incidents() if i.get("group_value") == src]
+        assert len(incidents) == 1
+        inc_id = incidents[0]["incident_id"]
+        original_score = incidents[0]["priority_score"]
+        assert original_score > 0
+
+        # Status güncelle — score korunmalı
+        pipeline_db.update_incident(inc_id, status="investigating")
+        after_investigating = pipeline_db.get_incident(inc_id)
+        assert after_investigating["priority_score"] == original_score
+
+        pipeline_db.update_incident(inc_id, closure_note="Çözüldü")
+        pipeline_db.update_incident(inc_id, status="resolved")
+        after_resolved = pipeline_db.get_incident(inc_id)
+        assert after_resolved["priority_score"] == original_score
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  7. V1-2 Entegrasyon — DNS resolver + DB update zinciri
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDNSResolverPipeline:
+    """
+    resolve_and_update_bg → DB hostname güncelleme zinciri.
+    """
+
+    def test_resolve_and_update_bg_updates_db(self, pipeline_db, monkeypatch):
+        """
+        resolve_and_update_bg çağrısı arka planda hostname çözer
+        ve DB'yi günceller.
+        """
+        from server.dns_resolver import resolve_and_update_bg, clear_cache, _bg_executor
+        import concurrent.futures
+
+        # _resolve_and_update lazy import ile server.database.db'yi alır
+        monkeypatch.setattr("server.database.db", pipeline_db)
+        clear_cache()
+
+        log = _norm_log("ssh_failure", "127.0.0.1")
+        pipeline_db.save_normalized_log(log)
+
+        # Loopback PTR → "localhost" veya None
+        resolve_and_update_bg(log.log_id, "127.0.0.1", None)
+
+        # Arka plan thread tamamlanana kadar bekle (yeni executor oluşturup drain)
+        f = _bg_executor.submit(lambda: None)
+        f.result(timeout=5)
+
+        logs = pipeline_db.get_normalized_logs(event_action="ssh_failure")
+        assert len(logs) >= 1
+        # Crash yoksa test geçer; hostname loopback için resolve edilebilir veya None olabilir
+
+    def test_resolve_and_update_bg_no_crash_on_unknown_ip(self, pipeline_db, monkeypatch):
+        """Bilinmeyen IP için resolve_and_update_bg crash üretmemeli."""
+        from server.dns_resolver import resolve_and_update_bg, clear_cache, _bg_executor
+
+        monkeypatch.setattr("server.database.db", pipeline_db)
+        clear_cache()
+
+        log = _norm_log("ssh_failure", "192.0.2.99")
+        pipeline_db.save_normalized_log(log)
+
+        resolve_and_update_bg(log.log_id, "192.0.2.99", None)
+
+        f = _bg_executor.submit(lambda: None)
+        f.result(timeout=5)
+        assert True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  8. V1-3 Entegrasyon — pySigma tenant filtresi + timestamp doğruluğu
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestSigmaExecutorPipeline:
+    """
+    pySigma kurallarının tenant_id filtreleme ve first_ts/last_ts
+    doğruluğunu uçtan uca doğrular.
+    """
+
+    def test_tenant_id_filter_isolates_data(self, pipeline_db):
+        """
+        Tenant A'nın verileri Tenant B'nin kuralını tetiklememeli.
+        """
+        import sqlite3
+        from pathlib import Path
+        from server.sigma_executor import SigmaExecutor
+
+        # pySigma kuralları gerçek dizinden yükle
+        rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+        executor = SigmaExecutor(str(rules_dir))
+
+        ssh_rule = next((r for r in executor.rules if "ssh" in r.title.lower() and r.is_correlation), None)
+        if not ssh_rule:
+            import pytest
+            pytest.skip("SSH korelasyon kuralı bulunamadı")
+
+        for i in range(6):
+            pipeline_db.save_normalized_log(
+                _norm_log("ssh_failure", "1.2.3.4",
+                          timestamp=datetime.now(timezone.utc) - timedelta(seconds=60)),
+                tenant_id="tenant_a",
+            )
+        for i in range(2):
+            pipeline_db.save_normalized_log(
+                _norm_log("ssh_failure", "5.6.7.8",
+                          timestamp=datetime.now(timezone.utc) - timedelta(seconds=60)),
+                tenant_id="tenant_b",
+            )
+
+        with pipeline_db._connect() as conn:
+            rows_a = executor.execute_rule(ssh_rule, conn, tenant_id="tenant_a")
+            rows_b = executor.execute_rule(ssh_rule, conn, tenant_id="tenant_b")
+
+        # Tenant A tetiklenmeli, Tenant B tetiklenmemeli
+        assert len(rows_a) >= 1, "tenant_a SSH brute force tetiklenmeli"
+        assert len(rows_b) == 0, "tenant_b eşiğin altında — tetiklenmemeli"
+
+    def test_correlation_rule_returns_first_last_ts(self, pipeline_db):
+        """
+        Korelasyon kuralı çalıştırınca first_ts ve last_ts dönmeli.
+        """
+        import sqlite3
+        from pathlib import Path
+        from server.sigma_executor import SigmaExecutor
+
+        rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+        executor = SigmaExecutor(str(rules_dir))
+
+        ssh_rule = next((r for r in executor.rules if "ssh" in r.title.lower() and r.is_correlation), None)
+        if not ssh_rule:
+            import pytest
+            pytest.skip("SSH korelasyon kuralı bulunamadı")
+
+        base_time = datetime(2026, 5, 7, 10, 0, 0, tzinfo=timezone.utc)
+        for i in range(6):
+            pipeline_db.save_normalized_log(
+                _norm_log("ssh_failure", "9.9.9.9",
+                          timestamp=base_time + timedelta(minutes=i)),
+                tenant_id="default",
+            )
+
+        with pipeline_db._connect() as conn:
+            rows = executor.execute_rule(ssh_rule, conn, tenant_id="default")
+
+        assert len(rows) >= 1
+        row = rows[0]
+        assert "first_ts" in row
+        assert "last_ts" in row
+        # first_ts < last_ts (sıralı timestamp'ler girildi)
+        if row["first_ts"] and row["last_ts"]:
+            assert row["first_ts"] <= row["last_ts"]

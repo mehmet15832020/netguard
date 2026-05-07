@@ -20,6 +20,18 @@ const SEV_DOT: Record<string, string> = {
   info:     'bg-blue-500',
 }
 
+function PriorityBadge({ score, large }: { score: number; large?: boolean }) {
+  const color =
+    score >= 70 ? 'bg-red-500/20 text-red-400 border-red-700/40' :
+    score >= 40 ? 'bg-yellow-500/20 text-yellow-400 border-yellow-700/40' :
+                  'bg-zinc-700/40 text-zinc-400 border-zinc-600/30'
+  return (
+    <span className={`inline-flex items-center rounded border font-mono font-bold ${color} ${large ? 'text-base px-3 py-1' : 'text-xs px-1.5 py-0.5'}`}>
+      {score}
+    </span>
+  )
+}
+
 function EventTimeline({ incidentId }: { incidentId: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ['incident-events', incidentId],
@@ -188,6 +200,8 @@ export default function IncidentsPage() {
   const [newDesc, setNewDesc]               = useState('')
   const [selected, setSelected]             = useState<Incident | null>(null)
   const [editNotes, setEditNotes]           = useState('')
+  const [editClosureNote, setEditClosureNote] = useState('')
+  const [pendingStatus, setPendingStatus]   = useState<string | null>(null)
 
   const { data: summary, refetch: refetchSummary } = useQuery({
     queryKey: ['incident-summary'],
@@ -219,8 +233,8 @@ export default function IncidentsPage() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (body: { id: string; status?: string; notes?: string; assigned_to?: string }) =>
-      incidentApi.update(body.id, { status: body.status, notes: body.notes, assigned_to: body.assigned_to }),
+    mutationFn: (body: { id: string; status?: string; notes?: string; assigned_to?: string; closure_note?: string }) =>
+      incidentApi.update(body.id, { status: body.status, notes: body.notes, assigned_to: body.assigned_to, closure_note: body.closure_note }),
     onSuccess: (updated) => {
       qc.invalidateQueries({ queryKey: ['incidents'] })
       qc.invalidateQueries({ queryKey: ['incident-summary'] })
@@ -238,7 +252,9 @@ export default function IncidentsPage() {
     },
   })
 
-  const incidents = data?.incidents ?? []
+  const incidents = [...(data?.incidents ?? [])].sort(
+    (a, b) => (b.priority_score ?? 0) - (a.priority_score ?? 0)
+  )
 
   return (
     <div className="p-6 space-y-6">
@@ -346,22 +362,25 @@ export default function IncidentsPage() {
             <TableHeader>
               <TableRow className="border-zinc-800">
                 <TableHead>Başlık</TableHead>
+                <TableHead>Öncelik</TableHead>
                 <TableHead>Severity</TableHead>
                 <TableHead>Durum</TableHead>
                 <TableHead>Atanan</TableHead>
-                <TableHead>Oluşturan</TableHead>
                 <TableHead>Tarih</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={7} className="text-center text-zinc-500 py-8">Yükleniyor...</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center text-zinc-500 py-8">Yükleniyor...</TableCell></TableRow>
               ) : incidents.length === 0 ? (
-                <TableRow><TableCell colSpan={7} className="text-center text-zinc-500 py-8">Incident bulunamadı</TableCell></TableRow>
+                <TableRow><TableCell colSpan={8} className="text-center text-zinc-500 py-8">Incident bulunamadı</TableCell></TableRow>
               ) : incidents.map(inc => (
                 <TableRow key={inc.incident_id} className="border-zinc-800 hover:bg-zinc-800/50">
                   <TableCell className="font-medium max-w-xs truncate">{inc.title}</TableCell>
+                  <TableCell>
+                    <PriorityBadge score={inc.priority_score ?? 0} />
+                  </TableCell>
                   <TableCell className={`font-mono text-xs uppercase ${SEV_COLORS[inc.severity] ?? ''}`}>
                     {inc.severity}
                   </TableCell>
@@ -371,12 +390,16 @@ export default function IncidentsPage() {
                     </span>
                   </TableCell>
                   <TableCell className="text-zinc-400 text-sm">{inc.assigned_to ?? '—'}</TableCell>
-                  <TableCell className="text-zinc-400 text-sm">{inc.created_by}</TableCell>
                   <TableCell className="text-zinc-500 text-xs">
                     {new Date(inc.created_at).toLocaleString('tr-TR')}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="sm" onClick={() => { setSelected(inc); setEditNotes(inc.notes ?? '') }}>
+                    <Button variant="ghost" size="sm" onClick={() => {
+                      setSelected(inc)
+                      setEditNotes(inc.notes ?? '')
+                      setEditClosureNote(inc.closure_note ?? '')
+                      setPendingStatus(null)
+                    }}>
                       Yönet
                     </Button>
                   </TableCell>
@@ -400,12 +423,24 @@ export default function IncidentsPage() {
             {selected.description && (
               <p className="text-sm text-zinc-400">{selected.description}</p>
             )}
-            <div className="flex gap-3 flex-wrap">
+            <div className="flex gap-4 flex-wrap items-start">
+              <div>
+                <p className="text-xs text-zinc-500 mb-1">Öncelik Skoru</p>
+                <PriorityBadge score={selected.priority_score ?? 0} large />
+              </div>
               <div>
                 <p className="text-xs text-zinc-500 mb-1">Durum Değiştir</p>
                 <Select
-                  value={selected.status}
-                  onValueChange={v => { if (v) updateMutation.mutate({ id: selected.incident_id, status: v }) }}
+                  value={pendingStatus ?? selected.status}
+                  onValueChange={v => {
+                    if (!v) return
+                    if (v === 'resolved') {
+                      setPendingStatus('resolved')
+                    } else {
+                      setPendingStatus(null)
+                      updateMutation.mutate({ id: selected.incident_id, status: v })
+                    }
+                  }}
                 >
                   <SelectTrigger className="bg-zinc-800 border-zinc-700 w-40">
                     <SelectValue />
@@ -418,6 +453,41 @@ export default function IncidentsPage() {
                 </Select>
               </div>
             </div>
+
+            {/* Closure note — sadece resolved seçilince göster */}
+            {pendingStatus === 'resolved' && (
+              <div className="p-3 rounded border border-yellow-700/40 bg-yellow-900/10 space-y-2">
+                <p className="text-xs text-yellow-400 font-medium">Kapatma Notu (zorunlu)</p>
+                <textarea
+                  value={editClosureNote}
+                  onChange={e => setEditClosureNote(e.target.value)}
+                  placeholder="Ne yapıldı? Kök neden neydi? Nasıl çözüldü?"
+                  rows={3}
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 resize-none focus:outline-none focus:ring-1 focus:ring-yellow-600"
+                />
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    disabled={!editClosureNote.trim() || updateMutation.isPending}
+                    className="bg-emerald-700 hover:bg-emerald-600 text-white"
+                    onClick={() => updateMutation.mutate({
+                      id: selected.incident_id,
+                      status: 'resolved',
+                      closure_note: editClosureNote.trim(),
+                    })}
+                  >
+                    Çözüldü Olarak Kapat
+                  </Button>
+                  <Button
+                    size="sm" variant="outline"
+                    onClick={() => setPendingStatus(null)}
+                  >
+                    Vazgeç
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div>
               <p className="text-xs text-zinc-500 mb-1">Notlar</p>
               <div className="flex gap-2">
@@ -432,11 +502,22 @@ export default function IncidentsPage() {
                 </Button>
               </div>
             </div>
-            {selected.resolved_at && (
-              <p className="text-xs text-zinc-500">
-                Çözüm: {new Date(selected.resolved_at).toLocaleString('tr-TR')}
-              </p>
-            )}
+
+            {/* Meta bilgiler */}
+            <div className="text-[11px] text-zinc-600 space-y-0.5 font-mono">
+              {selected.acknowledged_at && (
+                <p>İncelemeye alındı: <span className="text-zinc-400">{new Date(selected.acknowledged_at).toLocaleString('tr-TR')}</span></p>
+              )}
+              {selected.resolved_at && (
+                <p>Çözüldü: <span className="text-zinc-400">{new Date(selected.resolved_at).toLocaleString('tr-TR')}</span></p>
+              )}
+              {selected.closure_note && (
+                <div className="mt-2 p-2 rounded bg-zinc-800/60 border border-zinc-700/30">
+                  <p className="text-zinc-500 mb-0.5">Kapatma notu:</p>
+                  <p className="text-zinc-300 text-xs font-sans">{selected.closure_note}</p>
+                </div>
+              )}
+            </div>
             <EnrichmentPanel enrichment={selected.enrichment} incidentId={selected.incident_id} />
             <div>
               <p className="text-xs text-zinc-500 mb-1 font-medium uppercase tracking-wide">Event Timeline</p>

@@ -69,14 +69,15 @@ def _fill_related_logs(
         )
         enrichment["related_logs"] = [
             {
-                "log_id":      log.log_id,
-                "timestamp":   log.timestamp.isoformat(),
-                "event_action":  log.event_action,
-                "severity":    log.severity,
-                "source_type": log.source_type.value,
-                "source_ip":      log.source_ip,
-                "destination_ip":      log.destination_ip,
-                "message":     log.message[:200],
+                "log_id":           log.log_id,
+                "timestamp":        log.timestamp.isoformat(),
+                "event_action":     log.event_action,
+                "severity":         log.severity,
+                "source_type":      log.source_type.value,
+                "source_ip":        log.source_ip,
+                "source_hostname":  log.source_hostname,
+                "destination_ip":   log.destination_ip,
+                "message":          log.message[:200],
             }
             for log in logs
         ]
