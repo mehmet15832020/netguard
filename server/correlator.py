@@ -203,11 +203,20 @@ class Correlator:
 
         with db._connect() as conn:
             for rule in self._sigma_executor.rules:
-                rows = self._sigma_executor.execute_rule(rule, conn)
+                rows = self._sigma_executor.execute_rule(rule, conn, tenant_id="default")
                 for row in rows:
                     group_val = str(row.get("group_value") or "unknown")
                     count     = int(row.get("event_count", 1))
                     now       = datetime.now(timezone.utc)
+
+                    first_seen = (
+                        datetime.fromisoformat(row["first_ts"]).replace(tzinfo=timezone.utc)
+                        if row.get("first_ts") else now
+                    )
+                    last_seen = (
+                        datetime.fromisoformat(row["last_ts"]).replace(tzinfo=timezone.utc)
+                        if row.get("last_ts") else now
+                    )
 
                     event = CorrelatedEvent(
                         corr_id        = str(uuid.uuid4()),
@@ -218,8 +227,8 @@ class Correlator:
                         group_value    = group_val,
                         matched_count  = count,
                         window_seconds = rule.window_seconds,
-                        first_seen     = now,
-                        last_seen      = now,
+                        first_seen     = first_seen,
+                        last_seen      = last_seen,
                         message        = (
                             f"{rule.title}: {group_val} kaynağından "
                             f"{rule.window_seconds}s içinde {count} olay"

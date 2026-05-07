@@ -850,6 +850,20 @@ class DatabaseManager:
                     tenant_id,
                 ))
 
+    def update_log_hostnames(
+        self,
+        log_id: str,
+        src_host: Optional[str],
+        dst_host: Optional[str],
+    ) -> None:
+        """DNS arka plan çözümlemesi tamamlandığında hostname kolonlarını güncelle."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE normalized_logs SET source_hostname = ?, destination_hostname = ? WHERE log_id = ?",
+                    (src_host, dst_host, log_id),
+                )
+
     def get_normalized_logs(
         self,
         source_type: Optional[str] = None,

@@ -100,6 +100,20 @@ def _inject_time_window(sql: str, window_seconds: int) -> str:
     return sql
 
 
+def _inject_min_max_ts(sql: str) -> str:
+    """
+    Korelasyon sorgusunun outer SELECT'ine MIN/MAX timestamp ekler.
+    Sonuç satırlarında first_ts ve last_ts kullanılabilir olur.
+    """
+    if "AS subquery" not in sql:
+        return sql
+    return re.sub(
+        r"(COUNT\(\*\) AS event_count) (FROM \()",
+        r"\1, MIN(subquery.timestamp) AS first_ts, MAX(subquery.timestamp) AS last_ts \2",
+        sql,
+    )
+
+
 # ------------------------------------------------------------------ #
 #  SigmaExecutableRule — tek bir çalıştırılabilir kural
 # ------------------------------------------------------------------ #
@@ -204,7 +218,7 @@ class SigmaExecutor:
                 severity   = _LEVEL_TO_SEVERITY.get(level_name, "warning")
                 tags       = [str(t) for t in (cr.tags or [])]
                 rule_id    = str(cr.id) if cr.id else str(uuid.uuid4())
-                final_sql  = _inject_time_window(sql_raw, win_sec)
+                final_sql  = _inject_min_max_ts(_inject_time_window(sql_raw, win_sec))
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,
@@ -243,32 +257,41 @@ class SigmaExecutor:
     def rules(self) -> list[SigmaExecutableRule]:
         return list(self._rules)
 
-    def execute_rule(self, rule: SigmaExecutableRule, conn) -> list[dict]:
+    def execute_rule(
+        self,
+        rule: SigmaExecutableRule,
+        conn,
+        tenant_id: str = "default",
+    ) -> list[dict]:
         """
         Tek bir kuralın SQL'ini çalıştırır.
-        Her satır bir dict: {"group_value": ..., "event_count": ...}
+        tenant_id filtresi ve (korelasyon için) first_ts/last_ts dahil edilir.
+        Her satır: {"group_value", "event_count", "timestamp", "first_ts"?, "last_ts"?}
         """
+        sql = rule.sql.replace(
+            "FROM normalized_logs WHERE",
+            f"FROM normalized_logs WHERE tenant_id = '{tenant_id}' AND",
+        )
         try:
-            rows = conn.execute(rule.sql).fetchall()
+            rows = conn.execute(sql).fetchall()
         except Exception as exc:
             logger.error("pySigma SQL yürütme hatası [%s]: %s", rule.rule_id, exc)
             return []
 
         results = []
         for row in rows:
-            keys = row.keys()
+            keys = set(row.keys())
             if rule.is_correlation:
                 group_fields = rule.group_by_fields
                 group_val = (
                     row[group_fields[0]] if group_fields and group_fields[0] in keys
-                    else (list(row)[0] if len(keys) >= 1 else "unknown")
+                    else (list(row)[0] if keys else "unknown")
                 )
                 count = row["event_count"] if "event_count" in keys else 1
             else:
-                keys_set = set(row.keys())
                 group_val = (
-                    row["source_ip"]        if "source_ip"        in keys_set else
-                    row["observer_hostname"] if "observer_hostname" in keys_set else
+                    row["source_ip"]         if "source_ip"         in keys else
+                    row["observer_hostname"]  if "observer_hostname"  in keys else
                     "unknown"
                 )
                 count = 1
@@ -277,6 +300,8 @@ class SigmaExecutor:
                 "group_value": group_val,
                 "event_count": count,
                 "timestamp":   datetime.now(timezone.utc).isoformat(),
+                "first_ts":    row["first_ts"] if "first_ts" in keys else None,
+                "last_ts":     row["last_ts"]  if "last_ts"  in keys else None,
             })
 
         return results

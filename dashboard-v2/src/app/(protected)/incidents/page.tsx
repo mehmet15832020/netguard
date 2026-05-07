@@ -130,6 +130,14 @@ function EnrichmentPanel({ enrichment, incidentId }: { enrichment?: IncidentEnri
                     <span className="uppercase">{log.event_action}</span>
                     {' · '}
                     {log.source_type}
+                    {(log.source_hostname || log.source_ip) && (
+                      <>
+                        {' · '}
+                        {log.source_hostname
+                          ? <><span className="text-zinc-400">{log.source_hostname}</span><span className="text-zinc-700 ml-0.5">({log.source_ip})</span></>
+                          : log.source_ip}
+                      </>
+                    )}
                   </p>
                 </div>
               </div>
