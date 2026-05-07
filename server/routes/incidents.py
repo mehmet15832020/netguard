@@ -23,6 +23,12 @@ from shared.models import Incident, IncidentStatus
 
 router = APIRouter()
 
+_VALID_TRANSITIONS: dict[str, set[str]] = {
+    "open":          {"investigating", "resolved"},
+    "investigating": {"open", "resolved"},
+    "resolved":      {"open"},
+}
+
 
 class CreateIncidentRequest(BaseModel):
     title: str
@@ -139,10 +145,20 @@ def update_incident(
     req: UpdateIncidentRequest,
     current_user: User = Depends(get_current_user),
 ):
-    _check_incident_access(incident_id, current_user)
+    current = _check_incident_access(incident_id, current_user)
     valid_statuses = {s.value for s in IncidentStatus}
     if req.status and req.status not in valid_statuses:
         raise HTTPException(status_code=400, detail=f"Geçerli status: {valid_statuses}")
+    if req.status:
+        current_status = current["status"] if isinstance(current, dict) else current.status
+        if isinstance(current_status, IncidentStatus):
+            current_status = current_status.value
+        allowed = _VALID_TRANSITIONS.get(current_status, set())
+        if req.status not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Geçersiz geçiş: {current_status} → {req.status}. İzin verilenler: {allowed}",
+            )
 
     updated = db.update_incident(
         incident_id,

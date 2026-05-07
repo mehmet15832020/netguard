@@ -9,6 +9,7 @@ Mevcut kodu değiştirmek gerekmez.
 """
 
 import logging
+import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -121,6 +122,7 @@ class AlertEngine:
     """
 
     def __init__(self):
+        self._lock = threading.Lock()
         # "agent_id:metric" → alert_id  (aktif alert takibi)
         self._active: dict[str, str] = {}
 
@@ -148,50 +150,47 @@ class AlertEngine:
             key = f"{snapshot.agent_id}:{rule.metric}"
             triggered, value, threshold = rule.check_fn(snapshot)
 
-            if triggered and key not in self._active:
-                # Yeni alert oluştur
-                alert = Alert(
-                    alert_id=str(uuid.uuid4()),
-                    agent_id=snapshot.agent_id,
-                    hostname=snapshot.hostname,
-                    severity=rule.severity,
-                    status=AlertStatus.ACTIVE,
-                    metric=rule.metric,
-                    message=rule.message_template.format(
-                        value=value, threshold=threshold
-                    ),
-                    value=round(value, 2),
-                    threshold=threshold,
-                    triggered_at=now,
-                )
-                self._active[key] = alert.alert_id
-                logger.warning(
-                    f"ALERT [{rule.severity.upper()}] "
-                    f"{snapshot.hostname}: {alert.message}"
-                )
-                results.append(alert)
-
-            elif not triggered and key in self._active:
-                # Alert çözüldü — resolve et
-                alert_id = self._active.pop(key)
-                results.append(
-                    Alert(
-                        alert_id=alert_id,
+            with self._lock:
+                if triggered and key not in self._active:
+                    alert = Alert(
+                        alert_id=str(uuid.uuid4()),
                         agent_id=snapshot.agent_id,
                         hostname=snapshot.hostname,
                         severity=rule.severity,
-                        status=AlertStatus.RESOLVED,
+                        status=AlertStatus.ACTIVE,
                         metric=rule.metric,
-                        message=f"Çözüldü: {rule.metric}",
+                        message=rule.message_template.format(
+                            value=value, threshold=threshold
+                        ),
                         value=round(value, 2),
                         threshold=threshold,
                         triggered_at=now,
-                        resolved_at=now,
                     )
-                )
-                logger.info(
-                    f"RESOLVED {snapshot.hostname}: {rule.metric}"
-                )
+                    self._active[key] = alert.alert_id
+                    logger.warning(
+                        f"ALERT [{rule.severity.upper()}] "
+                        f"{snapshot.hostname}: {alert.message}"
+                    )
+                    results.append(alert)
+
+                elif not triggered and key in self._active:
+                    alert_id = self._active.pop(key)
+                    results.append(
+                        Alert(
+                            alert_id=alert_id,
+                            agent_id=snapshot.agent_id,
+                            hostname=snapshot.hostname,
+                            severity=rule.severity,
+                            status=AlertStatus.RESOLVED,
+                            metric=rule.metric,
+                            message=f"Çözüldü: {rule.metric}",
+                            value=round(value, 2),
+                            threshold=threshold,
+                            triggered_at=now,
+                            resolved_at=now,
+                        )
+                    )
+                    logger.info(f"RESOLVED {snapshot.hostname}: {rule.metric}")
 
         return results
 

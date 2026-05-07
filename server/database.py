@@ -774,6 +774,15 @@ class DatabaseManager:
                     (normalized_log_id, raw_id),
                 )
 
+    def mark_raw_parse_failed(self, raw_id: str) -> None:
+        """Ham logu parse edilemedi (normalized=-1) olarak işaretle."""
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE raw_logs SET normalized=-1 WHERE raw_id=?",
+                    (raw_id,),
+                )
+
     def get_unnormalized_raw_logs(self, limit: int = 100) -> list[RawLog]:
         """Henüz normalize edilmemiş ham logları getir."""
         with self._connect() as conn:

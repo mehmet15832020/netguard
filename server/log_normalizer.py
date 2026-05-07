@@ -417,6 +417,7 @@ def process_and_store(raw_content: str, source_host: str) -> Optional[Normalized
     # 2. Normalize et
     norm = normalize(raw_content, source_host)
     if norm is None:
+        db.mark_raw_parse_failed(raw_id)
         return None
 
     norm.raw_id = raw_id

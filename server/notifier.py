@@ -11,6 +11,7 @@ yalnızca bu dosyaya yeni bir sender fonksiyonu eklemek yeterli.
 import logging
 import os
 import smtplib
+import time
 import httpx
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -74,24 +75,26 @@ Zaman      : {alert.triggered_at.strftime('%Y-%m-%d %H:%M:%S UTC')}
 Bu mesaj NetGuard tarafından otomatik olarak gönderilmiştir.
 """
 
-        try:
-            msg = MIMEMultipart()
-            msg["From"] = self.from_email
-            msg["To"] = ", ".join(self.to_emails)
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg = MIMEMultipart()
+        msg["From"] = self.from_email
+        msg["To"] = ", ".join(self.to_emails)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
 
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password)
-                server.send_message(msg)
-
-            logger.info(f"Email gönderildi: {alert.hostname} → {self.to_emails}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Email gönderilemedi: {e}")
-            return False
+        for attempt in range(1, 4):
+            try:
+                with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                    server.starttls()
+                    server.login(self.smtp_user, self.smtp_password)
+                    server.send_message(msg)
+                logger.info(f"Email gönderildi: {alert.hostname} → {self.to_emails}")
+                return True
+            except Exception as e:
+                if attempt < 3:
+                    time.sleep(2 ** (attempt - 1))
+                else:
+                    logger.error(f"Email gönderilemedi (3 deneme): {e}")
+        return False
 
 
 class WebhookNotifier:
@@ -113,20 +116,20 @@ class WebhookNotifier:
         if not self.enabled:
             return False
 
-        try:
-            if self.webhook_type == "discord":
-                payload = self._discord_payload(alert)
-            else:
-                payload = self._slack_payload(alert)
+        payload = self._discord_payload(alert) if self.webhook_type == "discord" else self._slack_payload(alert)
 
-            response = httpx.post(self.webhook_url, json=payload, timeout=5)
-            response.raise_for_status()
-            logger.info(f"Webhook gönderildi: {alert.hostname}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Webhook gönderilemedi: {e}")
-            return False
+        for attempt in range(1, 4):
+            try:
+                response = httpx.post(self.webhook_url, json=payload, timeout=5)
+                response.raise_for_status()
+                logger.info(f"Webhook gönderildi: {alert.hostname}")
+                return True
+            except Exception as e:
+                if attempt < 3:
+                    time.sleep(2 ** (attempt - 1))
+                else:
+                    logger.error(f"Webhook gönderilemedi (3 deneme): {e}")
+        return False
 
     def _discord_payload(self, alert: Alert) -> dict:
         """Discord embed formatında payload oluşturur."""
@@ -247,19 +250,24 @@ class Notifier:
             f"Zaman      : {event.last_seen}\n\n"
             f"{'='*40}\nBu mesaj NetGuard tarafından otomatik gönderilmiştir.\n"
         )
-        try:
-            msg = MIMEMultipart()
-            msg["From"]    = self.email.from_email
-            msg["To"]      = ", ".join(self.email.to_emails)
-            msg["Subject"] = subject
-            msg.attach(MIMEText(body, "plain", "utf-8"))
-            with smtplib.SMTP(self.email.smtp_host, self.email.smtp_port) as srv:
-                srv.starttls()
-                srv.login(self.email.smtp_user, self.email.smtp_password)
-                srv.send_message(msg)
-            logger.info(f"Korelasyon e-postası gönderildi: {event.event_type}")
-        except Exception as exc:
-            logger.error(f"Korelasyon e-postası gönderilemedi: {exc}")
+        msg = MIMEMultipart()
+        msg["From"]    = self.email.from_email
+        msg["To"]      = ", ".join(self.email.to_emails)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        for attempt in range(1, 4):
+            try:
+                with smtplib.SMTP(self.email.smtp_host, self.email.smtp_port) as srv:
+                    srv.starttls()
+                    srv.login(self.email.smtp_user, self.email.smtp_password)
+                    srv.send_message(msg)
+                logger.info(f"Korelasyon e-postası gönderildi: {event.event_type}")
+                return
+            except Exception as exc:
+                if attempt < 3:
+                    time.sleep(2 ** (attempt - 1))
+                else:
+                    logger.error(f"Korelasyon e-postası gönderilemedi (3 deneme): {exc}")
 
     def _send_correlated_webhook(self, event: CorrelatedEvent) -> None:
         if not self.webhook.enabled:
@@ -284,12 +292,17 @@ class Notifier:
             payload = {
                 "text": f"🔔 *NetGuard Korelasyon — {event.severity.upper()}*\n{event.message}"
             }
-        try:
-            resp = httpx.post(self.webhook.webhook_url, json=payload, timeout=5)
-            resp.raise_for_status()
-            logger.info(f"Korelasyon webhook gönderildi: {event.event_type}")
-        except Exception as exc:
-            logger.error(f"Korelasyon webhook gönderilemedi: {exc}")
+        for attempt in range(1, 4):
+            try:
+                resp = httpx.post(self.webhook.webhook_url, json=payload, timeout=5)
+                resp.raise_for_status()
+                logger.info(f"Korelasyon webhook gönderildi: {event.event_type}")
+                return
+            except Exception as exc:
+                if attempt < 3:
+                    time.sleep(2 ** (attempt - 1))
+                else:
+                    logger.error(f"Korelasyon webhook gönderilemedi (3 deneme): {exc}")
 
     def _send_anomaly_email(self, result: "AnomalyResult") -> None:
         if not self.email.enabled:
