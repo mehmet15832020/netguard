@@ -187,6 +187,8 @@ async def lifespan(app: FastAPI):
     from server.alert_engine import alert_engine
     from server.database import db as _db
     alert_engine.restore_active_alerts(_db)
+    from server.attack_chain import attack_chain_tracker as _act
+    _act.restore_from_db()
     scan_task = asyncio.create_task(_security_scan_loop())
     logger.info(f"Güvenlik tarama döngüsü başlatıldı (her {SECURITY_SCAN_INTERVAL}s)")
     ntp_task  = asyncio.create_task(_ntp_check_loop())

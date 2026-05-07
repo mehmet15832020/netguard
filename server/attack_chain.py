@@ -132,6 +132,12 @@ class AttackChainTracker:
             if stage_count >= PARTIAL_THRESHOLD:
                 return self._build_trigger(src_ip, active_stages, "PARTIAL_ATTACK_CHAIN", "warning")
 
+        try:
+            from server.database import db
+            db.save_chain_stage(src_ip, stage, now)
+        except Exception as exc:
+            logger.debug(f"Chain stage DB kaydedilemedi [{src_ip}/{stage}]: {exc}")
+
         return None
 
     def _build_trigger(self, src_ip: str, stages: list[str], chain_type: str, severity: str) -> dict:
@@ -179,6 +185,27 @@ class AttackChainTracker:
                         del bucket[s]
                 if not bucket:
                     del self._chains[ip]
+        try:
+            from server.database import db
+            db.purge_old_chain_stages(CHAIN_WINDOW_SEC)
+        except Exception as exc:
+            logger.debug(f"Chain state DB temizlenemedi: {exc}")
+
+    def restore_from_db(self) -> None:
+        """Sunucu başlangıcında DB'den aktif chain state'i yükle."""
+        try:
+            from server.database import db
+            stages = db.get_active_chain_stages(CHAIN_WINDOW_SEC)
+            with self._lock:
+                self._chains = defaultdict(lambda: defaultdict(list))
+                for src_ip, stage_dict in stages.items():
+                    for stage, timestamps in stage_dict.items():
+                        self._chains[src_ip][stage] = list(timestamps)
+            count = len(self._chains)
+            if count:
+                logger.info(f"Attack chain restore: {count} aktif IP DB'den yüklendi")
+        except Exception as exc:
+            logger.warning(f"Attack chain DB restore başarısız: {exc}")
 
 
 def chain_trigger_to_correlated_event(trigger: dict, db_save: bool = True):

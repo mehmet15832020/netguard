@@ -374,6 +374,19 @@ CREATE TRIGGER IF NOT EXISTS fts_delete AFTER DELETE ON normalized_logs BEGIN
 END;
 """
 
+_CREATE_CHAIN_STATE = """
+CREATE TABLE IF NOT EXISTS attack_chain_state (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    src_ip      TEXT NOT NULL,
+    stage       TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    tenant_id   TEXT NOT NULL DEFAULT 'default',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_chain_state_src_ip ON attack_chain_state(src_ip);
+CREATE INDEX IF NOT EXISTS idx_chain_state_occurred ON attack_chain_state(occurred_at);
+"""
+
 _CREATE_SCHEMA_VERSION = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version     INTEGER PRIMARY KEY,
@@ -514,6 +527,8 @@ class DatabaseManager:
         with self._connect() as conn:
             conn.executescript(_CREATE_INCIDENTS_INDEXES)
             conn.executescript(_CREATE_INCIDENT_EVENTS)
+        with self._connect() as conn:
+            conn.executescript(_CREATE_CHAIN_STATE)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
@@ -984,6 +999,42 @@ class DatabaseManager:
                     ",".join(event.mitre_tactics),
                 ))
                 return True
+
+    def save_chain_stage(self, src_ip: str, stage: str, occurred_at: "datetime", tenant_id: str = "default") -> None:
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "INSERT INTO attack_chain_state (src_ip, stage, occurred_at, tenant_id) VALUES (?, ?, ?, ?)",
+                    (src_ip, stage, occurred_at.isoformat(), tenant_id),
+                )
+
+    def get_active_chain_stages(self, window_seconds: int = 1800) -> dict:
+        from datetime import datetime, timedelta, timezone
+        from collections import defaultdict
+        since = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT src_ip, stage, occurred_at FROM attack_chain_state WHERE occurred_at >= ? ORDER BY occurred_at",
+                (since,),
+            ).fetchall()
+        result: dict = defaultdict(lambda: defaultdict(list))
+        for row in rows:
+            dt_str = row["occurred_at"]
+            try:
+                dt = datetime.fromisoformat(dt_str)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+            except ValueError:
+                continue
+            result[row["src_ip"]][row["stage"]].append(dt)
+        return result
+
+    def purge_old_chain_stages(self, window_seconds: int = 1800) -> None:
+        from datetime import datetime, timedelta, timezone
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=window_seconds)).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute("DELETE FROM attack_chain_state WHERE occurred_at < ?", (cutoff,))
 
     def get_correlated_events(
         self,
