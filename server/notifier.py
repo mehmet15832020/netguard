@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_RETRY_DELAYS = (0, 1, 2)   # saniye — 3 deneme: hemen, 1s sonra, 2s sonra
+_RETRY_DELAYS = (0, 1, 4)   # saniye — exponential backoff: hemen, 1s, 4s
 
 
 class EmailNotifier:

@@ -232,6 +232,13 @@ class LogCategory(str, Enum):
     UNKNOWN        = "unknown"
 
 
+class ParseStatus(str, Enum):
+    """Ham logun işlenme durumu."""
+    PENDING = "pending"    # Henüz işlenmedi
+    SUCCESS = "success"    # Başarıyla normalize edildi
+    FAILED  = "failed"     # Parse edilemedi, normalize logı yok
+
+
 class RawLog(BaseModel):
     """
     Kaynaktan gelen ham log — işlenmeden önce saklanır.
@@ -242,7 +249,7 @@ class RawLog(BaseModel):
     source_host: str = Field(description="Logu gönderen host/IP")
     received_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     raw_content: str = Field(description="Ham log satırı veya JSON içerik")
-    normalized: bool = Field(default=False, description="Normalize edildi mi")
+    parse_status: ParseStatus = Field(default=ParseStatus.PENDING, description="İşlenme durumu")
     normalized_log_id: Optional[str] = None
 
 

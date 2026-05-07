@@ -246,7 +246,7 @@ class TestProcessAndStore:
         assert len(norm_logs) == 0
 
     def test_parse_fail_sets_normalized_minus_one(self, tmp_path, monkeypatch):
-        """Parse başarısız olunca raw_logs.normalized=-1 yazılmalı (F1-6)."""
+        """Parse başarısız olunca raw_logs.parse_status='failed' yazılmalı."""
         import server.database as db_module
         import server.log_normalizer as norm_module
 
@@ -259,12 +259,12 @@ class TestProcessAndStore:
         process_and_store(raw, source_host="host1")
 
         with test_db._connect() as conn:
-            row = conn.execute("SELECT normalized FROM raw_logs LIMIT 1").fetchone()
+            row = conn.execute("SELECT parse_status FROM raw_logs LIMIT 1").fetchone()
         assert row is not None
-        assert row["normalized"] == -1, "Parse başarısız olunca normalized=-1 olmalı"
+        assert row["parse_status"] == "failed", "Parse başarısız olunca parse_status='failed' olmalı"
 
     def test_successful_parse_sets_normalized_one(self, tmp_path, monkeypatch):
-        """Başarılı parse sonrası raw_logs.normalized=1 yazılmalı."""
+        """Başarılı parse sonrası raw_logs.parse_status='success' yazılmalı."""
         import server.database as db_module
         import server.log_normalizer as norm_module
 
@@ -277,9 +277,9 @@ class TestProcessAndStore:
         process_and_store(raw, source_host="myhost")
 
         with test_db._connect() as conn:
-            row = conn.execute("SELECT normalized FROM raw_logs LIMIT 1").fetchone()
+            row = conn.execute("SELECT parse_status FROM raw_logs LIMIT 1").fetchone()
         assert row is not None
-        assert row["normalized"] == 1, "Başarılı parse sonrası normalized=1 olmalı"
+        assert row["parse_status"] == "success", "Başarılı parse sonrası parse_status='success' olmalı"
 
 
 # ------------------------------------------------------------------ #

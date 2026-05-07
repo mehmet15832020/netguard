@@ -122,11 +122,11 @@ class TestNormalizePipeline:
         assert norm_logs[0].event_type == "ssh_failure"
 
         with pipeline_db._connect() as conn:
-            row = conn.execute("SELECT normalized FROM raw_logs LIMIT 1").fetchone()
-        assert row["normalized"] == 1
+            row = conn.execute("SELECT parse_status FROM raw_logs LIMIT 1").fetchone()
+        assert row["parse_status"] == "success"
 
     def test_unparseable_log_flags_raw_only(self, pipeline_db, monkeypatch):
-        """Parse edilemeyen log raw_logs'a yazılmalı, normalized=-1, normalized_logs boş."""
+        """Parse edilemeyen log raw_logs'a yazılmalı, parse_status=failed, normalized_logs boş."""
         monkeypatch.setattr("server.log_normalizer.db", pipeline_db)
         raw = "1712915025.123\tOnlyTwoFields"  # Zeek formatı ama çok kısa
         result = process_and_store(raw, source_host="host1")
@@ -135,8 +135,8 @@ class TestNormalizePipeline:
         assert len(pipeline_db.get_normalized_logs(limit=10)) == 0
 
         with pipeline_db._connect() as conn:
-            row = conn.execute("SELECT normalized FROM raw_logs LIMIT 1").fetchone()
-        assert row["normalized"] == -1
+            row = conn.execute("SELECT parse_status FROM raw_logs LIMIT 1").fetchone()
+        assert row["parse_status"] == "failed"
 
     def test_multiple_logs_accumulate_in_db(self, pipeline_db, monkeypatch):
         """Arka arkaya 5 log normalize edilince normalized_logs 5 kayıt içermeli."""
@@ -528,7 +528,7 @@ class TestEndToEndPipeline:
 
     def test_parse_fail_logs_invisible_to_correlator(self, pipeline_db, monkeypatch):
         """
-        Parse edilemeyen loglar (normalized=-1) correlator'ın gördüğü
+        Parse edilemeyen loglar (parse_status=failed) correlator'ın gördüğü
         normalized_logs tablosunda yer almamalı → false positive yok.
         """
         from server.correlator import Correlator

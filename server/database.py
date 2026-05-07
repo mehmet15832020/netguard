@@ -26,7 +26,7 @@ from shared.models import (
     Alert, AlertSeverity, AlertStatus,
     SecurityEvent, SecurityEventType,
     RawLog, NormalizedLog, LogSourceType, LogCategory,
-    CorrelatedEvent,
+    CorrelatedEvent, ParseStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,12 +82,11 @@ CREATE TABLE IF NOT EXISTS raw_logs (
     source_host        TEXT NOT NULL,
     received_at        TEXT NOT NULL,
     raw_content        TEXT NOT NULL,
-    normalized         INTEGER NOT NULL DEFAULT 0,
+    parse_status       TEXT NOT NULL DEFAULT 'pending',
     normalized_log_id  TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_raw_normalized ON raw_logs(normalized);
-CREATE INDEX IF NOT EXISTS idx_raw_host       ON raw_logs(source_host);
-CREATE INDEX IF NOT EXISTS idx_raw_received   ON raw_logs(received_at);
+CREATE INDEX IF NOT EXISTS idx_raw_host     ON raw_logs(source_host);
+CREATE INDEX IF NOT EXISTS idx_raw_received ON raw_logs(received_at);
 """
 
 _CREATE_NORMALIZED_LOGS = """
@@ -533,6 +532,7 @@ class DatabaseManager:
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
+        self._migrate_raw_logs_parse_status()
         self._migrate_normalized_logs_columns()
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
@@ -754,7 +754,7 @@ class DatabaseManager:
                 conn.execute("""
                     INSERT OR IGNORE INTO raw_logs
                         (raw_id, source_type, source_host, received_at,
-                         raw_content, normalized, normalized_log_id)
+                         raw_content, parse_status, normalized_log_id)
                     VALUES (?, ?, ?, ?, ?, ?, ?)
                 """, (
                     raw.raw_id,
@@ -762,7 +762,7 @@ class DatabaseManager:
                     raw.source_host,
                     raw.received_at.isoformat(),
                     raw.raw_content,
-                    int(raw.normalized),
+                    raw.parse_status.value,
                     raw.normalized_log_id,
                 ))
 
@@ -771,36 +771,37 @@ class DatabaseManager:
         with self._lock:
             with self._connect() as conn:
                 conn.execute(
-                    "UPDATE raw_logs SET normalized=1, normalized_log_id=? WHERE raw_id=?",
-                    (normalized_log_id, raw_id),
+                    "UPDATE raw_logs SET parse_status=?, normalized_log_id=? WHERE raw_id=?",
+                    (ParseStatus.SUCCESS.value, normalized_log_id, raw_id),
                 )
 
     def mark_raw_parse_failed(self, raw_id: str) -> None:
-        """Ham logu parse edilemedi (normalized=-1) olarak işaretle."""
+        """Ham logu parse edilemedi olarak işaretle."""
         with self._lock:
             with self._connect() as conn:
                 conn.execute(
-                    "UPDATE raw_logs SET normalized=-1 WHERE raw_id=?",
-                    (raw_id,),
+                    "UPDATE raw_logs SET parse_status=? WHERE raw_id=?",
+                    (ParseStatus.FAILED.value, raw_id),
                 )
 
     def get_unnormalized_raw_logs(self, limit: int = 100) -> list[RawLog]:
-        """Henüz normalize edilmemiş ham logları getir."""
+        """Henüz işlenmemiş (pending) ham logları getir."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT * FROM raw_logs WHERE normalized=0 ORDER BY received_at ASC LIMIT ?",
-                (limit,),
+                "SELECT * FROM raw_logs WHERE parse_status=? ORDER BY received_at ASC LIMIT ?",
+                (ParseStatus.PENDING.value, limit),
             ).fetchall()
         return [self._row_to_raw_log(r) for r in rows]
 
     def _row_to_raw_log(self, row: sqlite3.Row) -> RawLog:
+        raw_status = row["parse_status"] if "parse_status" in row.keys() else None
         return RawLog(
             raw_id            = row["raw_id"],
             source_type       = LogSourceType(row["source_type"]) if row["source_type"] else None,
             source_host       = row["source_host"],
             received_at       = datetime.fromisoformat(row["received_at"]),
             raw_content       = row["raw_content"],
-            normalized        = bool(row["normalized"]),
+            parse_status      = ParseStatus(raw_status) if raw_status else ParseStatus.PENDING,
             normalized_log_id = row["normalized_log_id"],
         )
 
@@ -1490,6 +1491,24 @@ class DatabaseManager:
                     conn.execute("DELETE FROM api_keys WHERE agent_id=?", (agent_id,))
         if stale:
             logger.warning(f"Plaintext API key'ler silindi (agent'lar yeniden kayıt yaptırmalı): {stale}")
+
+    def _migrate_raw_logs_parse_status(self) -> None:
+        """raw_logs tablosunu normalized INTEGER → parse_status TEXT'e migrate et."""
+        with self._connect() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(raw_logs)").fetchall()}
+            if "parse_status" not in cols:
+                conn.execute("ALTER TABLE raw_logs ADD COLUMN parse_status TEXT NOT NULL DEFAULT 'pending'")
+                if "normalized" in cols:
+                    conn.execute("""
+                        UPDATE raw_logs SET parse_status = CASE
+                            WHEN normalized = 1  THEN 'success'
+                            WHEN normalized = -1 THEN 'failed'
+                            ELSE 'pending'
+                        END
+                    """)
+                conn.execute("DROP INDEX IF EXISTS idx_raw_normalized")
+                logger.info("raw_logs: 'parse_status' kolonu eklendi, mevcut veriler migrate edildi")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_raw_parse_status ON raw_logs(parse_status)")
 
     def _migrate_normalized_logs_columns(self) -> None:
         """normalized_logs tablosuna eksik kolonları ekle ve NULL tenant_id'leri düzelt."""
