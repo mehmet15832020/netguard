@@ -26,6 +26,7 @@ CORRELATION_INTERVAL    = int(os.getenv("NETGUARD_CORR_INTERVAL", "60"))    # sa
 DETECTOR_INTERVAL       = int(os.getenv("NETGUARD_DETECTOR_INTERVAL", "30")) # saniye
 SNMP_POLL_INTERVAL      = int(os.getenv("NETGUARD_SNMP_INTERVAL", "60"))    # saniye
 UPTIME_CHECK_INTERVAL   = int(os.getenv("NETGUARD_UPTIME_INTERVAL", "60"))  # saniye
+PURGE_INTERVAL          = 300  # saniye (5 dakika)
 
 
 async def _detector_loop():
@@ -34,7 +35,7 @@ async def _detector_loop():
     while True:
         await asyncio.sleep(DETECTOR_INTERVAL)
         try:
-            logs = detector_manager.run_all()
+            logs = await asyncio.to_thread(detector_manager.run_all)
             if logs:
                 logger.warning(f"Dedektörler: {len(logs)} şüpheli olay")
         except Exception as exc:
@@ -47,7 +48,7 @@ async def _correlation_loop():
     while True:
         await asyncio.sleep(CORRELATION_INTERVAL)
         try:
-            events = correlator.run()
+            events = await asyncio.to_thread(correlator.run)
             if events:
                 logger.warning(f"Korelasyon: {len(events)} yeni olay üretildi")
         except Exception as exc:
@@ -60,7 +61,7 @@ async def _ntp_check_loop():
     while True:
         await asyncio.sleep(NTP_CHECK_INTERVAL)
         try:
-            ntp_validator.check_system_clock()
+            await asyncio.to_thread(ntp_validator.check_system_clock)
         except Exception as exc:
             logger.error(f"NTP kontrol hatası: {exc}")
 
@@ -72,7 +73,7 @@ async def _snmp_poll_loop():
 
     while True:
         await asyncio.sleep(SNMP_POLL_INTERVAL)
-        devices = db.get_pollable_devices()
+        devices = await asyncio.to_thread(db.get_pollable_devices)
         if not devices:
             continue
         try:
@@ -125,7 +126,7 @@ async def _retention_loop():
         await asyncio.sleep((next_run - now).total_seconds())
         try:
             from server.retention import run_retention
-            report = run_retention()
+            report = await asyncio.to_thread(run_retention)
             logger.info(f"Retention: {report['total_deleted']} kayıt silindi, {report['total_archived']} arşivlendi")
         except Exception as exc:
             logger.error(f"Retention hatası: {exc}")
@@ -142,11 +143,23 @@ async def _security_scan_loop():
     while True:
         await asyncio.sleep(SECURITY_SCAN_INTERVAL)
         try:
-            parse_auth_log(agent_id=agent_id)
-            port_monitor.check(agent_id=agent_id)
-            config_monitor.check(agent_id=agent_id)
+            await asyncio.to_thread(parse_auth_log, agent_id=agent_id)
+            await asyncio.to_thread(port_monitor.check, agent_id=agent_id)
+            await asyncio.to_thread(config_monitor.check, agent_id=agent_id)
         except Exception as exc:
             logger.error(f"Güvenlik tarama hatası: {exc}")
+
+
+async def _purge_loop():
+    """Her PURGE_INTERVAL saniyede bir attack chain hafızasındaki eski kayıtları temizle."""
+    from server.attack_chain import attack_chain_tracker
+    while True:
+        await asyncio.sleep(PURGE_INTERVAL)
+        try:
+            await asyncio.to_thread(attack_chain_tracker.purge)
+            logger.debug("Attack chain purge tamamlandı")
+        except Exception as exc:
+            logger.error(f"Attack chain purge hatası: {exc}")
 
 
 load_dotenv()
@@ -188,6 +201,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Uptime checker başlatıldı (her {UPTIME_CHECK_INTERVAL}s)")
     retention_task = asyncio.create_task(_retention_loop())
     logger.info("Log retention görevi başlatıldı (her gece 02:00 UTC)")
+    purge_task = asyncio.create_task(_purge_loop())
+    logger.info(f"Attack chain purge döngüsü başlatıldı (her {PURGE_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -211,6 +226,7 @@ async def lifespan(app: FastAPI):
     snmp_task.cancel()
     uptime_task.cancel()
     retention_task.cancel()
+    purge_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()
