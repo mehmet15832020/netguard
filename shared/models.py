@@ -292,6 +292,7 @@ class CorrelatedEvent(BaseModel):
     event_action: str = Field(description="Korelasyon olay tipi, örn: brute_force_detected")
     severity: str = Field(description="info | warning | critical")
     group_value: str = Field(description="Gruplanma değeri, örn: kaynak IP")
+    group_by_field: str = Field(default="source_ip", description="Korelasyon gruplama kolonu, örn: source_ip | observer_hostname")
     matched_count: int = Field(ge=1, description="Zaman penceresindeki eşleşen log sayısı")
     window_seconds: int = Field(description="Kural zaman penceresi (saniye)")
     first_seen: datetime = Field(description="Penceredeki ilk olayın zamanı")
@@ -323,6 +324,7 @@ class Incident(BaseModel):
     notes:           str = ""
     rule_id:         Optional[str] = None
     group_value:     Optional[str] = None
+    group_by_field:  str = "source_ip"
     priority_score:  int = 0
     closure_note:    str = ""
     created_at:      datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

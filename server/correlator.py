@@ -230,6 +230,7 @@ class Correlator:
                 event_action   = rule.output_event_action,
                 severity       = rule.severity,
                 group_value    = group_val,
+                group_by_field = rule.group_by_fields[0] if rule.group_by_fields else "source_ip",
                 matched_count  = count,
                 window_seconds = rule.window_seconds,
                 first_seen     = first_seen,
@@ -337,6 +338,7 @@ class Correlator:
                 event_action     = rule.output_event_action,
                 severity       = rule.severity,
                 group_value    = group_value,
+                group_by_field = rule.group_by,
                 matched_count  = count,
                 window_seconds = rule.window_seconds,
                 first_seen     = first_seen,
@@ -422,6 +424,7 @@ class Correlator:
                     created_by="correlator",
                     rule_id=event.rule_id,
                     group_value=event.group_value,
+                    group_by_field=event.group_by_field,
                     priority_score=priority,
                 )
                 db.create_incident(incident)

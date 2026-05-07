@@ -1428,6 +1428,7 @@ class TestFix9RelatedLogsGroupValue:
         assert any(r.log_id == log.log_id for r in results)
 
     def test_related_logs_found_by_observer_hostname(self, pipeline_db):
+        """group_by_field='observer_hostname' ile sorgu doğru kolonu kullanmalı."""
         from shared.models import NormalizedLog, LogSourceType, LogCategory
 
         log = NormalizedLog(
@@ -1449,12 +1450,28 @@ class TestFix9RelatedLogsGroupValue:
             source_ip="firewall-01",
             around_iso=datetime.now(timezone.utc).isoformat(),
             window_minutes=30,
+            group_by_field="observer_hostname",
         )
         assert any(r.log_id == log.log_id for r in results), \
-            "observer_hostname ile de ilgili log bulunabilmeli"
+            "group_by_field=observer_hostname ile log bulunabilmeli"
 
-    def test_enricher_uses_group_value_for_both_ip_and_hostname(self, pipeline_db, monkeypatch):
-        """incident_enricher group_value'yu source_ip ve observer_hostname'e karşı sorgular."""
+    def test_invalid_group_by_field_falls_back_to_source_ip(self, pipeline_db):
+        """Geçersiz group_by_field → source_ip'e düşmeli, exception olmamalı."""
+        log = _norm_log("ssh_failure", "10.9.9.9")
+        pipeline_db.save_normalized_log(log, tenant_id="default")
+
+        results = pipeline_db.get_related_logs_for_incident(
+            source_ip="10.9.9.9",
+            around_iso=datetime.now(timezone.utc).isoformat(),
+            window_minutes=30,
+            group_by_field="invalid_column_name; DROP TABLE",
+        )
+        assert isinstance(results, list)
+        assert any(r.log_id == log.log_id for r in results), \
+            "Fallback source_ip sorgusu logu bulabilmeli"
+
+    def test_enricher_uses_group_by_field_from_incident(self, pipeline_db, monkeypatch):
+        """incident'taki group_by_field doğru kolonu sorgulamalı."""
         from server.incident_enricher import enrich_incident
         from shared.models import NormalizedLog, LogSourceType, LogCategory
 
@@ -1477,15 +1494,16 @@ class TestFix9RelatedLogsGroupValue:
         pipeline_db.save_normalized_log(hostname_log, tenant_id="default")
 
         incident = {
-            "incident_id":    str(uuid.uuid4()),
+            "incident_id":     str(uuid.uuid4()),
             "source_event_id": None,
-            "group_value":    "router-core",
-            "created_at":     datetime.now(timezone.utc).isoformat(),
+            "group_value":     "router-core",
+            "group_by_field":  "observer_hostname",
+            "created_at":      datetime.now(timezone.utc).isoformat(),
         }
         enriched = enrich_incident(incident)
         log_ids = [l["log_id"] for l in enriched["enrichment"]["related_logs"]]
         assert hostname_log.log_id in log_ids, \
-            "observer_hostname group_value'su olan incident zenginleştirmede logunu bulmalı"
+            "group_by_field=observer_hostname olan incident doğru logu bulmalı"
 
 
 class TestFix10AcknowledgedAtNoExtraQuery:

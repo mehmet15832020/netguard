@@ -225,6 +225,7 @@ def chain_trigger_to_correlated_event(trigger: dict, db_save: bool = True):
         event_action     = trigger["event_action"],
         severity       = trigger["severity"],
         group_value    = trigger["source_ip"],
+        group_by_field = "source_ip",
         matched_count  = len(trigger["stages"]),
         window_seconds = CHAIN_WINDOW_SEC,
         first_seen     = now,

@@ -859,8 +859,11 @@ class DatabaseManager:
         log_id: str,
         src_host: Optional[str],
         dst_host: Optional[str],
-    ) -> None:
-        """DNS arka plan çözümlemesi tamamlandığında hostname kolonlarını güncelle."""
+    ) -> bool:
+        """
+        DNS arka plan çözümlemesi tamamlandığında hostname kolonlarını güncelle.
+        True: kayıt güncellendi. False: log_id bulunamadı (retention ile silinmiş olabilir).
+        """
         with self._lock:
             with self._connect() as conn:
                 cur = conn.execute(
@@ -869,6 +872,8 @@ class DatabaseManager:
                 )
                 if cur.rowcount == 0:
                     logger.debug("update_log_hostnames: log_id bulunamadı: %s", log_id)
+                    return False
+                return True
 
     def get_normalized_logs(
         self,
@@ -1113,22 +1118,34 @@ class DatabaseManager:
             ).fetchone()
         return self._row_to_correlated_event(row) if row else None
 
+    # Enricher'ın sorgulayabileceği kolon beyaz listesi — f-string injection'a karşı
+    _VALID_LOG_GROUP_FIELDS: frozenset = frozenset({
+        "source_ip", "destination_ip", "observer_hostname",
+        "username", "device_id",
+    })
+
     def get_related_logs_for_incident(
         self,
         source_ip: str,
         around_iso: str,
         window_minutes: int = 30,
         limit: int = 20,
+        group_by_field: str = "source_ip",
     ) -> list["NormalizedLog"]:
         """
-        group_value'ya (source_ip veya observer_hostname) ait ±window_minutes
-        aralığındaki normalize logları döner.
+        group_value'ya ait ±window_minutes aralığındaki normalize logları döner.
+        group_by_field: korelasyonun hangi kolonu kullandığını belirtir
+        (source_ip | destination_ip | observer_hostname | username | device_id).
+        Bilinmeyen değer → source_ip'e düşer.
         """
+        if group_by_field not in self._VALID_LOG_GROUP_FIELDS:
+            logger.warning("Geçersiz group_by_field: %r → source_ip kullanılıyor", group_by_field)
+            group_by_field = "source_ip"
         with self._connect() as conn:
             rows = conn.execute(
-                """
+                f"""
                 SELECT * FROM normalized_logs
-                WHERE (source_ip = ? OR observer_hostname = ?)
+                WHERE {group_by_field} = ?
                   AND datetime(timestamp) BETWEEN
                       datetime(?, ?)
                       AND datetime(?, ?)
@@ -1136,7 +1153,7 @@ class DatabaseManager:
                 LIMIT ?
                 """,
                 (
-                    source_ip, source_ip,
+                    source_ip,
                     around_iso, f"-{window_minutes} minutes",
                     around_iso, f"+{window_minutes} minutes",
                     limit,
@@ -1653,7 +1670,7 @@ class DatabaseManager:
                     logger.info("normalized_logs: 'destination_hostname' kolonu eklendi")
 
     def _migrate_incident_v1_4_columns(self) -> None:
-        """incidents tablosuna priority_score, closure_note, acknowledged_at kolonlarını ekle."""
+        """incidents tablosuna priority_score, closure_note, acknowledged_at, group_by_field kolonlarını ekle."""
         with self._lock:
             with self._connect() as conn:
                 cols = {row[1] for row in conn.execute("PRAGMA table_info(incidents)").fetchall()}
@@ -1666,6 +1683,9 @@ class DatabaseManager:
                 if "acknowledged_at" not in cols:
                     conn.execute("ALTER TABLE incidents ADD COLUMN acknowledged_at TEXT")
                     logger.info("incidents: 'acknowledged_at' kolonu eklendi")
+                if "group_by_field" not in cols:
+                    conn.execute("ALTER TABLE incidents ADD COLUMN group_by_field TEXT DEFAULT 'source_ip'")
+                    logger.info("incidents: 'group_by_field' kolonu eklendi")
 
     # ------------------------------------------------------------------ #
     #  TENANTS
@@ -2025,16 +2045,16 @@ class DatabaseManager:
                     """INSERT INTO incidents
                        (incident_id, title, description, severity, status,
                         assigned_to, source_event_id, source_type,
-                        created_by, notes, rule_id, group_value,
+                        created_by, notes, rule_id, group_value, group_by_field,
                         priority_score, closure_note,
                         created_at, updated_at, resolved_at, acknowledged_at, tenant_id)
-                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                     (
                         incident.incident_id, incident.title, incident.description,
                         incident.severity, incident.status.value,
                         incident.assigned_to, incident.source_event_id, incident.source_type,
                         incident.created_by, incident.notes,
-                        incident.rule_id, incident.group_value,
+                        incident.rule_id, incident.group_value, incident.group_by_field,
                         incident.priority_score, incident.closure_note,
                         now, now, None, None, tenant_id,
                     ),

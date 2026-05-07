@@ -273,12 +273,12 @@ class SigmaExecutor:
         if not _SAFE_TENANT_RE.match(tenant_id):
             logger.error("Geçersiz tenant_id reddedildi: %r", tenant_id)
             return []
-        sql = rule.sql.replace(
-            "FROM normalized_logs WHERE",
-            f"FROM normalized_logs WHERE tenant_id = '{tenant_id}' AND",
-        )
+        # String interpolasyon yok — her enjeksiyon noktası için ? parametresi bağlanır
+        injection_target = "FROM normalized_logs WHERE"
+        param_count = rule.sql.count(injection_target)
+        sql = rule.sql.replace(injection_target, "FROM normalized_logs WHERE tenant_id = ? AND")
         try:
-            rows = conn.execute(sql).fetchall()
+            rows = conn.execute(sql, [tenant_id] * param_count).fetchall()
         except Exception as exc:
             logger.error("pySigma SQL yürütme hatası [%s]: %s", rule.rule_id, exc)
             return []

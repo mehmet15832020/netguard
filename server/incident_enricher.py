@@ -32,10 +32,11 @@ def enrich_incident(incident: dict) -> dict:
 
     source_event_id: Optional[str] = incident.get("source_event_id")
     group_value:     Optional[str] = incident.get("group_value")
+    group_by_field:  str           = incident.get("group_by_field") or "source_ip"
     created_at:      Optional[str] = incident.get("created_at")
 
     _fill_mitre(enrichment, source_event_id)
-    _fill_related_logs(enrichment, group_value, created_at)
+    _fill_related_logs(enrichment, group_value, group_by_field, created_at)
     _fill_threat_intel(enrichment, group_value)
 
     return {**incident, "enrichment": enrichment}
@@ -56,6 +57,7 @@ def _fill_mitre(enrichment: dict, source_event_id: Optional[str]) -> None:
 def _fill_related_logs(
     enrichment: dict,
     group_value: Optional[str],
+    group_by_field: str,
     around_iso: Optional[str],
 ) -> None:
     if not group_value or not around_iso:
@@ -66,6 +68,7 @@ def _fill_related_logs(
             around_iso=around_iso,
             window_minutes=_WINDOW_MINUTES,
             limit=_MAX_RELATED_LOGS,
+            group_by_field=group_by_field,
         )
         enrichment["related_logs"] = [
             {
