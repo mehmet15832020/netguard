@@ -287,13 +287,14 @@ def _parse_wazuh(raw: str, observer_hostname: str) -> Optional[dict]:
 def _parse_syslog(raw: str, observer_hostname: str) -> Optional[dict]:
     """Genel syslog satırını parse et — bilinen bir format bulunamazsa."""
     return dict(
-        timestamp  = datetime.now(timezone.utc),
-        severity   = "info",
-        event_category   = LogCategory.SYSTEM,
-        event_action = "syslog",
-        source_ip     = observer_hostname,
-        message    = raw[:500],
-        tags       = ["syslog"],
+        timestamp         = datetime.now(timezone.utc),
+        severity          = "info",
+        event_category    = LogCategory.SYSTEM,
+        event_action      = "syslog",
+        source_ip         = None,            # Bilinmeyen kaynak — observer_hostname IP değil
+        observer_hostname = observer_hostname,
+        message           = raw[:500],
+        tags              = ["syslog"],
     )
 
 
