@@ -1,0 +1,92 @@
+title: Command Injection Attempt
+id: e8f2c3d4-5a6b-7c8d-9e0f-1a2b3c4d5e6f
+status: stable
+logsource:
+    category: webserver
+detection:
+    selection:
+        event_action: web_request
+        message|contains:
+            - "; cat "
+            - "| ls"
+            - "$("
+            - "`ls"
+            - "&& id"
+            - "/bin/sh"
+            - "/bin/bash"
+            - "cmd.exe"
+    condition: selection
+level: high
+tags:
+    - attack.initial_access
+    - attack.t1190
+    - attack.t1059
+---
+title: Path Traversal Attempt
+id: f9a3d4e5-6b7c-8d9e-0f1a-2b3c4d5e6f7a
+status: stable
+logsource:
+    category: webserver
+detection:
+    selection:
+        event_action: web_request
+        message|contains:
+            - "../"
+            - "..%2F"
+            - "..%2f"
+            - "/etc/passwd"
+            - "/etc/shadow"
+            - "windows/system32"
+            - "boot.ini"
+    condition: selection
+level: high
+tags:
+    - attack.discovery
+    - attack.t1083
+---
+title: XSS Attempt
+id: a0b4e5f6-7c8d-9e0f-1a2b-3c4d5e6f7a8b
+status: stable
+logsource:
+    category: webserver
+detection:
+    selection:
+        event_action: web_request
+        message|contains:
+            - "<script>"
+            - "javascript:"
+            - "onerror="
+            - "onload="
+            - "alert("
+            - "document.cookie"
+    condition: selection
+level: medium
+tags:
+    - attack.initial_access
+    - attack.t1059.007
+---
+title: Web Auth Brute Force (Base)
+name: ng_web_auth_brute_base
+status: stable
+logsource:
+    category: webserver
+detection:
+    selection:
+        event_action: web_auth_fail
+    condition: selection
+level: medium
+---
+title: Web Auth Brute Force
+id: b1c5f6a7-8d9e-0f1a-2b3c-4d5e6f7a8b9c
+correlation:
+    type: event_count
+    rules: ng_web_auth_brute_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 10
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110

@@ -1,0 +1,85 @@
+title: SSL Certificate Invalid
+id: f5a9d0e1-2b3c-4d5e-6f7a-8b9c0d1e2f3a
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: ssl_connection
+        message|contains:
+            - "certificate has expired"
+            - "self signed"
+            - "unable to get"
+            - "certificate verify failed"
+            - "invalid"
+    condition: selection
+level: medium
+tags:
+    - attack.command_and_control
+    - attack.t1573
+---
+title: Zeek Port Scan Notice
+id: a6b0e1f2-3c4d-5e6f-7a8b-9c0d1e2f3a4b
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_scan_port_scan
+    condition: selection
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1046
+---
+title: SSH Targeted Attack (Base)
+name: ng_ssh_targeted_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: ssh_failure
+    condition: selection
+level: low
+---
+title: SSH Targeted Attack
+id: b7c1f2a3-4d5e-6f7a-8b9c-0d1e2f3a4b5c
+correlation:
+    type: event_count
+    rules: ng_ssh_targeted_base
+    group-by:
+        - destination_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.lateral_movement
+    - attack.t1021.004
+---
+title: Rapid SSH Success (Base)
+name: ng_rapid_ssh_success_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: ssh_success
+    condition: selection
+level: low
+---
+title: Rapid SSH Success
+id: c8d2a3b4-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+correlation:
+    type: event_count
+    rules: ng_rapid_ssh_success_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.lateral_movement
+    - attack.t1021.004
