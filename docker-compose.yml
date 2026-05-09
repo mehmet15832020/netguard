@@ -13,9 +13,11 @@ services:
       - NETGUARD_CORS_ORIGINS=https://localhost,https://127.0.0.1,https://${NETGUARD_HOST:-localhost}
       - NETGUARD_INTERFACE=eth0
       - DATABASE_URL=postgresql://netguard:${POSTGRES_PASSWORD:-netguard_dev}@postgres:5432/netguard
+      - ZEEK_LOG_DIR=/zeek-logs
     volumes:
       - netguard_data:/data
       - ./config:/app/config:ro
+      - zeek_logs:/zeek-logs:ro
     ports:
       - "${SYSLOG_PORT:-5140}:5140/udp"    # OPNsense / VyOS syslog
       - "${NETFLOW_PORT:-2055}:2055/udp"   # VyOS NetFlow
@@ -70,6 +72,28 @@ services:
     networks:
       - netguard_net
 
+  # ── Zeek: Ağ trafiği analiz motoru (NSM/NDR) ─────────────────────
+  zeek:
+    image: zeek/zeek:7.0
+    network_mode: host          # Host arayüzünü doğrudan görür (TAP/SPAN benzeri)
+    restart: unless-stopped
+    volumes:
+      - zeek_logs:/zeek-logs
+      - ./config/zeek/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek:ro
+    environment:
+      - NETGUARD_INTERFACE=${NETGUARD_INTERFACE:-ens33}
+    command: >
+      sh -c "mkdir -p /zeek-logs &&
+             cd /zeek-logs &&
+             zeek -i $$NETGUARD_INTERFACE -C
+               LogAscii::use_json=T
+               Log::default_rotation_interval=0secs
+               Log::default_logdir=/zeek-logs
+               local 2>&1"
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+
   # ── PostgreSQL + TimescaleDB: İlişkisel + zaman serisi loglar ────
   postgres:
     image: timescale/timescaledb:latest-pg16
@@ -119,4 +143,5 @@ volumes:
   netguard_data:    # SQLite DB + anomaly baselines (geçiş sürecinde korunur)
   influxdb_data:    # InfluxDB zaman serisi metrikleri
   postgres_data:    # PostgreSQL + TimescaleDB (V1-7)
+  zeek_logs:        # Zeek JSON log paylaşım alanı (V1-8)
   ssl_certs:        # Nginx self-signed TLS sertifikaları

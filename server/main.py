@@ -253,6 +253,9 @@ async def lifespan(app: FastAPI):
     anomaly_route.set_engine(anomaly_engine)
     await anomaly_engine.start()
     logger.info("Anomaly detection motoru başlatıldı.")
+    from server.zeek_collector import run_zeek_collector
+    zeek_task = asyncio.create_task(run_zeek_collector())
+    logger.info("Zeek log collector başlatıldı.")
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -264,6 +267,7 @@ async def lifespan(app: FastAPI):
     purge_task.cancel()
     asset_baseline_task.cancel()
     asset_deviation_task.cancel()
+    zeek_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()
