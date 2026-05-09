@@ -721,3 +721,98 @@ export const attackChainsApi = {
   stats: () =>
     request<ChainStats>('/attack-chains/stats'),
 }
+
+export interface FPRule {
+  fp_rule_id:       string
+  event_action:     string | null
+  source_ip:        string | null
+  destination_ip:   string | null
+  destination_port: string | null
+  observer_hostname: string | null
+  tenant_id:        string
+  reason:           string
+  created_by:       string
+  created_at:       string
+  expires_at:       string | null
+  is_active:        boolean
+  hit_count:        number
+}
+
+export interface FPRuleCreate {
+  event_action?:     string
+  source_ip?:        string
+  destination_ip?:   string
+  destination_port?: string
+  reason:            string
+  expires_in_days?:  number
+}
+
+export const fpRulesApi = {
+  list: (activeOnly = false) =>
+    request<FPRule[]>(`/fp-rules?active_only=${activeOnly}`),
+
+  create: (data: FPRuleCreate) =>
+    request<FPRule>('/fp-rules', { method: 'POST', body: JSON.stringify(data) }),
+
+  deactivate: (id: string) =>
+    request<{ ok: boolean }>(`/fp-rules/${id}`, { method: 'DELETE' }),
+}
+
+export interface AssetBaseline {
+  source_ip:             string
+  tenant_id:             string
+  first_seen_at:         string
+  last_seen_at:          string
+  avg_events_per_hour:   number
+  typical_ports:         number[]
+  typical_destinations:  string[]
+  typical_event_actions: string[]
+  sample_hours:          number
+  updated_at:            string
+}
+
+export const assetsApi = {
+  baselines: (tenant_id = 'default') =>
+    request<AssetBaseline[]>(`/assets/baselines?tenant_id=${tenant_id}`),
+
+  refresh: (tenant_id = 'default') =>
+    request<{ updated: number }>(`/assets/baselines/refresh?tenant_id=${tenant_id}`, { method: 'POST' }),
+}
+
+// ── Network Intelligence ──────────────────────────────────────────────────────
+
+export interface NetworkIntelSummary {
+  ja3_suspicious_count:   number
+  ssl_anomaly_count:      number
+  self_signed_cert_count: number
+  ftp_sensitive_count:    number
+  smtp_session_count:     number
+  zeek_total_24h:         number
+}
+
+export interface NetworkIntelEvent {
+  source_ip:      string | null
+  destination_ip: string | null
+  message:        string
+  timestamp:      string
+  severity?:      string
+}
+
+export interface NetworkIntelResponse {
+  hours:             number
+  summary:           NetworkIntelSummary
+  zeek_distribution: Record<string, number>
+  ja3_suspicious:    NetworkIntelEvent[]
+  ssl_anomalies:     NetworkIntelEvent[]
+  self_signed_certs: NetworkIntelEvent[]
+  ftp_sensitive:     NetworkIntelEvent[]
+  smtp_sessions:     NetworkIntelEvent[]
+  top_sources:       { ip: string; count: number }[]
+  dns_top:           { query: string; count: number }[]
+  timeline:          { t: string; v: number }[]
+}
+
+export const networkIntelApi = {
+  get: (hours = 24) =>
+    request<NetworkIntelResponse>(`/network/intelligence?hours=${hours}`),
+}

@@ -17,7 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance, anomaly as anomaly_route, tenants, metrics as metrics_route, attack_chains as attack_chains_route, assets as assets_route, fp_rules as fp_rules_route
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance, anomaly as anomaly_route, tenants, metrics as metrics_route, attack_chains as attack_chains_route, assets as assets_route, fp_rules as fp_rules_route, network_intel as network_intel_route
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -347,7 +347,8 @@ app.include_router(tenants.router,       prefix=api_prefix, tags=["tenants"])
 app.include_router(metrics_route.router,       prefix=api_prefix, tags=["metrics"])
 app.include_router(attack_chains_route.router, prefix=api_prefix, tags=["attack-chains"])
 app.include_router(assets_route.router,        prefix=api_prefix, tags=["assets"])
-app.include_router(fp_rules_route.router,      prefix=api_prefix, tags=["fp-rules"])
+app.include_router(fp_rules_route.router,        prefix=api_prefix, tags=["fp-rules"])
+app.include_router(network_intel_route.router,   prefix=api_prefix, tags=["network-intel"])
 app.include_router(ws.router, tags=["websocket"])
 
 

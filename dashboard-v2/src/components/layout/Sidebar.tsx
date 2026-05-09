@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Bell, Shield, FileText, GitMerge, Settings, LogOut,
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
   ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
-  ChevronRight, Zap,
+  ChevronRight, Zap, Fingerprint,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -23,10 +23,11 @@ const SECTIONS = [
   {
     label: 'Tehdit Tespiti',
     items: [
-      { href: '/alerts',      label: 'Alertler',      icon: Bell },
-      { href: '/correlation', label: 'Korelasyon',    icon: GitMerge },
-      { href: '/timeline',    label: 'Kill Chain',    icon: Swords },
-      { href: '/mitre',       label: 'MITRE ATT&CK',  icon: Crosshair },
+      { href: '/alerts',                label: 'Alertler',              icon: Bell },
+      { href: '/correlation',           label: 'Korelasyon',            icon: GitMerge },
+      { href: '/timeline',              label: 'Kill Chain',            icon: Swords },
+      { href: '/mitre',                 label: 'MITRE ATT&CK',          icon: Crosshair },
+      { href: '/network-intelligence',  label: 'Network Intelligence',  icon: Fingerprint },
     ],
   },
   {
