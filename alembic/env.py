@@ -24,12 +24,15 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    import psycopg
+    from sqlalchemy import create_engine
 
-    with psycopg.connect(DATABASE_URL) as conn:
+    url = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
+    engine = create_engine(url)
+    with engine.connect() as conn:
         context.configure(connection=conn, target_metadata=None)
         with context.begin_transaction():
             context.run_migrations()
+    engine.dispose()
 
 
 if context.is_offline_mode():
