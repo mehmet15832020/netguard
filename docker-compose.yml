@@ -74,22 +74,17 @@ services:
 
   # ── Zeek: Ağ trafiği analiz motoru (NSM/NDR) ─────────────────────
   zeek:
-    image: zeek/zeek:7.0
+    image: zeek/zeek:lts
     network_mode: host          # Host arayüzünü doğrudan görür (TAP/SPAN benzeri)
     restart: unless-stopped
     volumes:
       - zeek_logs:/zeek-logs
       - ./config/zeek/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek:ro
+      - ./config/zeek/start.sh:/start.sh:ro
     environment:
-      - NETGUARD_INTERFACE=${NETGUARD_INTERFACE:-ens33}
-    command: >
-      sh -c "mkdir -p /zeek-logs &&
-             cd /zeek-logs &&
-             zeek -i $$NETGUARD_INTERFACE -C
-               LogAscii::use_json=T
-               Log::default_rotation_interval=0secs
-               Log::default_logdir=/zeek-logs
-               local 2>&1"
+      - ZEEK_INTERFACE=${ZEEK_INTERFACE:-vmnet8}
+      - ZEEK_LOG_DIR=/zeek-logs
+    entrypoint: ["/bin/sh", "/start.sh"]
     cap_add:
       - NET_ADMIN
       - NET_RAW

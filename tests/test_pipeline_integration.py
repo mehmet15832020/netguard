@@ -639,12 +639,18 @@ class TestV14IncidentEnrichmentPipeline:
         score_warning  = compute_priority_score("warning",  ti_score=0)
         assert score_critical > score_warning
 
-    def test_closure_note_required_before_resolve_in_db(self, pipeline_db):
+    def test_closure_note_required_before_resolve_in_db(self, pipeline_db, monkeypatch):
         """
         DB seviyesinde: closure_note olmadan update_incident(..., status='resolved')
         çağrısı closure_note'u boş bırakır ama route katmanı 422 döner.
         Bu test route + DB zincirini birlikte doğrular (HTTPX test client üzerinden).
         """
+        from unittest.mock import AsyncMock, MagicMock
+        monkeypatch.setattr("server.syslog_receiver.SyslogReceiver.start", AsyncMock())
+        monkeypatch.setattr("server.snmp_trap_receiver.SNMPTrapReceiver.start", AsyncMock())
+        monkeypatch.setattr("server.netflow_receiver.NetFlowReceiver.start", AsyncMock())
+        monkeypatch.setattr("server.anomaly.engine.AnomalyEngine.start", AsyncMock())
+        monkeypatch.setattr("server.zeek_collector.run_zeek_collector", AsyncMock())
         from fastapi.testclient import TestClient
         from server.main import app
         import server.routes.incidents as inc_routes
