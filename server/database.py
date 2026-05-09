@@ -392,6 +392,23 @@ CREATE INDEX IF NOT EXISTS idx_chain_state_src_ip ON attack_chain_state(source_i
 CREATE INDEX IF NOT EXISTS idx_chain_state_occurred ON attack_chain_state(occurred_at);
 """
 
+_CREATE_ASSET_BASELINES = """
+CREATE TABLE IF NOT EXISTS asset_baselines (
+    source_ip             TEXT NOT NULL,
+    tenant_id             TEXT NOT NULL DEFAULT 'default',
+    first_seen_at         TEXT NOT NULL,
+    last_seen_at          TEXT NOT NULL,
+    avg_events_per_hour   REAL NOT NULL DEFAULT 0,
+    typical_ports         TEXT NOT NULL DEFAULT '[]',
+    typical_destinations  TEXT NOT NULL DEFAULT '[]',
+    typical_event_actions TEXT NOT NULL DEFAULT '[]',
+    sample_hours          INTEGER NOT NULL DEFAULT 0,
+    updated_at            TEXT NOT NULL,
+    PRIMARY KEY (source_ip, tenant_id)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_baselines_tenant ON asset_baselines(tenant_id);
+"""
+
 _CREATE_SCHEMA_VERSION = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version     INTEGER PRIMARY KEY,
@@ -534,6 +551,8 @@ class DatabaseManager:
             conn.executescript(_CREATE_INCIDENT_EVENTS)
         with self._connect() as conn:
             conn.executescript(_CREATE_CHAIN_STATE)
+        with self._connect() as conn:
+            conn.executescript(_CREATE_ASSET_BASELINES)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
@@ -1081,6 +1100,95 @@ class DatabaseManager:
         with self._lock:
             with self._connect() as conn:
                 conn.execute("DELETE FROM attack_chain_state WHERE occurred_at < ?", (cutoff,))
+
+    # ------------------------------------------------------------------ #
+    #  ASSET BASELINES
+    # ------------------------------------------------------------------ #
+
+    def upsert_asset_baseline(
+        self,
+        source_ip: str,
+        tenant_id: str,
+        first_seen_at: str,
+        last_seen_at: str,
+        avg_events_per_hour: float,
+        typical_ports: list,
+        typical_destinations: list,
+        typical_event_actions: list,
+        sample_hours: int,
+    ) -> None:
+        """Asset profilini ekle ya da güncelle (INSERT OR REPLACE)."""
+        now = datetime.now(timezone.utc).isoformat()
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT INTO asset_baselines
+                       (source_ip, tenant_id, first_seen_at, last_seen_at,
+                        avg_events_per_hour, typical_ports, typical_destinations,
+                        typical_event_actions, sample_hours, updated_at)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(source_ip, tenant_id) DO UPDATE SET
+                           last_seen_at          = excluded.last_seen_at,
+                           avg_events_per_hour   = excluded.avg_events_per_hour,
+                           typical_ports         = excluded.typical_ports,
+                           typical_destinations  = excluded.typical_destinations,
+                           typical_event_actions = excluded.typical_event_actions,
+                           sample_hours          = excluded.sample_hours,
+                           updated_at            = excluded.updated_at
+                    """,
+                    (
+                        source_ip, tenant_id, first_seen_at, last_seen_at,
+                        avg_events_per_hour,
+                        json.dumps(typical_ports),
+                        json.dumps(typical_destinations),
+                        json.dumps(typical_event_actions),
+                        sample_hours, now,
+                    ),
+                )
+
+    def get_all_asset_baselines(self, tenant_id: str = "default") -> dict[str, dict]:
+        """tenant_id'ye ait tüm asset profillerini dict[source_ip → dict] olarak döner."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM asset_baselines WHERE tenant_id = ?", (tenant_id,)
+            ).fetchall()
+        result = {}
+        for r in rows:
+            result[r["source_ip"]] = {
+                "source_ip":             r["source_ip"],
+                "tenant_id":             r["tenant_id"],
+                "first_seen_at":         r["first_seen_at"],
+                "last_seen_at":          r["last_seen_at"],
+                "avg_events_per_hour":   r["avg_events_per_hour"],
+                "typical_ports":         json.loads(r["typical_ports"] or "[]"),
+                "typical_destinations":  json.loads(r["typical_destinations"] or "[]"),
+                "typical_event_actions": json.loads(r["typical_event_actions"] or "[]"),
+                "sample_hours":          r["sample_hours"],
+                "updated_at":            r["updated_at"],
+            }
+        return result
+
+    def get_asset_baseline(self, source_ip: str, tenant_id: str = "default") -> Optional[dict]:
+        """Tek bir IP'nin profilini döner. Bulunamazsa None."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM asset_baselines WHERE source_ip = ? AND tenant_id = ?",
+                (source_ip, tenant_id),
+            ).fetchone()
+        if not row:
+            return None
+        return {
+            "source_ip":             row["source_ip"],
+            "tenant_id":             row["tenant_id"],
+            "first_seen_at":         row["first_seen_at"],
+            "last_seen_at":          row["last_seen_at"],
+            "avg_events_per_hour":   row["avg_events_per_hour"],
+            "typical_ports":         json.loads(row["typical_ports"] or "[]"),
+            "typical_destinations":  json.loads(row["typical_destinations"] or "[]"),
+            "typical_event_actions": json.loads(row["typical_event_actions"] or "[]"),
+            "sample_hours":          row["sample_hours"],
+            "updated_at":            row["updated_at"],
+        }
 
     def get_correlated_events(
         self,

@@ -871,11 +871,11 @@ class TestSigmaExecutorPipeline:
             import pytest
             pytest.skip("SSH korelasyon kuralı bulunamadı")
 
-        base_time = datetime(2026, 5, 7, 10, 0, 0, tzinfo=timezone.utc)
+        base_time = datetime.now(timezone.utc) - timedelta(minutes=4)
         for i in range(6):
             pipeline_db.save_normalized_log(
                 _norm_log("ssh_failure", "9.9.9.9",
-                          timestamp=base_time + timedelta(minutes=i)),
+                          timestamp=base_time + timedelta(seconds=i * 30)),
                 tenant_id="default",
             )
 

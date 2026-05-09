@@ -17,7 +17,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from server.influx_writer import influx_writer
-from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance, anomaly as anomaly_route, tenants, metrics as metrics_route, attack_chains as attack_chains_route
+from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance, anomaly as anomaly_route, tenants, metrics as metrics_route, attack_chains as attack_chains_route, assets as assets_route
 from shared.protocol import API_VERSION
 
 SECURITY_SCAN_INTERVAL  = int(os.getenv("SECURITY_SCAN_INTERVAL", "60"))    # saniye
@@ -26,7 +26,9 @@ CORRELATION_INTERVAL    = int(os.getenv("NETGUARD_CORR_INTERVAL", "60"))    # sa
 DETECTOR_INTERVAL       = int(os.getenv("NETGUARD_DETECTOR_INTERVAL", "30")) # saniye
 SNMP_POLL_INTERVAL      = int(os.getenv("NETGUARD_SNMP_INTERVAL", "60"))    # saniye
 UPTIME_CHECK_INTERVAL   = int(os.getenv("NETGUARD_UPTIME_INTERVAL", "60"))  # saniye
-PURGE_INTERVAL          = 300  # saniye (5 dakika)
+PURGE_INTERVAL                  = 300    # saniye (5 dakika)
+ASSET_BASELINE_UPDATE_INTERVAL  = 21600  # saniye (6 saat)
+ASSET_DEVIATION_CHECK_INTERVAL  = 300    # saniye (5 dakika)
 
 
 async def _detector_loop():
@@ -162,6 +164,31 @@ async def _purge_loop():
             logger.error(f"Attack chain purge hatası: {exc}")
 
 
+async def _asset_baseline_update_loop():
+    """Her 6 saatte bir asset baseline profillerini yeniden hesapla."""
+    from server.asset_baseline import update_baselines
+    while True:
+        await asyncio.sleep(ASSET_BASELINE_UPDATE_INTERVAL)
+        try:
+            count = await asyncio.to_thread(update_baselines)
+            logger.info(f"Asset baseline güncellendi: {count} IP")
+        except Exception as exc:
+            logger.error(f"Asset baseline güncelleme hatası: {exc}")
+
+
+async def _asset_deviation_loop():
+    """Her 5 dakikada bir asset davranışını baseline ile karşılaştır."""
+    from server.asset_baseline import check_deviations
+    while True:
+        await asyncio.sleep(ASSET_DEVIATION_CHECK_INTERVAL)
+        try:
+            detected = await asyncio.to_thread(check_deviations)
+            if detected:
+                logger.warning(f"Asset sapma: {detected} anomali normalized_logs'a yazıldı")
+        except Exception as exc:
+            logger.error(f"Asset sapma kontrolü hatası: {exc}")
+
+
 load_dotenv()
 
 logging.basicConfig(
@@ -205,6 +232,12 @@ async def lifespan(app: FastAPI):
     logger.info("Log retention görevi başlatıldı (her gece 02:00 UTC)")
     purge_task = asyncio.create_task(_purge_loop())
     logger.info(f"Attack chain purge döngüsü başlatıldı (her {PURGE_INTERVAL}s)")
+    from server.asset_baseline import update_baselines as _update_baselines
+    await asyncio.to_thread(_update_baselines)
+    logger.info("Asset baseline ilk hesaplama tamamlandı")
+    asset_baseline_task  = asyncio.create_task(_asset_baseline_update_loop())
+    asset_deviation_task = asyncio.create_task(_asset_deviation_loop())
+    logger.info(f"Asset baseline döngüsü başlatıldı (güncelleme: {ASSET_BASELINE_UPDATE_INTERVAL}s, sapma: {ASSET_DEVIATION_CHECK_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -229,6 +262,8 @@ async def lifespan(app: FastAPI):
     uptime_task.cancel()
     retention_task.cancel()
     purge_task.cancel()
+    asset_baseline_task.cancel()
+    asset_deviation_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()
@@ -307,6 +342,7 @@ app.include_router(anomaly_route.router, prefix=api_prefix, tags=["anomaly"])
 app.include_router(tenants.router,       prefix=api_prefix, tags=["tenants"])
 app.include_router(metrics_route.router,       prefix=api_prefix, tags=["metrics"])
 app.include_router(attack_chains_route.router, prefix=api_prefix, tags=["attack-chains"])
+app.include_router(assets_route.router,        prefix=api_prefix, tags=["assets"])
 app.include_router(ws.router, tags=["websocket"])
 
 
