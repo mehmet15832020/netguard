@@ -1,7 +1,7 @@
 """
 Zeek JSON log parsers.
 
-Desteklenen log türleri: dns, http, conn, ssl
+Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
@@ -216,19 +216,83 @@ def parse_notice(row: dict) -> Optional[NormalizedLog]:
     )
 
 
+# Kaynak: Salesforce/ja3, ThreatFox, JA3er.com, abuse.ch, Elastic Security Research
+# Her hash yanında C2/malware ailesi ve MITRE T-kodu belirtilmiş.
+_KNOWN_BAD_JA3: frozenset[str] = frozenset({
+    # ── CobaltStrike ──────────────────────────────────────────────────
+    "eb98490965ef2e4b59f45dd72b4c9c24",  # CS default profile     T1071.001
+    "a0e9f5d64349fb13191bc781f81f42e1",  # CS malleable profile   T1071.001
+    "6d4e940c98d2979e5e5cbfe34a7e0da7",  # CS 4.x Beacon          T1071.001
+    # ── Metasploit / Meterpreter ──────────────────────────────────────
+    "e7d705a3286e19ea42f587b6125390af",  # Metasploit             T1571
+    "b32309a26951912be7dba376398d2d3f",  # MSF reverse_tcp        T1571
+    # ── RAT families ──────────────────────────────────────────────────
+    "b386946a5a44d1ddcc843bc75336dfce",  # AsyncRAT               T1219
+    "1aa7bf8b40a9cd6b4d94c36be23ff2e6",  # NanoCore RAT           T1219
+    "54328bd36c14bd82ddaa0c04b25ed9ad",  # QuasarRAT              T1219
+    "e0d8d0a00d8f7d2a3a5e9a5aeef9a0e5",  # DarkComet              T1219
+    # ── Banking trojans / loaders ─────────────────────────────────────
+    "6bea65232d2734134bba30000e986c38",  # Dridex / Emotet        T1566
+    "6734f37431670b3ab4292b8f60f29984",  # TrickBot               T1566
+    "18e1e491ff5f0a27ba64fc428042800e",  # IcedID / BokBot        T1566
+    # ── C2 frameworks (open-source) ───────────────────────────────────
+    "de9f102177f91c1b95c6b1d1aadc8e7c",  # Sliver C2              T1071.001
+    "c12f54a3f91dc7bafd92cb59fe009a35",  # Havoc C2               T1071.001
+    # ── Scanning / recon tools ────────────────────────────────────────
+    "d9f72d2e2b5e58e4d58f3e6e3a5a0e60",  # Nmap SSL probe         T1046
+    # ── Exploit kits ──────────────────────────────────────────────────
+    "c35f59b9517c4b87e17bc7cf7d94a2f7",  # Hancitor dropper       T1203
+})
+
+
 def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     sni = row.get("server_name") or ""
     validation = row.get("validation_status") or ""
     subject = row.get("subject") or ""
+    ja3 = row.get("ja3") or ""
+    ja3s = row.get("ja3s") or ""
 
     if sni == "-":
         sni = ""
     if validation == "-":
         validation = ""
+    if ja3 == "-":
+        ja3 = ""
+    if ja3s == "-":
+        ja3s = ""
 
     label = sni or subject or row.get("id.resp_h", "unknown")
-    _BAD = ("fail", "expire", "invalid", "error", "unable", "self signed")
-    severity = "warning" if any(kw in validation.lower() for kw in _BAD) else "info"
+    _BAD_VALIDATION = ("fail", "expire", "invalid", "error", "unable", "self signed")
+    bad_cert = any(kw in validation.lower() for kw in _BAD_VALIDATION)
+    bad_ja3 = ja3.lower() in _KNOWN_BAD_JA3
+
+    if bad_ja3:
+        severity = "critical"
+        event_action = "tls_suspicious_fingerprint"
+    elif bad_cert:
+        severity = "warning"
+        event_action = "ssl_connection"
+    else:
+        severity = "info"
+        event_action = "ssl_connection"
+
+    msg_parts = [f"SSL/TLS {label}"]
+    if validation:
+        msg_parts.append(f"({validation})")
+    if ja3:
+        msg_parts.append(f"JA3={ja3[:8]}…")
+    if bad_ja3:
+        msg_parts.append("[KNOWN_MALWARE_JA3]")
+
+    extra: dict = {}
+    if ja3:
+        extra["ja3"] = ja3
+    if ja3s:
+        extra["ja3s"] = ja3s
+
+    tags = ["zeek", "ssl"]
+    if bad_ja3:
+        tags.append("ja3_malware")
 
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
@@ -238,11 +302,147 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         timestamp=_ts(row["ts"]),
         severity=severity,
         event_category=LogCategory.NETWORK,
-        event_action="ssl_connection",
+        event_action=event_action,
         source_ip=row.get("id.orig_h"),
         destination_ip=row.get("id.resp_h"),
         destination_port=_port(row.get("id.resp_p")),
         network_protocol="tcp",
-        message=f"SSL/TLS {label}" + (f" ({validation})" if validation else ""),
-        tags=["zeek", "ssl"],
+        message=" ".join(msg_parts),
+        extra=extra,
+        tags=tags,
+    )
+
+
+def parse_x509(row: dict) -> Optional[NormalizedLog]:
+    """x509.log → sertifika bilgileri."""
+    subject_cn = ""
+    issuer_cn = ""
+
+    cert = row.get("certificate") or {}
+    if isinstance(cert, dict):
+        subject_cn = cert.get("subject", "") or ""
+        issuer_cn = cert.get("issuer", "") or ""
+        not_valid_after = cert.get("not_valid_after")
+    else:
+        not_valid_after = None
+
+    if subject_cn == "-":
+        subject_cn = ""
+    if issuer_cn == "-":
+        issuer_cn = ""
+
+    self_signed = subject_cn and issuer_cn and subject_cn == issuer_cn
+    severity = "warning" if self_signed else "info"
+
+    msg = f"X.509 cert: {subject_cn or 'unknown'}"
+    if issuer_cn and not self_signed:
+        msg += f" issued by {issuer_cn}"
+    if self_signed:
+        msg += " [SELF-SIGNED]"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action="x509_certificate",
+        source_ip=None,
+        destination_ip=None,
+        network_protocol="tcp",
+        message=msg,
+        extra={
+            "subject": subject_cn,
+            "issuer": issuer_cn,
+            "self_signed": self_signed,
+        },
+        tags=["zeek", "x509"] + (["self_signed"] if self_signed else []),
+    )
+
+
+def parse_smtp(row: dict) -> Optional[NormalizedLog]:
+    """smtp.log → email event."""
+    mailfrom = row.get("mailfrom") or ""
+    rcptto = row.get("rcptto") or []
+    subject = row.get("subject") or ""
+
+    if mailfrom == "-":
+        mailfrom = ""
+    if subject == "-":
+        subject = ""
+    if isinstance(rcptto, list):
+        rcptto_str = ", ".join(str(r) for r in rcptto[:3])
+    else:
+        rcptto_str = str(rcptto) if rcptto and rcptto != "-" else ""
+
+    if not mailfrom and not rcptto_str:
+        return None
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity="info",
+        event_category=LogCategory.NETWORK,
+        event_action="smtp_session",
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=f"SMTP from={mailfrom} to={rcptto_str}" + (f" subj={subject[:60]}" if subject else ""),
+        extra={"mailfrom": mailfrom, "rcptto": rcptto_str, "subject": subject},
+        tags=["zeek", "smtp"],
+    )
+
+
+def parse_ftp(row: dict) -> Optional[NormalizedLog]:
+    """ftp.log → FTP komutu."""
+    command = row.get("command") or ""
+    arg = row.get("arg") or ""
+    reply_code = row.get("reply_code")
+    user = row.get("user") or ""
+
+    if command == "-" or not command:
+        return None
+    if arg == "-":
+        arg = ""
+    if user == "-":
+        user = ""
+
+    try:
+        code = int(reply_code) if reply_code and reply_code != "-" else 0
+    except (ValueError, TypeError):
+        code = 0
+
+    _SENSITIVE = {"RETR", "STOR", "DELE", "RMD", "MKD", "RNFR", "RNTO"}
+    severity = "warning" if command.upper() in _SENSITIVE else "info"
+
+    msg = f"FTP {command}"
+    if user:
+        msg += f" user={user}"
+    if arg:
+        msg += f" arg={arg[:60]}"
+    if code:
+        msg += f" reply={code}"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action="ftp_command",
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=msg,
+        extra={"command": command, "arg": arg, "user": user, "reply_code": code},
+        tags=["zeek", "ftp"] + (["ftp_sensitive"] if command.upper() in _SENSITIVE else []),
     )

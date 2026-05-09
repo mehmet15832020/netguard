@@ -6,7 +6,10 @@ from datetime import timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from server.parsers.zeek import parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice
+from server.parsers.zeek import (
+    parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
+    parse_x509, parse_smtp, parse_ftp, _KNOWN_BAD_JA3,
+)
 
 
 # ── Parser testleri ────────────────────────────────────────────────────────────
@@ -190,6 +193,158 @@ class TestParseSsl:
         log = parse_ssl(self._row())
         assert "zeek" in log.tags
         assert "ssl" in log.tags
+
+    def test_ja3_stored_in_extra(self):
+        ja3 = "a0e9f5d64349fb13191bc781f81f42e1"
+        log = parse_ssl(self._row(ja3=ja3, ja3s="some_hash"))
+        assert log is not None
+        assert log.extra.get("ja3") == ja3
+        assert log.extra.get("ja3s") == "some_hash"
+
+    def test_known_bad_ja3_critical(self):
+        bad_ja3 = next(iter(_KNOWN_BAD_JA3))
+        log = parse_ssl(self._row(ja3=bad_ja3))
+        assert log.severity == "critical"
+        assert log.event_action == "tls_suspicious_fingerprint"
+        assert "ja3_malware" in log.tags
+        assert "KNOWN_MALWARE_JA3" in log.message
+
+    def test_unknown_ja3_info(self):
+        log = parse_ssl(self._row(ja3="aabbccddeeff00112233445566778899"))
+        assert log.severity == "info"
+        assert log.event_action == "ssl_connection"
+
+    def test_dash_ja3_ignored(self):
+        log = parse_ssl(self._row(ja3="-", ja3s="-"))
+        assert log is not None
+        assert log.extra == {}
+
+    def test_ja3_abbreviated_in_message(self):
+        log = parse_ssl(self._row(ja3="aabbccdd11223344aabbccdd11223344"))
+        assert "JA3=aabbccdd" in log.message
+
+
+class TestParseX509:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "certificate": {
+                "subject": "CN=example.com,O=Example Corp",
+                "issuer": "CN=Let's Encrypt Authority X3,O=Let's Encrypt",
+                "not_valid_after": 1800000000.0,
+            },
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_x509(self._row())
+        assert log is not None
+        assert log.event_action == "x509_certificate"
+        assert "example.com" in log.message
+
+    def test_self_signed_warning(self):
+        same_cn = "CN=evil.com"
+        log = parse_x509(self._row(certificate={"subject": same_cn, "issuer": same_cn}))
+        assert log.severity == "warning"
+        assert "SELF-SIGNED" in log.message
+        assert "self_signed" in log.tags
+
+    def test_trusted_cert_info(self):
+        log = parse_x509(self._row())
+        assert log.severity == "info"
+        assert "self_signed" not in log.tags
+
+    def test_extra_contains_subject_issuer(self):
+        log = parse_x509(self._row())
+        assert "subject" in log.extra
+        assert "issuer" in log.extra
+        assert log.extra["self_signed"] is False
+
+
+class TestParseSmtp:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id.orig_h": "192.168.1.10",
+            "id.resp_h": "10.0.0.5",
+            "id.resp_p": 25,
+            "mailfrom": "user@example.com",
+            "rcptto": ["admin@target.com"],
+            "subject": "Invoice attached",
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_smtp(self._row())
+        assert log is not None
+        assert log.event_action == "smtp_session"
+        assert "user@example.com" in log.message
+
+    def test_no_mailfrom_and_rcptto_returns_none(self):
+        assert parse_smtp(self._row(mailfrom="-", rcptto=[])) is None
+
+    def test_subject_truncated(self):
+        log = parse_smtp(self._row(subject="A" * 100))
+        assert len(log.message) < 300
+
+    def test_destination_port(self):
+        log = parse_smtp(self._row())
+        assert log.destination_port == 25
+
+    def test_tags(self):
+        log = parse_smtp(self._row())
+        assert "zeek" in log.tags
+        assert "smtp" in log.tags
+
+
+class TestParseFtp:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id.orig_h": "192.168.1.10",
+            "id.resp_h": "10.0.10.2",
+            "id.resp_p": 21,
+            "command": "RETR",
+            "arg": "secret.txt",
+            "reply_code": 226,
+            "user": "attacker",
+        }
+        base.update(kw)
+        return base
+
+    def test_sensitive_command_warning(self):
+        for cmd in ["RETR", "STOR", "DELE"]:
+            log = parse_ftp(self._row(command=cmd))
+            assert log is not None
+            assert log.severity == "warning"
+            assert "ftp_sensitive" in log.tags
+
+    def test_non_sensitive_info(self):
+        log = parse_ftp(self._row(command="LIST"))
+        assert log.severity == "info"
+        assert "ftp_sensitive" not in log.tags
+
+    def test_empty_command_returns_none(self):
+        assert parse_ftp(self._row(command="")) is None
+        assert parse_ftp(self._row(command="-")) is None
+
+    def test_message_contains_user_and_arg(self):
+        log = parse_ftp(self._row())
+        assert "RETR" in log.message
+        assert "attacker" in log.message
+        assert "secret.txt" in log.message
+
+    def test_extra_fields(self):
+        log = parse_ftp(self._row())
+        assert log.extra["command"] == "RETR"
+        assert log.extra["user"] == "attacker"
+
+    def test_tags(self):
+        log = parse_ftp(self._row())
+        assert "zeek" in log.tags
+        assert "ftp" in log.tags
 
 
 class TestParseSsh:

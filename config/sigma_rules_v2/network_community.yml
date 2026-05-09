@@ -1,0 +1,320 @@
+title: DNS Tunneling Detection (Base)
+name: ng_dns_tunnel_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: dns_query
+        message|contains:
+            - "txt "
+            - " TXT "
+    condition: selection
+level: low
+---
+title: DNS Tunneling — High TXT Query Rate
+id: 1a2b3c4d-5e6f-7a8b-9c0d-1e2f3a4b5c6e
+correlation:
+    type: event_count
+    rules: ng_dns_tunnel_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 20
+level: high
+tags:
+    - attack.exfiltration
+    - attack.t1048.003
+---
+title: ICMP Flood Detection (Base)
+name: ng_icmp_flood_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: icmp_flood
+    condition: selection
+level: low
+---
+title: ICMP Flood
+id: 2b3c4d5e-6f7a-8b9c-0d1e-2f3a4b5c6d7e
+correlation:
+    type: event_count
+    rules: ng_icmp_flood_base
+    group-by:
+        - source_ip
+    timespan: 1m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.impact
+    - attack.t1498
+---
+title: Suspicious FTP File Transfer (Base)
+name: ng_ftp_sensitive_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: ftp_command
+        message|contains:
+            - "ftp_sensitive"
+            - "RETR"
+            - "STOR"
+    condition: selection
+level: low
+---
+title: FTP Exfiltration Burst
+id: 3c4d5e6f-7a8b-9c0d-1e2f-3a4b5c6d7e8f
+correlation:
+    type: event_count
+    rules: ng_ftp_sensitive_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 10
+level: high
+tags:
+    - attack.exfiltration
+    - attack.t1048
+---
+title: Anomaly Spike (Base)
+name: ng_anomaly_spike_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: anomaly_detected
+    condition: selection
+level: low
+---
+title: Anomaly Cluster — Multiple Sources
+id: 4d5e6f7a-8b9c-0d1e-2f3a-4b5c6d7e8f9a
+correlation:
+    type: event_count
+    rules: ng_anomaly_spike_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.discovery
+    - attack.t1046
+---
+title: ARP Spoofing Detection (Base)
+name: ng_arp_spoof_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: arp_spoof
+    condition: selection
+level: low
+---
+title: ARP Spoofing Burst
+id: 5e6f7a8b-9c0d-1e2f-3a4b-5c6d7e8f9a0b
+correlation:
+    type: event_count
+    rules: ng_arp_spoof_base
+    group-by:
+        - source_ip
+    timespan: 2m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.credential_access
+    - attack.t1557.002
+---
+title: Lateral Movement Detection (Base)
+name: ng_lateral_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: lateral_movement
+    condition: selection
+level: low
+---
+title: Lateral Movement Spread
+id: 6f7a8b9c-0d1e-2f3a-4b5c-6d7e8f9a0b1c
+correlation:
+    type: event_count
+    rules: ng_lateral_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.lateral_movement
+    - attack.t1021
+---
+title: Multi-Source Attack Detected (Base)
+name: ng_multi_source_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: multi_source_attack_detected
+    condition: selection
+level: low
+---
+title: Coordinated Multi-Source Attack
+id: 7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d
+correlation:
+    type: event_count
+    rules: ng_multi_source_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 2
+level: critical
+tags:
+    - attack.reconnaissance
+    - attack.t1595
+---
+title: Network Connection Flood (Base)
+name: ng_net_flood_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: network_connection
+    condition: selection
+level: low
+---
+title: Network Connection Flood
+id: 8b9c0d1e-2f3a-4b5c-6d7e-8f9a0b1c2d3e
+correlation:
+    type: event_count
+    rules: ng_net_flood_base
+    group-by:
+        - source_ip
+    timespan: 1m
+    condition:
+        gte: 200
+level: high
+tags:
+    - attack.impact
+    - attack.t1499
+---
+title: Web Auth Brute Force (Base)
+name: ng_web_auth_brute_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: web_auth_fail
+    condition: selection
+level: low
+---
+title: Web Auth Brute Force
+id: 9c0d1e2f-3a4b-5c6d-7e8f-9a0b1c2d3e4f
+correlation:
+    type: event_count
+    rules: ng_web_auth_brute_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 10
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110.001
+---
+title: Port Scan Detected (Base)
+name: ng_port_scan_comm_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action:
+            - port_scan_attempt
+            - port_scan_detected
+    condition: selection
+level: low
+---
+title: Repeated Port Scan Attempts
+id: 0d1e2f3a-4b5c-6d7e-8f9a-0b1c2d3e4f5a
+correlation:
+    type: event_count
+    rules: ng_port_scan_comm_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.reconnaissance
+    - attack.t1046
+---
+title: SMTP Bulk Send (Base)
+name: ng_smtp_bulk_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: smtp_session
+    condition: selection
+level: low
+---
+title: SMTP Bulk Send — Possible Spam/Exfil
+id: 1e2f3a4b-5c6d-7e8f-9a0b-1c2d3e4f5a6b
+correlation:
+    type: event_count
+    rules: ng_smtp_bulk_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 20
+level: high
+tags:
+    - attack.exfiltration
+    - attack.t1048
+---
+title: Sudo Abuse (Base)
+name: ng_sudo_abuse_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: sudo_usage
+    condition: selection
+level: low
+---
+title: Sudo Command Abuse
+id: 2f3a4b5c-6d7e-8f9a-0b1c-2d3e4f5a6b7c
+correlation:
+    type: event_count
+    rules: ng_sudo_abuse_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.privilege_escalation
+    - attack.t1548.003

@@ -1,3 +1,46 @@
+title: TLS Suspicious JA3 Fingerprint
+id: 9f1a2b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: tls_suspicious_fingerprint
+    condition: selection
+level: critical
+tags:
+    - attack.command_and_control
+    - attack.t1573.002
+---
+title: SSL Self-Signed Certificate (Base)
+name: ng_ssl_self_signed_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: ssl_connection
+        message|contains:
+            - "SELF-SIGNED"
+            - "self signed"
+    condition: selection
+level: low
+---
+title: SSL Self-Signed Certificate Burst
+id: 0a1b2c3d-4e5f-6a7b-8c9d-0e1f2a3b4c5d
+correlation:
+    type: event_count
+    rules: ng_ssl_self_signed_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1573
+---
 title: SSL Certificate Invalid
 id: f5a9d0e1-2b3c-4d5e-6f7a-8b9c0d1e2f3a
 status: stable

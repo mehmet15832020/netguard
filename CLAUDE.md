@@ -5,6 +5,24 @@ Her yeni özellik veya değişiklikten sonra bu dosya güncellenmeli.
 
 ---
 
+## Kalite İlkesi — Derinlik ve Test (Değiştirme)
+
+**Hiçbir şey yüzeysel yapılmaz.** Her implementasyon:
+1. **Güvenilir kaynaklardan** araştırılmış verilerle desteklenmeli (Salesforce/ja3, SigmaHQ, CISA, MITRE ATT&CK, RFC)
+2. **Üç seviye test** yazılmalı: birim (unit) + çapraz (cross-cutting) + entegrasyon (integration)
+3. **Gerçek saldırı senaryolarına** göre tasarlanmalı — toy examples değil gerçek IoC'ler
+
+**Test piramidi (tüm yeni modüller için zorunlu):**
+```
+[Entegrasyon]  collect→normalize→detect→alert tam pipeline
+[Çapraz]       iki modül arası etkileşim (parser→sigma→kill chain)
+[Birim]        tek fonksiyon izole davranışı
+```
+
+**Araştırma standardı:** JA3 → Salesforce/ja3 + ThreatFox | Sigma → SigmaHQ/sigma + Elastic | IoC → VirusTotal + MalwareBazaar
+
+---
+
 ## Temel İlke — Her Adımda Ön Planda Tut (Değiştirme)
 
 **NetGuard bir hikayesi olan üründür. Her kod değişikliği bu hikayeye hizmet etmeli.**
