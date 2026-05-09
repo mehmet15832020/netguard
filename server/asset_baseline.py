@@ -10,12 +10,22 @@ Sapma kontrolü: Her ~5 dakikada bir (_baseline_deviation_loop)
 """
 
 import logging
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 
 from server.database import db
 
 logger = logging.getLogger(__name__)
+
+_IS_PG = bool(os.getenv("DATABASE_URL"))
+_PH    = "%s" if _IS_PG else "?"
+# strftime → PostgreSQL date_trunc
+_DISTINCT_HOUR_EXPR = (
+    "COUNT(DISTINCT date_trunc('hour', timestamp))"
+    if _IS_PG else
+    "COUNT(DISTINCT strftime('%Y-%m-%dT%H', timestamp))"
+)
 
 BASELINE_WINDOW_DAYS    = 7     # Kaç günlük geçmişten profil hesaplanır
 DEVIATION_WINDOW_HOURS  = 1     # Kaç saatlik mevcut pencere (sapma tespiti)
@@ -32,25 +42,26 @@ def update_baselines(tenant_id: str = "default") -> int:
     için profil hesaplar, asset_baselines tablosuna yazar.
     Döner: güncellenen asset sayısı.
     """
-    since = (datetime.now(timezone.utc) - timedelta(days=BASELINE_WINDOW_DAYS)).isoformat()
+    since_dt  = datetime.now(timezone.utc) - timedelta(days=BASELINE_WINDOW_DAYS)
+    since_param = since_dt if _IS_PG else since_dt.isoformat()
 
     with db._connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT
                 source_ip,
                 COUNT(*) AS total_events,
-                COUNT(DISTINCT strftime('%Y-%m-%dT%H', timestamp)) AS distinct_hours,
+                {_DISTINCT_HOUR_EXPR} AS distinct_hours,
                 MIN(timestamp) AS first_seen,
                 MAX(timestamp) AS last_seen
             FROM normalized_logs
             WHERE source_ip IS NOT NULL
-              AND timestamp >= ?
-              AND tenant_id = ?
+              AND timestamp >= {_PH}
+              AND tenant_id = {_PH}
             GROUP BY source_ip
-            HAVING total_events >= ?
+            HAVING COUNT(*) >= {_PH}
             """,
-            (since, tenant_id, MIN_EVENTS_FOR_BASELINE),
+            (since_param, tenant_id, MIN_EVENTS_FOR_BASELINE),
         ).fetchall()
 
     updated = 0
@@ -60,9 +71,9 @@ def update_baselines(tenant_id: str = "default") -> int:
         hours    = max(row["distinct_hours"], 1)
         avg_ph   = round(total / hours, 2)
 
-        ports   = _top_values(ip, "destination_port", since, tenant_id)
-        dests   = _top_values(ip, "destination_ip",   since, tenant_id)
-        actions = _top_values(ip, "event_action",     since, tenant_id)
+        ports   = _top_values(ip, "destination_port", since_param, tenant_id)
+        dests   = _top_values(ip, "destination_ip",   since_param, tenant_id)
+        actions = _top_values(ip, "event_action",     since_param, tenant_id)
 
         db.upsert_asset_baseline(
             source_ip            = ip,
@@ -81,7 +92,7 @@ def update_baselines(tenant_id: str = "default") -> int:
     return updated
 
 
-def _top_values(source_ip: str, column: str, since: str, tenant_id: str) -> list[str]:
+def _top_values(source_ip: str, column: str, since_param, tenant_id: str) -> list[str]:
     """Bir kolondaki en sık TOP_N değeri döner. Whitelist ile SQL injection yok."""
     if column not in _VALID_COLUMNS:
         return []
@@ -90,15 +101,15 @@ def _top_values(source_ip: str, column: str, since: str, tenant_id: str) -> list
             f"""
             SELECT {column} AS val, COUNT(*) AS cnt
             FROM normalized_logs
-            WHERE source_ip = ?
+            WHERE source_ip = {_PH}
               AND {column} IS NOT NULL
-              AND timestamp >= ?
-              AND tenant_id = ?
+              AND timestamp >= {_PH}
+              AND tenant_id = {_PH}
             GROUP BY {column}
             ORDER BY cnt DESC
             LIMIT {TOP_N}
             """,
-            (source_ip, since, tenant_id),
+            (source_ip, since_param, tenant_id),
         ).fetchall()
     return [str(r["val"]) for r in rows]
 
@@ -114,18 +125,19 @@ def check_deviations(tenant_id: str = "default") -> int:
     if not baselines:
         return 0
 
-    since = (datetime.now(timezone.utc) - timedelta(hours=DEVIATION_WINDOW_HOURS)).isoformat()
+    since_dt    = datetime.now(timezone.utc) - timedelta(hours=DEVIATION_WINDOW_HOURS)
+    since_param = since_dt if _IS_PG else since_dt.isoformat()
     with db._connect() as conn:
         current_rows = conn.execute(
-            """
+            f"""
             SELECT source_ip, COUNT(*) AS event_count
             FROM normalized_logs
             WHERE source_ip IS NOT NULL
-              AND timestamp >= ?
-              AND tenant_id = ?
+              AND timestamp >= {_PH}
+              AND tenant_id = {_PH}
             GROUP BY source_ip
             """,
-            (since, tenant_id),
+            (since_param, tenant_id),
         ).fetchall()
 
     detected = 0

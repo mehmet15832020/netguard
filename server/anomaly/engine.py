@@ -9,7 +9,7 @@ from server.anomaly.collector import MetricsCollector
 from server.anomaly.detector import IsolationForestDetector, StatisticalDetector
 from server.anomaly.models import AnomalyResult, METRICS
 from server.anomaly.store import AnomalyResultStore
-from server.database import DatabaseManager
+from server.database import db as _netguard_db
 from shared.models import LogCategory, LogSourceType, NormalizedLog
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class AnomalyEngine:
         self._stat      = StatisticalDetector()
         self._ifd       = IsolationForestDetector()
         self._results   = AnomalyResultStore(db_path)
-        self._db        = DatabaseManager(db_path)
+        self._db        = _netguard_db   # PostgreSQL veya SQLite — DATABASE_URL'e göre
         self._cycle_count = 0
         self._task: asyncio.Task | None = None
 

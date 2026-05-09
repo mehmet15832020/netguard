@@ -37,6 +37,9 @@ from shared.models import CorrelatedEvent
 
 logger = logging.getLogger(__name__)
 
+_IS_PG = bool(os.getenv("DATABASE_URL"))
+_PH    = "%s" if _IS_PG else "?"
+
 
 def _ti_lookup_bg(ip: str) -> None:
     try:
@@ -298,11 +301,12 @@ class Correlator:
         kw_clause  = ""
         kw_params: list = []
         if rule.keywords:
-            parts = " OR ".join("message LIKE ?" for _ in rule.keywords)
+            parts = " OR ".join(f"message LIKE {_PH}" for _ in rule.keywords)
             kw_clause = f"AND ({parts})"
             for kw in rule.keywords:
                 kw_params += [f"%{kw}%"]
 
+        since_param = since if _IS_PG else since_iso
         with db._connect() as conn:
             rows = conn.execute(
                 f"""
@@ -310,17 +314,17 @@ class Correlator:
                        {count_expr} as cnt,
                        MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
                 FROM normalized_logs
-                WHERE event_action LIKE ?
-                  AND timestamp >= ?
-                  {"AND severity = ?" if rule.match_severity else ""}
+                WHERE event_action LIKE {_PH}
+                  AND timestamp >= {_PH}
+                  {"AND severity = " + _PH if rule.match_severity else ""}
                   AND {group_col} IS NOT NULL
                   {kw_clause}
                 GROUP BY {group_col}
-                HAVING cnt >= ?
+                HAVING cnt >= {_PH}
                 """,
                 (
                     f"{rule.match_event_action}%",
-                    since_iso,
+                    since_param,
                     *(([rule.match_severity]) if rule.match_severity else []),
                     *kw_params,
                     rule.threshold,

@@ -6,11 +6,17 @@ GET /api/v1/mitre/heatmap   → ATT&CK Navigator uyumlu layer JSON
 GET /api/v1/mitre/activity  → Son 24h/7d taktik bazlı alert aktivitesi
 """
 
+import os
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends
 from server.auth import User, get_current_user
 from server.correlator import correlator
 from server.database import db
 from server.mitre import get_coverage, get_heatmap, parse_mitre_tags
+
+_IS_PG = bool(os.getenv("DATABASE_URL"))
+_PH    = "%s" if _IS_PG else "?"
 
 router = APIRouter()
 
@@ -38,15 +44,17 @@ def mitre_heatmap(days: int = 30, _: User = Depends(get_current_user)):
     rules = correlator._rules
 
     # Son N gündeki kural bazlı alert sayıları
+    cutoff_n = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff_param = cutoff_n if _IS_PG else cutoff_n.isoformat()
     with db._connect() as conn:
         rows = conn.execute(
-            """
+            f"""
             SELECT rule_id, COUNT(*) as cnt
             FROM correlated_events
-            WHERE created_at >= datetime('now', ?)
+            WHERE created_at >= {_PH}
             GROUP BY rule_id
             """,
-            (f"-{days} days",),
+            (cutoff_param,),
         ).fetchall()
     recent_alerts = [{"rule_id": r["rule_id"], "count": r["cnt"]} for r in rows]
 
@@ -87,22 +95,29 @@ def mitre_activity(_: User = Depends(get_current_user)):
         if parsed["mitre_tactics"]:
             rule_tactic_map[rule.rule_id] = parsed["mitre_tactics"]
 
+    now = datetime.now(timezone.utc)
+    cutoff_24h = now - timedelta(days=1)
+    cutoff_7d  = now - timedelta(days=7)
+    p_24h = cutoff_24h if _IS_PG else cutoff_24h.isoformat()
+    p_7d  = cutoff_7d  if _IS_PG else cutoff_7d.isoformat()
     with db._connect() as conn:
         rows_24h = conn.execute(
-            """
+            f"""
             SELECT rule_id, COUNT(*) as cnt
             FROM correlated_events
-            WHERE created_at >= datetime('now', '-1 day')
+            WHERE created_at >= {_PH}
             GROUP BY rule_id
             """,
+            (p_24h,),
         ).fetchall()
         rows_7d = conn.execute(
-            """
+            f"""
             SELECT rule_id, COUNT(*) as cnt
             FROM correlated_events
-            WHERE created_at >= datetime('now', '-7 days')
+            WHERE created_at >= {_PH}
             GROUP BY rule_id
             """,
+            (p_7d,),
         ).fetchall()
 
     counts_24h = {r["rule_id"]: r["cnt"] for r in rows_24h}

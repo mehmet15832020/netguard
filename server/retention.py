@@ -16,6 +16,7 @@ Varsayılan süreler (env ile override edilebilir):
   NETGUARD_ARCHIVE_TOTAL_DAYS        = 365  (arşivden de sil, 1 yıl sonra)
 """
 
+import contextlib
 import gzip
 import json
 import logging
@@ -24,6 +25,12 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from server.database import db
+
+# Veritabanı adaptörü: PostgreSQL veya SQLite
+_IS_PG = bool(os.getenv("DATABASE_URL"))
+_PH    = "%s" if _IS_PG else "?"
+# PostgreSQL MVCC kendi izolasyonunu sağlar — SQLite'da _lock varsa kullan
+_LOCK  = getattr(db, "_lock", contextlib.nullcontext())
 
 logger = logging.getLogger(__name__)
 
@@ -98,13 +105,15 @@ def _cleanup_table(
     cutoff = datetime.now(timezone.utc) - timedelta(days=retain_days)
     cutoff_iso = cutoff.isoformat()
 
-    where = f"{timestamp_col} < ?"
+    where = f"{timestamp_col} < {_PH}"
     if extra_where:
         where += f" AND {extra_where}"
+    # PostgreSQL datetime nesnesi alır; SQLite ISO string ister (T ayracı ile)
+    param = cutoff if _IS_PG else cutoff.isoformat()
 
     with db._connect() as conn:
         rows = conn.execute(
-            f"SELECT * FROM {table} WHERE {where}", (cutoff_iso,)
+            f"SELECT * FROM {table} WHERE {where}", (param,)
         ).fetchall()
 
     if not rows:
@@ -114,10 +123,10 @@ def _cleanup_table(
     archive_file = _archive_rows(table, row_dicts, cutoff)
     logger.info(f"{table}: {len(row_dicts)} kayıt arşivlendi → {archive_file.name}")
 
-    with db._lock:
+    with _LOCK:
         with db._connect() as conn:
             cur = conn.execute(
-                f"DELETE FROM {table} WHERE {where}", (cutoff_iso,)
+                f"DELETE FROM {table} WHERE {where}", (param,)
             )
             deleted = cur.rowcount
 

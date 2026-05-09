@@ -13,7 +13,15 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE")
+    # TimescaleDB extension — vanilla PostgreSQL'de fail etmemesi için DO bloğu
+    op.execute("""
+    DO $$
+    BEGIN
+        CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END $$;
+    """)
 
     # ── Tenants ───────────────────────────────────────────────────────
     op.execute("""
@@ -167,15 +175,31 @@ def upgrade() -> None:
         )
     """)
 
-    # TimescaleDB hypertable aktivasyonu (TimescaleDB yoksa sessizce atla)
-    try:
-        op.execute("SELECT create_hypertable('normalized_logs', 'received_at', if_not_exists => TRUE)")
-        op.execute("""
-            SELECT add_compression_policy('normalized_logs',
-                INTERVAL '7 days', if_not_exists => TRUE)
-        """)
-    except Exception:
-        pass
+    # TimescaleDB hypertable — SQL seviyesinde exception handling, transaction güvenli
+    op.execute("""
+    DO $$
+    BEGIN
+        PERFORM create_hypertable('normalized_logs', 'received_at',
+            if_not_exists => TRUE, migrate_data => TRUE);
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END $$;
+    """)
+
+    # Compression policy — önce ALTER TABLE, sonra policy (SQL-level, transaction güvenli)
+    op.execute("""
+    DO $$
+    BEGIN
+        ALTER TABLE normalized_logs SET (
+            timescaledb.compress,
+            timescaledb.compress_segmentby = 'tenant_id'
+        );
+        PERFORM add_compression_policy('normalized_logs',
+            INTERVAL '7 days', if_not_exists => TRUE);
+    EXCEPTION WHEN OTHERS THEN
+        NULL;
+    END $$;
+    """)
 
     # ── Correlated Events ─────────────────────────────────────────────
     op.execute("""

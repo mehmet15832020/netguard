@@ -44,7 +44,7 @@ def db_status(_: User = Depends(require_admin)):
     with db._connect() as conn:
         for t in tables:
             try:
-                counts[t] = conn.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+                counts[t] = conn.execute(f"SELECT COUNT(*) AS cnt FROM {t}").fetchone()["cnt"]
             except Exception:
                 counts[t] = -1
 
