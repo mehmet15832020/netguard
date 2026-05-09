@@ -87,6 +87,7 @@ def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSumma
         )
 
         try:
+            from server.correlator import correlator as _correlator
             for source_ip in summary.top_src_ips[:3]:
                 trigger = attack_chain_tracker.record(
                     source_ip=source_ip,
@@ -94,7 +95,8 @@ def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSumma
                     occurred_at=summary.captured_at,
                 )
                 if trigger:
-                    chain_trigger_to_correlated_event(trigger, db_save=True)
+                    chain_event = chain_trigger_to_correlated_event(trigger, db_save=True)
+                    _correlator.dispatch_chain_event(chain_event)
                     logger.warning(f"Kill chain (traffic): {source_ip} — {trigger['chain_type']}")
         except Exception as exc:
             logger.debug(f"Kill chain feed hatası: {exc}")
@@ -168,6 +170,7 @@ def receive_security_events(
             if ev.source_ip:
                 try:
                     from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
+                    from server.correlator import correlator as _correlator
                     trigger = attack_chain_tracker.record(
                         source_ip=ev.source_ip,
                         event_action=ev.event_action,
@@ -175,6 +178,7 @@ def receive_security_events(
                     )
                     if trigger:
                         chain_event = chain_trigger_to_correlated_event(trigger, db_save=True)
+                        _correlator.dispatch_chain_event(chain_event)
                         logger.warning(f"SALDIRI ZİNCİRİ (agent): {ev.source_ip} — {trigger['chain_type']}")
                 except Exception:
                     pass

@@ -480,6 +480,14 @@ class Correlator:
         except Exception as exc:
             logger.error(f"Attack chain kontrol hatası: {exc}")
 
+    def dispatch_chain_event(self, chain_event: CorrelatedEvent) -> None:
+        """
+        Kill chain trigger'ından üretilen event'i tam pipeline'dan geçirir.
+        correlator dışından (agents.py gibi) çağrılabilir — tek dispatch noktası.
+        """
+        self._create_alert(chain_event)
+        self._create_incident_from_corr(chain_event)
+
     def _is_fp_suppressed(self, event: CorrelatedEvent, tenant_id: str = "default") -> bool:
         """FP kuralı eşleşirse True döner ve hit_count arttırır."""
         source_ip = event.group_value if event.group_by_field == "source_ip" else None

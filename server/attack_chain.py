@@ -35,7 +35,7 @@ PARTIAL_THRESHOLD = 2     # uyarı eşiği
 FULL_THRESHOLD    = 3     # kritik eşiği
 
 STAGE_MAP: dict[str, str] = {
-    # event_action prefix → stage adı
+    # event_action → stage adı
     # Raw log event types
     "port_scan":                 "recon",
     "dns_anomaly":               "recon",
@@ -45,7 +45,7 @@ STAGE_MAP: dict[str, str] = {
     "brute_force":               "weaponize",
     "ssh_success":               "access",
     "windows_logon_success":     "access",
-    "windows_lateral_movement":  "access",
+    "windows_lateral_movement":  "lateral",   # MITRE ATT&CK: Lateral Movement taktiği (T1550/T1569)
     "windows_process_create":    "execute",
     "sudo_abuse":                "execute",
     "lateral_movement":          "lateral",
@@ -62,6 +62,12 @@ STAGE_MAP: dict[str, str] = {
     "multi_source_attack_detected":  "recon",
 }
 
+# Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.
+# Endüstri standardı: routing table longest-match, Suricata rule priority aynı prensibi kullanır.
+_STAGE_MAP_BY_LEN: list[tuple[str, str]] = sorted(
+    STAGE_MAP.items(), key=lambda x: len(x[0]), reverse=True
+)
+
 STAGE_LABELS = {
     "recon":      "Keşif",
     "weaponize":  "Erişim Denemeleri",
@@ -72,7 +78,12 @@ STAGE_LABELS = {
 
 
 def _resolve_stage(event_action: str) -> Optional[str]:
-    for prefix, stage in STAGE_MAP.items():
+    # Exact match önce — en kesin eşleşme
+    if event_action in STAGE_MAP:
+        return STAGE_MAP[event_action]
+    # Prefix fallback — raw event_action'lar için (örn. "port_scan_attempt" → "port_scan")
+    # Uzun prefix kısa prefix'e göre önceliklidir (longest-match)
+    for prefix, stage in _STAGE_MAP_BY_LEN:
         if event_action.startswith(prefix):
             return stage
     return None
