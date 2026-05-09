@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from server.sigma_executor import SigmaExecutor, SigmaExecutableRule, _inject_time_window
+from server.sigma_executor import SigmaExecutor, SigmaExecutableRule, _inject_time_window, _pg_ilike
 
 
 # ------------------------------------------------------------------ #
@@ -77,6 +77,36 @@ def test_executor_detection_rule_attributes(tmp_path: Path):
     for r in det_rules:
         assert "normalized_logs" in r.sql
         assert "datetime('now'" in r.sql
+
+
+# ------------------------------------------------------------------ #
+#  _pg_ilike
+# ------------------------------------------------------------------ #
+
+def test_pg_ilike_converts_like_to_ilike():
+    sql = "SELECT * FROM normalized_logs WHERE message LIKE '%union select%' ESCAPE '\\'"
+    result = _pg_ilike(sql)
+    assert "ILIKE" in result
+    assert "LIKE" not in result.replace("ILIKE", "")
+
+
+def test_pg_ilike_handles_multiple_likes():
+    sql = "WHERE event_action LIKE 'x' AND message LIKE '%y%'"
+    result = _pg_ilike(sql)
+    assert result.count("ILIKE") == 2
+    assert "LIKE" not in result.replace("ILIKE", "")
+
+
+def test_pg_ilike_preserves_having_and_subquery():
+    sql = (
+        "SELECT source_ip, COUNT(*) AS event_count "
+        "FROM (SELECT * FROM normalized_logs WHERE event_action LIKE 'ssh_failure') AS subquery "
+        "GROUP BY source_ip HAVING event_count >= 5"
+    )
+    result = _pg_ilike(sql)
+    assert "ILIKE" in result
+    assert "HAVING event_count >= 5" in result
+    assert "AS subquery" in result
 
 
 # ------------------------------------------------------------------ #

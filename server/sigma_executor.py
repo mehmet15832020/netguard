@@ -109,6 +109,14 @@ def _inject_time_window(sql: str, window_seconds: int) -> str:
     return sql
 
 
+def _pg_ilike(sql: str) -> str:
+    """
+    PostgreSQL'de LIKE case-sensitive olduğundan ILIKE'a çevirir.
+    Sadece _IS_PG=True olduğunda çağrılır; SQLite'ta dokunulmaz.
+    """
+    return sql.replace(" LIKE ", " ILIKE ")
+
+
 def _inject_min_max_ts(sql: str) -> str:
     """
     Korelasyon sorgusunun outer SELECT'ine MIN/MAX timestamp ekler.
@@ -227,7 +235,8 @@ class SigmaExecutor:
                 severity   = _LEVEL_TO_SEVERITY.get(level_name, "warning")
                 tags       = [str(t) for t in (cr.tags or [])]
                 rule_id    = str(cr.id) if cr.id else str(uuid.uuid4())
-                final_sql  = _inject_min_max_ts(_inject_time_window(sql_raw, win_sec))
+                _sql       = _inject_min_max_ts(_inject_time_window(sql_raw, win_sec))
+                final_sql  = _pg_ilike(_sql) if _IS_PG else _sql
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,
@@ -246,8 +255,8 @@ class SigmaExecutor:
                 severity   = _LEVEL_TO_SEVERITY.get(level_name, "warning")
                 tags       = [str(t) for t in (dr.tags or [])]
                 rule_id    = str(dr.id) if dr.id else str(uuid.uuid4())
-                # Basit detection kuralları için 60 saniyelik pencere (correlator döngüsü)
-                final_sql  = _inject_time_window(sql_raw, 60)
+                _sql       = _inject_time_window(sql_raw, 60)
+                final_sql  = _pg_ilike(_sql) if _IS_PG else _sql
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,
