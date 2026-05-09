@@ -320,7 +320,6 @@ class TestAnomalyEngine:
         assert engine._cycle_count == 1
 
     def test_cycle_writes_normalized_log_on_anomaly(self, tmp_db, monkeypatch):
-        import sqlite3
         engine = AnomalyEngine(tmp_db)
 
         snap = MetricSnapshot(
@@ -344,11 +343,19 @@ class TestAnomalyEngine:
         import server.notifier as notifier_module
         monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
 
+        saved_logs: list = []
+        import server.anomaly.engine as eng_module
+        monkeypatch.setattr(
+            eng_module._netguard_db,
+            "save_normalized_log",
+            lambda log, tenant_id="default": saved_logs.append(log),
+        )
+
         engine._cycle()
 
-        with sqlite3.connect(tmp_db) as conn:
-            row = conn.execute(
-                "SELECT event_action, source_ip FROM normalized_logs WHERE event_action='anomaly_detected'"
-            ).fetchone()
-        assert row is not None
-        assert row[1] == "1.2.3.4"
+        anomaly_log = next(
+            (l for l in saved_logs if getattr(l, "event_action", None) == "anomaly_detected"),
+            None,
+        )
+        assert anomaly_log is not None
+        assert anomaly_log.source_ip == "1.2.3.4"

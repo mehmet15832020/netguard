@@ -31,10 +31,14 @@ Kural formatı (YAML multi-doc):
 """
 
 import logging
+import os
 import re
 import uuid
 
 _SAFE_TENANT_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
+_IS_PG = bool(os.getenv("DATABASE_URL"))
+_PH    = "%s" if _IS_PG else "?"
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -83,7 +87,10 @@ def _inject_time_window(sql: str, window_seconds: int) -> str:
     Korelasyon sorgusu için:  subquery WHERE ... → WHERE ... AND timestamp >= ...
     Basit detection sorgusu için: WHERE ... → WHERE ... AND timestamp >= ...
     """
-    time_filter = f" AND timestamp >= datetime('now', '-{window_seconds} seconds')"
+    if _IS_PG:
+        time_filter = f" AND timestamp >= NOW() - INTERVAL '{window_seconds} seconds'"
+    else:
+        time_filter = f" AND timestamp >= datetime('now', '-{window_seconds} seconds')"
 
     # Korelasyon sorgusu: ... FROM (...WHERE...) AS subquery ...
     result = re.sub(
@@ -276,7 +283,7 @@ class SigmaExecutor:
         # String interpolasyon yok — her enjeksiyon noktası için ? parametresi bağlanır
         injection_target = "FROM normalized_logs WHERE"
         param_count = rule.sql.count(injection_target)
-        sql = rule.sql.replace(injection_target, "FROM normalized_logs WHERE tenant_id = ? AND")
+        sql = rule.sql.replace(injection_target, f"FROM normalized_logs WHERE tenant_id = {_PH} AND")
         try:
             rows = conn.execute(sql, [tenant_id] * param_count).fetchall()
         except Exception as exc:
@@ -290,7 +297,7 @@ class SigmaExecutor:
                 group_fields = rule.group_by_fields
                 group_val = (
                     row[group_fields[0]] if group_fields and group_fields[0] in keys
-                    else (list(row)[0] if keys else "unknown")
+                    else (list(row.values())[0] if keys else "unknown")
                 )
                 count = row["event_count"] if "event_count" in keys else 1
             else:

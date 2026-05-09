@@ -218,14 +218,13 @@ class Correlator:
             count     = int(row.get("event_count", 1))
             now       = datetime.now(timezone.utc)
 
-            first_seen = (
-                datetime.fromisoformat(row["first_ts"]).replace(tzinfo=timezone.utc)
-                if row.get("first_ts") else now
-            )
-            last_seen = (
-                datetime.fromisoformat(row["last_ts"]).replace(tzinfo=timezone.utc)
-                if row.get("last_ts") else now
-            )
+            def _parse_ts(val) -> datetime:
+                if isinstance(val, datetime):
+                    return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+                return datetime.fromisoformat(val).replace(tzinfo=timezone.utc)
+
+            first_seen = _parse_ts(row["first_ts"]) if row.get("first_ts") else now
+            last_seen  = _parse_ts(row["last_ts"])  if row.get("last_ts")  else now
 
             event = CorrelatedEvent(
                 corr_id        = str(uuid.uuid4()),
