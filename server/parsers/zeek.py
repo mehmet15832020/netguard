@@ -5,6 +5,7 @@ Desteklenen log türleri: dns, http, conn, ssl
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
+import re
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -134,6 +135,84 @@ def parse_conn(row: dict) -> Optional[NormalizedLog]:
             f" → {row.get('id.resp_h')}:{row.get('id.resp_p')} ({duration:.1f}s)"
         ),
         tags=["zeek", "conn"],
+    )
+
+
+def parse_ssh(row: dict) -> Optional[NormalizedLog]:
+    """
+    ssh.log satırı → NormalizedLog.
+
+    event_action: ssh_failure veya ssh_success — mevcut sigma kurallarıyla uyumlu.
+    auth_success=null (bağlantı devam ediyor) ve auth_attempts=0 → atla.
+    """
+    auth_success = row.get("auth_success")
+    attempts = int(row.get("auth_attempts") or 0)
+
+    if auth_success is None and attempts == 0:
+        return None
+
+    if auth_success is True:
+        event_action = "ssh_success"
+        severity = "warning"
+    else:
+        event_action = "ssh_failure"
+        severity = "info"
+
+    client = row.get("client") or ""
+    server = row.get("server") or ""
+    label  = f"→ {row.get('id.resp_h')}:{row.get('id.resp_p', 22)}"
+    detail = f" attempts={attempts}" if attempts else ""
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.AUTHENTICATION,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=f"SSH {event_action} {row.get('id.orig_h')} {label}{detail}",
+        tags=["zeek", "ssh"],
+    )
+
+
+def parse_notice(row: dict) -> Optional[NormalizedLog]:
+    """
+    notice.log satırı → NormalizedLog.
+
+    Zeek'in kendi tespitlerini (port scan, brute force, vb.) alır.
+    note alanından event_action türetilir.
+    """
+    note = row.get("note", "")
+    if not note or note == "-":
+        return None
+
+    msg = row.get("msg") or row.get("sub") or note
+    src = row.get("src") or row.get("id.orig_h")
+    dst = row.get("dst") or row.get("id.resp_h")
+
+    slug = re.sub(r"[^a-z0-9]+", "_", note.lower()).strip("_")
+    event_action = f"zeek_{slug}"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity="warning",
+        event_category=LogCategory.INTRUSION,
+        event_action=event_action,
+        source_ip=src,
+        destination_ip=dst,
+        network_protocol=row.get("proto"),
+        message=f"Zeek Notice [{note}]: {msg}",
+        tags=["zeek", "notice"],
     )
 
 

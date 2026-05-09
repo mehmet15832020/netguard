@@ -6,7 +6,7 @@ from datetime import timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from server.parsers.zeek import parse_dns, parse_http, parse_conn, parse_ssl
+from server.parsers.zeek import parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice
 
 
 # ── Parser testleri ────────────────────────────────────────────────────────────
@@ -190,6 +190,97 @@ class TestParseSsl:
         log = parse_ssl(self._row())
         assert "zeek" in log.tags
         assert "ssl" in log.tags
+
+
+class TestParseSsh:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id.orig_h": "192.168.1.100",
+            "id.orig_p": 55123,
+            "id.resp_h": "10.0.0.5",
+            "id.resp_p": 22,
+            "auth_success": False,
+            "auth_attempts": 5,
+        }
+        base.update(kw)
+        return base
+
+    def test_failure_event_action(self):
+        log = parse_ssh(self._row())
+        assert log is not None
+        assert log.event_action == "ssh_failure"
+        assert log.severity == "info"
+
+    def test_success_event_action(self):
+        log = parse_ssh(self._row(auth_success=True, auth_attempts=1))
+        assert log.event_action == "ssh_success"
+        assert log.severity == "warning"
+
+    def test_null_success_zero_attempts_skipped(self):
+        assert parse_ssh(self._row(auth_success=None, auth_attempts=0)) is None
+
+    def test_null_success_with_attempts_kept(self):
+        log = parse_ssh(self._row(auth_success=None, auth_attempts=3))
+        assert log is not None
+        assert log.event_action == "ssh_failure"
+
+    def test_source_ip_set(self):
+        log = parse_ssh(self._row())
+        assert log.source_ip == "192.168.1.100"
+        assert log.destination_port == 22
+
+    def test_authentication_category(self):
+        from shared.models import LogCategory
+        log = parse_ssh(self._row())
+        assert log.event_category == LogCategory.AUTHENTICATION
+
+    def test_tags(self):
+        log = parse_ssh(self._row())
+        assert "zeek" in log.tags
+        assert "ssh" in log.tags
+
+
+class TestParseNotice:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "note": "Scan::Port_Scan",
+            "msg": "192.168.1.10 has scanned 25 ports",
+            "src": "192.168.1.10",
+            "dst": "10.0.0.1",
+            "proto": "tcp",
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_notice(self._row())
+        assert log is not None
+        assert log.event_action == "zeek_scan_port_scan"
+        assert log.severity == "warning"
+
+    def test_empty_note_returns_none(self):
+        assert parse_notice(self._row(note="")) is None
+        assert parse_notice(self._row(note="-")) is None
+
+    def test_message_contains_note(self):
+        log = parse_notice(self._row())
+        assert "Scan::Port_Scan" in log.message
+
+    def test_intrusion_category(self):
+        from shared.models import LogCategory
+        log = parse_notice(self._row())
+        assert log.event_category == LogCategory.INTRUSION
+
+    def test_src_ip_mapped(self):
+        log = parse_notice(self._row())
+        assert log.source_ip == "192.168.1.10"
+
+    def test_tags(self):
+        log = parse_notice(self._row())
+        assert "zeek" in log.tags
+        assert "notice" in log.tags
 
 
 # ── Collector testleri ─────────────────────────────────────────────────────────

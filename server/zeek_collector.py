@@ -12,11 +12,12 @@ import asyncio
 import json
 import logging
 import os
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
 from server.database import db
-from server.parsers.zeek import parse_conn, parse_dns, parse_http, parse_ssl
+from server.parsers.zeek import parse_conn, parse_dns, parse_http, parse_notice, parse_ssh, parse_ssl
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +26,12 @@ POLL_INTERVAL  = int(os.getenv("ZEEK_POLL_INTERVAL", "5"))
 TENANT_ID      = "default"
 
 _PARSERS: dict[str, Callable] = {
-    "dns":  parse_dns,
-    "http": parse_http,
-    "conn": parse_conn,
-    "ssl":  parse_ssl,
+    "dns":    parse_dns,
+    "http":   parse_http,
+    "conn":   parse_conn,
+    "ssl":    parse_ssl,
+    "ssh":    parse_ssh,
+    "notice": parse_notice,
 }
 
 _offsets: dict[str, int] = {}
@@ -120,15 +123,50 @@ def _process_file(log_file: Path, parser: Callable) -> int:
     return written
 
 
+_LOG_RETENTION_DAYS = int(os.getenv("ZEEK_LOG_RETENTION_DAYS", "7"))
+_CLEANUP_INTERVAL   = 3600  # saatte bir eski dosya taraması
+
+
+def cleanup_old_logs() -> int:
+    """
+    ZEEK_LOG_DIR içindeki rotation sonrası tarihli log dosyalarını
+    _LOG_RETENTION_DAYS günden eski olanları siler.
+    Döner: silinen dosya sayısı.
+    """
+    if not ZEEK_LOG_DIR.exists():
+        return 0
+    cutoff = time.time() - _LOG_RETENTION_DAYS * 86400
+    deleted = 0
+    for f in ZEEK_LOG_DIR.iterdir():
+        # Tarihli rotation dosyaları: dns.2024-01-01-00.00.00.log biçiminde
+        if f.is_file() and f.suffix == ".log" and "." in f.stem:
+            try:
+                if f.stat().st_mtime < cutoff:
+                    f.unlink()
+                    deleted += 1
+                    logger.info("Eski Zeek log silindi: %s", f.name)
+            except OSError:
+                pass
+    return deleted
+
+
 async def run_zeek_collector() -> None:
     """asyncio task — Zeek log poll döngüsü."""
     logger.info(
-        "Zeek log collector başlatıldı (dizin: %s, poll: %ss)",
-        ZEEK_LOG_DIR, POLL_INTERVAL,
+        "Zeek log collector başlatıldı (dizin: %s, poll: %ss, retention: %dd)",
+        ZEEK_LOG_DIR, POLL_INTERVAL, _LOG_RETENTION_DAYS,
     )
+    last_cleanup = 0.0
     while True:
         try:
             collect_once()
         except Exception as exc:
             logger.error("Zeek collector hatası: %s", exc)
+        now = time.time()
+        if now - last_cleanup > _CLEANUP_INTERVAL:
+            try:
+                cleanup_old_logs()
+            except Exception as exc:
+                logger.error("Zeek cleanup hatası: %s", exc)
+            last_cleanup = now
         await asyncio.sleep(POLL_INTERVAL)
