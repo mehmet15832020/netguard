@@ -409,6 +409,25 @@ CREATE TABLE IF NOT EXISTS asset_baselines (
 CREATE INDEX IF NOT EXISTS idx_asset_baselines_tenant ON asset_baselines(tenant_id);
 """
 
+_CREATE_FP_RULES = """
+CREATE TABLE IF NOT EXISTS fp_rules (
+    fp_rule_id       TEXT PRIMARY KEY,
+    event_action     TEXT,
+    source_ip        TEXT,
+    destination_ip   TEXT,
+    destination_port TEXT,
+    observer_hostname TEXT,
+    tenant_id        TEXT NOT NULL DEFAULT 'default',
+    reason           TEXT NOT NULL,
+    created_by       TEXT NOT NULL DEFAULT 'admin',
+    created_at       TEXT NOT NULL,
+    expires_at       TEXT,
+    is_active        INTEGER NOT NULL DEFAULT 1,
+    hit_count        INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_fp_rules_tenant_active ON fp_rules(tenant_id, is_active);
+"""
+
 _CREATE_SCHEMA_VERSION = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version     INTEGER PRIMARY KEY,
@@ -553,6 +572,8 @@ class DatabaseManager:
             conn.executescript(_CREATE_CHAIN_STATE)
         with self._connect() as conn:
             conn.executescript(_CREATE_ASSET_BASELINES)
+        with self._connect() as conn:
+            conn.executescript(_CREATE_FP_RULES)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
@@ -1189,6 +1210,66 @@ class DatabaseManager:
             "sample_hours":          row["sample_hours"],
             "updated_at":            row["updated_at"],
         }
+
+    # ── False Positive Rules ──────────────────────────────────────────────────
+
+    def create_fp_rule(
+        self,
+        fp_rule_id: str,
+        event_action: Optional[str],
+        source_ip: Optional[str],
+        destination_ip: Optional[str],
+        destination_port: Optional[str],
+        observer_hostname: Optional[str],
+        tenant_id: str,
+        reason: str,
+        created_by: str,
+        created_at: str,
+        expires_at: Optional[str],
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO fp_rules (fp_rule_id, event_action, source_ip, destination_ip,
+                    destination_port, observer_hostname, tenant_id, reason, created_by,
+                    created_at, expires_at, is_active, hit_count)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,1,0)
+                """,
+                (fp_rule_id, event_action, source_ip, destination_ip,
+                 destination_port, observer_hostname, tenant_id, reason,
+                 created_by, created_at, expires_at),
+            )
+
+    def get_active_fp_rules(self, tenant_id: str = "default") -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM fp_rules WHERE tenant_id = ? AND is_active = 1 ORDER BY created_at DESC",
+                (tenant_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_all_fp_rules(self, tenant_id: str = "default") -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT * FROM fp_rules WHERE tenant_id = ? ORDER BY created_at DESC",
+                (tenant_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def deactivate_fp_rule(self, fp_rule_id: str, tenant_id: str = "default") -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                "UPDATE fp_rules SET is_active = 0 WHERE fp_rule_id = ? AND tenant_id = ?",
+                (fp_rule_id, tenant_id),
+            )
+            return cur.rowcount > 0
+
+    def increment_fp_hit(self, fp_rule_id: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE fp_rules SET hit_count = hit_count + 1 WHERE fp_rule_id = ?",
+                (fp_rule_id,),
+            )
 
     def get_correlated_events(
         self,

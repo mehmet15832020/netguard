@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Optional
 
 from server.database import db
+from server.fp_manager import fp_manager
 from server.mitre import parse_mitre_tags
 from shared.models import CorrelatedEvent
 
@@ -244,6 +245,8 @@ class Correlator:
 
             saved = db.save_correlated_event(event)
             if saved:
+                if self._is_fp_suppressed(event):
+                    continue
                 produced.append(event)
                 logger.warning(
                     "pySigma tetiklendi [%s]: %s — %d olay / %ds",
@@ -353,6 +356,8 @@ class Correlator:
 
             saved = db.save_correlated_event(event)
             if saved:
+                if self._is_fp_suppressed(event):
+                    continue
                 produced.append(event)
                 logger.warning(
                     f"Korelasyon tetiklendi [{rule.rule_id}]: "
@@ -474,6 +479,23 @@ class Correlator:
                 )
         except Exception as exc:
             logger.error(f"Attack chain kontrol hatası: {exc}")
+
+    def _is_fp_suppressed(self, event: CorrelatedEvent, tenant_id: str = "default") -> bool:
+        """FP kuralı eşleşirse True döner ve hit_count arttırır."""
+        source_ip = event.group_value if event.group_by_field == "source_ip" else None
+        rule_id = fp_manager.is_suppressed(
+            event_action=event.event_action,
+            source_ip=source_ip,
+            tenant_id=tenant_id,
+        )
+        if rule_id:
+            db.increment_fp_hit(rule_id)
+            logger.info(
+                "FP baskılandı [kural=%s]: %s — %s",
+                rule_id, event.event_action, event.group_value,
+            )
+            return True
+        return False
 
     def _create_alert(self, event: CorrelatedEvent) -> None:
         """Korelasyon eventinden Alert üret ve SQLite'a kaydet."""
