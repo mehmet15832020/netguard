@@ -22,30 +22,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _query(sql: str, params: list, tenant_id: str) -> list:
-    """Güvenli tenant_id filtreli ham DB sorgusu."""
-    import sqlite3
-    import os
-
-    _IS_PG = bool(os.getenv("DATABASE_URL"))
-    if _IS_PG:
-        import psycopg
-        conn_str = os.environ["DATABASE_URL"]
-        with psycopg.connect(conn_str) as conn:
-            rows = conn.execute(sql.replace("?", "%s"), params).fetchall()
-            cols = [d[0] for d in conn.execute(sql.replace("?", "%s"), params).description]
-            return [dict(zip(cols, row)) for row in rows]
-
-    db_path = os.getenv("NETGUARD_DB_PATH", "netguard.db")
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(sql, params).fetchall()
-        return [dict(row) for row in rows]
-    finally:
-        conn.close()
-
-
 @router.get("/network/intelligence")
 def network_intelligence(
     hours: int = 24,
