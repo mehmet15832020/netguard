@@ -12,6 +12,7 @@ services:
       - INFLUXDB_URL=http://influxdb:8086
       - NETGUARD_CORS_ORIGINS=https://localhost,https://127.0.0.1,https://${NETGUARD_HOST:-localhost}
       - NETGUARD_INTERFACE=eth0
+      - DATABASE_URL=postgresql://netguard:${POSTGRES_PASSWORD:-netguard_dev}@postgres:5432/netguard
     volumes:
       - netguard_data:/data
       - ./config:/app/config:ro
@@ -22,6 +23,8 @@ services:
       - NET_RAW    # pyshark paket yakalama için
     depends_on:
       influxdb:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - netguard_net
@@ -67,6 +70,25 @@ services:
     networks:
       - netguard_net
 
+  # ── PostgreSQL + TimescaleDB: İlişkisel + zaman serisi loglar ────
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: netguard
+      POSTGRES_USER: netguard
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-netguard_dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U netguard -d netguard"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - netguard_net
+
   # ── InfluxDB: Zaman serisi metrikleri ─────────────────────────────
   influxdb:
     image: influxdb:2.7-alpine
@@ -94,6 +116,7 @@ networks:
     driver: bridge
 
 volumes:
-  netguard_data:    # SQLite DB + anomaly baselines
-  influxdb_data:    # InfluxDB zaman serisi verileri
+  netguard_data:    # SQLite DB + anomaly baselines (geçiş sürecinde korunur)
+  influxdb_data:    # InfluxDB zaman serisi metrikleri
+  postgres_data:    # PostgreSQL + TimescaleDB (V1-7)
   ssl_certs:        # Nginx self-signed TLS sertifikaları

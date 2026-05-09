@@ -2431,4 +2431,10 @@ class DatabaseManager:
 
 
 # Global instance — uygulama boyunca tek bir tane
-db = DatabaseManager()
+import os as _os
+_DATABASE_URL = _os.getenv("DATABASE_URL")
+if _DATABASE_URL:
+    from server.database_pg import DatabaseManager as _PgManager
+    db: DatabaseManager = _PgManager(_DATABASE_URL)
+else:
+    db = DatabaseManager()
