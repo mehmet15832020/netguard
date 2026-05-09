@@ -110,11 +110,31 @@ def _inject_time_window(sql: str, window_seconds: int) -> str:
 
 
 def _pg_ilike(sql: str) -> str:
-    """
-    PostgreSQL'de LIKE case-sensitive olduğundan ILIKE'a çevirir.
-    Sadece _IS_PG=True olduğunda çağrılır; SQLite'ta dokunulmaz.
-    """
+    """PostgreSQL'de LIKE case-sensitive olduğundan ILIKE'a çevirir."""
     return sql.replace(" LIKE ", " ILIKE ")
+
+
+def _pg_escape_percent(sql: str) -> str:
+    """
+    LIKE pattern'lerindeki % karakterlerini psycopg3 için %% olarak kaçırır.
+    psycopg3, SQL içindeki %x dizilerini placeholder olarak yorumlar;
+    %certificate → 'unknown placeholder %c' hatasına yol açar.
+    Bu fonksiyon _load_file() sırasında uygulanır; execute_rule() içindeki
+    %s placeholder'ları bu dönüşümden sonra eklenir.
+    """
+    return sql.replace("%", "%%")
+
+
+def _pg_fix_having(sql: str) -> str:
+    """
+    pySigma SQLite backend'i HAVING event_count >= N üretir.
+    PostgreSQL SELECT alias'ını HAVING'de tanımadığından COUNT(*) ile değiştirilir.
+    """
+    return re.sub(
+        r'\bHAVING\s+event_count\s*(>=?|<=?|=)\s*(\d+)',
+        lambda m: f"HAVING COUNT(*) {m.group(1)} {m.group(2)}",
+        sql,
+    )
 
 
 def _inject_min_max_ts(sql: str) -> str:
@@ -236,7 +256,7 @@ class SigmaExecutor:
                 tags       = [str(t) for t in (cr.tags or [])]
                 rule_id    = str(cr.id) if cr.id else str(uuid.uuid4())
                 _sql       = _inject_min_max_ts(_inject_time_window(sql_raw, win_sec))
-                final_sql  = _pg_ilike(_sql) if _IS_PG else _sql
+                final_sql  = _pg_fix_having(_pg_ilike(_pg_escape_percent(_sql))) if _IS_PG else _sql
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,
@@ -256,7 +276,7 @@ class SigmaExecutor:
                 tags       = [str(t) for t in (dr.tags or [])]
                 rule_id    = str(dr.id) if dr.id else str(uuid.uuid4())
                 _sql       = _inject_time_window(sql_raw, 60)
-                final_sql  = _pg_ilike(_sql) if _IS_PG else _sql
+                final_sql  = _pg_ilike(_pg_escape_percent(_sql)) if _IS_PG else _sql
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,

@@ -6,7 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from server.sigma_executor import SigmaExecutor, SigmaExecutableRule, _inject_time_window, _pg_ilike
+from server.sigma_executor import (
+    SigmaExecutor, SigmaExecutableRule, _inject_time_window,
+    _pg_ilike, _pg_escape_percent, _pg_fix_having,
+)
 
 
 # ------------------------------------------------------------------ #
@@ -107,6 +110,58 @@ def test_pg_ilike_preserves_having_and_subquery():
     assert "ILIKE" in result
     assert "HAVING event_count >= 5" in result
     assert "AS subquery" in result
+
+
+# ------------------------------------------------------------------ #
+#  _pg_escape_percent
+# ------------------------------------------------------------------ #
+
+def test_pg_escape_percent_escapes_like_wildcards():
+    sql = "WHERE message LIKE '%certificate%' ESCAPE '\\'"
+    result = _pg_escape_percent(sql)
+    assert "%%certificate%%" in result
+    assert "'%certificate%'" not in result
+
+
+def test_pg_escape_percent_handles_multiple():
+    sql = "message LIKE '%union%' OR message LIKE '%drop%'"
+    result = _pg_escape_percent(sql)
+    assert result.count("%%") == 4
+
+
+def test_pg_escape_percent_no_op_on_no_percent():
+    sql = "WHERE event_action ILIKE 'ssh_failure'"
+    assert _pg_escape_percent(sql) == sql
+
+
+# ------------------------------------------------------------------ #
+#  _pg_fix_having
+# ------------------------------------------------------------------ #
+
+def test_pg_fix_having_replaces_alias():
+    sql = "GROUP BY source_ip HAVING event_count >= 5"
+    result = _pg_fix_having(sql)
+    assert "HAVING COUNT(*) >= 5" in result
+    assert "event_count" not in result
+
+
+def test_pg_fix_having_handles_gt():
+    sql = "HAVING event_count > 100"
+    result = _pg_fix_having(sql)
+    assert "COUNT(*) > 100" in result
+
+
+def test_pg_fix_having_preserves_group_by():
+    sql = "GROUP BY source_ip HAVING event_count >= 10 ORDER BY source_ip"
+    result = _pg_fix_having(sql)
+    assert "GROUP BY source_ip" in result
+    assert "COUNT(*) >= 10" in result
+
+
+def test_pg_fix_having_no_op_when_count_already_used():
+    sql = "GROUP BY source_ip HAVING COUNT(*) >= 5"
+    result = _pg_fix_having(sql)
+    assert result == sql
 
 
 # ------------------------------------------------------------------ #
