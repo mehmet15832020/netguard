@@ -464,7 +464,7 @@ class TestCollectOnce:
         (tmp_path / "dns.log").write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
         saved = []
-        monkeypatch.setattr(zc.db, "save_normalized_log", lambda log, tenant_id="default": saved.append(log))
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
 
         n = zc.collect_once()
         assert n == 1
@@ -487,7 +487,7 @@ class TestCollectOnce:
         )
 
         saved = []
-        monkeypatch.setattr(zc.db, "save_normalized_log", lambda log, tenant_id="default": saved.append(log))
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
         n = zc.collect_once()
         assert n == 1
 
@@ -504,7 +504,7 @@ class TestCollectOnce:
         log_file.write_text(json.dumps(row) + "\n")
 
         saved = []
-        monkeypatch.setattr(zc.db, "save_normalized_log", lambda log, tenant_id="default": saved.append(log))
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
 
         zc.collect_once()
         assert len(saved) == 1
@@ -526,7 +526,7 @@ class TestCollectOnce:
         (tmp_path / "http.log").write_text(json.dumps(row) + "\n")
 
         saved = []
-        monkeypatch.setattr(zc.db, "save_normalized_log", lambda log, tenant_id="default": saved.append(log))
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
         n = zc.collect_once()
         assert n == 1
         assert saved[0].event_action == "web_client_error"
@@ -545,7 +545,7 @@ class TestCollectOnce:
         log_file.write_text(content)
 
         saved = []
-        monkeypatch.setattr(zc.db, "save_normalized_log", lambda log, tenant_id="default": saved.append(log))
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
         zc.collect_once()
         assert len(saved) == 1
 

@@ -2,7 +2,8 @@
 pySigma tabanlı Sigma rule executor.
 
 config/sigma_rules_v2/ dizinindeki yeni format YAML kurallarını yükler,
-NetGuardSQLiteBackend aracılığıyla SQL'e çevirir ve normalized_logs tablosuna karşı çalıştırır.
+_NetGuardPGBackend aracılığıyla PostgreSQL sorgusu üretir ve normalized_logs
+tablosuna karşı çalıştırır.
 
 Kural formatı (YAML multi-doc):
   --- (1. belge: temel detection)
@@ -31,13 +32,10 @@ Kural formatı (YAML multi-doc):
 """
 
 import logging
-import os
 import re
 import uuid
 
 _SAFE_TENANT_RE = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
-_IS_PG = bool(os.getenv("DATABASE_URL"))
-_PH    = "%s" if _IS_PG else "?"
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -68,8 +66,8 @@ _LEVEL_TO_SEVERITY = {
 #  Custom SQLite Backend
 # ------------------------------------------------------------------ #
 
-class _NetGuardSQLiteBackend(sqliteBackend):
-    """pySigma SQLite backend — normalized_logs tablosuna karşı sorgu üretir."""
+class _NetGuardPGBackend(sqliteBackend):
+    """pySigma SQLite backend miras alınarak PostgreSQL sorgusu üretir."""
 
     table: ClassVar[str] = "normalized_logs"
     correlation_search_single_rule_expression: ClassVar[Optional[str]] = (
@@ -87,10 +85,7 @@ def _inject_time_window(sql: str, window_seconds: int) -> str:
     Korelasyon sorgusu için:  subquery WHERE ... → WHERE ... AND timestamp >= ...
     Basit detection sorgusu için: WHERE ... → WHERE ... AND timestamp >= ...
     """
-    if _IS_PG:
-        time_filter = f" AND timestamp >= NOW() - INTERVAL '{window_seconds} seconds'"
-    else:
-        time_filter = f" AND timestamp >= datetime('now', '-{window_seconds} seconds')"
+    time_filter = f" AND timestamp >= NOW() - INTERVAL '{window_seconds} seconds'"
 
     # Korelasyon sorgusu: ... FROM (...WHERE...) AS subquery ...
     result = re.sub(
@@ -185,7 +180,7 @@ class SigmaExecutor:
 
     def __init__(self, rules_dir: str = _SIGMA_RULES_V2_DIR) -> None:
         self._dir = rules_dir
-        self._backend = _NetGuardSQLiteBackend()
+        self._backend = _NetGuardPGBackend()
         self._rules: list[SigmaExecutableRule] = []
         self.load_dir()
 
@@ -256,7 +251,7 @@ class SigmaExecutor:
                 tags       = [str(t) for t in (cr.tags or [])]
                 rule_id    = str(cr.id) if cr.id else str(uuid.uuid4())
                 _sql       = _inject_min_max_ts(_inject_time_window(sql_raw, win_sec))
-                final_sql  = _pg_fix_having(_pg_ilike(_pg_escape_percent(_sql))) if _IS_PG else _sql
+                final_sql  = _pg_fix_having(_pg_ilike(_pg_escape_percent(_sql)))
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,
@@ -276,7 +271,7 @@ class SigmaExecutor:
                 tags       = [str(t) for t in (dr.tags or [])]
                 rule_id    = str(dr.id) if dr.id else str(uuid.uuid4())
                 _sql       = _inject_time_window(sql_raw, 60)
-                final_sql  = _pg_ilike(_pg_escape_percent(_sql)) if _IS_PG else _sql
+                final_sql  = _pg_ilike(_pg_escape_percent(_sql))
 
                 results.append(SigmaExecutableRule(
                     rule_id         = rule_id,
@@ -312,7 +307,7 @@ class SigmaExecutor:
         # String interpolasyon yok — her enjeksiyon noktası için ? parametresi bağlanır
         injection_target = "FROM normalized_logs WHERE"
         param_count = rule.sql.count(injection_target)
-        sql = rule.sql.replace(injection_target, f"FROM normalized_logs WHERE tenant_id = {_PH} AND")
+        sql = rule.sql.replace(injection_target, "FROM normalized_logs WHERE tenant_id = %s AND")
         try:
             rows = conn.execute(sql, [tenant_id] * param_count).fetchall()
         except Exception as exc:

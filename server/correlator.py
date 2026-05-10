@@ -37,9 +37,6 @@ from shared.models import CorrelatedEvent
 
 logger = logging.getLogger(__name__)
 
-_IS_PG = bool(os.getenv("DATABASE_URL"))
-_PH    = "%s" if _IS_PG else "?"
-
 
 def _ti_lookup_bg(ip: str) -> None:
     try:
@@ -270,7 +267,6 @@ class Correlator:
         3. Eşiği aşan gruplar için CorrelatedEvent üret
         """
         since = datetime.now(timezone.utc) - timedelta(seconds=rule.window_seconds)
-        since_iso = since.isoformat()
 
         if rule.group_by not in _VALID_GROUP_COLS:
             logger.warning("Rule %s: geçersiz group_by '%s', atlanıyor", rule.rule_id, rule.group_by)
@@ -285,12 +281,11 @@ class Correlator:
         kw_clause  = ""
         kw_params: list = []
         if rule.keywords:
-            parts = " OR ".join(f"message LIKE {_PH}" for _ in rule.keywords)
+            parts = " OR ".join("message LIKE %s" for _ in rule.keywords)
             kw_clause = f"AND ({parts})"
             for kw in rule.keywords:
                 kw_params += [f"%{kw}%"]
 
-        since_param = since if _IS_PG else since_iso
         with db._connect() as conn:
             rows = conn.execute(
                 f"""
@@ -298,17 +293,17 @@ class Correlator:
                        {count_expr} as cnt,
                        MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
                 FROM normalized_logs
-                WHERE event_action LIKE {_PH}
-                  AND timestamp >= {_PH}
-                  {"AND severity = " + _PH if rule.match_severity else ""}
+                WHERE event_action LIKE %s
+                  AND timestamp >= %s
+                  {"AND severity = %s" if rule.match_severity else ""}
                   AND {group_col} IS NOT NULL
                   {kw_clause}
                 GROUP BY {group_col}
-                HAVING cnt >= {_PH}
+                HAVING cnt >= %s
                 """,
                 (
                     f"{rule.match_event_action}%",
-                    since_param,
+                    since,
                     *(([rule.match_severity]) if rule.match_severity else []),
                     *kw_params,
                     rule.threshold,

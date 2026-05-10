@@ -16,7 +16,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from server.database import db
+from server.log_store import log_store
 from server.parsers.zeek import (
     parse_conn, parse_dns, parse_ftp, parse_http,
     parse_notice, parse_smtp, parse_ssh, parse_ssl, parse_x509,
@@ -115,7 +115,7 @@ def _process_file(log_file: Path, parser: Callable) -> int:
                 if log_entry is None:
                     continue
                 try:
-                    db.save_normalized_log(log_entry, tenant_id=TENANT_ID)
+                    log_store.save(log_entry)
                     written += 1
                 except Exception as exc:
                     logger.error("Zeek log kaydedilemedi: %s", exc)

@@ -1,6 +1,7 @@
 """
 sigma_executor testleri — pySigma kural yükleme, SQL üretimi, yürütme.
 """
+import re
 import sqlite3
 from pathlib import Path
 
@@ -10,6 +11,51 @@ from server.sigma_executor import (
     SigmaExecutor, SigmaExecutableRule, _inject_time_window,
     _pg_ilike, _pg_escape_percent, _pg_fix_having,
 )
+
+_PG_RE = re.compile(r"%s")
+
+
+class _CompatCursor:
+    def __init__(self, cur):
+        self._c = cur
+
+    def fetchall(self):
+        return self._c.fetchall()
+
+    def fetchone(self):
+        return self._c.fetchone()
+
+    @property
+    def rowcount(self):
+        return self._c.rowcount
+
+    def __iter__(self):
+        return iter(self._c)
+
+
+class _CompatConn:
+    """memory_db için %s → ? ve NOW() → datetime('now') çevirisi yapan wrapper."""
+
+    _NOW_RE = re.compile(
+        r"NOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*seconds?'",
+        re.IGNORECASE,
+    )
+
+    def __init__(self, conn):
+        self._conn = conn
+
+    def _adapt(self, sql: str) -> str:
+        sql = _PG_RE.sub("?", sql)
+        sql = self._NOW_RE.sub(lambda m: f"datetime('now', '-{m.group(1)} seconds')", sql)
+        sql = sql.replace(" ILIKE ", " LIKE ")
+        sql = sql.replace("%%", "%")
+        return sql
+
+    def execute(self, sql: str, params=None):
+        return _CompatCursor(self._conn.execute(self._adapt(sql), params or []))
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
 
 
 # ------------------------------------------------------------------ #
@@ -23,14 +69,14 @@ def test_inject_into_correlation_subquery():
         "GROUP BY source_ip HAVING event_count >= 5"
     )
     result = _inject_time_window(sql, 300)
-    assert "timestamp >= datetime('now', '-300 seconds')" in result
+    assert "timestamp >= NOW() - INTERVAL '300 seconds'" in result
     assert "AS subquery" in result
 
 
 def test_inject_into_simple_detection():
     sql = "SELECT * FROM normalized_logs WHERE event_action LIKE 'ssh_failure'"
     result = _inject_time_window(sql, 60)
-    assert "timestamp >= datetime('now', '-60 seconds')" in result
+    assert "timestamp >= NOW() - INTERVAL '60 seconds'" in result
     assert result.endswith(result)
 
 
@@ -70,7 +116,7 @@ def test_executor_correlation_rule_attributes(tmp_path: Path):
         assert r.severity in ("info", "warning", "high", "critical")
         assert "normalized_logs" in r.sql
         assert "HAVING" in r.sql
-        assert "datetime('now'" in r.sql  # time window enjekte edildi
+        assert "NOW() - INTERVAL" in r.sql  # time window enjekte edildi
 
 
 def test_executor_detection_rule_attributes(tmp_path: Path):
@@ -79,7 +125,7 @@ def test_executor_detection_rule_attributes(tmp_path: Path):
     det_rules = [r for r in ex.rules if not r.is_correlation]
     for r in det_rules:
         assert "normalized_logs" in r.sql
-        assert "datetime('now'" in r.sql
+        assert "NOW() - INTERVAL" in r.sql
 
 
 # ------------------------------------------------------------------ #
@@ -171,9 +217,9 @@ def test_pg_fix_having_no_op_when_count_already_used():
 @pytest.fixture()
 def memory_db():
     """İzole in-memory SQLite DB, normalized_logs tablosuyla."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute("""
+    raw = sqlite3.connect(":memory:")
+    raw.row_factory = sqlite3.Row
+    raw.execute("""
         CREATE TABLE normalized_logs (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             log_id TEXT,
@@ -185,8 +231,8 @@ def memory_db():
             tenant_id TEXT DEFAULT 'default'
         )
     """)
-    conn.commit()
-    return conn
+    raw.commit()
+    return _CompatConn(raw)
 
 
 def test_execute_correlation_rule_returns_match(memory_db):

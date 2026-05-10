@@ -14,7 +14,6 @@ Bu dosya ÇAPRAZ (cross-cutting) ve ENTEGRASYON testleri içerir:
 """
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -34,26 +33,6 @@ from shared.models import LogSourceType, LogCategory
 #  Fixture — izole in-memory SQLite
 # ─────────────────────────────────────────────────────────────────────────────
 
-@pytest.fixture()
-def mem_db():
-    """normalized_logs tablosu olan izole in-memory SQLite."""
-    conn = sqlite3.connect(":memory:")
-    conn.row_factory = sqlite3.Row
-    conn.execute("""
-        CREATE TABLE normalized_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            log_id TEXT,
-            event_action TEXT,
-            source_ip TEXT,
-            destination_ip TEXT,
-            timestamp TEXT,
-            message TEXT,
-            severity TEXT DEFAULT 'info',
-            tenant_id TEXT DEFAULT 'default'
-        )
-    """)
-    conn.commit()
-    return conn
 
 
 @pytest.fixture()

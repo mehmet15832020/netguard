@@ -26,10 +26,10 @@ class _NetFlowProtocol(asyncio.DatagramProtocol):
         observer_hostname = addr[0]
         _packets_received += 1
         try:
-            from server.database import db
+            from server.log_store import log_store
             logs = detect_and_parse(data, observer_hostname)
             for log in logs:
-                db.save_normalized_log(log)
+                log_store.save(log)
             _flows_stored += len(logs)
             if logs:
                 logger.debug(

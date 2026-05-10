@@ -47,6 +47,7 @@ def pipeline_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.database.db",          test_db)
     monkeypatch.setattr("server.correlator.db",        test_db)
     monkeypatch.setattr("server.log_normalizer.db",    test_db)
+    monkeypatch.setattr("server.log_store._db",        test_db)
     monkeypatch.setattr("server.routes.incidents.db",  test_db)
     monkeypatch.setattr("server.incident_enricher.db", test_db)
 

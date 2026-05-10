@@ -11,7 +11,6 @@ GET /api/v1/network/intelligence — Zeek zenginleştirme özetini döner:
 """
 
 import logging
-import os
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
@@ -22,13 +21,7 @@ from server.database import db
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_IS_PG     = bool(os.getenv("DATABASE_URL"))
-_PH        = "%s" if _IS_PG else "?"
-_HOUR_EXPR = (
-    "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
-    if _IS_PG else
-    "strftime('%Y-%m-%dT%H:00:00Z', timestamp)"
-)
+_HOUR_EXPR = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
 
 
 @router.get("/network/intelligence")
@@ -55,8 +48,8 @@ def network_intelligence(
             SELECT event_action, COUNT(*) AS cnt
             FROM normalized_logs
             WHERE source_type = 'zeek'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             GROUP BY event_action
             ORDER BY cnt DESC
             LIMIT 20
@@ -73,8 +66,8 @@ def network_intelligence(
             SELECT source_ip, destination_ip, message, timestamp
             FROM normalized_logs
             WHERE event_action = 'tls_suspicious_fingerprint'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             ORDER BY timestamp DESC
             LIMIT 50
             """,
@@ -96,8 +89,8 @@ def network_intelligence(
             FROM normalized_logs
             WHERE event_action = 'ssl_connection'
               AND severity = 'warning'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             ORDER BY timestamp DESC
             LIMIT 50
             """,
@@ -120,8 +113,8 @@ def network_intelligence(
             FROM normalized_logs
             WHERE event_action = 'x509_certificate'
               AND severity = 'warning'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             ORDER BY timestamp DESC
             LIMIT 30
             """,
@@ -142,8 +135,8 @@ def network_intelligence(
             FROM normalized_logs
             WHERE event_action = 'ftp_command'
               AND severity = 'warning'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             ORDER BY timestamp DESC
             LIMIT 30
             """,
@@ -164,8 +157,8 @@ def network_intelligence(
             SELECT source_ip, destination_ip, message, timestamp
             FROM normalized_logs
             WHERE event_action = 'smtp_session'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             ORDER BY timestamp DESC
             LIMIT 30
             """,
@@ -187,8 +180,8 @@ def network_intelligence(
             FROM normalized_logs
             WHERE source_type = 'zeek'
               AND source_ip IS NOT NULL
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             GROUP BY source_ip
             ORDER BY cnt DESC
             LIMIT 10
@@ -205,8 +198,8 @@ def network_intelligence(
             SELECT message, COUNT(*) AS cnt
             FROM normalized_logs
             WHERE event_action = 'dns_query'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             GROUP BY message
             ORDER BY cnt DESC
             LIMIT 10
@@ -224,8 +217,8 @@ def network_intelligence(
                    COUNT(*) AS cnt
             FROM normalized_logs
             WHERE source_type = 'zeek'
-              AND timestamp >= {_PH}
-              AND tenant_id = {_PH}
+              AND timestamp >= %s
+              AND tenant_id = %s
             GROUP BY hour
             ORDER BY hour ASC
             """,

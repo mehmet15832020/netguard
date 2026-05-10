@@ -22,6 +22,7 @@ from typing import Optional
 
 from server.database import db
 from server.dns_resolver import resolve_and_update_bg
+from server.log_store import log_store
 from server.ntp_validator import ntp_validator
 from server.parsers.firewall import detect_and_parse as _fw_detect_and_parse
 from server.parsers.web_log import detect_and_parse as _web_detect_and_parse
@@ -431,7 +432,7 @@ def process_and_store(raw_content: str, observer_hostname: str) -> Optional[Norm
     norm.raw_id = raw_id
 
     # 3. Normalize logu kaydet (hostname'ler henüz boş — arka planda doldurulacak)
-    db.save_normalized_log(norm)
+    log_store.save(norm)
 
     # 4. DNS arka planda çöz ve DB'yi güncelle (event loop'u bloklamaz)
     resolve_and_update_bg(norm.log_id, norm.source_ip, norm.destination_ip)

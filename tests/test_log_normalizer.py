@@ -206,6 +206,7 @@ class TestProcessAndStore:
         """Ham ve normalize log DB'ye yazılır."""
         import server.database as db_module
         import server.log_normalizer as norm_module
+        import server.log_store as ls_module
 
         # Geçici DB kullan
         test_db_path = str(tmp_path / "test.db")
@@ -213,6 +214,7 @@ class TestProcessAndStore:
         test_db = db_module.DatabaseManager(test_db_path)
         monkeypatch.setattr(db_module, "db", test_db)
         monkeypatch.setattr(norm_module, "db", test_db)
+        monkeypatch.setattr(ls_module, "_db", test_db)
 
         raw = "Apr 12 10:23:45 myhost sshd[1234]: Failed password for root from 192.168.1.5 port 22 ssh2"
         norm = process_and_store(raw, observer_hostname="myhost")
