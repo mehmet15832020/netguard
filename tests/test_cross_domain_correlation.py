@@ -68,7 +68,7 @@ def corr_setup(tmp_path, monkeypatch):
     monkeypatch.setattr(db_module, "db", test_db)
     monkeypatch.setattr(corr_module, "db", test_db)
 
-    c = Correlator(rules_path=str(tmp_path / "empty.json"))
+    c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
     c._rules = []
     return c, test_db
 
@@ -351,7 +351,7 @@ class TestSecurityLogParserNormalization:
         norm_logs = test_db.get_normalized_logs(event_action="ssh_failure")
         assert len(norm_logs) >= 5
 
-        c = Correlator(rules_path=str(tmp_path / "empty.json"))
+        c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
         c._rules = [_make_rule(
             match_event_action="ssh_failure", threshold=5,
             output_event_action="brute_force_detected",

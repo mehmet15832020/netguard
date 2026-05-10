@@ -835,10 +835,10 @@ class TestSigmaExecutorPipeline:
         rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
         executor = SigmaExecutor(str(rules_dir))
 
-        ssh_rule = next((r for r in executor.rules if "ssh" in r.title.lower() and r.is_correlation), None)
+        ssh_rule = next((r for r in executor.rules if r.title == "SSH Brute Force"), None)
         if not ssh_rule:
             import pytest
-            pytest.skip("SSH korelasyon kuralı bulunamadı")
+            pytest.skip("SSH Brute Force kuralı bulunamadı")
 
         for i in range(6):
             pipeline_db.save_normalized_log(
@@ -872,10 +872,10 @@ class TestSigmaExecutorPipeline:
         rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
         executor = SigmaExecutor(str(rules_dir))
 
-        ssh_rule = next((r for r in executor.rules if "ssh" in r.title.lower() and r.is_correlation), None)
+        ssh_rule = next((r for r in executor.rules if r.title == "SSH Brute Force"), None)
         if not ssh_rule:
             import pytest
-            pytest.skip("SSH korelasyon kuralı bulunamadı")
+            pytest.skip("SSH Brute Force kuralı bulunamadı")
 
         base_time = datetime.now(timezone.utc) - timedelta(minutes=4)
         for i in range(6):

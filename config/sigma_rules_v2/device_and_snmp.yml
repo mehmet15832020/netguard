@@ -1,0 +1,56 @@
+title: Device Down Base
+name: ng_device_down_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: device_down
+    condition: selection
+level: low
+---
+title: Device Sustained Outage
+id: d4e5f6a7-b8c9-0123-defa-234567890123
+correlation:
+    type: event_count
+    rules: ng_device_down_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.availability
+falsepositives:
+    - Network maintenance
+    - Power outage
+---
+title: SNMP Trap Burst Base
+name: ng_snmp_trap_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: snmp_trap
+    condition: selection
+level: low
+---
+title: SNMP Trap Burst
+id: e5f6a7b8-c9d0-1234-efab-345678901234
+correlation:
+    type: event_count
+    rules: ng_snmp_trap_base
+    group-by:
+        - source_ip
+    timespan: 2m
+    condition:
+        gte: 10
+level: high
+tags:
+    - attack.discovery
+    - attack.t1595
+falsepositives:
+    - SNMP monitoring tools
+    - Network management systems

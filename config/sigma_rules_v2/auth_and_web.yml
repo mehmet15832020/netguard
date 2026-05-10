@@ -1,0 +1,57 @@
+title: SSH Success Base
+name: ng_ssh_success_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: ssh_success
+    condition: selection
+level: low
+---
+title: SSH Successful Login
+id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+correlation:
+    type: event_count
+    rules: ng_ssh_success_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 1
+level: informational
+tags:
+    - attack.initial_access
+    - attack.t1078
+falsepositives:
+    - Normal admin SSH connections
+---
+title: Web Request Base
+name: ng_web_request_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action|startswith: web_
+    condition: selection
+level: low
+---
+title: Web Scan — HTTP Flood
+id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+correlation:
+    type: event_count
+    rules: ng_web_request_base
+    group-by:
+        - source_ip
+    timespan: 1m
+    condition:
+        gte: 50
+level: medium
+tags:
+    - attack.reconnaissance
+    - attack.t1595.003
+falsepositives:
+    - Authorized web security scans
+    - Load testing
+    - Search engine bots

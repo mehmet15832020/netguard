@@ -201,7 +201,7 @@ def test_execute_correlation_rule_returns_match(memory_db):
 
     rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
     ex = SigmaExecutor(str(rules_dir))
-    ssh_rule = next((r for r in ex.rules if "ssh" in r.title.lower()), None)
+    ssh_rule = next((r for r in ex.rules if r.title == "SSH Brute Force"), None)
     assert ssh_rule is not None
 
     rows = ex.execute_rule(ssh_rule, memory_db)
@@ -222,7 +222,7 @@ def test_execute_correlation_rule_no_match_below_threshold(memory_db):
 
     rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
     ex = SigmaExecutor(str(rules_dir))
-    ssh_rule = next((r for r in ex.rules if "ssh" in r.title.lower()), None)
+    ssh_rule = next((r for r in ex.rules if r.title == "SSH Brute Force"), None)
     assert ssh_rule is not None
 
     rows = ex.execute_rule(ssh_rule, memory_db)

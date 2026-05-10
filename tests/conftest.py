@@ -33,15 +33,6 @@ def superadmin_token() -> str:
     return create_access_token(username="admin", role="superadmin", tenant_id=None)
 
 
-@pytest.fixture(autouse=True)
-def _disable_sigma_v2_in_tests(tmp_path, monkeypatch):
-    """
-    Test ortamında pySigma (sigma_rules_v2) kurallarını devre dışı bırakır.
-    Gerçek kurallar test DB'sindeki verilerle çakışarak sahte event'ler üretir.
-    """
-    import server.correlator as corr_module
-    monkeypatch.setattr(corr_module, "SIGMA_RULES_V2_DIR", str(tmp_path / "no_sigma_v2"))
-
 
 @pytest.fixture
 def tmp_db(tmp_path, monkeypatch):

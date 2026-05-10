@@ -87,8 +87,7 @@ class TestRuleLoading:
                 "enabled": True,
             }
         ]))
-        no_sigma = str(tmp_path / "no_sigma")
-        c = Correlator(rules_path=str(rules_file), sigma_dir=no_sigma)
+        c = Correlator(rules_path=str(rules_file))
         assert len(c.rules) == 1
         assert c.rules[0].rule_id == "r1"
 
@@ -110,21 +109,18 @@ class TestRuleLoading:
                 "enabled": False,
             },
         ]))
-        no_sigma = str(tmp_path / "no_sigma")
-        c = Correlator(rules_path=str(rules_file), sigma_dir=no_sigma)
+        c = Correlator(rules_path=str(rules_file))
         assert len(c.rules) == 1
         assert c.rules[0].rule_id == "r1"
 
     def test_missing_file_returns_zero(self, tmp_path):
-        no_sigma = str(tmp_path / "no_sigma")
-        c = Correlator(rules_path=str(tmp_path / "missing.json"), sigma_dir=no_sigma)
+        c = Correlator(rules_path=str(tmp_path / "missing.json"))
         assert len(c.rules) == 0
 
     def test_reload_updates_rules(self, tmp_path):
         rules_file = tmp_path / "rules.json"
         rules_file.write_text(json.dumps([]))
-        no_sigma = str(tmp_path / "no_sigma")
-        c = Correlator(rules_path=str(rules_file), sigma_dir=no_sigma)
+        c = Correlator(rules_path=str(rules_file))
         assert len(c.rules) == 0
 
         rules_file.write_text(json.dumps([
@@ -155,7 +151,8 @@ class TestCorrelatorRun:
         import server.correlator as corr_module
         monkeypatch.setattr(corr_module, "db", test_db)
 
-        c = Correlator(rules_path=str(tmp_path / "empty.json"))
+        empty_v2_dir = str(tmp_path / "no_sigma_v2")
+        c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=empty_v2_dir)
         c._rules = []   # başlangıçta kural yok
         return c, test_db
 
@@ -294,7 +291,7 @@ class TestThreatIntelEscalation:
         monkeypatch.setattr(db_module, "db", test_db)
         import server.correlator as corr_module
         monkeypatch.setattr(corr_module, "db", test_db)
-        c = Correlator(rules_path=str(tmp_path / "empty.json"))
+        c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
         c._rules = []
         return c, test_db
 
@@ -362,7 +359,7 @@ class TestCrossSourceCorrelation:
         monkeypatch.setattr(db_module, "db", test_db)
         import server.correlator as corr_module
         monkeypatch.setattr(corr_module, "db", test_db)
-        c = Correlator(rules_path=str(tmp_path / "empty.json"))
+        c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
         c._rules = []
         return c, test_db
 

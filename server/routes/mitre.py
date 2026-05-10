@@ -65,7 +65,7 @@ def mitre_heatmap(days: int = 30, _: User = Depends(get_current_user)):
 def list_techniques(_: User = Depends(get_current_user)):
     """
     Kural bazlı MITRE teknik listesi.
-    Her kural için hangi teknikleri karşıladığını döner.
+    JSON korelasyon kuralları + pySigma V2 kurallarının tekniklerini döner.
     """
     result = []
     for rule in correlator._rules:
@@ -76,6 +76,17 @@ def list_techniques(_: User = Depends(get_current_user)):
                 "rule_id":          rule.rule_id,
                 "rule_name":        rule.name,
                 "severity":         rule.severity,
+                "mitre_techniques": parsed["mitre_techniques"],
+                "mitre_tactics":    parsed["mitre_tactics"],
+            })
+    for v2_rule in correlator._sigma_executor.rules:
+        tags = getattr(v2_rule, "tags", None) or []
+        parsed = parse_mitre_tags(tags)
+        if parsed["mitre_techniques"] or parsed["mitre_tactics"]:
+            result.append({
+                "rule_id":          v2_rule.rule_id,
+                "rule_name":        v2_rule.title,
+                "severity":         v2_rule.severity,
                 "mitre_techniques": parsed["mitre_techniques"],
                 "mitre_tactics":    parsed["mitre_tactics"],
             })
