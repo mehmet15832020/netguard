@@ -118,7 +118,7 @@ Bu bölüm her adım tamamlandığında güncellenir. Tamamlanan adımlar `[x]` 
 - [x] **F1-7:** config/sigma_rules/ dizini silindi
 - [x] **F1-8:** correlator.py temizlendi
 - [x] **F1-9:** 1151 test, 0 hata ✅
-- [ ] **F1-10:** Commit: `refactor(detection): sigma-v1-removed`
+- [x] **F1-10:** Commit: `refactor(detection): sigma-v1-removed` → `455dced` ✅
 
 **Sonuç:** Tek Sigma engine: pySigma v2. ~350 satır silinir. Testler prod'la uyumlu.
 
@@ -368,7 +368,7 @@ Teknik değil hukuki ve süreçsel adımlar. Sözleşme imzalamak için zorunlu.
 | `server/auth.py` | JWT access/refresh + API key (SHA-256) | ✅ |
 | `server/compliance.py` | 26 güvenlik kontrolü, compliance API | ✅ aktif |
 | `server/config_monitor.py` | Konfigürasyon değişiklik tespiti | ✅ main.py loop |
-| `server/correlator.py` | 60s döngü, JSON + pySigma v2 (Faz 1 sonrası) | ✅ |
+| `server/correlator.py` | 60s döngü, JSON + pySigma v2 | ✅ |
 | `server/database.py` | Factory: PG (prod) / SQLite (test) | ✅ (Faz 2'de sadeleşecek) |
 | `server/database_pg.py` | PostgreSQL + TimescaleDB, psycopg3 pool | ✅ (Faz 2'de database.py ile birleşecek) |
 | `server/detectors/` | port_scan, arp, dns, icmp, lateral | ✅ |
@@ -385,7 +385,7 @@ Teknik değil hukuki ve süreçsel adımlar. Sözleşme imzalamak için zorunlu.
 | `server/retention.py` | hot/warm/cold veri tutma | ✅ |
 | `server/security_log_parser.py` | auth.log özgü parser (SSH/sudo/PAM) | ✅ main.py loop |
 | `server/sigma_executor.py` | pySigma v2, 30 çalıştırılabilir kural | ✅ V1-3 |
-| `server/sigma_parser.py` | v1 count-based parser | ⏳ FAZ 1'DE SİLİNECEK |
+| ~~`server/sigma_parser.py`~~ | v1 count-based parser | ✅ SİLİNDİ (Faz 1) |
 | `server/snmp_auth.py` | SNMP auth helper (topology builder için) | ✅ minimal kullanım |
 | `server/snmp_collector.py` | SNMP v2c/v3 poll + trap | ✅ |
 | `server/storage.py` | RAM snapshot cache (metrics/health) | ✅ intentional hibrit |
@@ -412,7 +412,7 @@ Teknik değil hukuki ve süreçsel adımlar. Sözleşme imzalamak için zorunlu.
 | `/response/*` | `routes/active_response.py` | ✅ V1-9 + P1-P8 |
 | `/network/intelligence` | `routes/network_intel.py` | ✅ |
 | `/correlation/*` | `routes/correlation.py` | ✅ |
-| `/sigma/*` | `routes/sigma.py` | ⏳ Faz 1'de V2'ye migrate |
+| `/sigma/*` | `routes/sigma.py` | ✅ V2 (SigmaCollection) |
 | `/logs`, `/alerts`, `/agents`, `/devices`, `/snmp` | ilgili route dosyaları | ✅ |
 | `/mitre`, `/attack-chains`, `/topology` | ilgili route dosyaları | ✅ |
 
@@ -420,7 +420,7 @@ Teknik değil hukuki ve süreçsel adımlar. Sözleşme imzalamak için zorunlu.
 
 | Dizin | Format | Durum |
 |-------|--------|-------|
-| `config/sigma_rules/` | V1 count-based (15 kural) | ⏳ FAZ 1'DE SİLİNECEK |
+| ~~`config/sigma_rules/`~~ | V1 count-based (15 kural) | ✅ SİLİNDİ (Faz 1) |
 | `config/sigma_rules_v2/` | pySigma multi-doc YAML (8 dosya, 30+ kural) | ✅ aktif |
 
 ### Frontend Sayfaları (dashboard-v2)
