@@ -813,6 +813,72 @@ class DatabaseManager:
                 (fp_rule_id,),
             )
 
+    # ── Blocked IPs ───────────────────────────────────────────────────────
+
+    def block_ip(
+        self,
+        block_id: str,
+        ip: str,
+        reason: str,
+        blocked_by: str,
+        source_incident_id: Optional[str] = None,
+        provider: str = "opnsense",
+        tenant_id: str = "default",
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO blocked_ips
+                   (block_id, ip, reason, blocked_by, blocked_at,
+                    is_active, source_incident_id, provider, tenant_id)
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s)
+                   ON CONFLICT (block_id) DO NOTHING""",
+                (block_id, ip, reason, blocked_by,
+                 _now(),
+                 source_incident_id, provider, tenant_id),
+            )
+
+    def unblock_ip(self, ip: str, unblocked_by: str, tenant_id: str = "default") -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE blocked_ips
+                   SET is_active=0, unblocked_at=%s, unblocked_by=%s
+                   WHERE ip=%s AND is_active=1 AND tenant_id=%s""",
+                (_now(), unblocked_by, ip, tenant_id),
+            )
+            return cur.rowcount > 0
+
+    def get_blocked_ips(self, active_only: bool = True, tenant_id: Optional[str] = None) -> list[dict]:
+        clauses = []
+        params: list = []
+        if active_only:
+            clauses.append("is_active = 1")
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM blocked_ips {where} ORDER BY blocked_at DESC",
+                params,
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_block_by_ip(self, ip: str, tenant_id: str = "default") -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM blocked_ips WHERE ip=%s AND is_active=1 AND tenant_id=%s LIMIT 1",
+                (ip, tenant_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def is_ip_blocked(self, ip: str, tenant_id: str = "default") -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM blocked_ips WHERE ip=%s AND is_active=1 AND tenant_id=%s LIMIT 1",
+                (ip, tenant_id),
+            ).fetchone()
+        return row is not None
+
     # ------------------------------------------------------------------ #
     #  SNMP DEVICES
     # ------------------------------------------------------------------ #

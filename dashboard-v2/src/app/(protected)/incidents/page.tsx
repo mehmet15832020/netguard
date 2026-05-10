@@ -3,7 +3,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShieldAlert, RefreshCw, Plus, X, CheckCheck } from 'lucide-react'
-import { incidentApi, type Incident, type IncidentEvent, type IncidentEnrichment } from '@/lib/api'
+import { incidentApi, activeResponse, type Incident, type IncidentEvent, type IncidentEnrichment } from '@/lib/api'
+import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -192,6 +193,7 @@ function SummaryCard({ label, value, color }: { label: string; value: number; co
 
 export default function IncidentsPage() {
   const qc = useQueryClient()
+  const currentUser = useCurrentUser()
   const [statusFilter, setStatusFilter]     = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
   const [showCreate, setShowCreate]         = useState(false)
@@ -202,6 +204,9 @@ export default function IncidentsPage() {
   const [editNotes, setEditNotes]           = useState('')
   const [editClosureNote, setEditClosureNote] = useState('')
   const [pendingStatus, setPendingStatus]   = useState<string | null>(null)
+  const [showBlockDialog, setShowBlockDialog] = useState(false)
+  const [blockReason, setBlockReason]         = useState('')
+  const [blockingIp, setBlockingIp]           = useState<string | null>(null)
 
   const { data: summary, refetch: refetchSummary } = useQuery({
     queryKey: ['incident-summary'],
@@ -244,11 +249,30 @@ export default function IncidentsPage() {
 
   const resolveAllMutation = useMutation({
     mutationFn: () => incidentApi.resolveAll(),
-    onSuccess: (res) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['incidents'] })
       qc.invalidateQueries({ queryKey: ['incident-summary'] })
       qc.invalidateQueries({ queryKey: ['security-status'] })
       setSelected(null)
+    },
+  })
+
+  const playbookQuery = useQuery({
+    queryKey: ['playbook', selected?.incident_id],
+    queryFn: () => activeResponse.playbook(selected!.incident_id),
+    enabled: !!selected && selected.severity === 'critical',
+    retry: false,
+  })
+
+  const blockMutation = useMutation({
+    mutationFn: ({ ip, reason }: { ip: string; reason: string }) =>
+      activeResponse.block(ip, reason, selected?.incident_id),
+    onSuccess: () => {
+      setShowBlockDialog(false)
+      setBlockReason('')
+      setBlockingIp(null)
+      qc.invalidateQueries({ queryKey: ['active-blocks'] })
+      qc.invalidateQueries({ queryKey: ['playbook', selected?.incident_id] })
     },
   })
 
@@ -518,6 +542,34 @@ export default function IncidentsPage() {
                 </div>
               )}
             </div>
+            {selected.severity === 'critical' && (currentUser?.role === 'admin' || currentUser?.role === 'superadmin') && (
+              <div className="p-3 rounded border border-red-800/40 bg-red-950/20 space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-red-400">
+                  Aktif Yanıt
+                </p>
+                {playbookQuery.isLoading && (
+                  <p className="text-xs text-zinc-500">Analiz ediliyor...</p>
+                )}
+                {playbookQuery.data?.suggestions.map(s => (
+                  <div key={s.ip} className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-mono text-zinc-300">{s.ip}</span>
+                    {s.already_blocked ? (
+                      <span className="text-xs text-emerald-400">Bloklu</span>
+                    ) : (
+                      <button
+                        onClick={() => { setBlockingIp(s.ip); setShowBlockDialog(true) }}
+                        className="text-xs px-2 py-1 rounded border border-red-700/50 text-red-400 hover:bg-red-500/10"
+                      >
+                        Bu IP&apos;yi Blokla
+                      </button>
+                    )}
+                  </div>
+                ))}
+                {playbookQuery.data?.suggestions.length === 0 && !playbookQuery.isLoading && (
+                  <p className="text-xs text-zinc-600">Otomatik bloklama önerisi yok</p>
+                )}
+              </div>
+            )}
             <EnrichmentPanel enrichment={selected.enrichment} incidentId={selected.incident_id} />
             <div>
               <p className="text-xs text-zinc-500 mb-1 font-medium uppercase tracking-wide">Event Timeline</p>
@@ -525,6 +577,44 @@ export default function IncidentsPage() {
             </div>
           </CardContent>
         </Card>
+      )}
+
+      {showBlockDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-5 w-full max-w-md space-y-4">
+            <h3 className="text-sm font-semibold text-zinc-100">IP Adresi Bloklama Onayı</h3>
+            <p className="text-xs text-zinc-400">
+              <span className="font-mono text-zinc-200">{blockingIp}</span> adresini firewall&apos;da bloklamak üzeresiniz.
+            </p>
+            <div className="space-y-1">
+              <label className="text-xs text-zinc-500">Sebep (zorunlu)</label>
+              <input
+                value={blockReason}
+                onChange={e => setBlockReason(e.target.value)}
+                placeholder="Örn: SSH brute force saldırısı"
+                className="w-full px-3 py-2 text-xs bg-zinc-800 border border-zinc-700 rounded text-zinc-100 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+              />
+            </div>
+            {blockMutation.isError && (
+              <p className="text-xs text-red-400">Hata oluştu. Tekrar dene.</p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => { setShowBlockDialog(false); setBlockReason('') }}
+                className="text-xs px-3 py-1.5 rounded border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+              >
+                Vazgeç
+              </button>
+              <button
+                disabled={!blockReason.trim() || blockMutation.isPending}
+                onClick={() => blockingIp && blockMutation.mutate({ ip: blockingIp, reason: blockReason })}
+                className="text-xs px-3 py-1.5 rounded bg-red-800 hover:bg-red-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {blockMutation.isPending ? 'Bloklanıyor...' : 'Onayla ve Blokla'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -816,3 +816,61 @@ export const networkIntelApi = {
   get: (hours = 24) =>
     request<NetworkIntelResponse>(`/network/intelligence?hours=${hours}`),
 }
+
+// ------------------------------------------------------------------ //
+//  Active Response (V1-9)
+// ------------------------------------------------------------------ //
+
+export interface BlockedIP {
+  block_id: string
+  ip: string
+  reason: string
+  blocked_at: string
+  blocked_by: string
+  is_active: number
+  source_incident_id: string | null
+  provider: string
+  unblocked_at: string | null
+  unblocked_by: string | null
+  tenant_id: string
+}
+
+export interface PlaybookSuggestion {
+  action: string
+  ip: string
+  reason: string
+  incident_id: string
+  already_blocked: boolean
+}
+
+export interface PlaybookResponse {
+  incident_id: string
+  suggestions: PlaybookSuggestion[]
+}
+
+export interface BlockListResponse {
+  count: number
+  blocks: BlockedIP[]
+}
+
+export const activeResponse = {
+  block: (ip: string, reason: string, source_incident_id?: string) =>
+    request<{ success: boolean; provider: string; error?: string }>('/response/block', {
+      method: 'POST',
+      body: JSON.stringify({ ip, reason, source_incident_id }),
+    }),
+
+  unblock: (ip: string) =>
+    request<{ success: boolean; error?: string }>(`/response/block/${encodeURIComponent(ip)}`, {
+      method: 'DELETE',
+    }),
+
+  listBlocks: () =>
+    request<BlockListResponse>('/response/blocks'),
+
+  playbook: (incident_id: string) =>
+    request<PlaybookResponse>('/response/playbook', {
+      method: 'POST',
+      body: JSON.stringify({ incident_id }),
+    }),
+}

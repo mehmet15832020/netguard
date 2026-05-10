@@ -12,7 +12,7 @@ from server.auth import create_access_token
 from server.database import DatabaseManager
 
 _PG_TRUNCATE_TABLES = [
-    "fp_rules", "asset_baselines", "attack_chain_state",
+    "blocked_ips", "fp_rules", "asset_baselines", "attack_chain_state",
     "incident_events", "incidents", "topology_edges", "topology_nodes",
     "token_blacklist", "threat_intel_cache", "audit_log", "api_keys",
     "service_checks", "snmp_poll_history", "snmp_devices", "devices",
@@ -58,6 +58,7 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.routes.tenants.db", test_db)
     monkeypatch.setattr("server.incident_enricher.db", test_db)
     monkeypatch.setattr("server.routes.network_intel.db", test_db)
+    monkeypatch.setattr("server.routes.active_response.db", test_db)
     return test_db
 
 

@@ -19,31 +19,6 @@ Her yeni özellik veya değişiklikten sonra bu dosya güncellenmeli.
 [Birim]        tek fonksiyon izole davranışı
 ```
 
-**Araştırma standardı:** JA3 → Salesforce/ja3 + ThreatFox | Sigma → SigmaHQ/sigma + Elastic | IoC → VirusTotal + MalwareBazaar
-
----
-
-## Temel İlke — Her Adımda Ön Planda Tut (Değiştirme)
-
-**NetGuard bir hikayesi olan üründür. Her kod değişikliği bu hikayeye hizmet etmeli.**
-
-Hikaye:
-> Bir IT yöneticisi sabah işe gelir. Dashboard açar. Geceyi özetleyen bir güvenlik durumu görür.
-> Anormal bir trafik tespit edilmiş, kill chain'in 2. aşamasına ulaşmış, incident açılmış.
-> Bir tıkla zaman çizelgesine bakar — hangi IP, hangi port, hangi saat. Karar verir.
-
-**Her geliştirme adımında şu soruyu sor:**
-- Bu değişiklik o IT yöneticisinin işini somut olarak kolaylaştırıyor mu?
-- Ürünün bütününde anlamlı, görünür ve profesyonel bir etki yaratıyor mu?
-- "Demo'da gösterilince etkileyici" mi?
-- "Bu NSM/NDR kimliğine uygun bir özellik mi?"
-
-**Kaçınılacaklar:**
-- Arka planda çalışıp UI'da görünmeyen altyapı işleri (zorunlu olmadıkça)
-- Kullanıcıya değer katmayan teknik refactor
-- Parça parça, birbirinden kopuk özellikler
-- NSM/NDR dışı kategorilere giren özellikler
-
 ---
 
 ## Ürün Kimliği (Değiştirme)
@@ -54,16 +29,13 @@ Hikaye:
 
 **Hedef kitle:** 50–500 çalışanlı, siber güvenlik bütçesi kısıtlı şirketlerin IT yöneticileri.
 
-**Kategori netliği:**
-- **NSM (Network Security Monitoring):** Ağ trafiğini güvenlik amacıyla toplama + analiz + yanıt pratiği. Bir disiplin, ürün değil.
-- **NDR (Network Detection and Response):** NSM disiplininin Gartner ürün etiketi — detection + response workflow eklenmiş hali. Her NDR bir NSM aracıdır, tersinin doğruluğu şart değil.
-- **NetGuard = NSM platformu + pasif NDR.** Hoca "network güvenliği izleme sistemi" dediğinde NSM'den bahsediyordu — NetGuard tam olarak bu.
+**NetGuard = NSM platformu + pasif NDR + aktif yanıt.**
 
 **Bu ürün ne DEĞİLDİR:**
-- Wireshark gibi paket yakalayıcı değil — tespiti amaçlar, ham veriyi değil
-- Zabbix gibi saf NMS değil — güvenlik tespiti önceliktir
-- Splunk gibi log yöneticisi değil — ağ odaklıdır
-- Wazuh gibi EDR/HIDS değil — host değil ağ odaklıdır
+- Wireshark gibi paket yakalayıcı değil
+- Zabbix gibi saf NMS değil
+- Splunk gibi log yöneticisi değil
+- Wazuh gibi EDR/HIDS değil
 
 ---
 
@@ -73,11 +45,12 @@ Hikaye:
 COLLECT                 DETECT                  RESPOND
 ───────                 ──────                  ───────
 Syslog (firewall)       Korelasyon motoru        Incident yönetimi
-SNMP v2c/v3             Sigma kuralları          Saldırı timeline
-NetFlow v5/v9           Kill chain (5 aşama)     Alert + bildirim
-pyshark (SYN/BPF)       Anomaly detection        Audit log
-Agent (psutil)          MITRE ATT&CK
-Web log (nginx)         Threat intel (AbuseIPDB)
+SNMP v2c/v3             Sigma v1 kuralları (15)  Saldırı timeline
+NetFlow v5/v9           pySigma v2 (30 kural)    Alert + bildirim
+pyshark (SYN/BPF)       Kill chain (5 aşama)     Incident enrichment
+Agent (psutil)          Anomaly (IsolationForest) AktifYanıt(IP blok)
+Zeek TAP (DNS/HTTP/SSL) MITRE ATT&CK             Audit log
+Web log (nginx syslog)  Threat intel (AbuseIPDB)
 EVTX (Windows)          ARP/DNS/ICMP det.
          │                      │                      │
          └──────────────────────┴──────────────────────┘
@@ -85,291 +58,173 @@ EVTX (Windows)          ARP/DNS/ICMP det.
                         (normalized_logs tablosu)
 ```
 
-**Event pipeline:** Kaynak → `normalized_logs` (tek merkezi tablo) → correlator/detectors → kill chain → incident
+**Event pipeline:** Kaynak → `normalized_logs` (tek merkezi tablo) → correlator/detectors → kill chain → incident → aktif yanıt
 
 ---
 
-## Collect → Detect → Respond: Dürüst Durum Analizi
+## Mevcut Durum — Tam Envanter (10 Mayıs 2026)
 
-### COLLECT — Veri Toplama
+### Test Durumu
 
-**Yöntemler ve endüstri standardı karşılaştırması:**
+**1100 test, 0 hata** — 58 test dosyası, SQLite + PostgreSQL entegrasyon testleri dahil.
 
-| Yöntem | NetGuard | Endüstri standardı | Fark |
-|--------|----------|-------------------|------|
-| Syslog | ✅ UDP 514, OPNsense/VyOS/nginx | Aynı | Yok |
-| NetFlow | ✅ konfigüre, ⚠️ doğrulanmadı | Aynı | Yok |
-| SNMP | ✅ çalışıyor | Monitoring tier — NDR için değil | Fazla vurgulanıyor |
-| TAP/Span | ⚠️ Sadece SYN paketi | Zeek tüm trafiği görür: DNS/HTTP/SSL/SSH log üretir | Kritik fark |
-| Agent | ⚠️ Sadece metrik (CPU/RAM) | Wazuh/Elastic: process+file+login olayları toplar | Monitoring agent, security değil |
+### Backend Modülleri
 
-**Toplama kapsamı haritası:**
+| Dosya | Rol | Durum |
+|-------|-----|-------|
+| `server/active_response.py` | OPNsense REST + VyOS SSH IP bloklama | ✅ V1-9 |
+| `server/alert_engine.py` | Ajan alert motoru | ✅ |
+| `server/anomaly/` | IsolationForest + Welford anomaly | ✅ kill chain'e bağlı |
+| `server/asset_baseline.py` | Per-IP 7 günlük davranış profili + spike tespiti | ✅ V1-5 |
+| `server/attack_chain.py` | Kill chain (RECON/WEAPONIZE/ACCESS/LATERAL) | ✅ lab doğrulandı |
+| `server/auth.py` | JWT access/refresh + API key (SHA-256) | ✅ |
+| `server/correlator.py` | 60s döngü, JSON+Sigma v1+pySigma v2 kural akışı | ✅ |
+| `server/database.py` | SQLite WAL — `normalized_logs` tek merkezi tablo | ✅ |
+| `server/database_pg.py` | PostgreSQL + TimescaleDB, psycopg3 pool | ✅ V1-7 |
+| `server/detectors/` | port_scan, arp, dns, icmp, lateral | ✅ |
+| `server/dns_resolver.py` | PTR lookup, TTL cache (300s/60s), fire-and-forget | ✅ V1-2 |
+| `server/fp_manager.py` | False positive suppression (CIDR + 30gün TTL) | ✅ V1-6 |
+| `server/incident_enricher.py` | MITRE + related logs + threat intel enrichment | ✅ V1-4 |
+| `server/log_normalizer.py` | syslog/netflow/zeek/agent/EVTX parser | ✅ |
+| `server/netflow_receiver.py` | NetFlow v5/v9 UDP 2055 | ✅ |
+| `server/notifier.py` | Email + webhook, retry (_send_msg/_post_payload) | ✅ |
+| `server/retention.py` | hot/warm/cold veri tutma | ✅ |
+| `server/sigma_executor.py` | pySigma + sqliteBackend, 30 çalıştırılabilir kural | ✅ V1-3 |
+| `server/sigma_parser.py` | v1 count-based parser (geriye dönük uyumluluk) | ✅ |
+| `server/snmp_collector.py` | SNMP v2c/v3 poll + trap | ✅ |
+| `server/syslog_receiver.py` | UDP 514 syslog alıcı | ✅ |
+| `server/threat_intel.py` | AbuseIPDB cache (score ≥ 70 → critical) | ✅ |
+| `server/zeek_collector.py` | Zeek log tail (DNS/HTTP/SSL/Conn/SSH/Notice) | ✅ V1-8 |
+
+### Route'lar
+
+| Endpoint | Dosya |
+|----------|-------|
+| `/auth/*` | `routes/auth.py` |
+| `/incidents/*` | `routes/incidents.py` |
+| `/response/*` | `routes/active_response.py` — V1-9 |
+| `/network/intelligence` | `routes/network_intel.py` |
+| `/correlation/*` | `routes/correlation.py` |
+| `/logs`, `/alerts`, `/agents`, `/devices`, `/snmp` | ilgili route dosyaları |
+| `/mitre`, `/attack-chains`, `/topology` | ilgili route dosyaları |
+
+### Sigma Kuralları
+
+| Dizin | Format | Kural Sayısı |
+|-------|--------|-------------|
+| `config/sigma_rules/` | v1 count-based | 15 kural |
+| `config/sigma_rules_v2/` | pySigma multi-doc YAML | 8 dosya, 30 çalıştırılabilir kural |
+
+### Frontend Sayfaları (dashboard-v2)
+
+| Sayfa | Route | Durum |
+|-------|-------|-------|
+| Overview | `/overview` | ✅ |
+| Logs | `/logs` | ✅ DNS hostname gösteriyor |
+| Incidents | `/incidents` | ✅ enrichment + aktif yanıt butonu |
+| Aktif Bloklar | `/blocks` | ✅ V1-9 |
+| Alerts | `/alerts` | ✅ |
+| Agents | `/agents` | ✅ |
+| Correlation | `/correlation` | ✅ |
+| Network Intelligence | `/network-intelligence` | ✅ JA3/TLS/x509/FTP/SMTP |
+| MITRE ATT&CK | `/mitre` | ✅ |
+| Timeline | `/timeline` | ✅ |
+| Topology | `/topology` | ✅ |
+| Devices / SNMP / Discovery | `/devices`, `/snmp`, `/discovery` | ✅ |
+| Settings / Audit | `/settings`, `/audit` | ✅ |
+| Reports / Security | `/reports`, `/security` | ✅ |
+
+### Altyapı
+
+| Bileşen | Durum |
+|---------|-------|
+| Docker Compose | backend + frontend + influxdb + nginx |
+| Alembic migrations | `alembic/versions/001_initial_schema.py` + `002_blocked_ips.py` |
+| CI-ready | pytest tests/ -q → 1100 passed |
+| systemd | netguard.service, netguard-agent.service, vmware-netguard.service |
+
+---
+
+## Aktif Yanıt — V1-9 Detayı
+
+### Env Değişkenleri
+
+```bash
+OPNSENSE_HOST=10.0.30.1          # OPNsense IP
+OPNSENSE_KEY=<api_key>
+OPNSENSE_SECRET=<api_secret>
+OPNSENSE_BLOCK_ALIAS=NETGUARD_BLOCK
+
+VYOS_HOST=192.168.203.200        # VyOS IP
+VYOS_USER=vyos
+VYOS_KEY_PATH=/path/to/key
+VYOS_FW_NAME=BLOCK-LIST
 ```
-[Kali] → [NetGuard]      pyshark SYN     ✅ görünür
-[Kali] → [Agent VM]      direkt trafik   ❌ görünmez (east-west kör nokta)
-[Kali] → VyOS syslog  → [NetGuard]       ✅ log akıyor
-[Kali] → VyOS NetFlow → [NetGuard]       ✅ flow özeti
-DNS sorguları (tüm hostlar)              ❌ içerik görünmez — C2 tespiti imkânsız
-HTTP içeriği (tüm hostlar)               ❌ görünmez
-```
 
-**Veri kalitesi sorunları:**
-
-| Sorun | Etki |
-|-------|------|
-| Tutarsız şema: syslog'da destination_ip genellikle boş, NetFlow'da dolu | Aynı saldırı farklı kaynaklarda eşleştirilemiyor |
-| DNS sorgu içeriği yok | C2 domain'leri, data exfil tespit edilemiyor |
-| İç ağ görünürlüğü yok | Perimeter'ı geçen saldırgan içeride kaybolur |
-| Asset baseline yok | Anomaly detection'da "normal" tanımsız |
-| Veri doğrulama zayıf — geçersiz log atılmıyor | Hatalı log → hatalı korelasyon |
-
-> **Kural:** Collect doğruysa Detect güvenilir, Detect güvenilirse Respond etkili. Temeli atla, her şey kırık çalışır.
-
----
-
-### DETECT — Tespit Derinliği
-
-**Çalışan:**
-
-| Modül | Durum |
-|-------|-------|
-| Sigma kuralları (count-based) | ✅ 14 kural aktif (web_scan eklendi) |
-| Korelasyon motoru | ✅ 60s döngü |
-| Kill chain RECON+WEAPONIZE+ACCESS | ✅ lab'da doğrulandı |
-| MITRE ATT&CK heatmap | ✅ |
-| ARP/DNS/ICMP dedektörler | ✅ normalized_logs'a yazıyor |
-| Threat intel (AbuseIPDB) | ✅ score ≥ 70 → incident critical escalation |
-| Anomaly (IsolationForest + Welford) | ✅ normalized_logs'a yazıyor → kill chain RECON |
-| nginx access log ayrıştırma | ✅ syslog üzerinden web_request/web_client_error/web_auth_fail |
-
-**Kopuk / eksik:**
-
-| Sorun | Etki | Çözüm |
-|-------|------|-------|
-| Sigma engine sadece `count() by field > N` | Topluluk kuralları (10K+) kullanılamıyor | V1-3: pySigma |
-| EXECUTE dedektörü yok | 4. kill chain aşaması boş | V1 kapsamı |
-| Cross-source korelasyon kuralı yok | Aynı IP syslog+NetFlow+agent'ta tespit edilemiyor | **P4 görevi** |
-| Zaman penceresi max 2 dakika | APT ve yavaş saldırılar kaçırılıyor | V1 kapsamı |
-| False positive yönetimi yok | Yetkili tarama da alarm üretiyor | V1-6 kapsamı |
-| Context enrichment yok | Her olay izole, IP geçmişi görünmez | V1 kapsamı |
-
----
-
-### RESPOND — Yanıt Kalitesi
-
-**Çalışan:**
-
-| Modül | Durum |
-|-------|-------|
-| Incident workflow (open/investigating/resolved) | ✅ |
-| Email + webhook bildirimi | ✅ korelasyon + anomaly + agent |
-| Saldırı timeline | ✅ |
-| Audit log | ✅ |
-
-**Eksik:**
-
-| Sorun | Etki | Çözüm |
-|-------|------|-------|
-| Incident açılınca ilgili loglar otomatik bağlanmıyor | IT yöneticisi kanıt için manuel arama yapıyor | **P11 görevi** |
-| Incident içinde MITRE tekniği ve threat intel yok | Bağlam eksik, karar almak zorlaşıyor | P11 kapsamında |
-| Önceliklendirme mekanizması yok | 20 açık incident'te nereden başlanır? | V1 kapsamı |
-| Müdahale rehberi yok | Her seferinde sıfırdan düşünmek | V1 kapsamı |
-| Kapanış notu zorunlu değil | Root cause kaydedilmez, aynı saldırı tekrar gelince bağlantı kurulamaz | V1 kapsamı |
-| Zaman bazlı eskalasyon yok | Kritik incident sessizce bekleyebilir | V1 kapsamı |
-| Aktif yanıt yok (IP blok, firewall kural) | Sadece pasif — insan kararı gerekiyor | V1-9 kapsamı |
-
----
-
-## Mevcut Durum — Tam Envanter
-
-### Çalışan — Dokunma
-
-| Modül | Dosya | Not |
-|-------|-------|-----|
-| Kill chain (RECON+WEAPONIZE+ACCESS) | `server/attack_chain.py` | Lab'da doğrulandı |
-| Korelasyon motoru | `server/correlator.py` | 60s döngü |
-| Syslog toplama | `server/syslog_receiver.py`, `parsers/firewall.py` | OPNsense/VyOS/nginx akıyor |
-| SNMP polling + TRAP | `server/snmp_collector.py` | VyOS doğrulandı |
-| NetFlow v5/v9 | `server/netflow_receiver.py`, `parsers/netflow.py` | ⚠️ doğrulanmadı |
-| pyshark SYN sniffer | `server/detectors/port_scan.py` | Port scan → recon |
-| ARP/DNS/ICMP dedektörler | `server/detectors/` | normalized_logs'a yazıyor |
-| Incident workflow | `server/routes/incidents.py` | open/investigating/resolved |
-| Notifier (email + webhook) | `server/notifier.py` | Korelasyon + anomaly + agent |
-| MITRE ATT&CK heatmap | `server/mitre.py`, `/mitre` UI | Çalışıyor |
-| 18 frontend sayfası | `dashboard-v2/src/app/(protected)/` | Tümü API'ye bağlı |
-| Docker-compose | `docker-compose.yml` | backend+frontend+influxdb+nginx |
-| 46 test dosyası ~6500 satır | `tests/` | Tümü geçiyor |
-| JWT + API key güvenliği | `server/auth.py` | SHA-256, tip karıştırma engeli |
-| Log retention | `server/retention.py` | hot/warm/cold |
-| Anomaly (IsolationForest + Welford) | `server/anomaly/` | Çalışıyor ama kill chain'e bağlı değil |
-| Threat intel (AbuseIPDB) | `server/threat_intel.py` | Cache çalışıyor ama incident'e bağlı değil |
-
-### Kaldırılanlar
-
-| Modül | Yapılan | Neden |
-|-------|---------|-------|
-| Compliance sayfası (sidebar) | ✅ Kaldırıldı (commit: 6af811a) | Sahte skorlama — NSM/NDR kimliğine zarar veriyor |
-| EVTX frontend sayfası | ✅ Hiç eklenmedi | Host log analizi — NDR değil |
-
-### Demo'da Öne Çıkarılmayacak (Kod Korunuyor)
-
-| Modül | Neden |
-|-------|-------|
-| `server/compliance.py` | Testler bağımlı; backend kodu korunuyor, UI'da gizli |
-| CPU/RAM metrikleri | Monitoring tier — NSM kimliğini zayıflatıyor, küçük tut |
-| Multi-tenant mimarisi | Demo'da gereksiz karmaşıklık |
-| SNMP sayfası | NDR için değil ama ağ görünürlüğü için tutulabilir |
-
----
-
-## 3 Haftalık Sıkı Plan (3–24 Mayıs 2026)
-
-**3 kural:**
-1. Her görev = implementation + test + commit + push
-2. Her görev "Bu NSM/NDR için doğal bir özellik mi?" testini geçmeli
-3. Yeni özellik ekleme — mevcut modülleri birbirine bağla, derinleştir
-
-### Hafta 1 (3–10 Mayıs) — Bağlantı Tamamlama (~5 saat)
-
-| # | Görev | Dosyalar | Süre | NSM/NDR katkısı |
-|---|-------|----------|------|-----------------|
-| **P1** | Anomaly → normalized_logs → kill chain | `server/anomaly/engine.py`, `server/attack_chain.py` | 2s | ML sonuçları RECON stage'ini tetikler |
-| **P2** | Threat intel → incident severity escalation | `server/correlator.py`, `server/routes/incidents.py` | 2s | Bilinen kötü IP → incident otomatik critical |
-| **P6** | Web scan sigma kuralı | `config/sigma_rules/web_scan.yml` | 1s | Alpine nginx HTTP flood → tespit |
-
-### Hafta 2 (11–17 Mayıs) — Tespit + Yanıt Derinliği (~8 saat)
-
-| # | Görev | Dosyalar | Süre | NSM/NDR katkısı |
-|---|-------|----------|------|-----------------|
-| **P4** | Cross-source korelasyon kuralı | `config/correlation_rules.json` | 3s | Aynı IP syslog+NetFlow+agent'ta → tek alert |
-| **P5** | Lateral movement dedektörü | `server/detectors/lateral.py`, `server/attack_chain.py` | 3s | 5. kill chain aşaması — LATERAL tamamlanır |
-| **P11** | Incident enrichment | `server/correlator.py`, `server/routes/incidents.py` | 2s | Incident açılınca ilgili loglar + MITRE + threat intel otomatik bağlanır |
-
-### Hafta 3 (18–24 Mayıs) — Sunum Hazırlığı (~7 saat)
-
-| # | Görev | Dosyalar | Süre | Zorunlu mu |
-|---|-------|----------|------|------------|
-| **P9** | README | `README.md` | 4s | Teslim için zorunlu |
-| **P10** | Demo senaryosu | `docs/demo-scenario.md` | 1s | Sunum güvencesi |
-| **Buffer** | NetFlow doğrulama, bug fix, son test | — | 2s | — |
-
-**Toplam: ~20 saat** — 3 haftada 2–3 odaklı oturum yeterli.
-
-### Teslim Öncesi Yapılmayan ve Neden
-
-| Görev | Neden Atlandı | Nereye Bırakıldı |
-|-------|--------------|-----------------|
-| Zeek/Suricata TAP entegrasyonu | 1 haftalık iş, yüksek risk — mevcut sistemi bozabilir | V1-8 |
-| Full PCAP desteği | Storage altyapısı gerektirir | V1 kapsamı |
-| DNS sorgu içeriği | Zeek olmadan yarım kalır | V1-8 ile birlikte |
-| pySigma entegrasyonu | Tüm testleri bozar, V1 temeli | V1-3 |
-| ECS şema migrasyonu | Foundation değişikliği | V1-1 |
-| PostgreSQL geçişi | Veri büyüyünce gerekir, şimdi erken | V1-7 |
-| Aktif yanıt (IP blok) | Network cihaz API entegrasyonu — ayrı proje | V1-9 |
-| False positive whitelist | Kontrollü demoda gerekmiyor | V1-6 |
-| Anomaly frontend sayfası | API var, bildirimler çalışıyor — nice-to-have | İleride |
-
----
-
-## Demo Akışı — Teslimde Gösterilecek Senaryo
-
-Tüm P görevleri tamamlandıktan sonra aşağıdaki senaryo eksiksiz çalışmalı:
+### Blok Akışı
 
 ```
-1. Kali → port scan (252 port)
-        → pyshark SYN yakalar
-        → normalized_logs: event_action=port_scan_attempt
-        → sigma kural tetiklenir: port_scan_detected
-        → kill chain: RECON ✅
+POST /api/v1/response/block (admin only)
+    → OPNsense REST API dene
+    → Başarısız → VyOS SSH fallback
+    → DB: blocked_ips tablosu
+    → audit_log kaydı
+```
 
-2. Kali → SSH brute force (10 deneme)
-        → syslog: ssh_failure * 10
-        → sigma kural tetiklenir: ssh_brute_force_detected
-        → kill chain: WEAPONIZE ✅
+### Tablolar
 
-3. Kali → SSH success (giriş)
-        → syslog: ssh_success
-        → sigma kural tetiklenir: ssh_success_detected
-        → kill chain: ACCESS ✅
-
-4. Kali (veya Agent VM) → lateral scan
-        → lateral_movement dedektörü (P5)
-        → kill chain: LATERAL ✅
-
-5. Anomaly engine → anormal trafik
-        → normalized_logs'a yazar (P1)
-        → kill chain: RECON (ek sinyal) ✅
-
-6. FULL_ATTACK_CHAIN tetiklenir (4+ aşama)
-        → critical incident otomatik açılır
-        → email bildirimi gider ✅
-
-7. Incident detayı açılır (P11 sonrası)
-        → ilgili loglar listesi
-        → MITRE tekniği: T1046 (Network Service Scanning)
-        → threat intel: "Bu IP AbuseIPDB'de kayıtlı" (P2 sonrası)
-        → IT yöneticisi tek ekranda kararını verir ✅
+```sql
+blocked_ips (block_id, ip, reason, blocked_at, blocked_by,
+             is_active, source_incident_id, provider,
+             unblocked_at, unblocked_by, tenant_id)
 ```
 
 ---
 
-## Version 1 — Endüstri Standardına Açık Kapı
+## Çözülmüş Sorunlar (Kronolojik)
 
-**Kural: Teslim öncesi bu geçişi başlatma. Ama geçişi zorlaştıracak kararlar alma.**
-
-### Adım Sırası (Sıra kritik — atlanırsa sonraki adım temelsiz kalır)
-
-| Adım | Yapılacak | Neden Bu Sırada |
-|------|-----------|----------------|
-| **V1-1** | **ECS şema + veri tutarlılığı** ✅ | Tamamlandı: 8 kolon ECS-aligned isimlere yeniden adlandırıldı (source_ip, destination_ip, network_protocol, observer_hostname, event_action, event_category, source_port, destination_port). DB migration, FTS rebuild, frontend TypeScript tipleri dahil. |
-| **V1-2** | **DNS çözümleme** | Her IP → hostname. "192.168.1.5" yerine "muhasebe-pc" — tüm alertler anında okunabilir. |
-| **V1-3** | **pySigma entegrasyonu** | Sigma engine gerçek olur → 10.000+ topluluk kuralı. Tespit kapsamı dramatik artar. |
-| **V1-4** | **Incident enrichment (derinleştirilmiş)** | P11'in ötesinde: kapanış notu zorunlu, SLA takibi, önceliklendirme. |
-| **V1-5** | **Asset baseline** | Her cihazın normal trafik davranışı öğrenilir. Ancak bundan sonra anomaly güvenilir olur. |
-| **V1-6** | **False positive yönetimi** | Bilinen iyi davranışlar whitelist'e alınır. Alert yorgunluğu azalır. |
-| **V1-7** | **PostgreSQL + TimescaleDB** | Veri hacmi büyüdüğünde. SQLite 10M satıra kadar dayanır. |
-| **V1-8** | **Zeek/Suricata TAP entegrasyonu** | Span port → tüm trafik görünür. DNS/HTTP/SSL/SSH logları otomatik üretilir. En büyük görünürlük sıçraması. |
-| **V1-9** | **Aktif yanıt** | Ancak pasif yanıt mükemmel olduktan sonra. Firewall API, IP blok, otomatik playbook. |
-
-### Şu an ile V1 Karşılaştırması
-
-| Katman | Şu an | Version 1 |
-|--------|-------|-----------|
-| Collect | Syslog/SNMP/NetFlow/SYN only | + ECS şema, DNS çözümleme, Zeek TAP (tüm trafik) |
-| Detect | count-based sigma, ML kopuk | pySigma (10K+ kural), asset baseline, false positive yönetimi |
-| Respond | İnce incident, pasif | Zengin incident, SLA takibi, aktif yanıt |
-| Altyapı | SQLite + InfluxDB | PostgreSQL + TimescaleDB |
-
-### Açık Kapıyı Koruma Kararları (Şimdi Uygulanacak)
-
-1. **`normalized_logs` tek merkezi tablo** — PostgreSQL'e geçince sadece bu migrate edilir.
-2. **`sigma_parser.py` interface'i sabit** — `parse_rule(path) → rule_obj` imzası değişmez; pySigma drop-in olur.
-3. **docker-compose'daki `postgres` servisi silinmez** — Şu an opsiyonel, V1-7'de primary olur.
-4. **Yeni kod SQLite'a özgü syntax yazmaz** — GLOB, PRAGMA yeni modüllere eklenmez.
-5. **Yeni detector yazarken ECS alan adlarını kullan** — `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category` (V1-1 ile tamamlandı).
-
-### V1 Sonucunda NetGuard
-
-Syslog + NetFlow + Zeek TAP → ECS normalize → PostgreSQL → pySigma (10K+ kural)
-→ kill chain → zengin incident → aktif yanıt → sigma-cli ekosistemiyle uyumlu
-
-SMB segmentte Security Onion ile rekabet edebilir, daha kolay kurulumla.
+| Sorun | Çözüm | Commit |
+|-------|-------|--------|
+| `raw_log` kolon hatası | fix | 6f0fb57 |
+| sigma port_scan race condition | id fix + 2m timeframe | 9480aea |
+| attack_chain STAGE_MAP prefix | eklendi | 23fabbc |
+| Compliance sidebar | kaldırıldı | 6af811a |
+| Anomaly → kill chain | bağlandı (P1) | 0aa22f9 |
+| Threat intel → critical escalation | (P2) | 75c504f |
+| web_scan sigma + nginx | (P6) | f880c5c |
+| Cross-source korelasyon | (P4) | a08e54c |
+| Lateral movement | (P5) | f99f6e9 |
+| ECS field rename (8 kolon) | (V1-1) | 2fc5e70 |
+| V1-5 Asset baseline | | a4f7cdf |
+| V1-6 False positive | | 66f18fd |
+| V1-7 PostgreSQL + TimescaleDB | | 5803d27 |
+| V1-8 Zeek TAP | | fce65ec |
+| Faz 1 zenginleştirme (JA3/x509/smtp/ftp) | | ed00417 |
+| Network Intelligence dashboard | | 20b1606 |
+| 13 test hatası (dict_row, LogCategory, rate limit) | | 7fc36e4 |
+| V1-9 Aktif yanıt | IN PROGRESS | — |
 
 ---
 
-## Kırmızı Çizgiler — Tartışmasız Red
+## Bilinen Sorunlar — Aktif
 
-| Teklif | Neden Red |
-|--------|-----------|
-| Vulnerability scanner (OpenVAS/Nessus) | Farklı ürün kategorisi — NDR değil |
-| Aktif yanıt (IP blok, firewall kural) | Teslim öncesi yapılmaz — V1-9 kapsamı |
-| Version 1 mimari geçişi (PostgreSQL/pySigma/Zeek) | Teslim öncesi yapılmaz — testleri bozar |
-| Rule editor UI | Önce mevcut kurallar doğru çalışsın |
-| FIM (File Integrity Monitoring) | Wazuh'un alanı — EDR kategorisi |
-| Rootkit tespiti | EDR alanı, NDR değil |
-| Full PCAP desteği | Storage altyapısı gerektirir — V1 kapsamı |
-| Compliance raporu iyileştirmesi | Sahte skorlama — demo'da gösterme, geliştirme |
-| ECS şema migrasyonu | Foundation değişikliği — teslim öncesi yapılmaz |
+| Sorun | Dosya | Çözüm |
+|-------|-------|-------|
+| V1-9 commit bekliyor | `server/active_response.py` | Backend agent tamamlıyor |
+| NetFlow akışı doğrulanmadı | `server/netflow_receiver.py` | `tcpdump -i eth0 port 2055` |
+
+---
+
+## Mimari Kararlar (Değiştirme)
+
+- **Veritabanı:** SQLite WAL (prod) + PostgreSQL (V1-7 opsiyonel, testcontainers ile test)
+- **Event pipeline:** Her kaynak → `normalized_logs` (tek merkezi tablo)
+- **Korelasyon:** JSON (`correlation_rules.json`) + Sigma v1 YAML + pySigma v2 YAML — üç katmanlı
+- **Sigma engine:** Sigma v1 count-based + pySigma (30 kural, 8 dosya)
+- **Token güvenliği:** `verify_token(token, token_type="access"|"refresh")` — tip karıştırma engeli
+- **API key:** SHA-256 hash saklanır, plaintext asla DB'ye yazılmaz
+- **Aktif yanıt:** OPNsense REST → VyOS SSH fallback, audit log zorunlu
+- **Test fixture:** `tmp_db` + `pg_db` conftest.py'da tanımlı
 
 ---
 
@@ -397,134 +252,49 @@ VyOS rolling     eth0=10.0.30.2, eth1=192.168.203.200, eth2=10.0.10.1
 | Agent VM (Ubuntu) | 192.168.203.142 | Linux agent (systemd: netguard-agent.service) |
 | Kali | 192.168.203.132 | Saldırı testleri |
 | VyOS (GNS3) | 192.168.203.200 / 10.0.30.2 | Router, NetFlow, SNMP |
-| OPNsense (GNS3) | 10.0.30.1 | Firewall |
+| OPNsense (GNS3) | 10.0.30.1 | Firewall — aktif yanıt hedefi |
 | Alpine WebServer (GNS3) | 10.0.10.2 | nginx web server |
-
-### Veri Akışı
-
-| Kaynak | Protokol | Hedef | Durum |
-|--------|----------|-------|-------|
-| OPNsense | Syslog UDP 514 | NetGuard:5140 | ✅ akıyor |
-| VyOS | Syslog UDP 514 | NetGuard:5140 | ✅ akıyor |
-| VyOS | SNMP v2c community=public | NetGuard | ✅ çalışıyor |
-| VyOS | NetFlow v9 UDP 2055 | NetGuard | ⚠️ konfigüre, doğrulanmadı |
-| Alpine nginx | Syslog access_log | NetGuard:5140 | ✅ akıyor |
-
-### Bilgisayar Açılış Sırası
-
-| Adım | Kim | Nasıl |
-|------|-----|-------|
-| 1 | VMware + VM'ler | Otomatik — vmware-netguard.service (✅ reboot testinde doğrulandı) |
-| 2 | NetGuard servisler | Otomatik — netguard-lab-routes.service → netguard.service |
-| 3 | GNS3 node'ları | GNS3'ü aç → proje yükle → auto_start=True ile otomatik |
-| 4 | Alpine nginx | **Tek manuel adım:** `python3 ~/netguard/scripts/lab-start.sh` |
 
 ### Erişim Bilgileri
 
 | Makine | Erişim | Kimlik |
 |--------|--------|--------|
 | NetGuard | `ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134` | key |
-| VyOS | `ssh vyos@192.168.203.200` (port GNS3'te değişebilir) | vyos/vyos |
+| VyOS | `ssh vyos@192.168.203.200` | vyos/vyos |
 | OPNsense | `ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1` | root/netguard123 |
 | Alpine | `telnet localhost 5017` | root (parola yok) |
 | Agent VM | `ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.142` | key |
+
+### Bilgisayar Açılış Sırası
+
+| Adım | Kim | Nasıl |
+|------|-----|-------|
+| 1 | VMware + VM'ler | Otomatik — vmware-netguard.service |
+| 2 | NetGuard servisler | Otomatik — netguard.service |
+| 3 | GNS3 node'ları | GNS3'ü aç → proje yükle → auto_start=True |
+| 4 | Alpine nginx | Tek manuel adım: `python3 ~/netguard/scripts/lab-start.sh` |
 
 ### Lab'da Doğrulanan Senaryolar
 
 | Senaryo | Sonuç |
 |---------|-------|
-| Reboot → tüm otomasyon | ✅ Tüm servisler otomatik başladı |
-| Kali → SSH brute force | ✅ WEAPONIZE aşaması tetiklendi, critical incident |
-| Kali → port scan | ✅ RECON aşaması tetiklendi |
-| RECON + WEAPONIZE + ACCESS | ✅ FULL_ATTACK_CHAIN + email bildirimi |
-
-### Lab Eksikleri (Çözülmemiş)
-
-| Eksik | Çözüm |
-|-------|-------|
-| NetFlow doğrulanmadı | Buffer haftasında: `tcpdump -i eth0 port 2055` ile kontrol |
-| P5 için Kali lateral movement scripti yok | P5 başlamadan önce senaryo: Kali → Agent VM SSH → Agent VM'den iç tarama |
+| Reboot → tüm otomasyon | ✅ |
+| Kali → SSH brute force | ✅ WEAPONIZE tetiklendi |
+| Kali → port scan | ✅ RECON tetiklendi |
+| RECON + WEAPONIZE + ACCESS | ✅ FULL_ATTACK_CHAIN + email |
 
 ---
 
-## Claude Code Agent + MCP Altyapısı
+## Claude Code Agent Altyapısı
 
-### Mevcut Agent Yapısı
+| Dosya | Rol |
+|-------|-----|
+| `.claude/agents/backend-worker.md` | Python/FastAPI uzmanı |
+| `.claude/agents/detection-worker.md` | Sigma/kill chain uzmanı |
+| `.claude/agents/frontend-worker.md` | Next.js/React uzmanı |
+| `.claude/agents/quality-auditor.md` | Kalite denetçisi (opus) |
 
-| Dosya | Rol | Ne Zaman Kullan |
-|-------|-----|-----------------|
-| `.claude/agents/backend-worker.md` | Python/FastAPI uzmanı | server/ değişiklikleri |
-| `.claude/agents/detection-worker.md` | Sigma/kill chain uzmanı | korelasyon, sigma kuralları |
-| `.claude/agents/frontend-worker.md` | Next.js/React uzmanı | dashboard-v2/ değişiklikleri |
-| `.claude/agents/quality-auditor.md` | Kalite denetçisi (opus modeli) | kod incelemesi, refactor önerisi |
-
-**Agent izolasyonu:** `.claude/settings.local.json` → `"defaultMode": "acceptEdits"` — subagent'lar dosya düzenleyebilir.
-**Paralel çalıştırma:** `/batch` komutu kullanılır (CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS deprecated).
-**Worktree izolasyonu:** `isolation: "worktree"` ile her agent kendi git branch'inde çalışır.
-
-### MCP Server Durumu
-
-Claude Code'da MCP sunucuları iki seviyede yapılandırılır:
-- **Proje:** `.claude/mcp.json` — bu proje için geçerli
-- **Kullanıcı:** `~/.claude/mcp.json` — tüm projelerde geçerli
-
-**NetGuard'da MCP kullanımı:** Şu an aktif MCP sunucusu yok. Gereksinim doğmadı — mevcut araçlar (Read, Edit, Bash, Grep) yeterli.
-
-**Eklenebilecek MCP'ler (ileride, gerekirse):**
-- `@anthropic-ai/mcp-server-sqlite` — DB sorgularını doğrudan Claude'a açmak için
-- `@modelcontextprotocol/server-git` — git geçmişini daha derin analiz için
-
-**NotebookLM:** Google'ın not alma aracı. Claude Code ile entegrasyonu yok, API/MCP sunucusu yok. NetGuard geliştirme sürecinde kullanılmıyor.
-
----
-
-## Mimari Kararlar (Değiştirme)
-
-- **Kimlik:** NSM platformu + pasif NDR — NMS + SIEM + EDR değil
-- **Veritabanı:** SQLite WAL + InfluxDB — V1-7'de PostgreSQL + TimescaleDB
-- **Event pipeline:** Her kaynak → `normalized_logs` (tek merkezi tablo, V1 migration hedefi)
-- **Korelasyon:** `config/correlation_rules.json` + `config/sigma_rules/` YAML
-- **Sigma engine:** Şu an sadece `count() by field > N` — V1-3'te pySigma
-- **Token güvenliği:** `verify_token(token, token_type="access"|"refresh")` — tip karıştırma engeli
-- **API key:** SHA-256 hash saklanır, plaintext asla DB'ye yazılmaz
-- **Multi-tenant:** `tenant_scope(user)` → kodu koru, demo'da öne çıkarma
-- **Test fixture:** `tmp_db` conftest.py'da tanımlı, tüm test dosyaları kullanabilir
-
----
-
-## Bilinen Sorunlar — Aktif
-
-| Sorun | Dosya | Çözüm |
-|-------|-------|-------|
-| Incident enrichment zayıf | `server/routes/incidents.py` | **P11** — V1-4 kapsamında |
-| Sigma engine sadece count-based | `server/sigma_parser.py` | V1-3: pySigma |
-| NetFlow akışı doğrulanmadı | `server/netflow_receiver.py` | `tcpdump -i eth0 port 2055` ile kontrol et |
-| Kali lateral movement test scripti yok | `scripts/` | Senaryo: Kali → Agent VM SSH → Agent VM'den iç tarama |
-
-## Çözülmüş Sorunlar (Referans)
-
-- `server/correlator.py:186` — `raw_log` kolon hatası (commit: 6f0fb57) ✅
-- `config/sigma_rules/port_scan.yml` — id fix + 2m timeframe race condition fix (commit: 9480aea) ✅
-- `server/attack_chain.py` — STAGE_MAP'e correlated event prefix'leri eklendi (commit: 23fabbc) ✅
-- Compliance sidebar'dan kaldırıldı (commit: 6af811a) ✅
-- Anomaly → normalized_logs → kill chain bağlandı (commit: 0aa22f9) ✅ **P1**
-- Threat intel AbuseIPDB score ≥ 70 → incident critical escalation (commit: 75c504f) ✅ **P2**
-- web_scan sigma kuralı: 60sn/50+ HTTP → web_scan_detected → RECON (commit: f880c5c) ✅ **P6**
-- nginx syslog → log_normalizer bağlantısı: web_request/web_client_error/web_auth_fail (commit: 48daf41) ✅ **P6 tamamlama**
-- Cross-source korelasyon: 5dk/2+ source_type → multi_source_attack_detected → RECON (commit: a08e54c) ✅ **P4**
-- Lateral movement dedektörü: iç→iç SSH/SMB/RDP tarama → LATERAL aşaması (commit: f99f6e9) ✅ **P5**
-- vmware-netguard.service reboot testinde doğrulandı ✅
-- `server/notifier.py` — `_send_anomaly_email`/`_send_anomaly_webhook` retry eksikti; `_send_msg`/`_post_payload` helper'larıyla 4 yerdeki tekrar tek noktaya toplandı (commit: 6eb285f) ✅
-- `server/attack_chain.py` — trigger yolunda `db.save_chain_stage()` atlanıyordu (race condition); lock dışına taşınarak düzeltildi (commit: e8a20c9) ✅
-- `server/correlator.py` — `COUNT(DISTINCT {col})` f-string SQL injection riski; `_COUNT_DISTINCT_EXPRS` module-level dict ile giderildi (commit: e8a20c9) ✅
-- `server/database.py` — `mark_raw_parse_failed()` eklendi + `idx_norm_corr_query` composite index (event_action, timestamp, source_ip) eklendi (commit: e8a20c9) ✅
-- `tests/test_pipeline_integration.py` — 24 entegrasyon testi: normalize→correlate→kill_chain→incident→alert full pipeline (commit: e8a20c9) ✅
-- `tests/test_incidents.py` — FSM geçiş testleri (5 adet) eklendi (commit: 6eb285f) ✅
-- `tests/test_log_normalizer.py` — parse fail flag + başarılı parse testleri eklendi (commit: 6eb285f) ✅
-- `tests/test_correlation_routes.py` — PUT /rules testleri `monkeypatch` ile tmp_path'e izole edildi; `correlation_rules.json` kirletme sorunu giderildi (commit: 9b21289) ✅
-- `.claude/agents/` — 4 agent tanımı eklendi: backend-worker, detection-worker, frontend-worker, quality-auditor (commit: e8a20c9) ✅
-- `.claude/settings.local.json` — `"defaultMode": "acceptEdits"` — subagent'ların dosya düzenleyebilmesi sağlandı ✅
-- **V1-1 ECS field rename** — 8 kolon tüm katmanlarda yeniden adlandırıldı: `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category`, `source_port`, `destination_port`. DB migration (RENAME COLUMN), FTS rebuild, 100 dosya, 763 test geçiyor (commit: 2fc5e70) ✅
+**Agent izolasyonu:** `.claude/settings.local.json` → `"defaultMode": "acceptEdits"`
 
 ---
 
@@ -541,14 +311,17 @@ Claude Code'da MCP sunucuları iki seviyede yapılandırılır:
 - Error handling sadece gerçek sınır noktalarında (user input, external API)
 - Yeni route → `routes/` altına, router'ı `main.py`'a ekle
 - Yeni UI sayfası → `dashboard-v2/src/app/(protected)/` altına
-- **Yeni kod SQLite'a özgü syntax yazmaz** (GLOB, PRAGMA) — V1 geçişini kolaylaştırır
-- **ECS alan adlarını kullan** — `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category` (V1-1 tamamlandı)
+- **Yeni kod SQLite'a özgü syntax yazmaz** (GLOB, PRAGMA)
+- **ECS alan adlarını kullan:** `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category`, `source_port`, `destination_port`
+- **SQLite `?` / PG `%s` placeholder:** `_IS_PG = bool(os.getenv("DATABASE_URL"))` → `_PH = "%s" if _IS_PG else "?"`
+- **dict_row uyumu (PG):** `row["kolon_adı"]` kullan, `row[0]` asla
 
 ## Test Çalıştırma
 
 ```bash
 cd /home/mehmet/netguard
 pytest tests/ -q
+# → 1100 passed (10 Mayıs 2026 itibarıyla)
 ```
 
 ## SSH Erişim
@@ -557,3 +330,16 @@ pytest tests/ -q
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134   # server
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.142   # agent
 ```
+
+---
+
+## Kırmızı Çizgiler — Tartışmasız Red
+
+| Teklif | Neden Red |
+|--------|-----------|
+| Vulnerability scanner (OpenVAS/Nessus) | Farklı ürün kategorisi |
+| FIM (File Integrity Monitoring) | EDR kategorisi |
+| Rootkit tespiti | EDR alanı |
+| Full PCAP desteği | Storage altyapısı gerektirir |
+| Compliance raporu iyileştirmesi | Sahte skorlama |
+| ECS şema değişikliği | V1-1 tamamlandı, dokunma |

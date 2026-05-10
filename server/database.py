@@ -428,6 +428,26 @@ CREATE TABLE IF NOT EXISTS fp_rules (
 CREATE INDEX IF NOT EXISTS idx_fp_rules_tenant_active ON fp_rules(tenant_id, is_active);
 """
 
+_CREATE_BLOCKED_IPS = """
+CREATE TABLE IF NOT EXISTS blocked_ips (
+    block_id          TEXT PRIMARY KEY,
+    ip                TEXT NOT NULL,
+    reason            TEXT NOT NULL DEFAULT '',
+    blocked_at        TEXT NOT NULL,
+    blocked_by        TEXT NOT NULL,
+    is_active         INTEGER NOT NULL DEFAULT 1,
+    source_incident_id TEXT,
+    provider          TEXT NOT NULL DEFAULT 'opnsense',
+    unblocked_at      TEXT,
+    unblocked_by      TEXT,
+    tenant_id         TEXT NOT NULL DEFAULT 'default'
+);
+CREATE INDEX IF NOT EXISTS idx_blocked_ip        ON blocked_ips(ip);
+CREATE INDEX IF NOT EXISTS idx_blocked_active    ON blocked_ips(is_active);
+CREATE INDEX IF NOT EXISTS idx_blocked_tenant    ON blocked_ips(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_blocked_incident  ON blocked_ips(source_incident_id);
+"""
+
 _CREATE_SCHEMA_VERSION = """
 CREATE TABLE IF NOT EXISTS schema_version (
     version     INTEGER PRIMARY KEY,
@@ -574,6 +594,8 @@ class DatabaseManager:
             conn.executescript(_CREATE_ASSET_BASELINES)
         with self._connect() as conn:
             conn.executescript(_CREATE_FP_RULES)
+        with self._connect() as conn:
+            conn.executescript(_CREATE_BLOCKED_IPS)
         self._migrate_snmp_to_devices()
         self._migrate_snmpv3_columns()
         self._migrate_api_keys_to_hashed()
@@ -1270,6 +1292,73 @@ class DatabaseManager:
                 "UPDATE fp_rules SET hit_count = hit_count + 1 WHERE fp_rule_id = ?",
                 (fp_rule_id,),
             )
+
+    # ── Blocked IPs ───────────────────────────────────────────────────────
+
+    def block_ip(
+        self,
+        block_id: str,
+        ip: str,
+        reason: str,
+        blocked_by: str,
+        source_incident_id: Optional[str] = None,
+        provider: str = "opnsense",
+        tenant_id: str = "default",
+    ) -> None:
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    """INSERT OR IGNORE INTO blocked_ips
+                       (block_id, ip, reason, blocked_by, blocked_at,
+                        is_active, source_incident_id, provider, tenant_id)
+                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                    (block_id, ip, reason, blocked_by,
+                     datetime.now(timezone.utc).isoformat(),
+                     source_incident_id, provider, tenant_id),
+                )
+
+    def unblock_ip(self, ip: str, unblocked_by: str, tenant_id: str = "default") -> bool:
+        with self._lock:
+            with self._connect() as conn:
+                cur = conn.execute(
+                    """UPDATE blocked_ips
+                       SET is_active=0, unblocked_at=?, unblocked_by=?
+                       WHERE ip=? AND is_active=1 AND tenant_id=?""",
+                    (datetime.now(timezone.utc).isoformat(), unblocked_by, ip, tenant_id),
+                )
+                return cur.rowcount > 0
+
+    def get_blocked_ips(self, active_only: bool = True, tenant_id: Optional[str] = None) -> list[dict]:
+        with self._connect() as conn:
+            clauses = []
+            params: list = []
+            if active_only:
+                clauses.append("is_active = 1")
+            if tenant_id is not None:
+                clauses.append("tenant_id = ?")
+                params.append(tenant_id)
+            where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+            rows = conn.execute(
+                f"SELECT * FROM blocked_ips {where} ORDER BY blocked_at DESC",
+                params,
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def get_block_by_ip(self, ip: str, tenant_id: str = "default") -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM blocked_ips WHERE ip=? AND is_active=1 AND tenant_id=? LIMIT 1",
+                (ip, tenant_id),
+            ).fetchone()
+            return dict(row) if row else None
+
+    def is_ip_blocked(self, ip: str, tenant_id: str = "default") -> bool:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM blocked_ips WHERE ip=? AND is_active=1 AND tenant_id=? LIMIT 1",
+                (ip, tenant_id),
+            ).fetchone()
+            return row is not None
 
     def get_correlated_events(
         self,

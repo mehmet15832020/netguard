@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Bell, Shield, FileText, GitMerge, Settings, LogOut,
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
   ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
-  ChevronRight, Zap, Fingerprint,
+  ChevronRight, Zap, Fingerprint, ShieldOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -46,6 +46,12 @@ const SECTIONS = [
       { href: '/logs',      label: 'Loglar',            icon: FileText },
       { href: '/security',  label: 'Güvenlik Olayları', icon: Shield },
       { href: '/incidents', label: 'Incidents',         icon: ShieldAlert },
+    ],
+  },
+  {
+    label: 'Yanıt',
+    items: [
+      { href: '/blocks', label: 'Aktif Bloklar', icon: ShieldOff },
     ],
   },
   {
