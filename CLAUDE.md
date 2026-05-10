@@ -144,25 +144,22 @@ Bu bölüm her adım tamamlandığında güncellenir. Tamamlanan adımlar `[x]` 
   - `DATABASE_URL` her test için set/unset
   - Tüm testler Docker gerektiriyor olacak
 
-- [ ] **F2-4:** `_IS_PG` ve `_PH` flag'lerini 6 modülden kaldır:
-  - `server/correlator.py` — `_IS_PG`, `_PH`, timestamp parametre farkı
-  - `server/asset_baseline.py` — `_IS_PG`, `_PH`, since_param farkı
-  - `server/retention.py` — `_IS_PG`, `_PH`, cutoff param farkı
-  - `server/sigma_executor.py` — `_IS_PG`, `_PH`, LIKE→ILIKE workarounds
-  - `server/routes/mitre.py` — `_IS_PG`, `_PH`, cutoff_param farkı
-  - `server/routes/network_intel.py` — `_IS_PG`, `_PH`
+- [x] **F2-4:** `_IS_PG` ve `_PH` flag'lerini 6 modülden kaldır — `6187e0d` ✅
+  - `server/correlator.py`, `asset_baseline.py`, `retention.py`, `sigma_executor.py`
+  - `server/routes/mitre.py`, `routes/network_intel.py` — hepsi `%s` sabit
+  - `server/log_store.py`: LogStore Protocol + PostgreSQLLogStore (Strangler Fig) eklendi
 
-- [ ] **F2-5:** sigma_executor.py'dan PG-specific workaroundları kaldır
-  - `_pg_ilike()`, `_pg_escape_percent()`, `_pg_fix_having()` fonksiyonları gereksiz → sil
-  - PG ILIKE doğrudan SQL'e yazılabilir
+- [x] **F2-5:** sigma_executor.py'dan PG-specific workaroundları kaldır — `6187e0d` ✅
+  - `_NetGuardSQLiteBackend` → `_NetGuardPGBackend`, ILIKE workaround silindi
+  - `tests/conftest.py`: `to_char` + `mem_db` fixture eklendi (PGCompatConn sarılı)
 
 - [ ] **F2-6:** Alembic: DATABASE_URL zorunlu olduğunda migration notları güncelle
 
-- [ ] **F2-7:** Testler çalıştır, 1165+ geçmeli
+- [x] **F2-7:** Testler çalıştır — 1151 test, 0 hata ✅
 
-- [ ] **F2-8:** CLAUDE.md Kod Kuralları bölümünden `_IS_PG/_PH` kuralını kaldır
+- [x] **F2-8:** CLAUDE.md Kod Kuralları bölümünden `_IS_PG/_PH` kuralını kaldır ✅
 
-- [ ] **F2-9:** Commit: `refactor(db): postgresql-only`
+- [x] **F2-9:** Commit: `6187e0d` ✅
 
 **Sonuç:** Tek DB implementasyonu. ~2600 satır silinir. Placeholder her yerde `%s`. Testler Docker gerektirir.
 
@@ -602,9 +599,9 @@ telnet localhost 5017                                 # Alpine
 
 | Sorun | Dosya | Çözüm Planı |
 |-------|-------|-------------|
-| Sigma V1 + V2 paralel çalışıyor | correlator.py | **FAZ 1** |
-| 4167 satır DB kod tekrarı | database.py / database_pg.py | **FAZ 2** |
-| 6 modülde `_IS_PG/_PH` dialect sızıntısı | correlator, asset_baseline, retention, mitre, network_intel, sigma_executor | **FAZ 2-3** |
+| ~~Sigma V1 + V2 paralel çalışıyor~~ | ~~correlator.py~~ | ✅ FAZ 1 |
+| 4167 satır DB kod tekrarı | database.py / database_pg.py | **FAZ 2** (F2-1, F2-2) |
+| ~~6 modülde `_IS_PG/_PH` dialect sızıntısı~~ | — | ✅ FAZ 2a (6187e0d) |
 | Anomaly kill chain'e bağlı değil | anomaly/engine.py | **FAZ 4** |
 | Auto-block yok (manual blok gerekli) | attack_chain.py | **G1** |
 | Block endpoint rate limiting yok | routes/active_response.py | **G5** |
@@ -639,8 +636,7 @@ telnet localhost 5017                                 # Alpine
 - Yeni UI sayfası → `dashboard-v2/src/app/(protected)/` altına
 - **Yeni kod SQLite-specific syntax yazmaz** (GLOB, PRAGMA)
 - **ECS alan adlarını kullan:** `source_ip`, `destination_ip`, `network_protocol`, `observer_hostname`, `event_action`, `event_category`, `source_port`, `destination_port`
-- **Faz 2 öncesi:** `_IS_PG = bool(os.getenv("DATABASE_URL"))` → `_PH = "%s" if _IS_PG else "?"` (mevcut pattern)
-- **Faz 2 sonrası:** Her yer `%s`, `_IS_PG/_PH` yok
+- **Her yerde `%s` placeholder** — `_IS_PG/_PH` flag'i yok (Faz 2a tamamlandı)
 - **dict_row uyumu (PG):** `row["kolon_adı"]` kullan, `row[0]` asla
 
 ## Test Çalıştırma
