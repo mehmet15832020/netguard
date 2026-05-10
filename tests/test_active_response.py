@@ -170,9 +170,11 @@ class TestVyOSProvider:
 class TestActiveResponseManager:
 
     def test_opnsense_success_vyos_not_called(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
         vyos_called = []
-        monkeypatch.setattr(VyOSProvider, "block", lambda self, ip: vyos_called.append(ip) or BlockResult(True, "vyos"))
+        monkeypatch.setattr(VyOSProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: vyos_called.append(ip) or BlockResult(True, "vyos"))
 
         mgr = ActiveResponseManager()
         mgr.block_ip("1.2.3.4", "test", "admin", tenant_id="default")
@@ -180,9 +182,11 @@ class TestActiveResponseManager:
         assert len(vyos_called) == 0
 
     def test_opnsense_fail_vyos_called(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(False, "opnsense", "credentials eksik"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(False, "opnsense", "credentials eksik"))
         vyos_called = []
-        monkeypatch.setattr(VyOSProvider, "block", lambda self, ip: vyos_called.append(ip) or BlockResult(True, "vyos"))
+        monkeypatch.setattr(VyOSProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: vyos_called.append(ip) or BlockResult(True, "vyos"))
 
         mgr = ActiveResponseManager()
         mgr.block_ip("1.2.3.4", "test", "admin", tenant_id="default")
@@ -190,8 +194,10 @@ class TestActiveResponseManager:
         assert "1.2.3.4" in vyos_called
 
     def test_both_fail_returns_failure(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(False, "opnsense", "fail"))
-        monkeypatch.setattr(VyOSProvider, "block", lambda self, ip: BlockResult(False, "vyos", "fail"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(False, "opnsense", "fail"))
+        monkeypatch.setattr(VyOSProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(False, "vyos", "fail"))
 
         mgr = ActiveResponseManager()
         result = mgr.block_ip("1.2.3.4", "test", "admin", tenant_id="default")
@@ -200,7 +206,8 @@ class TestActiveResponseManager:
         assert tmp_db.is_ip_blocked("1.2.3.4", tenant_id="default") is False
 
     def test_block_saves_to_db(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
 
         mgr = ActiveResponseManager()
         result = mgr.block_ip("5.6.7.8", "brute force", "admin", tenant_id="default")
@@ -212,7 +219,8 @@ class TestActiveResponseManager:
         assert record["provider"] == "opnsense"
 
     def test_block_saves_audit_log(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
 
         mgr = ActiveResponseManager()
         mgr.block_ip("9.10.11.12", "scan detected", "admin", tenant_id="default")
@@ -246,7 +254,8 @@ class TestActiveResponseManager:
 class TestActiveResponseEndpoints:
 
     def test_block_requires_admin(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
         r = client.post("/api/v1/response/block",
                         json={"ip": "1.2.3.4", "reason": "test"},
                         headers=_viewer_auth())
@@ -270,7 +279,8 @@ class TestActiveResponseEndpoints:
         assert r.status_code == 422
 
     def test_block_success(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
         r = client.post("/api/v1/response/block",
                         json={"ip": "203.0.113.1", "reason": "port scan detected"},
                         headers=_admin_auth())
@@ -280,7 +290,8 @@ class TestActiveResponseEndpoints:
         assert data["provider"] == "opnsense"
 
     def test_block_duplicate(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
         client.post("/api/v1/response/block",
                     json={"ip": "203.0.113.2", "reason": "first block"},
                     headers=_admin_auth())
@@ -297,7 +308,8 @@ class TestActiveResponseEndpoints:
         assert data["blocks"] == []
 
     def test_list_blocks_populated(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
         client.post("/api/v1/response/block",
                     json={"ip": "203.0.113.3", "reason": "scan"},
                     headers=_admin_auth())
@@ -308,7 +320,8 @@ class TestActiveResponseEndpoints:
         assert data["blocks"][0]["ip"] == "203.0.113.3"
 
     def test_unblock_success(self, tmp_db, monkeypatch):
-        monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"))
         monkeypatch.setattr(OPNsenseProvider, "unblock", lambda self, ip: UnblockResult(True, "opnsense"))
         client.post("/api/v1/response/block",
                     json={"ip": "203.0.113.4", "reason": "scan"},
@@ -402,9 +415,9 @@ class TestRFC1918Protection:
         """Genel IP koruması tetiklememeli (provider başarısız olsa da 400 değil 502 döner)."""
         from server import active_response as ar_mod
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(False, "opnsense", "test"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(False, "opnsense", "test"))
         monkeypatch.setattr(ar_mod.VyOSProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(False, "vyos", "test"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(False, "vyos", "test"))
         response = client.post(
             "/api/v1/response/block",
             json={"ip": "8.8.8.8", "reason": "test genel ip"},
@@ -493,7 +506,7 @@ class TestTTLExpiry:
         from server.auth import create_access_token
         from server import active_response as ar_mod
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
         token = create_access_token("admin", "superadmin", tenant_id="default")
         response = client.post(
             "/api/v1/response/block",
@@ -538,7 +551,7 @@ class TestFPGate:
         monkeypatch.setattr(fp_manager, "is_suppressed",
                             lambda *a, **kw: "fp-rule-test-002")
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
         response = client.post(
             "/api/v1/response/block",
             json={"ip": "203.0.113.11", "reason": "test force", "force": True},
@@ -553,7 +566,7 @@ class TestFPGate:
         monkeypatch.setattr(fp_manager, "is_suppressed",
                             lambda *a, **kw: None)
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
         response = client.post(
             "/api/v1/response/block",
             json={"ip": "203.0.113.12", "reason": "test no fp"},
@@ -608,7 +621,7 @@ class TestSeverityGate:
         from server import active_response as ar_mod
         monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
         inc_id = self._make_incident(tmp_db, "critical")
         response = client.post(
             "/api/v1/response/block",
@@ -623,7 +636,7 @@ class TestSeverityGate:
         from server import active_response as ar_mod
         monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
         response = client.post(
             "/api/v1/response/block",
             json={"ip": "203.0.113.22", "reason": "manual block"},
@@ -666,7 +679,7 @@ class TestProgressiveTTL:
         from server.database import db
         from server import active_response as ar_mod
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "unblock",
                             lambda self, ip: ar_mod.UnblockResult(True, "opnsense"))
 
@@ -693,7 +706,7 @@ class TestProgressiveTTL:
         from server.database import db
         from server import active_response as ar_mod
         monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
-                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+                            lambda self, ip, dst_port=None, proto=None: ar_mod.BlockResult(True, "opnsense"))
 
         mgr = ar_mod.ActiveResponseManager()
         mgr.block_ip("203.0.113.31", "explicit ttl", "admin",
@@ -714,3 +727,199 @@ class TestProgressiveTTL:
                     ttl_hours=1.0, offense_count=3)
         record = db.get_block_by_ip("203.0.113.32", "default")
         assert record["offense_count"] == 3
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P6 — Blok Doğrulama (Firewall ↔ DB Senkronizasyonu)
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestBlockVerification:
+    """P6: Firewall ile DB blok senkronizasyon doğrulaması."""
+
+    def _admin_headers(self):
+        from server.auth import create_access_token
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_verify_returns_ok_when_synced(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "list_blocked",
+                            lambda self: ["203.0.113.40"])
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_ready",
+                            lambda self: True)
+        from server.database import db
+        db.block_ip("verify-001", "203.0.113.40", "test", "admin",
+                    provider="opnsense", tenant_id="default")
+
+        response = client.get("/api/v1/response/blocks/verify",
+                              headers=self._admin_headers())
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ok"
+        assert "203.0.113.40" in data["synced"]
+        assert data["phantom"] == []
+        assert data["orphan"] == []
+
+    def test_verify_detects_phantom(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "list_blocked",
+                            lambda self: [])
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_ready",
+                            lambda self: True)
+        from server.database import db
+        db.block_ip("phantom-001", "203.0.113.41", "test", "admin",
+                    provider="opnsense", tenant_id="default")
+
+        response = client.get("/api/v1/response/blocks/verify",
+                              headers=self._admin_headers())
+        data = response.json()
+        assert data["status"] == "mismatch"
+        assert "203.0.113.41" in data["phantom"]
+
+    def test_verify_detects_orphan(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "list_blocked",
+                            lambda self: ["203.0.113.42"])
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_ready",
+                            lambda self: True)
+
+        response = client.get("/api/v1/response/blocks/verify",
+                              headers=self._admin_headers())
+        data = response.json()
+        assert data["status"] == "mismatch"
+        assert "203.0.113.42" in data["orphan"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P7 — Port/Protocol Granülaritesi
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestPortProtocolBlock:
+    """P7: Port/protocol granülaritesi."""
+
+    def _admin_headers(self):
+        from server.auth import create_access_token
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_block_with_port_uses_rule_api(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        called = {}
+
+        def fake_rule(self, client, ip, port, proto):
+            called["port"] = port
+            called["proto"] = proto
+            return ar_mod.BlockResult(True, "opnsense")
+
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_block_with_rule", fake_rule)
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_ready", lambda self: True)
+
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.50", "reason": "smb block",
+                  "destination_port": 445, "network_protocol": "tcp"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 201
+        assert called.get("port") == 445
+        assert called.get("proto") == "tcp"
+
+    def test_block_without_port_uses_alias(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        called = {}
+
+        def fake_alias_block(self, ip, destination_port=None, network_protocol=None):
+            called["used_alias"] = True
+            return ar_mod.BlockResult(True, "opnsense")
+
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block", fake_alias_block)
+
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.51", "reason": "full block"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 201
+        assert called.get("used_alias")
+
+    def test_invalid_port_rejected(self, tmp_db):
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.52", "reason": "test", "destination_port": 99999},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 422
+
+    def test_invalid_protocol_rejected(self, tmp_db):
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.53", "reason": "test", "network_protocol": "ftp"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 422
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P8 — Break-Glass Mekanizması
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestBreakGlass:
+    """P8: Break-glass acil unblock mekanizması."""
+
+    def test_break_glass_disabled_without_env(self, tmp_db, monkeypatch):
+        monkeypatch.delenv("BREAK_GLASS_TOKEN", raising=False)
+        import server.routes.active_response as ar_route
+        monkeypatch.setattr(ar_route, "_BREAK_GLASS_TOKEN", "")
+        response = client.delete(
+            "/api/v1/response/break-glass/203.0.113.60",
+            headers={"x-break-glass-token": "anything"},
+        )
+        assert response.status_code == 503
+
+    def test_break_glass_wrong_token_rejected(self, tmp_db, monkeypatch):
+        import server.routes.active_response as ar_route
+        monkeypatch.setattr(ar_route, "_BREAK_GLASS_TOKEN", "correct-token")
+        response = client.delete(
+            "/api/v1/response/break-glass/203.0.113.61",
+            headers={"x-break-glass-token": "wrong-token"},
+        )
+        assert response.status_code == 401
+
+    def test_break_glass_unblocks_ip(self, tmp_db, monkeypatch):
+        from server.database import db
+        from server import active_response as ar_mod
+        import server.routes.active_response as ar_route
+
+        monkeypatch.setattr(ar_route, "_BREAK_GLASS_TOKEN", "emergency-token")
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "unblock",
+                            lambda self, ip: ar_mod.UnblockResult(True, "opnsense"))
+
+        db.block_ip("bg-001", "203.0.113.62", "test", "admin",
+                    provider="opnsense", tenant_id="default")
+
+        response = client.delete(
+            "/api/v1/response/break-glass/203.0.113.62",
+            headers={"x-break-glass-token": "emergency-token"},
+        )
+        assert response.status_code == 200
+        assert not db.is_ip_blocked("203.0.113.62", "default")
+
+    def test_break_glass_audit_log_written(self, tmp_db, monkeypatch):
+        from server.database import db
+        from server import active_response as ar_mod
+        import server.routes.active_response as ar_route
+
+        monkeypatch.setattr(ar_route, "_BREAK_GLASS_TOKEN", "audit-token")
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "unblock",
+                            lambda self, ip: ar_mod.UnblockResult(True, "opnsense"))
+
+        db.block_ip("bg-002", "203.0.113.63", "test", "admin",
+                    provider="opnsense", tenant_id="default")
+
+        client.delete(
+            "/api/v1/response/break-glass/203.0.113.63",
+            headers={"x-break-glass-token": "audit-token"},
+        )
+        logs = db.get_audit_log(limit=5)
+        actions = [l["action"] for l in logs]
+        assert "ip_unblocked_break_glass" in actions

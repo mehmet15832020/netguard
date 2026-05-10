@@ -14,7 +14,7 @@ import os
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, field_validator
 
 from server.auth import User, get_current_user, tenant_scope
@@ -23,6 +23,8 @@ from server.fp_manager import fp_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+_BREAK_GLASS_TOKEN = os.getenv("BREAK_GLASS_TOKEN", "")
 
 _IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 
@@ -73,6 +75,8 @@ class BlockRequest(BaseModel):
     source_incident_id: Optional[str] = None
     ttl_hours: Optional[float] = None
     force: bool = False
+    destination_port: Optional[int] = None
+    network_protocol: Optional[str] = None
 
     @field_validator("ip")
     @classmethod
@@ -96,6 +100,20 @@ class BlockRequest(BaseModel):
         if v is not None and v <= 0:
             raise ValueError("ttl_hours sıfırdan büyük olmalı")
         return v
+
+    @field_validator("destination_port")
+    @classmethod
+    def validate_port(cls, v: Optional[int]) -> Optional[int]:
+        if v is not None and not (1 <= v <= 65535):
+            raise ValueError("destination_port 1-65535 aralığında olmalı")
+        return v
+
+    @field_validator("network_protocol")
+    @classmethod
+    def validate_protocol(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v.lower() not in ("tcp", "udp", "icmp", "any"):
+            raise ValueError("network_protocol: tcp|udp|icmp|any")
+        return v.lower() if v else v
 
 
 class PlaybookRequest(BaseModel):
@@ -159,6 +177,7 @@ async def block_ip(
         active_response_manager.block_ip,
         req.ip, req.reason, current_user.username,
         req.source_incident_id, tid, req.ttl_hours,
+        req.destination_port, req.network_protocol,
     )
     if not result["success"]:
         raise HTTPException(status_code=502, detail=f"Bloklama başarısız: {result['error']}")
@@ -194,6 +213,14 @@ def list_blocks(current_user: User = Depends(_require_admin)):
     return {"count": len(blocks), "blocks": blocks}
 
 
+@router.get("/response/blocks/verify")
+async def verify_blocks(current_user: User = Depends(_require_admin)):
+    from server.active_response import active_response_manager
+    tid = tenant_scope(current_user)
+    result = await asyncio.to_thread(active_response_manager.verify_blocks, tid)
+    return result
+
+
 @router.post("/response/playbook")
 def suggest_playbook(
     req: PlaybookRequest,
@@ -220,3 +247,31 @@ def suggest_playbook(
             })
 
     return {"incident_id": req.incident_id, "suggestions": suggestions}
+
+
+@router.delete("/response/break-glass/{ip}", status_code=200)
+async def break_glass_unblock(ip: str, x_break_glass_token: str = Header(...)):
+    if not _BREAK_GLASS_TOKEN:
+        raise HTTPException(status_code=503, detail="Break-glass devre dışı (BREAK_GLASS_TOKEN ayarlı değil)")
+    if x_break_glass_token != _BREAK_GLASS_TOKEN:
+        raise HTTPException(status_code=401, detail="Geçersiz break-glass token")
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Geçersiz IP: {ip}")
+
+    from server.active_response import active_response_manager
+    result = await asyncio.to_thread(
+        active_response_manager.unblock_ip,
+        ip, "system:break-glass", "default",
+    )
+    if not result["success"]:
+        code = 404 if "bloklu değil" in result.get("error", "") else 502
+        raise HTTPException(status_code=code, detail=result["error"])
+    db.save_audit_event(
+        actor="system:break-glass",
+        action="ip_unblocked_break_glass",
+        resource=f"ip:{ip}",
+        detail="BREAK_GLASS_TOKEN kullanıldı",
+    )
+    return result

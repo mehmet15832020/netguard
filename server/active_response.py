@@ -87,12 +87,19 @@ class OPNsenseProvider:
         except Exception as exc:
             logger.debug("OPNsense reconfigure başarısız: %s", exc)
 
-    def block(self, ip: str) -> BlockResult:
+    def block(
+        self,
+        ip: str,
+        destination_port: Optional[int] = None,
+        network_protocol: Optional[str] = None,
+    ) -> BlockResult:
         if not self._ready():
             return BlockResult(False, "opnsense", "OPNsense credentials eksik")
         try:
             import httpx
             with httpx.Client(verify=False, timeout=self._timeout) as client:
+                if destination_port is not None or network_protocol is not None:
+                    return self._block_with_rule(client, ip, destination_port, network_protocol)
                 r = client.post(
                     f"{self._base()}/firewall/alias/addHost/{self._alias}",
                     auth=self._auth(),
@@ -105,6 +112,37 @@ class OPNsenseProvider:
                 return BlockResult(True, "opnsense")
         except Exception as exc:
             return BlockResult(False, "opnsense", str(exc))
+
+    def _block_with_rule(
+        self,
+        client,
+        ip: str,
+        port: Optional[int],
+        protocol: Optional[str],
+    ) -> BlockResult:
+        rule = {
+            "action":      "block",
+            "interface":   "lan",
+            "ipprotocol":  "inet",
+            "protocol":    protocol or "any",
+            "src":         ip,
+            "dst":         "any",
+            "dstport":     str(port) if port else "any",
+            "description": f"NetGuard block {ip}:{port or 'any'}/{protocol or 'any'}",
+            "enabled":     "1",
+        }
+        r = client.post(
+            f"{self._base()}/firewall/filter/addRule",
+            auth=self._auth(),
+            json={"rule": rule},
+        )
+        if r.status_code not in (200, 201):
+            return BlockResult(False, "opnsense", f"Rule API HTTP {r.status_code}: {r.text[:100]}")
+        r2 = client.post(f"{self._base()}/firewall/filter/apply", auth=self._auth())
+        if r2.status_code not in (200, 201):
+            logger.warning("OPNsense rule apply başarısız: %s", r2.status_code)
+        logger.info("OPNsense rule block: %s port=%s proto=%s", ip, port, protocol)
+        return BlockResult(True, "opnsense")
 
     def unblock(self, ip: str) -> UnblockResult:
         if not self._ready():
@@ -124,6 +162,33 @@ class OPNsenseProvider:
                 return UnblockResult(True, "opnsense")
         except Exception as exc:
             return UnblockResult(False, "opnsense", str(exc))
+
+    def list_blocked(self) -> list[str]:
+        if not self._ready():
+            return []
+        try:
+            import httpx
+            with httpx.Client(verify=False, timeout=self._timeout) as client:
+                r = client.get(
+                    f"{self._base()}/firewall/alias/getAliasUUID/{self._alias}",
+                    auth=self._auth(),
+                )
+                if r.status_code != 200:
+                    return []
+                alias_uuid = r.json().get("uuid", "")
+                if not alias_uuid:
+                    return []
+                r2 = client.get(
+                    f"{self._base()}/firewall/alias/getAlias/{alias_uuid}",
+                    auth=self._auth(),
+                )
+                if r2.status_code != 200:
+                    return []
+                content = r2.json().get("alias", {}).get("content", {})
+                return [v.get("ip", "") for v in content.values() if v.get("ip")]
+        except Exception as exc:
+            logger.warning("OPNsense list_blocked başarısız: %s", exc)
+            return []
 
 
 # ────────────────────────────── VyOS ─────────────────────────────────────── #
@@ -173,21 +238,33 @@ class VyOSProvider:
         nums = re.findall(r"rule (\d+)", out)
         return max((int(n) for n in nums), default=99) + 1
 
-    def block(self, ip: str) -> BlockResult:
+    def block(
+        self,
+        ip: str,
+        destination_port: Optional[int] = None,
+        network_protocol: Optional[str] = None,
+    ) -> BlockResult:
         if not self._ready():
             return BlockResult(False, "vyos", "VyOS credentials eksik")
         rule_num = self._next_rule_num()
-        ok, msg = self._exec([
+        commands = [
             "configure",
             f"set firewall name {self._fw_name} rule {rule_num} action drop",
             f"set firewall name {self._fw_name} rule {rule_num} source address {ip}",
-            "commit",
-            "save",
-            "exit",
-        ])
+        ]
+        if network_protocol and network_protocol != "any":
+            commands.append(
+                f"set firewall name {self._fw_name} rule {rule_num} protocol {network_protocol}"
+            )
+        if destination_port:
+            commands.append(
+                f"set firewall name {self._fw_name} rule {rule_num} destination port {destination_port}"
+            )
+        commands += ["commit", "save", "exit"]
+        ok, msg = self._exec(commands)
         if not ok:
             return BlockResult(False, "vyos", msg)
-        logger.info("VyOS block başarılı: %s rule=%d", ip, rule_num)
+        logger.info("VyOS block: %s port=%s proto=%s rule=%d", ip, destination_port, network_protocol, rule_num)
         return BlockResult(True, "vyos")
 
     def unblock(self, ip: str) -> UnblockResult:
@@ -233,25 +310,33 @@ class ActiveResponseManager:
         source_incident_id: Optional[str] = None,
         tenant_id: str = "default",
         ttl_hours: Optional[float] = None,
+        destination_port: Optional[int] = None,
+        network_protocol: Optional[str] = None,
     ) -> dict:
         from server.database import db
-        result = self._opnsense.block(ip)
+        result = self._opnsense.block(ip, destination_port, network_protocol)
         if not result.success:
             logger.warning("OPNsense block başarısız (%s), VyOS deneniyor", result.error)
-            result = self._vyos.block(ip)
+            result = self._vyos.block(ip, destination_port, network_protocol)
 
         if result.success:
             block_id = str(uuid.uuid4())
             offense_count = db.get_offense_count(ip, tenant_id) + 1
             effective_ttl = ttl_hours if ttl_hours is not None else _progressive_ttl(offense_count)
+            if destination_port or network_protocol:
+                enriched_reason = (
+                    f"{reason} [port={destination_port or 'any'} proto={network_protocol or 'any'}]"
+                )
+            else:
+                enriched_reason = reason
             db.block_ip(
-                block_id, ip, reason, blocked_by,
+                block_id, ip, enriched_reason, blocked_by,
                 source_incident_id, result.provider, tenant_id,
                 ttl_hours=effective_ttl,
                 offense_count=offense_count,
             )
             detail = (
-                f"provider={result.provider} reason={reason} "
+                f"provider={result.provider} reason={enriched_reason} "
                 f"offense_count={offense_count} ttl_hours={effective_ttl}"
             )
             db.save_audit_event(
@@ -305,6 +390,25 @@ class ActiveResponseManager:
     def get_active_blocks(self, tenant_id: Optional[str] = None) -> list[dict]:
         from server.database import db
         return db.get_blocked_ips(active_only=True, tenant_id=tenant_id)
+
+    def verify_blocks(self, tenant_id: Optional[str] = None) -> dict:
+        from server.database import db
+        db_blocks = {r["ip"] for r in db.get_blocked_ips(active_only=True, tenant_id=tenant_id)}
+        fw_reachable = self._opnsense._ready()
+        fw_blocks = set(self._opnsense.list_blocked()) if fw_reachable else set()
+
+        phantom = sorted(db_blocks - fw_blocks)
+        orphan  = sorted(fw_blocks - db_blocks)
+        synced  = sorted(db_blocks & fw_blocks)
+
+        status = "ok" if not phantom and not orphan else "mismatch"
+        return {
+            "status":       status,
+            "synced":       synced,
+            "phantom":      phantom,
+            "orphan":       orphan,
+            "fw_reachable": fw_reachable,
+        }
 
     def expire_blocks(self) -> int:
         """Süresi dolmuş IP bloklarını otomatik kaldır. Unblock edilen sayıyı döndür."""
