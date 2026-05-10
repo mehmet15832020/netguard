@@ -441,7 +441,8 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
     unblocked_at      TEXT,
     unblocked_by      TEXT,
     tenant_id         TEXT NOT NULL DEFAULT 'default',
-    expires_at        TEXT
+    expires_at        TEXT,
+    offense_count     INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS idx_blocked_ip        ON blocked_ips(ip);
 CREATE INDEX IF NOT EXISTS idx_blocked_active    ON blocked_ips(is_active);
@@ -608,6 +609,7 @@ class DatabaseManager:
         self._migrate_dns_hostname_columns()
         self._migrate_incident_v1_4_columns()
         self._migrate_blocked_ips_expires_at()
+        self._migrate_blocked_ips_offense_count()
         self.ensure_default_tenant()
         self._init_fts()
         self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
@@ -1307,6 +1309,7 @@ class DatabaseManager:
         provider: str = "opnsense",
         tenant_id: str = "default",
         ttl_hours: Optional[float] = None,
+        offense_count: int = 1,
     ) -> None:
         expires_at = None
         if ttl_hours is not None:
@@ -1318,11 +1321,11 @@ class DatabaseManager:
                 conn.execute(
                     """INSERT OR IGNORE INTO blocked_ips
                        (block_id, ip, reason, blocked_by, blocked_at,
-                        is_active, source_incident_id, provider, tenant_id, expires_at)
-                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)""",
+                        is_active, source_incident_id, provider, tenant_id, expires_at, offense_count)
+                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)""",
                     (block_id, ip, reason, blocked_by,
                      datetime.now(timezone.utc).isoformat(),
-                     source_incident_id, provider, tenant_id, expires_at),
+                     source_incident_id, provider, tenant_id, expires_at, offense_count),
                 )
 
     def unblock_ip(self, ip: str, unblocked_by: str, tenant_id: str = "default") -> bool:
@@ -1367,6 +1370,15 @@ class DatabaseManager:
                 (ip, tenant_id),
             ).fetchone()
             return row is not None
+
+    def get_offense_count(self, ip: str, tenant_id: str = "default") -> int:
+        """IP'nin tüm zamanlar bloklanma sayısını döndür (aktif + pasif)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM blocked_ips WHERE ip=? AND tenant_id=?",
+                (ip, tenant_id),
+            ).fetchone()
+            return int(row["cnt"]) if row else 0
 
     def get_expired_blocks(self, tenant_id: Optional[str] = None) -> list[dict]:
         now = datetime.now(timezone.utc).isoformat()
@@ -1996,6 +2008,16 @@ class DatabaseManager:
                     conn.execute("ALTER TABLE blocked_ips ADD COLUMN expires_at TEXT")
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_blocked_expires ON blocked_ips(expires_at)")
                     logger.info("blocked_ips: 'expires_at' kolonu ve index eklendi")
+
+    def _migrate_blocked_ips_offense_count(self) -> None:
+        """blocked_ips tablosuna offense_count kolonu ekle."""
+        with self._lock:
+            with self._connect() as conn:
+                try:
+                    conn.execute("ALTER TABLE blocked_ips ADD COLUMN offense_count INTEGER NOT NULL DEFAULT 1")
+                    logger.info("blocked_ips: 'offense_count' kolonu eklendi")
+                except Exception:
+                    pass
 
     # ------------------------------------------------------------------ #
     #  TENANTS

@@ -825,6 +825,7 @@ class DatabaseManager:
         provider: str = "opnsense",
         tenant_id: str = "default",
         ttl_hours: Optional[float] = None,
+        offense_count: int = 1,
     ) -> None:
         expires_at = None
         if ttl_hours is not None:
@@ -833,12 +834,12 @@ class DatabaseManager:
             conn.execute(
                 """INSERT INTO blocked_ips
                    (block_id, ip, reason, blocked_by, blocked_at,
-                    is_active, source_incident_id, provider, tenant_id, expires_at)
-                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s, %s)
+                    is_active, source_incident_id, provider, tenant_id, expires_at, offense_count)
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s, %s, %s)
                    ON CONFLICT (block_id) DO NOTHING""",
                 (block_id, ip, reason, blocked_by,
                  _now(),
-                 source_incident_id, provider, tenant_id, expires_at),
+                 source_incident_id, provider, tenant_id, expires_at, offense_count),
             )
 
     def unblock_ip(self, ip: str, unblocked_by: str, tenant_id: str = "default") -> bool:
@@ -882,6 +883,15 @@ class DatabaseManager:
                 (ip, tenant_id),
             ).fetchone()
         return row is not None
+
+    def get_offense_count(self, ip: str, tenant_id: str = "default") -> int:
+        """IP'nin tüm zamanlar bloklanma sayısını döndür (aktif + pasif)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM blocked_ips WHERE ip=%s AND tenant_id=%s",
+                (ip, tenant_id),
+            ).fetchone()
+        return int(row["cnt"]) if row else 0
 
     def get_expired_blocks(self, tenant_id: Optional[str] = None) -> list[dict]:
         now = _now()

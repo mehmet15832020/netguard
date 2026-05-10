@@ -28,6 +28,25 @@ logger = logging.getLogger(__name__)
 _IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 
 
+def _parse_progressive_ttl() -> list[float]:
+    """BLOCK_PROGRESSIVE_TTL env'ini ayrıştır. Default: 1,4,24,168 saat."""
+    raw = os.getenv("BLOCK_PROGRESSIVE_TTL", "1,4,24,168")
+    result = []
+    for part in raw.split(","):
+        try:
+            result.append(float(part.strip()))
+        except ValueError:
+            pass
+    return result if result else [1.0, 4.0, 24.0, 168.0]
+
+
+def _progressive_ttl(offense_count: int) -> float:
+    """offense_count'a göre TTL saatini döndür."""
+    ttl_list = _parse_progressive_ttl()
+    idx = min(offense_count - 1, len(ttl_list) - 1)
+    return ttl_list[idx]
+
+
 @dataclass
 class BlockResult:
     success: bool
@@ -223,14 +242,18 @@ class ActiveResponseManager:
 
         if result.success:
             block_id = str(uuid.uuid4())
+            offense_count = db.get_offense_count(ip, tenant_id) + 1
+            effective_ttl = ttl_hours if ttl_hours is not None else _progressive_ttl(offense_count)
             db.block_ip(
                 block_id, ip, reason, blocked_by,
                 source_incident_id, result.provider, tenant_id,
-                ttl_hours=ttl_hours,
+                ttl_hours=effective_ttl,
+                offense_count=offense_count,
             )
-            detail = f"provider={result.provider} reason={reason}"
-            if ttl_hours is not None:
-                detail += f" ttl_hours={ttl_hours}"
+            detail = (
+                f"provider={result.provider} reason={reason} "
+                f"offense_count={offense_count} ttl_hours={effective_ttl}"
+            )
             db.save_audit_event(
                 actor=blocked_by,
                 action="ip_blocked",

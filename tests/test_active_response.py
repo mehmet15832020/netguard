@@ -643,3 +643,74 @@ class TestSeverityGate:
             headers=self._admin_headers(),
         )
         assert response.status_code == 422
+
+
+class TestProgressiveTTL:
+    """P5: Repeated offenders / progressive TTL mekanizması."""
+
+    def test_first_offense_gets_default_ttl(self):
+        from server.active_response import _progressive_ttl
+        ttl = _progressive_ttl(1)
+        assert ttl == 1.0
+
+    def test_second_offense_gets_longer_ttl(self):
+        from server.active_response import _progressive_ttl
+        assert _progressive_ttl(2) > _progressive_ttl(1)
+
+    def test_beyond_max_offense_uses_last_value(self):
+        from server.active_response import _progressive_ttl
+        assert _progressive_ttl(100) == _progressive_ttl(4)
+
+    def test_offense_count_increments_on_reblock(self, tmp_db, monkeypatch):
+        """Aynı IP iki kez bloklandığında offense_count 2 olmalı."""
+        from server.database import db
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "unblock",
+                            lambda self, ip: ar_mod.UnblockResult(True, "opnsense"))
+
+        mgr = ar_mod.ActiveResponseManager()
+        mgr.block_ip("203.0.113.30", "first block", "admin", tenant_id="default")
+        mgr.unblock_ip("203.0.113.30", "admin", tenant_id="default")
+        mgr.block_ip("203.0.113.30", "second block", "admin", tenant_id="default")
+
+        record = db.get_block_by_ip("203.0.113.30", "default")
+        assert record is not None
+        assert record["offense_count"] == 2
+
+    def test_progressive_ttl_env_override(self, monkeypatch):
+        """BLOCK_PROGRESSIVE_TTL env değişkeni ile özel TTL listesi."""
+        monkeypatch.setenv("BLOCK_PROGRESSIVE_TTL", "0.5,2,12,72")
+        from server import active_response as ar_mod
+        ttl_list = ar_mod._parse_progressive_ttl()
+        assert ttl_list == [0.5, 2.0, 12.0, 72.0]
+        assert ar_mod._progressive_ttl(1) == 0.5
+        assert ar_mod._progressive_ttl(2) == 2.0
+
+    def test_explicit_ttl_overrides_progressive(self, tmp_db, monkeypatch):
+        """Admin açıkça ttl_hours verirse progressive bypass edilmeli."""
+        from server.database import db
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+
+        mgr = ar_mod.ActiveResponseManager()
+        mgr.block_ip("203.0.113.31", "explicit ttl", "admin",
+                     tenant_id="default", ttl_hours=99.0)
+
+        record = db.get_block_by_ip("203.0.113.31", "default")
+        assert record is not None
+        from datetime import datetime, timezone, timedelta
+        expires = datetime.fromisoformat(record["expires_at"].replace("Z", "+00:00"))
+        delta = expires - datetime.now(timezone.utc)
+        assert 98 < delta.total_seconds() / 3600 < 100
+
+    def test_offense_count_stored_in_db(self, tmp_db):
+        """Yeni blok kaydında offense_count DB'ye yazılmalı."""
+        from server.database import db
+        db.block_ip("off-cnt-001", "203.0.113.32", "test", "admin",
+                    provider="opnsense", tenant_id="default",
+                    ttl_hours=1.0, offense_count=3)
+        record = db.get_block_by_ip("203.0.113.32", "default")
+        assert record["offense_count"] == 3
