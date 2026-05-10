@@ -56,7 +56,7 @@ def _nlog(**kwargs) -> NormalizedLog:
         timestamp=now,
         received_at=now,
         severity="warning",
-        event_category=LogCategory.AUTH,
+        event_category=LogCategory.AUTHENTICATION,
         event_action="ssh_failure",
         source_ip="10.0.0.1",
         message="SSH login failed",
@@ -266,8 +266,8 @@ def test_get_correlated_event_by_id(pg_db):
 
 
 def test_count_correlated_events_since(pg_db):
-    pg_db.save_correlated_event(_corr(severity="critical"))
-    pg_db.save_correlated_event(_corr(severity="info"))
+    pg_db.save_correlated_event(_corr(severity="critical", group_value="10.0.0.10"))
+    pg_db.save_correlated_event(_corr(severity="info",     group_value="10.0.0.11"))
     counts = pg_db.count_correlated_events_since(hours=24)
     assert counts["total"] >= 2
     assert counts["high_plus"] >= 1

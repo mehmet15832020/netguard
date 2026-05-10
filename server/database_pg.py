@@ -87,9 +87,9 @@ class DatabaseManager:
         try:
             with self._connect() as conn:
                 row = conn.execute(
-                    "SELECT MAX(version_num) FROM alembic_version"
+                    "SELECT COUNT(*) AS cnt FROM alembic_version"
                 ).fetchone()
-                return int(row[0]) if row and row[0] else 0
+                return int(row["cnt"]) if row else 0
         except Exception:
             return 0
 

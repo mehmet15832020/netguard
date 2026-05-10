@@ -59,12 +59,7 @@ class TestProtectedEndpoints:
         assert response.json()["role"] == "superadmin"
 
     def test_viewer_cannot_create_agent_key(self):
-        response = client.post("/api/v1/auth/login", json={
-            "username": "viewer",
-            "password": "viewer123"
-        })
-        token = response.json()["access_token"]
-
+        token = create_access_token(username="viewer", role="viewer", tenant_id="default")
         response = client.post(
             "/api/v1/auth/agent-key?agent_id=test",
             headers={"Authorization": f"Bearer {token}"}
