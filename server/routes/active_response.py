@@ -19,11 +19,14 @@ from pydantic import BaseModel, field_validator
 
 from server.auth import User, get_current_user, tenant_scope
 from server.database import db
+from server.fp_manager import fp_manager
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 _IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+_SEVERITY_ORDER = {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}
 
 _RFC1918_NETWORKS = [
     ipaddress.ip_network("10.0.0.0/8"),
@@ -69,6 +72,7 @@ class BlockRequest(BaseModel):
     reason: str
     source_incident_id: Optional[str] = None
     ttl_hours: Optional[float] = None
+    force: bool = False
 
     @field_validator("ip")
     @classmethod
@@ -110,6 +114,43 @@ async def block_ip(
         )
 
     tid = current_user.tenant_id or "default"
+
+    fp_rule_id = fp_manager.is_suppressed(
+        event_action="",
+        source_ip=req.ip,
+        tenant_id=tid,
+    )
+    if fp_rule_id and not req.force:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"{req.ip} aktif FP kuralıyla eşleşiyor (kural: {fp_rule_id}). "
+                "Yine de bloklamak için force=true gönderin."
+            ),
+        )
+    if fp_rule_id and req.force:
+        db.save_audit_event(
+            actor=current_user.username,
+            action="ip_block_fp_override",
+            resource=f"ip:{req.ip}",
+            detail=f"fp_rule_id={fp_rule_id} force=true",
+        )
+
+    if req.source_incident_id:
+        incident = db.get_incident(req.source_incident_id)
+        if incident:
+            min_sev = os.getenv("BLOCK_MIN_SEVERITY", "high")
+            incident_sev = incident.get("severity", "info")
+            if _SEVERITY_ORDER.get(incident_sev, 0) < _SEVERITY_ORDER.get(min_sev, 3):
+                raise HTTPException(
+                    status_code=422,
+                    detail=(
+                        f"Incident severity '{incident_sev}', minimum '{min_sev}' gerekiyor "
+                        f"(BLOCK_MIN_SEVERITY env ile yapılandırılır). "
+                        "Bağımsız bloklama için source_incident_id gönderme."
+                    ),
+                )
+
     if db.is_ip_blocked(req.ip, tenant_id=tid):
         raise HTTPException(status_code=409, detail=f"{req.ip} zaten bloklu")
 

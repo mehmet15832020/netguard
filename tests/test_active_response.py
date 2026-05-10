@@ -504,3 +504,142 @@ class TestTTLExpiry:
         from server.database import db
         record = db.get_block_by_ip("8.8.4.4", "default")
         assert record["expires_at"] is not None
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P3 — FP Manager Bloklama Öncesi Kontrol
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestFPGate:
+    """P3: FP manager blok öncesi kontrol."""
+
+    def _admin_headers(self):
+        from server.auth import create_access_token
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        return {"Authorization": f"Bearer {token}"}
+
+    def test_fp_suppressed_ip_rejected(self, tmp_db, monkeypatch):
+        """FP kuralıyla eşleşen IP bloklama reddedilmeli (409)."""
+        from server.fp_manager import fp_manager
+        monkeypatch.setattr(fp_manager, "is_suppressed",
+                            lambda *a, **kw: "fp-rule-test-001")
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.10", "reason": "test"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 409
+        assert "FP kuralıyla" in response.json()["detail"]
+
+    def test_fp_suppressed_ip_force_override(self, tmp_db, monkeypatch):
+        """force=True ile FP eşleşmesi bypass edilebilmeli."""
+        from server.fp_manager import fp_manager
+        from server import active_response as ar_mod
+        monkeypatch.setattr(fp_manager, "is_suppressed",
+                            lambda *a, **kw: "fp-rule-test-002")
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.11", "reason": "test force", "force": True},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 201
+
+    def test_no_fp_match_proceeds_normally(self, tmp_db, monkeypatch):
+        """FP eşleşmesi yoksa bloklama normal devam etmeli."""
+        from server.fp_manager import fp_manager
+        from server import active_response as ar_mod
+        monkeypatch.setattr(fp_manager, "is_suppressed",
+                            lambda *a, **kw: None)
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.12", "reason": "test no fp"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 201
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P4 — Incident Severity Gate
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestSeverityGate:
+    """P4: Incident severity threshold."""
+
+    def _admin_headers(self):
+        from server.auth import create_access_token
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        return {"Authorization": f"Bearer {token}"}
+
+    def _make_incident(self, tmp_db, severity: str) -> str:
+        """Test incident oluştur, ID'yi döndür."""
+        from server.database import db
+        import uuid
+        incident = Incident(
+            incident_id=str(uuid.uuid4()),
+            title=f"Test incident {severity}",
+            severity=severity,
+            created_by="system",
+            group_value="203.0.113.50",
+            rule_id="test-rule",
+        )
+        db.create_incident(incident, tenant_id="default")
+        return incident.incident_id
+
+    def test_medium_severity_incident_rejected(self, tmp_db, monkeypatch):
+        """medium severity incident'ı bloklama reddedilmeli (422)."""
+        from server.fp_manager import fp_manager
+        monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
+        inc_id = self._make_incident(tmp_db, "medium")
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.20", "reason": "test", "source_incident_id": inc_id},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 422
+        assert "minimum" in response.json()["detail"]
+
+    def test_critical_severity_incident_allowed(self, tmp_db, monkeypatch):
+        """critical severity incident'ı bloklama geçmeli."""
+        from server.fp_manager import fp_manager
+        from server import active_response as ar_mod
+        monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+        inc_id = self._make_incident(tmp_db, "critical")
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.21", "reason": "test", "source_incident_id": inc_id},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 201
+
+    def test_no_incident_id_bypasses_severity_gate(self, tmp_db, monkeypatch):
+        """source_incident_id verilmezse severity gate devreye girmemeli."""
+        from server.fp_manager import fp_manager
+        from server import active_response as ar_mod
+        monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.22", "reason": "manual block"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 201
+
+    def test_block_min_severity_env_configurable(self, tmp_db, monkeypatch):
+        """BLOCK_MIN_SEVERITY=critical ile high severity reddedilmeli."""
+        from server.fp_manager import fp_manager
+        monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
+        monkeypatch.setenv("BLOCK_MIN_SEVERITY", "critical")
+        inc_id = self._make_incident(tmp_db, "high")
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "203.0.113.23", "reason": "test env", "source_incident_id": inc_id},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 422
