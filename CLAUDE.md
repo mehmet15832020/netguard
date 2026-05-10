@@ -66,7 +66,7 @@ EVTX (Windows)          ARP/DNS/ICMP det.
 
 ### Test Durumu
 
-**1100 test, 0 hata** — 58 test dosyası, SQLite + PostgreSQL entegrasyon testleri dahil.
+**1165 test, 0 hata** — 56 test dosyası, SQLite + PostgreSQL entegrasyon testleri dahil.
 
 ### Backend Modülleri
 
@@ -139,17 +139,18 @@ EVTX (Windows)          ARP/DNS/ICMP det.
 | Bileşen | Durum |
 |---------|-------|
 | Docker Compose | backend + frontend + influxdb + nginx |
-| Alembic migrations | `alembic/versions/001_initial_schema.py` + `002_blocked_ips.py` |
-| CI-ready | pytest tests/ -q → 1100 passed |
+| Alembic migrations | 001 (schema) + 002 (blocked_ips) + 003 (expires_at) + 004 (offense_count) |
+| CI-ready | pytest tests/ -q → 1165 passed |
 | systemd | netguard.service, netguard-agent.service, vmware-netguard.service |
 
 ---
 
-## Aktif Yanıt — V1-9 Detayı
+## Aktif Yanıt — Detay (V1-9 + P1–P8 derinleştirme)
 
 ### Env Değişkenleri
 
 ```bash
+# Firewall provider'ları
 OPNSENSE_HOST=10.0.30.1          # OPNsense IP
 OPNSENSE_KEY=<api_key>
 OPNSENSE_SECRET=<api_secret>
@@ -159,25 +160,86 @@ VYOS_HOST=192.168.203.200        # VyOS IP
 VYOS_USER=vyos
 VYOS_KEY_PATH=/path/to/key
 VYOS_FW_NAME=BLOCK-LIST
+
+# Güvenlik katmanı (P1–P5)
+PROTECTED_CIDRS=10.0.30.1/32,192.168.203.134/32   # Ek korumalı CIDR'lar (virgülle)
+BLOCK_MIN_SEVERITY=high           # Incident-bağlı bloklarda minimum severity
+BLOCK_PROGRESSIVE_TTL=1,4,24,168 # Tekrarlayan saldırgan TTL artışı (saat)
+BREAK_GLASS_TOKEN=<rastgele>      # Acil unblock token (P8) — boş bırakılırsa devre dışı
+BLOCK_EXPIRY_INTERVAL=60          # Auto-expire kontrol aralığı (saniye)
 ```
 
-### Blok Akışı
+### Blok Akışı (P1–P4 Güvenlik Geçitleri)
 
 ```
 POST /api/v1/response/block (admin only)
-    → OPNsense REST API dene
-    → Başarısız → VyOS SSH fallback
-    → DB: blocked_ips tablosu
-    → audit_log kaydı
+    1. RFC1918 / PROTECTED_CIDRS kontrolü    → 400 (yanlış blok önleme)
+    2. FP Manager: is_suppressed(ip)?
+       - Eşleşme + force=false               → 409 (FP kuralı uyarısı)
+       - Eşleşme + force=true                → audit_log + devam
+    3. source_incident_id varsa:
+       severity < BLOCK_MIN_SEVERITY?        → 422 (düşük öncelik)
+    4. Zaten bloklu?                          → 409
+    5. OPNsense REST (alias veya rule API)
+       → Başarısız → VyOS SSH fallback
+    6. DB: blocked_ips tablosu (expires_at + offense_count)
+    7. audit_log: actor, action, provider, ttl_hours, offense_count
 ```
+
+### Port/Protocol Granülaritesi (P7)
+
+- `destination_port` veya `network_protocol` verilirse → OPNsense `firewall/filter/addRule` API
+- Her ikisi de yoksa → alias yöntemi (mevcut davranış)
+- VyOS'ta da `destination port` ve `protocol` kuralı eklenir
+
+### Blok Doğrulama (P6)
+
+```
+GET /api/v1/response/blocks/verify
+    → OPNsense alias içeriği vs. DB aktif bloklar
+    → phantom: DB'de aktif, FW'da yok
+    → orphan:  FW'da var, DB'de yok
+    → synced:  her ikisinde de var
+```
+
+### Break-Glass (P8)
+
+```
+DELETE /api/v1/response/break-glass/{ip}
+    Header: x-break-glass-token: <BREAK_GLASS_TOKEN>
+    → JWT bypass, sadece token kontrolü
+    → audit_log: ip_unblocked_break_glass
+```
+
+### Progressive TTL (P5 — Repeated Offenders)
+
+| Offense | Default TTL |
+|---------|-------------|
+| 1. kez  | 1 saat      |
+| 2. kez  | 4 saat      |
+| 3. kez  | 24 saat     |
+| 4.+     | 168 saat (7 gün) |
+
+`BLOCK_PROGRESSIVE_TTL` env ile özelleştirilebilir. Admin açıkça `ttl_hours` verirse progressive bypass edilir.
 
 ### Tablolar
 
 ```sql
 blocked_ips (block_id, ip, reason, blocked_at, blocked_by,
              is_active, source_incident_id, provider,
-             unblocked_at, unblocked_by, tenant_id)
+             unblocked_at, unblocked_by, tenant_id,
+             expires_at,       -- P2: auto-expiry
+             offense_count)    -- P5: repeated offenders sayacı
 ```
+
+### Alembic Migrations
+
+| Dosya | İçerik |
+|-------|--------|
+| `001_initial_schema.py` | Temel şema |
+| `002_blocked_ips.py` | blocked_ips tablosu |
+| `003_blocked_ips_ttl.py` | expires_at TIMESTAMPTZ + index |
+| `004_blocked_ips_offense_count.py` | offense_count INTEGER NOT NULL DEFAULT 1 |
 
 ---
 
@@ -202,7 +264,15 @@ blocked_ips (block_id, ip, reason, blocked_at, blocked_by,
 | Faz 1 zenginleştirme (JA3/x509/smtp/ftp) | | ed00417 |
 | Network Intelligence dashboard | | 20b1606 |
 | 13 test hatası (dict_row, LogCategory, rate limit) | | 7fc36e4 |
-| V1-9 Aktif yanıt | IN PROGRESS | — |
+| V1-9 Aktif yanıt (OPNsense + VyOS) | d81b860 | ✅ |
+| Aktif yanıt P1: RFC1918 koruması | 8eb9a59 | ✅ |
+| Aktif yanıt P2: TTL / auto-expiry | 8eb9a59 | ✅ |
+| Aktif yanıt P3: FP gate + force | 00eb569 | ✅ |
+| Aktif yanıt P4: severity threshold | 00eb569 | ✅ |
+| Aktif yanıt P5: progressive TTL | 7e376ff | ✅ |
+| Aktif yanıt P6: blok doğrulama | 0621082 | ✅ |
+| Aktif yanıt P7: port/proto granülaritesi | 0621082 | ✅ |
+| Aktif yanıt P8: break-glass | 0621082 | ✅ |
 
 ---
 
@@ -210,8 +280,8 @@ blocked_ips (block_id, ip, reason, blocked_at, blocked_by,
 
 | Sorun | Dosya | Çözüm |
 |-------|-------|-------|
-| V1-9 commit bekliyor | `server/active_response.py` | Backend agent tamamlıyor |
 | NetFlow akışı doğrulanmadı | `server/netflow_receiver.py` | `tcpdump -i eth0 port 2055` |
+| Frontend P1-P8 yok | `dashboard-v2/` | port/protocol input, verify panel, break-glass butonu eksik |
 
 ---
 
@@ -224,6 +294,9 @@ blocked_ips (block_id, ip, reason, blocked_at, blocked_by,
 - **Token güvenliği:** `verify_token(token, token_type="access"|"refresh")` — tip karıştırma engeli
 - **API key:** SHA-256 hash saklanır, plaintext asla DB'ye yazılmaz
 - **Aktif yanıt:** OPNsense REST → VyOS SSH fallback, audit log zorunlu
+- **Aktif yanıt güvenlik geçitleri:** RFC1918 → FP gate → severity gate → duplicate gate (bu sıra değişmez)
+- **Progressive TTL:** `_progressive_ttl(offense_count)` → Wazuh repeated_offenders eşdeğeri
+- **Break-glass:** `BREAK_GLASS_TOKEN` env — JWT bypass, sadece unblock
 - **Test fixture:** `tmp_db` + `pg_db` conftest.py'da tanımlı
 
 ---
