@@ -29,6 +29,7 @@ UPTIME_CHECK_INTERVAL   = int(os.getenv("NETGUARD_UPTIME_INTERVAL", "60"))  # sa
 PURGE_INTERVAL                  = 300    # saniye (5 dakika)
 ASSET_BASELINE_UPDATE_INTERVAL  = 21600  # saniye (6 saat)
 ASSET_DEVIATION_CHECK_INTERVAL  = 300    # saniye (5 dakika)
+BLOCK_EXPIRY_INTERVAL           = 60     # saniye (1 dakika)
 
 
 async def _detector_loop():
@@ -176,6 +177,19 @@ async def _asset_baseline_update_loop():
             logger.error(f"Asset baseline güncelleme hatası: {exc}")
 
 
+async def _block_expiry_loop():
+    """Her dakika süresi dolmuş IP bloklarını temizle."""
+    from server.active_response import active_response_manager
+    while True:
+        await asyncio.sleep(BLOCK_EXPIRY_INTERVAL)
+        try:
+            count = await asyncio.to_thread(active_response_manager.expire_blocks)
+            if count > 0:
+                logger.info("Auto-expire: %d IP bloğu kaldırıldı", count)
+        except Exception as exc:
+            logger.error("Block expiry hatası: %s", exc)
+
+
 async def _asset_deviation_loop():
     """Her 5 dakikada bir asset davranışını baseline ile karşılaştır."""
     from server.asset_baseline import check_deviations
@@ -238,6 +252,8 @@ async def lifespan(app: FastAPI):
     asset_baseline_task  = asyncio.create_task(_asset_baseline_update_loop())
     asset_deviation_task = asyncio.create_task(_asset_deviation_loop())
     logger.info(f"Asset baseline döngüsü başlatıldı (güncelleme: {ASSET_BASELINE_UPDATE_INTERVAL}s, sapma: {ASSET_DEVIATION_CHECK_INTERVAL}s)")
+    block_expiry_task = asyncio.create_task(_block_expiry_loop())
+    logger.info(f"Block expiry döngüsü başlatıldı (her {BLOCK_EXPIRY_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -267,6 +283,7 @@ async def lifespan(app: FastAPI):
     purge_task.cancel()
     asset_baseline_task.cancel()
     asset_deviation_task.cancel()
+    block_expiry_task.cancel()
     zeek_task.cancel()
     syslog.stop()
     trap_receiver.stop()

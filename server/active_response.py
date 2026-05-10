@@ -213,6 +213,7 @@ class ActiveResponseManager:
         blocked_by: str,
         source_incident_id: Optional[str] = None,
         tenant_id: str = "default",
+        ttl_hours: Optional[float] = None,
     ) -> dict:
         from server.database import db
         result = self._opnsense.block(ip)
@@ -225,12 +226,16 @@ class ActiveResponseManager:
             db.block_ip(
                 block_id, ip, reason, blocked_by,
                 source_incident_id, result.provider, tenant_id,
+                ttl_hours=ttl_hours,
             )
+            detail = f"provider={result.provider} reason={reason}"
+            if ttl_hours is not None:
+                detail += f" ttl_hours={ttl_hours}"
             db.save_audit_event(
                 actor=blocked_by,
                 action="ip_blocked",
                 resource=f"ip:{ip}",
-                detail=f"provider={result.provider} reason={reason}",
+                detail=detail,
             )
         else:
             logger.error("Tüm aktif yanıt provider'ları başarısız: %s", ip)
@@ -277,6 +282,24 @@ class ActiveResponseManager:
     def get_active_blocks(self, tenant_id: Optional[str] = None) -> list[dict]:
         from server.database import db
         return db.get_blocked_ips(active_only=True, tenant_id=tenant_id)
+
+    def expire_blocks(self) -> int:
+        """Süresi dolmuş IP bloklarını otomatik kaldır. Unblock edilen sayıyı döndür."""
+        from server.database import db
+        expired = db.get_expired_blocks()
+        count = 0
+        for record in expired:
+            result = self.unblock_ip(
+                record["ip"], "system:auto-expire", record.get("tenant_id", "default")
+            )
+            if result["success"]:
+                count += 1
+            else:
+                logger.warning(
+                    "Auto-expire unblock başarısız: %s — %s",
+                    record["ip"], result.get("error"),
+                )
+        return count
 
 
 active_response_manager = ActiveResponseManager()

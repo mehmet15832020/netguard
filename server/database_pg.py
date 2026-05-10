@@ -824,17 +824,21 @@ class DatabaseManager:
         source_incident_id: Optional[str] = None,
         provider: str = "opnsense",
         tenant_id: str = "default",
+        ttl_hours: Optional[float] = None,
     ) -> None:
+        expires_at = None
+        if ttl_hours is not None:
+            expires_at = _now() + timedelta(hours=ttl_hours)
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO blocked_ips
                    (block_id, ip, reason, blocked_by, blocked_at,
-                    is_active, source_incident_id, provider, tenant_id)
-                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s)
+                    is_active, source_incident_id, provider, tenant_id, expires_at)
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s, %s)
                    ON CONFLICT (block_id) DO NOTHING""",
                 (block_id, ip, reason, blocked_by,
                  _now(),
-                 source_incident_id, provider, tenant_id),
+                 source_incident_id, provider, tenant_id, expires_at),
             )
 
     def unblock_ip(self, ip: str, unblocked_by: str, tenant_id: str = "default") -> bool:
@@ -878,6 +882,20 @@ class DatabaseManager:
                 (ip, tenant_id),
             ).fetchone()
         return row is not None
+
+    def get_expired_blocks(self, tenant_id: Optional[str] = None) -> list[dict]:
+        now = _now()
+        clauses = ["is_active = 1", "expires_at IS NOT NULL", "expires_at <= %s"]
+        params: list = [now]
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        where = f"WHERE {' AND '.join(clauses)}"
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM blocked_ips {where}", params
+            ).fetchall()
+        return [dict(r) for r in rows]
 
     # ------------------------------------------------------------------ #
     #  SNMP DEVICES

@@ -272,7 +272,7 @@ class TestActiveResponseEndpoints:
     def test_block_success(self, tmp_db, monkeypatch):
         monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
         r = client.post("/api/v1/response/block",
-                        json={"ip": "10.0.0.1", "reason": "port scan detected"},
+                        json={"ip": "203.0.113.1", "reason": "port scan detected"},
                         headers=_admin_auth())
         assert r.status_code == 201
         data = r.json()
@@ -282,10 +282,10 @@ class TestActiveResponseEndpoints:
     def test_block_duplicate(self, tmp_db, monkeypatch):
         monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
         client.post("/api/v1/response/block",
-                    json={"ip": "10.0.0.2", "reason": "first block"},
+                    json={"ip": "203.0.113.2", "reason": "first block"},
                     headers=_admin_auth())
         r = client.post("/api/v1/response/block",
-                        json={"ip": "10.0.0.2", "reason": "duplicate"},
+                        json={"ip": "203.0.113.2", "reason": "duplicate"},
                         headers=_admin_auth())
         assert r.status_code == 409
 
@@ -299,21 +299,21 @@ class TestActiveResponseEndpoints:
     def test_list_blocks_populated(self, tmp_db, monkeypatch):
         monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
         client.post("/api/v1/response/block",
-                    json={"ip": "10.0.0.3", "reason": "scan"},
+                    json={"ip": "203.0.113.3", "reason": "scan"},
                     headers=_admin_auth())
         r = client.get("/api/v1/response/blocks", headers=_admin_auth())
         assert r.status_code == 200
         data = r.json()
         assert data["count"] == 1
-        assert data["blocks"][0]["ip"] == "10.0.0.3"
+        assert data["blocks"][0]["ip"] == "203.0.113.3"
 
     def test_unblock_success(self, tmp_db, monkeypatch):
         monkeypatch.setattr(OPNsenseProvider, "block", lambda self, ip: BlockResult(True, "opnsense"))
         monkeypatch.setattr(OPNsenseProvider, "unblock", lambda self, ip: UnblockResult(True, "opnsense"))
         client.post("/api/v1/response/block",
-                    json={"ip": "10.0.0.4", "reason": "scan"},
+                    json={"ip": "203.0.113.4", "reason": "scan"},
                     headers=_admin_auth())
-        r = client.delete("/api/v1/response/block/10.0.0.4", headers=_admin_auth())
+        r = client.delete("/api/v1/response/block/203.0.113.4", headers=_admin_auth())
         assert r.status_code == 200
 
         r2 = client.get("/api/v1/response/blocks", headers=_admin_auth())
@@ -321,7 +321,7 @@ class TestActiveResponseEndpoints:
 
     def test_unblock_not_found(self, tmp_db, monkeypatch):
         monkeypatch.setattr(OPNsenseProvider, "unblock", lambda self, ip: UnblockResult(True, "opnsense"))
-        r = client.delete("/api/v1/response/block/10.0.0.99", headers=_admin_auth())
+        r = client.delete("/api/v1/response/block/203.0.113.99", headers=_admin_auth())
         assert r.status_code == 404
 
     def test_playbook_critical_with_ip(self, tmp_db):
@@ -368,3 +368,139 @@ class TestActiveResponseEndpoints:
                         json={"incident_id": "nonexistent-id-xyz"},
                         headers=_admin_auth())
         assert r.status_code == 404
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P1 — RFC1918 Koruması
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestRFC1918Protection:
+    """P1: RFC1918 ve kritik IP'lerin bloklama öncesi reddedilmesi."""
+
+    def _admin_headers(self):
+        from server.auth import create_access_token
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        return {"Authorization": f"Bearer {token}"}
+
+    @pytest.mark.parametrize("ip,label", [
+        ("10.0.0.1",      "RFC1918 class-A"),
+        ("172.16.0.1",    "RFC1918 class-B"),
+        ("192.168.1.1",   "RFC1918 class-C"),
+        ("127.0.0.1",     "loopback"),
+        ("169.254.0.1",   "link-local"),
+    ])
+    def test_protected_ip_blocked(self, tmp_db, ip, label):
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": ip, "reason": f"test {label}"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 400, f"{label} ({ip}) bloklanmamalıydı"
+        assert "korumalı" in response.json()["detail"]
+
+    def test_public_ip_not_blocked_by_protection(self, tmp_db, monkeypatch):
+        """Genel IP koruması tetiklememeli (provider başarısız olsa da 400 değil 502 döner)."""
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(False, "opnsense", "test"))
+        monkeypatch.setattr(ar_mod.VyOSProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(False, "vyos", "test"))
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "8.8.8.8", "reason": "test genel ip"},
+            headers=self._admin_headers(),
+        )
+        assert response.status_code == 502
+
+
+# ═══════════════════════════════════════════════════════════════════════════ #
+#  P2 — TTL / Auto-Expiry
+# ═══════════════════════════════════════════════════════════════════════════ #
+
+class TestTTLExpiry:
+    """P2: TTL / auto-expiry mekanizması."""
+
+    def test_block_with_ttl_stores_expires_at(self, tmp_db):
+        from server.database import db
+        db.block_ip("ttl-test-001", "1.2.3.4", "test", "admin",
+                    provider="opnsense", tenant_id="default", ttl_hours=24)
+        record = db.get_block_by_ip("1.2.3.4", "default")
+        assert record is not None
+        assert record["expires_at"] is not None
+
+    def test_block_without_ttl_has_no_expires_at(self, tmp_db):
+        from server.database import db
+        db.block_ip("no-ttl-001", "2.3.4.5", "test", "admin",
+                    provider="opnsense", tenant_id="default")
+        record = db.get_block_by_ip("2.3.4.5", "default")
+        assert record is not None
+        assert record["expires_at"] is None
+
+    def test_get_expired_blocks_returns_past_expiry(self, tmp_db):
+        from server.database import db
+        from datetime import datetime, timezone, timedelta
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        import sqlite3
+        with sqlite3.connect(tmp_db._path) as conn:
+            conn.execute(
+                """INSERT INTO blocked_ips
+                   (block_id, ip, reason, blocked_by, blocked_at, is_active, provider, tenant_id, expires_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                ("expired-001", "3.4.5.6", "test", "admin",
+                 datetime.now(timezone.utc).isoformat(),
+                 "opnsense", "default", past),
+            )
+        expired = db.get_expired_blocks()
+        ips = [r["ip"] for r in expired]
+        assert "3.4.5.6" in ips
+
+    def test_get_expired_blocks_excludes_future_expiry(self, tmp_db):
+        from server.database import db
+        db.block_ip("future-001", "4.5.6.7", "test", "admin",
+                    provider="opnsense", tenant_id="default", ttl_hours=24)
+        expired = db.get_expired_blocks()
+        ips = [r["ip"] for r in expired]
+        assert "4.5.6.7" not in ips
+
+    def test_expire_blocks_calls_unblock(self, tmp_db, monkeypatch):
+        from server.database import db
+        from server.active_response import ActiveResponseManager
+        import sqlite3
+        from datetime import datetime, timezone, timedelta
+
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        with sqlite3.connect(tmp_db._path) as conn:
+            conn.execute(
+                """INSERT INTO blocked_ips
+                   (block_id, ip, reason, blocked_by, blocked_at, is_active, provider, tenant_id, expires_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                ("exp-mgr-001", "5.6.7.8", "test", "admin",
+                 datetime.now(timezone.utc).isoformat(),
+                 "opnsense", "default", past),
+            )
+
+        mgr = ActiveResponseManager()
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "unblock",
+                            lambda self, ip: ar_mod.UnblockResult(True, "opnsense"))
+        monkeypatch.setattr(mgr, "_opnsense", ar_mod.OPNsenseProvider())
+
+        count = mgr.expire_blocks()
+        assert count == 1
+        assert not db.is_ip_blocked("5.6.7.8", "default")
+
+    def test_ttl_via_api_endpoint(self, tmp_db, monkeypatch):
+        from server.auth import create_access_token
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "block",
+                            lambda self, ip: ar_mod.BlockResult(True, "opnsense"))
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        response = client.post(
+            "/api/v1/response/block",
+            json={"ip": "8.8.4.4", "reason": "test ttl", "ttl_hours": 2.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert response.status_code == 201
+        from server.database import db
+        record = db.get_block_by_ip("8.8.4.4", "default")
+        assert record["expires_at"] is not None

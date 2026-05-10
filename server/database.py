@@ -440,7 +440,8 @@ CREATE TABLE IF NOT EXISTS blocked_ips (
     provider          TEXT NOT NULL DEFAULT 'opnsense',
     unblocked_at      TEXT,
     unblocked_by      TEXT,
-    tenant_id         TEXT NOT NULL DEFAULT 'default'
+    tenant_id         TEXT NOT NULL DEFAULT 'default',
+    expires_at        TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_blocked_ip        ON blocked_ips(ip);
 CREATE INDEX IF NOT EXISTS idx_blocked_active    ON blocked_ips(is_active);
@@ -606,6 +607,7 @@ class DatabaseManager:
         self._migrate_tenant_id()
         self._migrate_dns_hostname_columns()
         self._migrate_incident_v1_4_columns()
+        self._migrate_blocked_ips_expires_at()
         self.ensure_default_tenant()
         self._init_fts()
         self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
@@ -1304,17 +1306,23 @@ class DatabaseManager:
         source_incident_id: Optional[str] = None,
         provider: str = "opnsense",
         tenant_id: str = "default",
+        ttl_hours: Optional[float] = None,
     ) -> None:
+        expires_at = None
+        if ttl_hours is not None:
+            expires_at = (
+                datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
+            ).isoformat()
         with self._lock:
             with self._connect() as conn:
                 conn.execute(
                     """INSERT OR IGNORE INTO blocked_ips
                        (block_id, ip, reason, blocked_by, blocked_at,
-                        is_active, source_incident_id, provider, tenant_id)
-                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                        is_active, source_incident_id, provider, tenant_id, expires_at)
+                       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?)""",
                     (block_id, ip, reason, blocked_by,
                      datetime.now(timezone.utc).isoformat(),
-                     source_incident_id, provider, tenant_id),
+                     source_incident_id, provider, tenant_id, expires_at),
                 )
 
     def unblock_ip(self, ip: str, unblocked_by: str, tenant_id: str = "default") -> bool:
@@ -1359,6 +1367,20 @@ class DatabaseManager:
                 (ip, tenant_id),
             ).fetchone()
             return row is not None
+
+    def get_expired_blocks(self, tenant_id: Optional[str] = None) -> list[dict]:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as conn:
+            clauses = ["is_active = 1", "expires_at IS NOT NULL", "expires_at <= ?"]
+            params: list = [now]
+            if tenant_id is not None:
+                clauses.append("tenant_id = ?")
+                params.append(tenant_id)
+            where = f"WHERE {' AND '.join(clauses)}"
+            rows = conn.execute(
+                f"SELECT * FROM blocked_ips {where}", params
+            ).fetchall()
+            return [dict(r) for r in rows]
 
     def get_correlated_events(
         self,
@@ -1964,6 +1986,16 @@ class DatabaseManager:
                 if "group_by_field" not in cols:
                     conn.execute("ALTER TABLE incidents ADD COLUMN group_by_field TEXT DEFAULT 'source_ip'")
                     logger.info("incidents: 'group_by_field' kolonu eklendi")
+
+    def _migrate_blocked_ips_expires_at(self) -> None:
+        """blocked_ips tablosuna expires_at kolonu ve index'i ekle."""
+        with self._lock:
+            with self._connect() as conn:
+                cols = {row[1] for row in conn.execute("PRAGMA table_info(blocked_ips)").fetchall()}
+                if "expires_at" not in cols:
+                    conn.execute("ALTER TABLE blocked_ips ADD COLUMN expires_at TEXT")
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_blocked_expires ON blocked_ips(expires_at)")
+                    logger.info("blocked_ips: 'expires_at' kolonu ve index eklendi")
 
     # ------------------------------------------------------------------ #
     #  TENANTS

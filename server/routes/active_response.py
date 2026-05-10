@@ -9,6 +9,8 @@ POST   /api/v1/response/playbook        → Incident için bloklama önerisi (ad
 
 import asyncio
 import ipaddress
+import logging
+import os
 import re
 from typing import Optional
 
@@ -19,8 +21,41 @@ from server.auth import User, get_current_user, tenant_scope
 from server.database import db
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 _IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+
+_RFC1918_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+]
+
+
+def _load_protected_networks():
+    nets = list(_RFC1918_NETWORKS)
+    for cidr in os.getenv("PROTECTED_CIDRS", "").split(","):
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("PROTECTED_CIDRS geçersiz CIDR atlandı: %s", cidr)
+    return nets
+
+
+_PROTECTED_NETWORKS = _load_protected_networks()
+
+
+def _is_protected(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+        return any(addr in net for net in _PROTECTED_NETWORKS)
+    except ValueError:
+        return False
 
 
 def _require_admin(current_user: User = Depends(get_current_user)) -> User:
@@ -33,6 +68,7 @@ class BlockRequest(BaseModel):
     ip: str
     reason: str
     source_incident_id: Optional[str] = None
+    ttl_hours: Optional[float] = None
 
     @field_validator("ip")
     @classmethod
@@ -50,6 +86,13 @@ class BlockRequest(BaseModel):
             raise ValueError("reason boş bırakılamaz")
         return v.strip()
 
+    @field_validator("ttl_hours")
+    @classmethod
+    def validate_ttl(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("ttl_hours sıfırdan büyük olmalı")
+        return v
+
 
 class PlaybookRequest(BaseModel):
     incident_id: str
@@ -60,6 +103,12 @@ async def block_ip(
     req: BlockRequest,
     current_user: User = Depends(_require_admin),
 ):
+    if _is_protected(req.ip):
+        raise HTTPException(
+            status_code=400,
+            detail=f"{req.ip} korumalı adres (RFC1918/loopback/PROTECTED_CIDRS) — bloklama reddedildi",
+        )
+
     tid = current_user.tenant_id or "default"
     if db.is_ip_blocked(req.ip, tenant_id=tid):
         raise HTTPException(status_code=409, detail=f"{req.ip} zaten bloklu")
@@ -68,7 +117,7 @@ async def block_ip(
     result = await asyncio.to_thread(
         active_response_manager.block_ip,
         req.ip, req.reason, current_user.username,
-        req.source_incident_id, tid,
+        req.source_incident_id, tid, req.ttl_hours,
     )
     if not result["success"]:
         raise HTTPException(status_code=502, detail=f"Bloklama başarısız: {result['error']}")
