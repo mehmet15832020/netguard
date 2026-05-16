@@ -171,7 +171,7 @@ class Correlator:
         """
         produced: list[CorrelatedEvent] = []
 
-        # Mevcut CorrelationRule akışı (JSON + sigma_v1 YAML)
+        # JSON korelasyon kuralları akışı
         for rule in self._rules:
             events = self._apply_rule(rule)
             produced.extend(events)
@@ -241,8 +241,8 @@ class Correlator:
                     ws_manager.broadcast_from_thread(
                         "correlated_event", event.model_dump(mode="json")
                     )
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("ws broadcast: %s", exc)
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
                 self._check_attack_chain(event)
@@ -349,8 +349,8 @@ class Correlator:
                 try:
                     from server.ws_manager import ws_manager
                     ws_manager.broadcast_from_thread("correlated_event", event.model_dump(mode="json"))
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("ws broadcast: %s", exc)
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
                 self._check_attack_chain(event)
@@ -434,8 +434,8 @@ class Correlator:
                         "title": incident.title,
                         "priority_score": incident.priority_score,
                     })
-                except Exception:
-                    pass
+                except Exception as exc:
+                    logger.debug("ws broadcast: %s", exc)
 
             if ti_score >= 70:
                 db.escalate_incident_severity(incident_id, "critical")

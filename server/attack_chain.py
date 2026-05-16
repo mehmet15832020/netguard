@@ -60,6 +60,28 @@ STAGE_MAP: dict[str, str] = {
     "asset_anomaly_detected":        "recon",
     "web_scan_detected":             "recon",
     "multi_source_attack_detected":  "recon",
+    # Sigma kural slug prefix'leri (title → slug → _detected dönüşümü)
+    "arp_spoof":             "recon",     # ARP Spoofing Burst
+    "zeek_port":             "recon",     # Zeek Port Scan Notice
+    "ssh_target":            "weaponize", # SSH Targeted Attack
+    "dns_c2":                "lateral",   # DNS C2 High Frequency (C2 kanal)
+    "dns_tunnel":            "lateral",   # DNS Tunneling
+    "dns_query":             "recon",     # DNS Query Burst
+    "ftp_exfil":             "lateral",   # FTP Exfiltration Burst
+    "web_auth":              "weaponize", # Web Auth Brute Force
+    "icmp_flood":            "recon",     # ICMP Flood
+    "firewall_beacon":       "recon",     # Firewall Beaconing (C2 beaconing)
+    "firewall_ddos":         "recon",     # Firewall DDoS Flood
+    "network_connection_fl": "recon",     # Network Connection Flood
+    "anomaly_cluster":       "recon",     # Anomaly Cluster Multi-Source
+    "coordinated":           "recon",     # Coordinated Multi-Source Attack
+    "tls_suspicious":        "recon",     # TLS Suspicious JA3
+    "ssl_self":              "recon",     # SSL Self-Signed Certificate Burst
+    "ssl_cert":              "recon",     # SSL Certificate Invalid
+    "command_injection":     "execute",   # Command Injection
+    "path_traversal":        "execute",   # Path Traversal
+    "xss":                   "execute",   # XSS Attempt
+    "sql_injection":         "execute",   # SQL Injection
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

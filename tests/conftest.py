@@ -163,6 +163,23 @@ def _patch_sqlite_connect(monkeypatch):
     """
     monkeypatch.setattr(DatabaseManager, "_connect", _PGCompatDatabaseManager._connect)
 
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters():
+    """Her test öncesinde route limiter storage'larını sıfırla — test izolasyonu."""
+    try:
+        import server.routes.active_response as ar_route
+        if hasattr(ar_route, "limiter") and hasattr(ar_route.limiter, "_storage"):
+            ar_route.limiter._storage.reset()
+    except Exception:
+        pass
+    try:
+        import server.routes.auth as auth_route
+        if hasattr(auth_route, "limiter") and hasattr(auth_route.limiter, "_storage"):
+            auth_route.limiter._storage.reset()
+    except Exception:
+        pass
+
 _PG_TRUNCATE_TABLES = [
     "blocked_ips", "fp_rules", "asset_baselines", "attack_chain_state",
     "incident_events", "incidents", "topology_edges", "topology_nodes",

@@ -24,9 +24,10 @@ from server.parsers.zeek import (
 
 logger = logging.getLogger(__name__)
 
-ZEEK_LOG_DIR   = Path(os.getenv("ZEEK_LOG_DIR", "/zeek-logs"))
-POLL_INTERVAL  = int(os.getenv("ZEEK_POLL_INTERVAL", "5"))
-TENANT_ID      = "default"
+ZEEK_LOG_DIR    = Path(os.getenv("ZEEK_LOG_DIR", "/zeek-logs"))
+POLL_INTERVAL   = int(os.getenv("ZEEK_POLL_INTERVAL", "5"))
+TENANT_ID       = "default"
+ZEEK_OFFSET_FILE = Path(os.getenv("ZEEK_OFFSET_FILE", "/tmp/netguard_zeek_offsets.json"))
 
 _PARSERS: dict[str, Callable] = {
     "dns":    parse_dns,
@@ -40,7 +41,25 @@ _PARSERS: dict[str, Callable] = {
     "ftp":    parse_ftp,
 }
 
-_offsets: dict[str, int] = {}
+
+def _load_offsets() -> dict[str, int]:
+    """Disk'teki offset dosyasını oku — Filebeat registry pattern."""
+    try:
+        if ZEEK_OFFSET_FILE.exists():
+            return json.loads(ZEEK_OFFSET_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("Zeek offset dosyası okunamadı: %s", exc)
+    return {}
+
+
+def _save_offsets() -> None:
+    try:
+        ZEEK_OFFSET_FILE.write_text(json.dumps(_offsets), encoding="utf-8")
+    except Exception as exc:
+        logger.warning("Zeek offset kaydedilemedi: %s", exc)
+
+
+_offsets: dict[str, int] = _load_offsets()
 
 
 def _find_log_file(log_type: str) -> Optional[Path]:
@@ -124,6 +143,7 @@ def _process_file(log_file: Path, parser: Callable) -> int:
         return written
 
     _offsets[key] = offset
+    _save_offsets()
     if written:
         logger.debug("Zeek [%s]: %d satır yazıldı", log_file.name, written)
     return written

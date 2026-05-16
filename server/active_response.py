@@ -293,6 +293,24 @@ class VyOSProvider:
         logger.info("VyOS unblock başarılı: %s rule=%d", ip, rule_num)
         return UnblockResult(True, "vyos")
 
+    def list_blocked(self) -> list[str]:
+        """VyOS BLOCK-LIST grubundaki engelli IP'leri döndür."""
+        if not self._ready():
+            return []
+        try:
+            ok, output = self._exec([f"show firewall name {self._fw_name}"])
+            if not ok:
+                return []
+            ips = []
+            for line in output.splitlines():
+                line = line.strip()
+                if re.match(r"^\d{1,3}(\.\d{1,3}){3}$", line):
+                    ips.append(line)
+            return ips
+        except Exception as exc:
+            logger.warning("VyOS list_blocked başarısız: %s", exc)
+            return []
+
 
 # ────────────────────────────── Manager ──────────────────────────────────── #
 
@@ -393,9 +411,12 @@ class ActiveResponseManager:
 
     def verify_blocks(self, tenant_id: Optional[str] = None) -> dict:
         from server.database import db
-        db_blocks = {r["ip"] for r in db.get_blocked_ips(active_only=True, tenant_id=tenant_id)}
-        fw_reachable = self._opnsense._ready()
-        fw_blocks = set(self._opnsense.list_blocked()) if fw_reachable else set()
+        db_blocks       = {r["ip"] for r in db.get_blocked_ips(active_only=True, tenant_id=tenant_id)}
+        opnsense_up     = self._opnsense._ready()
+        opnsense_blocks = set(self._opnsense.list_blocked()) if opnsense_up else set()
+        vyos_up         = self._vyos._ready()
+        vyos_blocks     = set(self._vyos.list_blocked()) if vyos_up else set()
+        fw_blocks       = opnsense_blocks | vyos_blocks
 
         phantom = sorted(db_blocks - fw_blocks)
         orphan  = sorted(fw_blocks - db_blocks)
@@ -403,11 +424,13 @@ class ActiveResponseManager:
 
         status = "ok" if not phantom and not orphan else "mismatch"
         return {
-            "status":       status,
-            "synced":       synced,
-            "phantom":      phantom,
-            "orphan":       orphan,
-            "fw_reachable": fw_reachable,
+            "status":          status,
+            "synced":          synced,
+            "phantom":         phantom,
+            "orphan":          orphan,
+            "fw_reachable":    opnsense_up or vyos_up,
+            "opnsense_up":     opnsense_up,
+            "vyos_up":         vyos_up,
         }
 
     def expire_blocks(self) -> int:
