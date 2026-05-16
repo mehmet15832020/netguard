@@ -134,15 +134,16 @@ cp .env.example .env
 `.env` dosyasını düzenle — minimum zorunlu alanlar:
 
 ```env
-JWT_SECRET_KEY=<buraya-rastgele-string>   # openssl rand -hex 32
+JWT_SECRET_KEY=<buraya-rastgele-string>      # openssl rand -hex 32
 ADMIN_PASSWORD=<güçlü-şifre>
+VIEWER_PASSWORD=<viewer-şifresi>
 POSTGRES_PASSWORD=<db-şifresi>
 INFLUXDB_TOKEN=<influx-token>
 INFLUXDB_ADMIN_PASSWORD=<influx-admin-şifresi>
 INFLUXDB_ORG=netguard
 INFLUXDB_BUCKET=netguard
-NETGUARD_HOST=localhost                   # veya sunucu IP'si
-ZEEK_INTERFACE=eth0                       # izlenecek ağ arayüzü
+NETGUARD_HOST=localhost                      # veya sunucu IP'si
+ZEEK_INTERFACE=eth0                          # izlenecek ağ arayüzü
 ```
 
 ```bash
@@ -204,10 +205,13 @@ npm start          # production
 ### Agent (İzlenecek Makine)
 
 ```bash
+# Kolay kurulum (scripts/install-agent.sh ile):
+scp scripts/install-agent.sh user@192.168.x.x:~/ && ssh user@192.168.x.x "bash install-agent.sh"
+
+# Manuel kurulum:
 scp -r agent/ user@192.168.x.x:~/netguard-agent/
 ssh user@192.168.x.x "cd ~/netguard-agent && pip install psutil httpx python-dotenv"
 
-# .env oluştur
 cat > ~/netguard-agent/.env << EOF
 NETGUARD_SERVER=http://192.168.203.134:8000
 AGENT_API_KEY=<dashboard Agents sayfasından alınan key>
@@ -220,10 +224,11 @@ python main.py
 
 ```bash
 # Zeek LTS kurulum: https://docs.zeek.org/en/master/install.html
-zeek -i eth0 /usr/local/zeek/share/zeek/site/local.zeek
+zeek -i eth0 config/zeek/local.zeek
 
-# NetGuard'a Zeek log dizinini belirt:
-ZEEK_LOG_DIR=/var/log/zeek/current   # .env'e ekle
+# Zeek JSON çıktı ve 6 saatlik log rotasyonu config/zeek/local.zeek ile önceden yapılandırılmıştır.
+# NetGuard'a Zeek log dizinini belirt (.env):
+ZEEK_LOG_DIR=/var/log/zeek/current
 ```
 
 ---
@@ -236,12 +241,12 @@ ZEEK_LOG_DIR=/var/log/zeek/current   # .env'e ekle
 |----------|---------|
 | `JWT_SECRET_KEY` | JWT imzalama anahtarı — `openssl rand -hex 32` |
 | `ADMIN_PASSWORD` | Dashboard admin şifresi |
-| `DATABASE_URL` | PostgreSQL bağlantı URL'si |
+| `VIEWER_PASSWORD` | Dashboard viewer şifresi (salt okunur) |
 | `POSTGRES_PASSWORD` | PostgreSQL şifresi |
 | `INFLUXDB_TOKEN` | InfluxDB API token |
 | `INFLUXDB_ADMIN_PASSWORD` | InfluxDB admin şifresi |
-| `INFLUXDB_ORG` | InfluxDB organizasyon adı |
-| `INFLUXDB_BUCKET` | InfluxDB bucket adı |
+| `INFLUXDB_ORG` | InfluxDB organizasyon adı (örn. `netguard`) |
+| `INFLUXDB_BUCKET` | InfluxDB bucket adı (örn. `netguard`) |
 
 ### Ağ
 
@@ -277,18 +282,39 @@ ZEEK_LOG_DIR=/var/log/zeek/current   # .env'e ekle
 
 | Değişken | Açıklama |
 |----------|---------|
-| `SMTP_HOST` | SMTP sunucu adresi |
+| `SMTP_HOST` | SMTP sunucu adresi (örn. `smtp.gmail.com`) |
 | `SMTP_PORT` | SMTP port (genellikle `587`) |
 | `SMTP_USER` | SMTP kullanıcı adı |
 | `SMTP_PASSWORD` | SMTP şifresi |
-| `SMTP_TO` | Bildirim e-posta adresi |
+| `SMTP_FROM` | Gönderici e-posta adresi |
+| `SMTP_TO` | Alıcı e-posta adresi |
 | `WEBHOOK_URL` | Discord veya Slack webhook URL |
+| `WEBHOOK_TYPE` | Webhook tipi: `discord` veya `slack` |
 
 ### Tehdit İstihbaratı
 
 | Değişken | Açıklama |
 |----------|---------|
 | `ABUSEIPDB_API_KEY` | AbuseIPDB API key ([ücretsiz](https://www.abuseipdb.com/api)) |
+
+### Log Retention (Opsiyonel)
+
+| Değişken | Varsayılan | Açıklama |
+|----------|-----------|---------|
+| `NETGUARD_RETAIN_NORMALIZED_DAYS` | `30` | normalize log saklama süresi (gün) |
+| `NETGUARD_RETAIN_SECURITY_DAYS` | `90` | security event saklama süresi |
+| `NETGUARD_RETAIN_CORRELATED_DAYS` | `365` | correlated event saklama süresi |
+| `NETGUARD_RETAIN_ALERTS_DAYS` | `90` | alert saklama süresi |
+
+### Döngü Aralıkları (Opsiyonel)
+
+| Değişken | Varsayılan | Açıklama |
+|----------|-----------|---------|
+| `NETGUARD_CORR_INTERVAL` | `60` | Korelasyon döngüsü (saniye) |
+| `NETGUARD_DETECTOR_INTERVAL` | `30` | Ağ saldırı dedektörleri (saniye) |
+| `NETGUARD_SNMP_INTERVAL` | `60` | SNMP polling (saniye) |
+| `NETGUARD_UPTIME_INTERVAL` | `60` | Uptime checker (saniye) |
+| `NETGUARD_NTP_CHECK_INTERVAL` | `300` | NTP saat doğrulaması (saniye) |
 
 ---
 
@@ -457,12 +483,27 @@ netguard/
 │   └── retention.py           # Log retention (hot/warm/cold)
 ├── shared/
 │   └── models.py              # Pydantic modelleri (Agent↔Server)
+├── shared/
+│   └── models.py              # Pydantic modelleri (Agent↔Server protokolü)
 ├── config/
-│   ├── correlation_rules.json # JSON korelasyon kuralları
-│   └── sigma_rules_v2/        # pySigma v2 YAML (11 dosya, 30+ kural)
-├── dashboard-v2/              # Next.js frontend
+│   ├── correlation_rules.json # JSON korelasyon kuralları (sunucu yeniden başlatma gerekmez)
+│   ├── sigma_rules_v2/        # pySigma v2 YAML (11 dosya, 30+ kural)
+│   ├── zeek/
+│   │   ├── local.zeek         # Zeek konfigürasyonu (JSON log, 6s rotation)
+│   │   └── start.sh           # Docker entrypoint
+│   └── notifier.json          # Bildirim şablon konfigürasyonu
+├── nginx/
+│   ├── netguard.conf          # nginx TLS + reverse proxy konfigürasyonu
+│   └── Dockerfile             # nginx Docker image (self-signed sertifika üretimi)
+├── scripts/
+│   ├── install-agent.sh       # Agent VM'e tek komutla kurulum
+│   ├── setup-server.sh        # Bare-metal server kurulum yardımcısı
+│   ├── deploy-agent.sh        # Agent dağıtım scripti
+│   └── netguard-agent.service # systemd servis dosyası (agent)
+├── dashboard-v2/              # Next.js 14 frontend
 ├── alembic/                   # DB migration dosyaları (001–004)
-├── tests/                     # 1151 pytest testi
+├── tests/                     # 1151 pytest testi (56 dosya)
+├── docs/                      # Mimari kararlar (ADR), kullanıcı kılavuzu
 ├── docker-compose.yml
 ├── Dockerfile
 └── .env.example
