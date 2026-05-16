@@ -1,318 +1,374 @@
-# NetGuard — Açık Kaynak NDR Platformu
+# NetGuard
 
-**Kurumsal bütçesi olmayan orta ölçekli şirketler için Network Detection and Response.**
+**Orta ölçekli şirketler için açık kaynak ağ güvenlik izleme platformu (NSM/NDR-lite).**
 
-> Splunk yıllık $50.000. QRadar $30.000. NetGuard: açık kaynak, Docker ile 30 dakikada kurulum.
+> Splunk $50.000/yıl. QRadar $30.000/yıl. NetGuard: açık kaynak, Docker ile 30 dakikada kurulum.
 
-NetGuard, ağ trafiğini ve host loglarını birden fazla protokolden toplar; korelasyon motoru, 5 aşamalı kill chain analizi ve MITRE ATT&CK eşlemesiyle tehditleri tespit eder; incident yönetimi ile yanıt verir.
+NetGuard; ağ trafiğini ve host loglarını Syslog, NetFlow, SNMP, Zeek, Agent ve EVTX kaynaklarından toplar. Paylı tespit motoru (pySigma v2 + JSON korelasyon + ML anomaly), 5 aşamalı kill chain analizi ve MITRE ATT&CK eşlemesiyle tehditleri tespit eder. Kritik saldırıları OPNsense ve VyOS üzerinden otomatik veya manuel olarak engeller.
 
-**Hedef kitle:** 50–500 çalışanlı, Splunk/QRadar bütçesi olmayan şirketlerin IT yöneticileri.
+**Hedef kitle:** 50–500 çalışanlı, kurumsal SIEM bütçesi olmayan şirketlerin IT/güvenlik yöneticileri.
 
 ---
 
-## Ne Yapar?
+## Neler Yapar?
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                      KOLEKSIYON                                 │
-│                                                                 │
-│  Linux Agent    SNMP v2c/v3    Syslog UDP     NetFlow v5/v9    │
-│  (CPU/RAM/disk) (router/switch) (firewall log) (trafik akışı)  │
-│                                                                 │
-│  Windows EVTX   Web Log        pyshark         SNMP TRAP       │
-│  (4624/4625/    (nginx access/ (SYN paket      (anlık event)   │
-│   4688)          error log)     analizi)                       │
-└─────────────────────────┬───────────────────────────────────────┘
-                           │ Her kaynak → NormalizedLog
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                       TESPİT                                    │
-│                                                                 │
-│  Korelasyon Motoru    Sigma Kuralları    Anomaly Detection      │
-│  (JSON tabanlı,       (YAML format,      (Welford Z-score +     │
-│   zaman penceresi)     7 aktif kural)    Isolation Forest)      │
-│                                                                 │
-│  Kill Chain (5 aşama)   MITRE ATT&CK     Threat Intelligence   │
-│  RECON → WEAPONIZE →   eşleme           (AbuseIPDB)           │
-│  ACCESS → EXECUTE →                                             │
-│  LATERAL                                                        │
-└─────────────────────────┬───────────────────────────────────────┘
-                           │
-                           ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                        YANIT                                    │
-│                                                                 │
-│  Incident Yönetimi    Saldırı Timeline    Webhook / Email       │
-│  (open → investi-     (kill chain görsel) (kritik olay         │
-│   gating → resolved)                      bildirimi)           │
-│                                                                 │
-│  Compliance Raporu    Audit Log                                 │
-│  (PCI DSS / ISO 27001) (tüm admin işlemleri)                  │
-└─────────────────────────────────────────────────────────────────┘
+COLLECT            DETECT                       RESPOND
+───────            ──────                       ───────
+Syslog             pySigma v2 (30+ kural)       Incident yönetimi
+NetFlow v5/v9      JSON korelasyon motoru        Kill chain timeline
+SNMP v2c/v3        5 aşamalı kill chain          Email + webhook
+Zeek TAP           IsolationForest anomaly       OPNsense REST blok
+Agent (psutil)     MITRE ATT&CK eşleme           VyOS SSH fallback
+EVTX (Windows)     Threat intel (AbuseIPDB)      Audit log
+pyshark (SYN)      ARP/DNS/ICMP/lateral det.     Progressive TTL
 ```
 
 ---
 
 ## Özellikler
 
-### Koleksiyon
+### Veri Toplama
 
-- **Linux Agent** — CPU, RAM, disk, network, process snapshot (psutil); systemd servisi olarak çalışır
-- **SNMP v2c / v3** — Interface istatistikleri, uptime, sys_descr, ARP/LLDP walk; periyodik polling
-- **SNMP TRAP Alıcı** — UDP 162; anlık event normalize edilip DB'ye yazılır
-- **Syslog Alıcı** — UDP 5140; OPNsense, VyOS, pfSense, Cisco ASA, FortiGate logları ayrıştırılır
-- **NetFlow v5/v9** — UDP 2055; binary parser, trafik akış analizi (kaynak/hedef IP, port, byte)
-- **Windows EVTX Parser** — EventID 4624 (başarılı giriş), 4625 (başarısız), 4688 (process oluşturma)
-- **Web Log Parser** — nginx access + error log; SQLi, path traversal, tarama girişimi tespiti
-- **pyshark Paket Analizi** — TCP SYN tabanlı gerçek zamanlı port tarama tespiti; BPF filtre ile
+| Kaynak | Protokol | Toplanan Veri |
+|--------|----------|---------------|
+| Linux/Windows Agent | HTTP API | CPU, RAM, disk, ağ, process snapshot |
+| SNMP v2c/v3 | UDP 161 | Interface istatistikleri, uptime, ARP/LLDP |
+| SNMP TRAP | UDP 162 | Anlık cihaz event'leri |
+| Syslog | UDP 5140 | OPNsense, VyOS, pfSense, Cisco ASA, FortiGate |
+| NetFlow v5/v9 | UDP 2055 | Trafik akış analizi (IP, port, byte) |
+| Zeek TAP | Log dosyası | DNS, HTTP, SSL/TLS, SSH, Conn, x509, SMTP, FTP |
+| Windows EVTX | HTTP API | EventID 4624/4625/4688 (giriş, process) |
+| Web log | Syslog | nginx access/error; SQLi, path traversal tespiti |
+| pyshark | Paket | TCP SYN tabanlı gerçek zamanlı port tarama |
 
 ### Tespit
 
-- **Korelasyon Motoru** — `config/correlation_rules.json` dosyasından okunan threshold tabanlı kurallar; kodda değişiklik yapmadan kural eklenebilir
-- **Sigma Kural Desteği** — SIGMA YAML formatındaki kuralları NetGuard motoruna dönüştüren parser; `config/sigma_rules/` dizininden yüklenir
-- **Kill Chain Dedektörü** — Aynı kaynak IP'den 30 dakika içinde birden fazla saldırı aşaması tespit edildiğinde otomatik uyarı üretir; 4+ aşamada `FULL_ATTACK_CHAIN` tetiklenerek kritik incident açılır ve bildirim gönderilir
+**pySigma v2 (30+ kural — `config/sigma_rules_v2/`):**
 
-  | Aşama | Tetikleyen event tipleri |
-  |-------|--------------------------|
-  | RECON | port_scan_attempt, dns_anomaly, anomaly_detected, web_scan_detected, multi_source_attack_detected |
-  | WEAPONIZE | ssh_failure, windows_logon_failure, brute_force_detected |
-  | ACCESS | ssh_success, windows_logon_success |
-  | EXECUTE | sudo_usage, windows_process_create |
-  | LATERAL | lateral_movement, windows_lateral |
+| Kural Grubu | İçerik |
+|-------------|--------|
+| `ssh_brute_force` | SSH başarısız giriş spike'ı |
+| `auth_and_web` | Web tarama, SQL injection, başarılı SSH |
+| `windows_events` | Brute force, pass-the-hash, password spray, şüpheli process, lateral movement |
+| `port_scan` | TCP SYN tarama |
+| `network_community` | ARP spoof, ICMP flood, DNS burst, DNS tüneli (TXT sorgu) |
+| `c2_and_exfil` | C2 iletişimi, veri sızdırma kalıpları |
+| `zeek_advanced` | JA3/TLS parmak izi, x509 anomaly, SMTP/FTP şüpheli davranış |
+| `web_attacks` | Path traversal, command injection, XSS pattern |
+| `sql_injection` | SQL injection kalıpları |
+| `anomaly_and_impact` | Anomaly spike, darbe tespiti |
+| `device_and_snmp` | Cihaz kesintisi, SNMP trap patlaması |
 
-- **MITRE ATT&CK Eşleme** — Tespit edilen event tipleri ATT&CK taktik ve tekniklerine otomatik eşlenir
-- **Anomaly Detection** — Welford online baseline (saatlik, per-entity) + Isolation Forest (çok boyutlu); 5 dakikalık döngü ile çalışır
-- **Tehdit İstihbaratı** — Şüpheli IP'ler AbuseIPDB'ye sorgulanır; risk skoru, ülke, kategori kayıt edilir
-- **Ağ Dedektörleri** — ARP spoofing, ICMP flood, DNS sorgu patlaması
+**5 Aşamalı Kill Chain:**
 
-### Aktif Sigma Kuralları (15 Kural)
+| Aşama | Tetikleyiciler |
+|-------|---------------|
+| RECON | port_scan, dns_anomaly, web_scan, multi_source_attack |
+| WEAPONIZE | ssh_failure, windows_logon_failure, brute_force |
+| ACCESS | ssh_success, windows_logon_success |
+| EXECUTE | sudo_usage, windows_process_create |
+| LATERAL | lateral_movement, windows_lateral |
 
-| Kural | Eşik / Pencere | Önem |
-|-------|----------------|------|
-| SSH Brute Force | 5+ başarısız giriş / 5dk | Yüksek |
-| Port Tarama | 1+ tespit / 2dk | Orta |
-| ARP Saldırısı | 2+ tespit / 2dk | Yüksek |
-| ICMP Flood | 3+ tespit / 1dk | Orta |
-| DNS Patlaması | 3+ sorgu / 1dk | Orta |
-| Web Tarama / HTTP Flood | 50+ istek / 1dk | Orta |
-| Çok Kaynaklı Saldırı | 2+ farklı kaynak tipi / 5dk | Yüksek |
-| Windows Brute Force | 5+ başarısız giriş / 1dk | Yüksek |
-| Windows Yanal Hareket | 3+ lateral event / 5dk | Yüksek |
-| Pass-the-Hash | 2+ tespit / 5dk | Kritik |
-| Password Spray | 5+ farklı kullanıcı / 5dk | Yüksek |
-| Şüpheli Süreç (LOLBin) | 1+ tespit / 5dk | Kritik |
-| SNMP Trap Patlaması | 5+ trap / 5dk | Orta |
-| Cihaz Kesintisi | 2+ erişilemezlik / 2dk | Orta |
-| Başarılı SSH Girişi | her tespit | Bilgi |
+4+ aşama → `FULL_ATTACK_CHAIN` → critical incident + email/webhook + (opsiyonel) otomatik IP bloğu.
 
-**Ağ Dedektörleri (pyshark tabanlı, eşik bağımsız):**
+**ML Anomaly Detection:**
+- Welford online baseline (per-IP, saatlik güncelleme)
+- Isolation Forest (çok boyutlu, scikit-learn)
+- 5 dakikalık döngü, `anomaly_spike` event'i üretir
 
-| Dedektör | Mantık | Önem |
-|----------|--------|------|
-| Port Scan | TCP SYN, farklı portlara → kill chain RECON | Yüksek |
-| ARP Spoof | ARP yanıt anomalisi → kill chain RECON | Kritik |
-| ICMP Flood | Yüksek frekanslı ICMP → kill chain RECON | Yüksek |
-| DNS Anomaly | DNS sorgu patlaması → kill chain RECON | Orta |
-| Lateral Movement | İç→iç SSH/SMB/RDP (3+ hedef / 120s) → kill chain LATERAL | Kritik |
+**Ağ Dedektörleri (pyshark tabanlı):**
+- Port scan (TCP SYN), ARP spoofing, ICMP flood, DNS sorgu patlaması, lateral movement (iç→iç SSH/SMB/RDP)
 
-### Yanıt
+**MITRE ATT&CK:** Her tespit olayı otomatik olarak ATT&CK taktik ve tekniklerine eşlenir.
 
-- **Incident Yönetimi** — Alert → Incident dönüşümü; open / investigating / resolved durumları; kullanıcı atama; notlar; incident detayında otomatik zenginleştirme:
-  - **MITRE ATT&CK** — Tetikleyen kural etiketlerinden otomatik teknik/taktik eşleme (T1046, T1110.001…)
-  - **İlgili Loglar** — Aynı src\_ip'den ±30 dk normalize log listesi (max 20 kayıt)
-  - **Threat Intel** — AbuseIPDB risk skoru, ülke, ISP (API key opsiyonel)
-- **Saldırı Zaman Çizelgesi** — Kill chain aşamalarını zaman ekseninde görselleştirir; hangi IP hangi aşamayı ne zaman tamamladı
-- **Webhook + Email** — Kritik korelasyon olaylarında Discord/Slack webhook veya SMTP bildirimi
-- **Audit Log** — Tüm yönetici işlemleri kayıt altında (giriş, cihaz ekleme, kural değiştirme, incident güncelleme)
-- **Compliance API** — PCI DSS v4.0 ve ISO 27001:2022 maddelerini mevcut loglarla eşleştiren backend API; JSON export
+**Tehdit İstihbaratı:** Şüpheli IP'ler AbuseIPDB'ye sorgulanır; risk skoru ≥ 70 → incident severity `critical`'e yükseltilir.
+
+**Network Intelligence:** JA3/JA4 TLS parmak izi, x509 sertifika analizi, SMTP/FTP oturum tespiti; `/network/intelligence` sayfasında görselleştirilir.
+
+### Aktif Yanıt (P1–P8)
+
+Kill chain tespitinde veya manuel olarak IP engelleyebilir:
+
+- **OPNsense REST API** → alias tabanlı firewall kuralı (`NETGUARD_BLOCK` alias)
+- **VyOS SSH fallback** → OPNsense ulaşılamazsa paramiko ile kural push
+- **Güvenlik geçitleri (bu sıra değişmez):** RFC1918 koruması → false positive gate → severity eşiği → duplicate kontrolü
+- **Progressive TTL:** 1. ihlal 1s, 2. 4s, 3. 24s, 4.+ 168s (Wazuh `repeated_offenders` eşdeğeri)
+- **Break-glass:** `BREAK_GLASS_TOKEN` env ile JWT bypass, acil unblock
+- **Blok doğrulama:** Firewall'da gerçekten bloklu mu? Orphan/phantom tespiti
+- **Port/protocol granülaritesi:** Tüm IP yerine belirli port+protokol bloklanabilir
+- **Audit log:** Tüm aktif yanıt işlemleri actor/reason ile kayıt altında
 
 ### Platform
 
-- **JWT Auth** — Access token (60 dk) + Refresh token (7 gün) + Token blacklist (logout desteği)
-- **API Key** — SHA-256 hash ile saklanır; plaintext asla DB'ye yazılmaz
-- **Multi-Tenant** — Tenant → Site → Device hiyerarşisi; JWT "tid" claim ile izolasyon; superadmin tüm verilere erişir
-- **TLS** — nginx reverse proxy; self-signed sertifika (üretimde Let's Encrypt ile değiştirilebilir)
-- **Rate Limiting** — Login: 5/dk, Refresh: 10/dk, SNMP poll: 10/dk (slowapi)
-- **Log Retention** — Hot (SQLite, 30–365 gün) → Warm (JSON.gz arşiv, 1 yıl); yapılandırılabilir eşikler
-- **Docker** — docker-compose ile tek komut kurulum; nginx + FastAPI + Next.js + InfluxDB
+- **Auth:** JWT access (60 dk) + refresh (7 gün) + API key (SHA-256); token tipi karıştırma engeli
+- **Rate limiting:** Login 5/dk, refresh 10/dk; slowapi
+- **Compliance API:** PCI DSS v4.0 ve ISO 27001:2022 kontrol eşlemesi; JSON export
+- **Audit log:** Tüm admin işlemleri (giriş, kural değiştirme, incident güncelleme, blok)
+- **Log retention:** Hot (30–365 gün) → Warm (JSON.gz arşiv, 1 yıl); yapılandırılabilir
+- **WebSocket:** Gerçek zamanlı alert ve metrik akışı
+- **Alembic:** Veritabanı şema migration yönetimi
 
-### Dashboard (19 Sayfa)
+### Dashboard (20+ Sayfa)
 
-| Bölüm | Sayfalar |
-|-------|---------|
-| Genel Bakış | Güvenlik Durumu, Risk Skoru, Son Olaylar |
-| Koleksiyon | Agents, Cihazlar, Keşif, Log Kaynakları |
-| Tespit | Güvenlik Olayları, Korelasyon, Anomali, Tehdit İstihbaratı, MITRE ATT&CK |
-| Yanıt | İncidentler, Uyarılar, Saldırı Zaman Çizelgesi, Raporlar |
-| Yönetim | Kullanıcılar, Ayarlar, Denetim Günlüğü, Bakım |
+Overview · Logs · Incidents · Aktif Bloklar · Alerts · Agents · Correlation · Network Intelligence · MITRE ATT&CK · Timeline · Topology · Devices/SNMP/Discovery · Settings/Audit · Reports/Security/Compliance
 
 ---
 
-## Kurulum
+## Hızlı Başlangıç
 
-### Docker ile (Önerilen)
+### Gereksinimler
+
+- Docker + Docker Compose v2
+- 4 GB RAM, 20 GB disk
+- Linux host önerilen (pyshark için `NET_RAW` capability)
+
+### 3 Adımda Kurulum
 
 ```bash
 git clone https://github.com/mehmetcapar/netguard.git
 cd netguard
-
-# Ortam değişkenlerini ayarla
 cp .env.example .env
-# .env dosyasını düzenle (JWT_SECRET_KEY ve ADMIN_PASSWORD zorunlu)
+```
 
+`.env` dosyasını düzenle — minimum zorunlu alanlar:
+
+```env
+JWT_SECRET_KEY=<buraya-rastgele-string>   # openssl rand -hex 32
+ADMIN_PASSWORD=<güçlü-şifre>
+POSTGRES_PASSWORD=<db-şifresi>
+INFLUXDB_TOKEN=<influx-token>
+INFLUXDB_ADMIN_PASSWORD=<influx-admin-şifresi>
+INFLUXDB_ORG=netguard
+INFLUXDB_BUCKET=netguard
+NETGUARD_HOST=localhost                   # veya sunucu IP'si
+ZEEK_INTERFACE=eth0                       # izlenecek ağ arayüzü
+```
+
+```bash
 docker compose up -d
 ```
 
-Dashboard: `https://localhost` (ilk girişte self-signed sertifika uyarısı çıkar)
+Dashboard: `https://localhost` · API Dokümantasyonu: `https://localhost/api/v1/docs`
 
-### Manuel Kurulum
+İlk açılışta self-signed sertifika uyarısı çıkar — geliştirme ortamında güvenle geçilebilir.
 
-#### Gereksinimler
+---
+
+## Kurulum — Manuel
+
+### Sistem Gereksinimleri
 
 ```bash
-# Ubuntu/Debian
-sudo apt install python3.12 python3.12-venv nodejs npm tshark
-sudo usermod -aG wireshark $USER   # pyshark için (logout/login gerekir)
+# Ubuntu 22.04 / 24.04
+sudo apt install python3.12 python3.12-venv nodejs npm tshark snmp
+sudo usermod -aG wireshark $USER   # pyshark için — logout/login gerekir
 ```
 
-#### Backend
+### PostgreSQL + TimescaleDB
+
+```bash
+# TimescaleDB kurulum (Ubuntu)
+sudo apt install -y postgresql-16
+sudo -u postgres psql -c "CREATE DATABASE netguard; CREATE USER netguard WITH PASSWORD 'şifre'; GRANT ALL ON DATABASE netguard TO netguard;"
+# TimescaleDB extension kurulum: https://docs.timescale.com/self-hosted/latest/install/
+```
+
+### Backend
 
 ```bash
 cd netguard
-python3 -m venv venv && source venv/bin/activate
+python3.12 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
 cp .env.example .env
 # .env dosyasını düzenle
 
+# Veritabanı şemasını oluştur
+DATABASE_URL="postgresql://netguard:şifre@localhost:5432/netguard" alembic upgrade head
+
+# Sunucuyu başlat
 uvicorn server.main:app --host 0.0.0.0 --port 8000
 ```
 
-#### Frontend
+### Frontend
 
 ```bash
 cd dashboard-v2
 npm install
 npm run build
-npm start    # veya: npm run dev (geliştirme modunda)
+npm start          # production
+# veya: npm run dev   # geliştirme
 ```
 
-#### Agent (İzlenen Makinelere)
+### Agent (İzlenecek Makine)
 
 ```bash
-# Agent VM'e kopyala ve çalıştır
 scp -r agent/ user@192.168.x.x:~/netguard-agent/
-ssh user@192.168.x.x
-cd netguard-agent
-pip install psutil httpx
+ssh user@192.168.x.x "cd ~/netguard-agent && pip install psutil httpx python-dotenv"
 
 # .env oluştur
-echo "NETGUARD_SERVER=http://192.168.203.134:8000" > .env
-echo "AGENT_API_KEY=<dashboard'dan alınan key>" >> .env
+cat > ~/netguard-agent/.env << EOF
+NETGUARD_SERVER=http://192.168.203.134:8000
+AGENT_API_KEY=<dashboard Agents sayfasından alınan key>
+EOF
 
 python main.py
 ```
 
-### Zorunlu .env Değişkenleri
+### Zeek (Opsiyonel — Network Intelligence için)
 
-```env
-# Zorunlu
-JWT_SECRET_KEY=          # python3 -c 'import secrets; print(secrets.token_hex(32))'
-ADMIN_PASSWORD=          # Dashboard admin şifresi
-VIEWER_PASSWORD=         # Dashboard viewer şifresi
+```bash
+# Zeek LTS kurulum: https://docs.zeek.org/en/master/install.html
+zeek -i eth0 /usr/local/zeek/share/zeek/site/local.zeek
 
-# Ağ arayüzü (pyshark için)
-NETGUARD_INTERFACE=ens33
-
-# CORS (frontend URL'leri)
-NETGUARD_CORS_ORIGINS=http://localhost:3000,https://192.168.203.134
-
-# Log retention (gün)
-NETGUARD_RETAIN_NORMALIZED_DAYS=30
-NETGUARD_RETAIN_SECURITY_DAYS=90
-NETGUARD_RETAIN_CORRELATED_DAYS=365
-NETGUARD_RETAIN_ALERTS_DAYS=90
-
-# Bildirim (opsiyonel)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=
-SMTP_PASSWORD=
-SMTP_TO=
-WEBHOOK_URL=             # Discord veya Slack webhook URL
-
-# InfluxDB (opsiyonel — metrik grafikleri için)
-INFLUXDB_URL=http://localhost:8086
-INFLUXDB_TOKEN=
-INFLUXDB_ORG=
-INFLUXDB_BUCKET=netguard
-
-# Tehdit istihbaratı (opsiyonel)
-ABUSEIPDB_API_KEY=       # https://www.abuseipdb.com/api adresinden ücretsiz
+# NetGuard'a Zeek log dizinini belirt:
+ZEEK_LOG_DIR=/var/log/zeek/current   # .env'e ekle
 ```
 
 ---
 
-## GNS3 Lab Ortamı
+## Yapılandırma
 
-Proje, gerçek ağ cihazlarını simüle eden GNS3 lab ortamıyla test edilmektedir.
+### Zorunlu
 
-### Topoloji
+| Değişken | Açıklama |
+|----------|---------|
+| `JWT_SECRET_KEY` | JWT imzalama anahtarı — `openssl rand -hex 32` |
+| `ADMIN_PASSWORD` | Dashboard admin şifresi |
+| `DATABASE_URL` | PostgreSQL bağlantı URL'si |
+| `POSTGRES_PASSWORD` | PostgreSQL şifresi |
+| `INFLUXDB_TOKEN` | InfluxDB API token |
+| `INFLUXDB_ADMIN_PASSWORD` | InfluxDB admin şifresi |
+| `INFLUXDB_ORG` | InfluxDB organizasyon adı |
+| `INFLUXDB_BUCKET` | InfluxDB bucket adı |
 
+### Ağ
+
+| Değişken | Varsayılan | Açıklama |
+|----------|-----------|---------|
+| `NETGUARD_INTERFACE` | `eth0` | pyshark paket yakalama arayüzü |
+| `ZEEK_INTERFACE` | `vmnet8` | Zeek izleme arayüzü (Docker) |
+| `ZEEK_LOG_DIR` | `/zeek-logs` | Zeek log dizini |
+| `NETGUARD_CORS_ORIGINS` | `https://localhost` | Frontend URL'leri (virgülle ayrılmış) |
+| `NETGUARD_HOST` | `localhost` | Sunucu IP/hostname (nginx + WebSocket için) |
+| `SYSLOG_PORT` | `5140` | Syslog UDP port |
+| `NETFLOW_PORT` | `2055` | NetFlow UDP port |
+
+### Aktif Yanıt
+
+| Değişken | Açıklama |
+|----------|---------|
+| `OPNSENSE_HOST` | OPNsense IP adresi |
+| `OPNSENSE_KEY` | OPNsense API key |
+| `OPNSENSE_SECRET` | OPNsense API secret |
+| `OPNSENSE_BLOCK_ALIAS` | Firewall alias adı (`NETGUARD_BLOCK`) |
+| `VYOS_HOST` | VyOS SSH adresi |
+| `VYOS_USER` | VyOS SSH kullanıcısı |
+| `VYOS_KEY_PATH` | VyOS SSH özel anahtar yolu |
+| `VYOS_FW_NAME` | VyOS firewall kural adı (`BLOCK-LIST`) |
+| `PROTECTED_CIDRS` | Hiçbir zaman engellenmeyecek IP'ler |
+| `BLOCK_MIN_SEVERITY` | Minimum severity eşiği (`high`) |
+| `BLOCK_PROGRESSIVE_TTL` | Progressive TTL değerleri saat cinsinden (`1,4,24,168`) |
+| `BREAK_GLASS_TOKEN` | Acil unblock token — `openssl rand -hex 32` |
+| `AUTO_BLOCK_ON_FULL_CHAIN` | `1` → FULL_ATTACK_CHAIN'de otomatik blok (varsayılan `0`) |
+
+### Bildirim
+
+| Değişken | Açıklama |
+|----------|---------|
+| `SMTP_HOST` | SMTP sunucu adresi |
+| `SMTP_PORT` | SMTP port (genellikle `587`) |
+| `SMTP_USER` | SMTP kullanıcı adı |
+| `SMTP_PASSWORD` | SMTP şifresi |
+| `SMTP_TO` | Bildirim e-posta adresi |
+| `WEBHOOK_URL` | Discord veya Slack webhook URL |
+
+### Tehdit İstihbaratı
+
+| Değişken | Açıklama |
+|----------|---------|
+| `ABUSEIPDB_API_KEY` | AbuseIPDB API key ([ücretsiz](https://www.abuseipdb.com/api)) |
+
+---
+
+## Sigma Kuralı Ekleme
+
+NetGuard, standart SIGMA formatını destekler. Kural eklemek için kod değişikliği gerekmez:
+
+```yaml
+# config/sigma_rules_v2/ornek.yml
+title: Örnek Kural
+name: ornek_kural
+status: stable
+logsource:
+    category: network
+detection:
+    keywords:
+        event_action:
+            - 'ssh_failure'
+    condition: keywords
+    timeframe: 5m
+    count: 10
+    groupby: source_ip
+level: high
 ```
-OPNsense Firewall (10.0.30.1)
-    │ LAN 10.0.30.0/24
-VyOS Router (10.0.30.2 / 192.168.203.200)
-    ├── Alpine WebServer (10.0.10.2)  — nginx, syslog gönderir
-    └── Kali Linux (192.168.203.132) — saldırı testleri
-
-NetGuard Server (192.168.203.134)   — merkez izleme
-Agent VM Ubuntu (192.168.203.142)   — host agent
-```
-
-### Veri Akışları
-
-| Kaynak | Protokol | NetGuard'a katkısı |
-|--------|----------|-------------------|
-| OPNsense | Syslog UDP 514 | Firewall allow/deny logları |
-| VyOS | Syslog UDP 514 | Router event logları |
-| VyOS | SNMP v2c | Interface istatistikleri, uptime |
-| VyOS | NetFlow v9 | Trafik akış analizi |
-| Alpine nginx | Syslog | Web erişim logları |
-| Agent VM | HTTP API | CPU, RAM, disk, network metrikleri |
-
-### Demo Saldırı Senaryosu (5 Aşamalı Kill Chain)
 
 ```bash
-# ── RECON ───────────────────────────────────────────────────────
-# Kali'den port tarama
-nmap -sS 192.168.203.134
-# → pyshark SYN yakalar → port_scan_attempt → kill chain: RECON ✓
+# Doğrulama
+curl -X POST https://localhost/api/v1/sigma/validate \
+     -H "Authorization: Bearer $TOKEN" \
+     -F "file=@ornek.yml"
+```
 
-# ── WEAPONIZE ───────────────────────────────────────────────────
-# SSH brute force (5+ başarısız giriş)
-hydra -l root -P /usr/share/wordlists/rockyou.txt \
-      -t 4 ssh://192.168.203.134
-# → syslog: ssh_failure × 5 → sigma kural tetiklenir → kill chain: WEAPONIZE ✓
+---
 
-# ── ACCESS ──────────────────────────────────────────────────────
-# Başarılı SSH girişi
-ssh netguard@192.168.203.134
-# → syslog: ssh_success → kill chain: ACCESS ✓
+## JSON Korelasyon Kuralı Ekleme
 
-# ── LATERAL ─────────────────────────────────────────────────────
-# Agent VM'e bağlanıp iç ağı tara
-ssh netguard@192.168.203.142
-bash ~/netguard/scripts/lateral_movement_test.sh
-# → pyshark: 192.168.203.142 → 3+ iç hedefe SSH/SMB/RDP
-# → LateralMovementDetector tetiklenir → kill chain: LATERAL ✓
+`config/correlation_rules.json` dosyasına sunucu yeniden başlatılmadan kural eklenebilir:
 
-# ── NetGuard'da beklenen ────────────────────────────────────────
-# → 4 aşama tamamlandı → FULL_ATTACK_CHAIN tetiklenir
-# → critical incident otomatik açılır
-# → Email + webhook bildirimi gönderilir
-# → Incident detayında: MITRE T1046 (Network Service Scanning),
-#   ilgili loglar, threat intel skoru
+```json
+{
+  "id": "ornek_kural",
+  "name": "Örnek Korelasyon",
+  "event_types": ["ssh_failure", "port_scan_attempt"],
+  "threshold": 3,
+  "window_seconds": 300,
+  "severity": "high",
+  "kill_chain_stage": "RECON"
+}
+```
+
+---
+
+## Ağ Konfigürasyonu
+
+### Syslog Yönlendirme
+
+**OPNsense:** System → Log Files → Settings → Remote Logging → `192.168.x.x:5140`
+
+**VyOS:**
+```bash
+set system syslog host 192.168.203.134 facility all level info
+set system syslog host 192.168.203.134 port 5140
+commit && save
+```
+
+**NetFlow (VyOS):**
+```bash
+set system flow-accounting interface eth0
+set system flow-accounting netflow server 192.168.203.134 port 2055
+set system flow-accounting netflow version 9
+commit && save
+```
+
+### SNMP Ekleme
+
+```bash
+curl -X POST https://localhost/api/v1/snmp/devices \
+     -H "Authorization: Bearer $TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"ip": "10.0.30.2", "community": "public", "version": "v2c"}'
 ```
 
 ---
@@ -320,40 +376,54 @@ bash ~/netguard/scripts/lateral_movement_test.sh
 ## Teknoloji Yığını
 
 ### Backend
-| Teknoloji | Kullanım |
-|-----------|---------|
-| Python 3.12 + FastAPI | ASGI sunucu, async endpoint'ler |
-| SQLite (WAL modu) | Event'ler, cihazlar, incident'lar, audit |
-| InfluxDB | Zaman serisi metrikler (SNMP, agent) |
-| pyshark | TCP SYN paket analizi, port tarama tespiti |
-| psutil | Agent tarafında sistem metrikleri |
-| python-jose + bcrypt | JWT + şifre hash |
-| slowapi | Rate limiting |
-| httpx | Async HTTP (webhook bildirimi) |
-| scikit-learn + numpy | Isolation Forest anomaly detection |
-| PyYAML | Sigma kural parser |
+
+| Teknoloji | Sürüm | Kullanım |
+|-----------|-------|---------|
+| Python | 3.12 | Runtime |
+| FastAPI | 0.115 | ASGI API sunucusu |
+| PostgreSQL | 16 | İlişkisel veri (log, incident, cihaz) |
+| TimescaleDB | latest | Zaman serisi optimizasyonu normalized_logs için |
+| InfluxDB | 2.7 | SNMP/agent metrik zaman serileri |
+| Zeek | LTS | Ağ trafiği analizi (DNS, HTTP, SSL, x509) |
+| pySigma | 1.3.3 | SIGMA kural motoru |
+| scikit-learn | ≥1.5 | Isolation Forest anomaly detection |
+| pyshark | 0.6 | TCP SYN paket analizi |
+| pysnmp | 7.1 | SNMP v2c/v3 polling ve trap |
+| paramiko | ≥3.0 | VyOS SSH aktif yanıt |
+| psycopg | ≥3.2 | PostgreSQL async sürücüsü |
+| Alembic | ≥1.13 | DB şema migration |
+| slowapi | 0.1.9 | Rate limiting |
 
 ### Frontend
-| Teknoloji | Kullanım |
-|-----------|---------|
-| Next.js 14 + React | App Router, SSR |
-| TypeScript | Tip güvenliği |
-| TanStack Query v5 | Server state, önbellekleme |
-| Zustand v5 | Global state (alert store, metrics store) |
-| ECharts | Topoloji haritası, grafikler |
-| shadcn/ui + Tailwind CSS | UI bileşenleri |
 
-### Protokoller
+| Teknoloji | Sürüm | Kullanım |
+|-----------|-------|---------|
+| Next.js | 14 | App Router, SSR |
+| TypeScript | — | Tip güvenliği |
+| TanStack Query | v5 | Server state ve önbellekleme |
+| Zustand | v5 | Global UI state |
+| ECharts | — | Topoloji haritası, grafikler |
+| shadcn/ui + Tailwind | — | UI bileşenleri |
 
-| Protokol | Port | Amaç |
-|----------|------|-------|
-| HTTPS | 443 | Dashboard (nginx TLS) |
-| REST API | 8000 | Dashboard ↔ Server |
-| WebSocket | 8000/ws | Gerçek zamanlı metrik ve alert akışı |
-| Syslog UDP | 5140 | Cihaz logları (514'ten yönlendirilir) |
-| SNMP UDP | 161 | Cihaz metrikleri |
-| SNMP TRAP UDP | 162 | Anlık event bildirimi |
-| NetFlow UDP | 2055 | Trafik akış verisi |
+### Altyapı
+
+| Bileşen | Kullanım |
+|---------|---------|
+| nginx | TLS reverse proxy, WebSocket proxy |
+| Docker Compose | Tek komut deployment |
+| Alembic | Veritabanı migration |
+
+### Portlar
+
+| Port | Protokol | Hizmet |
+|------|----------|--------|
+| 443 | TCP/HTTPS | Dashboard + API (nginx) |
+| 80 | TCP/HTTP | HTTPS yönlendirme |
+| 8000 | TCP | FastAPI (dahili) |
+| 5140 | UDP | Syslog alıcı |
+| 2055 | UDP | NetFlow alıcı |
+| 161 | UDP | SNMP polling (giden) |
+| 162 | UDP | SNMP TRAP alıcı |
 
 ---
 
@@ -361,94 +431,41 @@ bash ~/netguard/scripts/lateral_movement_test.sh
 
 ```
 netguard/
-├── agent/                          # İzlenen makinelerde çalışan agent
-│   ├── main.py                     # Agent başlatma ve döngü
-│   ├── collector.py                # psutil ile sistem metrikleri
-│   ├── traffic_collector.py        # pyshark ile trafik analizi
-│   ├── log_shipper.py              # Syslog/auth.log gönderimi
-│   ├── windows_log_shipper.py      # Windows EVTX gönderimi
-│   └── sender.py                  # HTTP ile server'a gönderim
-│
-├── server/                         # Merkezi server
-│   ├── main.py                     # FastAPI app, router kayıtları, startup
-│   ├── database.py                 # SQLite katmanı (WAL, tüm CRUD)
-│   ├── auth.py                     # JWT, API key, tenant_scope
-│   ├── correlator.py               # Korelasyon motoru (JSON + Sigma kuralları)
-│   ├── attack_chain.py             # Kill chain dedektörü (5 aşama)
-│   ├── anomaly/                    # Anomaly detection modülü
-│   │   ├── engine.py               # Ana döngü (5 dk)
-│   │   ├── baseline.py             # Welford online istatistik
-│   │   ├── detector.py             # Z-score + Isolation Forest
-│   │   └── collector.py            # Metrik toplama
-│   ├── detectors/                  # Ağ saldırı dedektörleri
-│   │   ├── port_scan.py            # pyshark SYN analizi
-│   │   ├── arp_spoof.py
-│   │   ├── icmp_flood.py
-│   │   ├── dns_anomaly.py
-│   │   ├── lateral.py              # İç→iç SSH/SMB/RDP tarama (pyshark)
-│   │   └── manager.py              # Tüm dedektörleri çalıştırır
-│   ├── parsers/                    # Log ayrıştırıcılar
-│   │   ├── firewall.py             # OPNsense/VyOS/pfSense/ASA/FortiGate
-│   │   ├── netflow.py              # NetFlow v5/v9 binary parser
-│   │   └── web_log.py              # nginx access + error log
-│   ├── discovery/                  # Ağ keşfi
-│   │   ├── subnet_scanner.py       # ICMP + TCP sweep
-│   │   └── fingerprinter.py        # SNMP + port tabanlı cihaz tanımlama
-│   ├── topology/
-│   │   └── builder.py              # SNMP ARP/LLDP walk, topoloji grafiği
-│   ├── routes/                     # API endpoint'leri (her modül ayrı dosya)
-│   │   ├── auth.py                 # Login, logout, refresh, /me
-│   │   ├── agents.py               # Agent kaydı, metrik alma
-│   │   ├── alerts.py               # Alert listesi ve özet
-│   │   ├── anomaly.py              # Anomaly sonuçları
-│   │   ├── compliance.py           # PCI DSS / ISO 27001 raporu
-│   │   ├── correlation.py          # Correlated event'ler, kural yönetimi
-│   │   ├── devices.py              # Cihaz CRUD
-│   │   ├── discovery.py            # Subnet tarama, keşif sonuçları
-│   │   ├── evtx.py                 # Windows EVTX yükleme ve sorgulama
-│   │   ├── incidents.py            # Incident CRUD, durum güncellemesi
-│   │   ├── logs.py                 # Normalize log listeleme ve arama
-│   │   ├── mitre.py                # MITRE ATT&CK eşleme
-│   │   ├── netflow.py              # NetFlow akış sorgulama
-│   │   ├── reports.py              # Özet rapor, CSV export
-│   │   ├── security.py             # Security event listesi
-│   │   ├── sigma.py                # Sigma kural yönetimi
-│   │   ├── snmp.py                 # SNMP cihaz yönetimi, anlık poll
-│   │   ├── tenants.py              # Multi-tenant CRUD
-│   │   ├── threat_intel.py         # AbuseIPDB sorgu ve önbellek
-│   │   ├── topology.py             # Topoloji verisi
-│   │   └── ws.py                   # WebSocket (gerçek zamanlı akış)
-│   ├── compliance.py               # Compliance hesaplama motoru
-│   ├── evtx_parser.py              # EVTX binary parser
-│   ├── incident_enricher.py        # Incident → MITRE + related logs + threat intel
-│   ├── influx_writer.py            # InfluxDB yazma katmanı
-│   ├── log_normalizer.py           # Raw log → NormalizedLog dönüşümü
-│   ├── mitre.py                    # MITRE ATT&CK veri ve eşleme
-│   ├── netflow_receiver.py         # UDP 2055 NetFlow alıcı
-│   ├── notifier.py                 # Webhook + email bildirim
-│   ├── retention.py                # Log retention (hot/warm/cold)
-│   ├── sigma_parser.py             # YAML → CorrelationRule dönüştürücü
-│   ├── snmp_collector.py           # SNMP polling döngüsü
-│   ├── snmp_trap_receiver.py       # UDP 162 TRAP alıcı
-│   ├── syslog_receiver.py          # UDP 5140 syslog alıcı
-│   └── threat_intel.py             # AbuseIPDB istemcisi + SQLite önbellekleme
-│
-├── shared/                         # Agent ve server'ın ortak kullandığı modüller
-│   ├── models.py                   # Pydantic veri modelleri (AgentStatus, SecurityEvent, vb.)
-│   └── protocol.py                 # Protokol sabitleri
-│
-├── config/                         # Kural dosyaları (kod değişikliği gerektirmez)
-│   ├── correlation_rules.json      # 7 aktif korelasyon kuralı
-│   └── sigma_rules/                # YAML formatında Sigma kuralları
-│
-├── dashboard-v2/                   # Next.js frontend
-│   └── src/app/(protected)/        # Dashboard sayfaları (auth zorunlu)
-│
-├── nginx/                          # nginx TLS yapılandırması
-├── docker-compose.yml              # Tek komut deployment
-├── Dockerfile                      # Backend image
-├── tests/                          # 721 pytest testi
-└── docs/                           # Teknik belgeler
+├── agent/                     # İzlenen makinelerde çalışan agent (psutil)
+├── server/
+│   ├── main.py                # FastAPI app, async döngüler, startup
+│   ├── database.py            # DB factory (PG prod / SQLite test)
+│   ├── database_pg.py         # PostgreSQL + TimescaleDB implementasyonu
+│   ├── auth.py                # JWT + API key + tenant scope
+│   ├── correlator.py          # Korelasyon motoru (JSON + pySigma v2, 60s)
+│   ├── sigma_executor.py      # pySigma v2 çalıştırıcı
+│   ├── attack_chain.py        # Kill chain dedektörü (5 aşama)
+│   ├── active_response.py     # OPNsense REST + VyOS SSH IP bloklama
+│   ├── anomaly/               # IsolationForest + Welford anomaly
+│   ├── detectors/             # port_scan, arp, dns, icmp, lateral
+│   ├── parsers/               # firewall, netflow, web_log, zeek
+│   ├── discovery/             # subnet_scanner, fingerprinter
+│   ├── routes/                # 30 API endpoint modülü
+│   ├── log_normalizer.py      # Raw log → NormalizedLog dönüşümü
+│   ├── incident_enricher.py   # Incident + MITRE + threat intel
+│   ├── threat_intel.py        # AbuseIPDB istemcisi
+│   ├── zeek_collector.py      # Zeek log tail (9 log tipi)
+│   ├── netflow_receiver.py    # NetFlow v5/v9 UDP alıcı
+│   ├── syslog_receiver.py     # Syslog UDP alıcı
+│   ├── snmp_collector.py      # SNMP polling döngüsü
+│   ├── notifier.py            # Email + webhook bildirimi
+│   └── retention.py           # Log retention (hot/warm/cold)
+├── shared/
+│   └── models.py              # Pydantic modelleri (Agent↔Server)
+├── config/
+│   ├── correlation_rules.json # JSON korelasyon kuralları
+│   └── sigma_rules_v2/        # pySigma v2 YAML (11 dosya, 30+ kural)
+├── dashboard-v2/              # Next.js frontend
+├── alembic/                   # DB migration dosyaları (001–004)
+├── tests/                     # 1151 pytest testi
+├── docker-compose.yml
+├── Dockerfile
+└── .env.example
 ```
 
 ---
@@ -456,23 +473,48 @@ netguard/
 ## Testler
 
 ```bash
-pytest tests/ -q               # Tüm testler
-pytest tests/test_auth.py      # Belirli modül
-pytest tests/ -k "tenant"      # Anahtar kelimeyle filtrele
-pytest tests/ --tb=short       # Kısa hata çıktısı
+# Tüm testler
+pytest tests/ -q
+
+# Belirli modül
+pytest tests/test_attack_chain.py -v
+
+# Anahtar kelimeyle filtrele
+pytest tests/ -k "active_response"
+
+# PostgreSQL testleri (Docker gerekir)
+DATABASE_URL="postgresql://netguard:test@localhost:5432/netguard_test" pytest tests/ -q
 ```
 
-**Kapsanan modüller:** alert engine, anomaly detection, attack chain, auth, collector, compliance, correlation, database, detectors, devices, discovery, EVTX, firewall parser, incidents, log normalizer, MITRE, models, NetFlow parser, notifier, NTP validator, reports, retention, security, security log parser, Sigma, SNMP, tenants, threat intel, topology, uptime checker, web log parser, Windows log shipper.
+**1151 test · 56 test dosyası** — alert engine, anomaly, attack chain, auth, compliance, correlator, database, detectors, discovery, EVTX, incidents, log normalizer, MITRE, netflow, notifier, retention, sigma, SNMP, threat intel, topology ve daha fazlası.
 
 ---
 
-## API Dokümantasyonu
+## API
 
-Sunucu çalışırken: `http://localhost:8000/docs` (Swagger UI)
+Sunucu çalışırken Swagger UI: `https://localhost/api/v1/docs`
+
+```bash
+# Token al
+TOKEN=$(curl -s -k -X POST https://localhost/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"şifre"}' | jq -r .access_token)
+
+# Son 50 log
+curl -sk -H "Authorization: Bearer $TOKEN" \
+  "https://localhost/api/v1/logs?limit=50" | jq
+
+# IP blokla
+curl -sk -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  https://localhost/api/v1/response/block \
+  -d '{"ip":"1.2.3.4","reason":"manuel blok","source_incident_id":42}'
+```
 
 ---
 
 ## Geliştirici
 
-**Mehmet Çapar** — Sakarya Üniversitesi, Bilgisayar Mühendisliği  
-Proje: Bitirme / Mezuniyet Tezi — 2026
+**Mehmet Çapar** — [20mehmetcapar02@gmail.com](mailto:20mehmetcapar02@gmail.com)
+
+Hata bildirimi ve öneriler için GitHub Issues kullanabilirsiniz.
