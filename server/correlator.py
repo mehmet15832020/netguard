@@ -299,7 +299,7 @@ class Correlator:
                   AND {group_col} IS NOT NULL
                   {kw_clause}
                 GROUP BY {group_col}
-                HAVING cnt >= %s
+                HAVING {count_expr} >= %s
                 """,
                 (
                     f"{rule.match_event_action}%",
@@ -314,8 +314,13 @@ class Correlator:
         for row in rows:
             group_value = row["grp_val"]
             count       = row["cnt"]
-            first_seen  = datetime.fromisoformat(row["first_ts"]).replace(tzinfo=timezone.utc)
-            last_seen   = datetime.fromisoformat(row["last_ts"]).replace(tzinfo=timezone.utc)
+            def _parse_ts2(val) -> datetime:
+                if isinstance(val, datetime):
+                    return val if val.tzinfo else val.replace(tzinfo=timezone.utc)
+                return datetime.fromisoformat(str(val)).replace(tzinfo=timezone.utc)
+
+            first_seen  = _parse_ts2(row["first_ts"])
+            last_seen   = _parse_ts2(row["last_ts"])
 
             event = CorrelatedEvent(
                 corr_id        = str(uuid.uuid4()),

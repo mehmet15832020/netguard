@@ -37,9 +37,12 @@ def _is_private_ip(ip: str) -> bool:
     )
 
 
-def _cache_fresh(queried_at: str) -> bool:
+def _cache_fresh(queried_at) -> bool:
     try:
-        ts = datetime.fromisoformat(queried_at)
+        if isinstance(queried_at, datetime):
+            ts = queried_at if queried_at.tzinfo else queried_at.replace(tzinfo=timezone.utc)
+        else:
+            ts = datetime.fromisoformat(str(queried_at))
         return datetime.now(timezone.utc) - ts < _CACHE_TTL
     except Exception:
         return False
