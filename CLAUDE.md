@@ -157,7 +157,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [ ] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler)
   - G5 point fix'ini genelleştirir; bağımlılık: G5
 
-- [ ] **Frontend** — Block verify panel (P6), Break-glass butonu (P8), Port/protocol input (P7)
+- [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓ — Port/protocol input (P7) kaldı
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
@@ -183,8 +183,9 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | **FAZ 2a** | `_IS_PG/_PH` dialect flag 6 modülden kaldırıldı, `LogStore` eklendi | `6187e0d` |
 | **V1-1..V1-9** | ECS rename, DNS resolver, pySigma, enrichment, baseline, FP, PostgreSQL, Zeek, aktif yanıt | çeşitli |
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
+| **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1151 test, 0 hata (16 Mayıs 2026)
+**Test durumu:** 1151 test, 0 hata (17 Mayıs 2026)
 
 ---
 
@@ -250,7 +251,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### Frontend Sayfaları (dashboard-v2)
 
-Overview, Logs, Incidents, Aktif Bloklar, Alerts, Agents, Correlation, Network Intelligence, MITRE ATT&CK, Timeline, Topology, Devices/SNMP/Discovery, Settings/Audit, Reports/Security — **⏳ Eksik:** Block verify panel, Break-glass butonu, Port/protocol input
+Overview, Logs, Incidents, Aktif Bloklar, Alerts, Agents, Correlation, Network Intelligence, MITRE ATT&CK, Timeline, Topology, Devices/SNMP/Discovery, Settings/Audit, Reports/Security, Uyumluluk (Compliance) — **⏳ Eksik:** Port/protocol input (P7)
 
 ---
 
