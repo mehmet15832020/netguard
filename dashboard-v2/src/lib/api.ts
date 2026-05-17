@@ -827,7 +827,7 @@ export interface BlockedIP {
   reason: string
   blocked_at: string
   blocked_by: string
-  is_active: number
+  is_active: number | boolean
   source_incident_id: string | null
   provider: string
   unblocked_at: string | null
@@ -853,6 +853,16 @@ export interface BlockListResponse {
   blocks: BlockedIP[]
 }
 
+export interface BlockVerifyResponse {
+  ok: boolean
+  missing: string[]
+  extra: string[]
+  opnsense_up: boolean
+  vyos_up: boolean
+  db_count: number
+  fw_count: number
+}
+
 export const activeResponse = {
   block: (ip: string, reason: string, source_incident_id?: string) =>
     request<{ success: boolean; provider: string; error?: string }>('/response/block', {
@@ -872,5 +882,14 @@ export const activeResponse = {
     request<PlaybookResponse>('/response/playbook', {
       method: 'POST',
       body: JSON.stringify({ incident_id }),
+    }),
+
+  verify: () =>
+    request<BlockVerifyResponse>('/response/blocks/verify'),
+
+  breakGlass: (ip: string, token: string) =>
+    request<{ success: boolean; error?: string }>(`/response/break-glass/${encodeURIComponent(ip)}`, {
+      method: 'DELETE',
+      headers: { 'X-Break-Glass-Token': token },
     }),
 }
