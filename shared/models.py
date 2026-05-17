@@ -188,6 +188,7 @@ class SecurityEventType(str, Enum):
     WIN_LOGON_FAILURE = "windows_logon_failure"  # Windows başarısız oturum (4625)
     WIN_PROCESS_CREATE = "windows_process_create"  # Windows süreç oluşturma (4688)
     LATERAL_MOVEMENT  = "lateral_movement"       # İç ağdan iç ağa tarama
+    SUSPICIOUS_CONN   = "suspicious_outbound_connection"  # Şüpheli dış bağlantı
 
 
 class SecurityEvent(BaseModel):

@@ -157,7 +157,7 @@ def receive_security_events(
                 event_id    = str(uuid.uuid4()),
                 agent_id    = agent_id,
                 hostname    = batch.hostname,
-                event_action  = SecurityEventType(ev.event_action),
+                event_action  = SecurityEventType(ev.event_action),  # ValueError → except bloğu yakalar
                 severity    = ev.severity,
                 source_ip   = ev.source_ip,
                 username    = ev.username,
