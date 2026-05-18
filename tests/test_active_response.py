@@ -157,7 +157,10 @@ class TestVyOSProvider:
         monkeypatch.setenv("VYOS_KEY_PATH", "/home/user/.ssh/id_ed25519")
         provider = VyOSProvider()
 
-        monkeypatch.setattr(provider, "_exec", lambda cmds: (False, "Connection refused"))
+        def _fail(*_a, **_kw):
+            raise ConnectionError("Connection refused")
+
+        monkeypatch.setattr(provider, "_open_shell", _fail)
         result = provider.block("1.2.3.4")
         assert result.success is False
         assert "Connection refused" in result.error

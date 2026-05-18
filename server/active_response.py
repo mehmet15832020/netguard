@@ -26,6 +26,7 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 _IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+_ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[=>]")
 
 
 def _parse_progressive_ttl() -> list[float]:
@@ -205,38 +206,68 @@ class VyOSProvider:
     def _ready(self) -> bool:
         return bool(self._host and self._key_path)
 
+    # Per-command wait times (seconds). VyOS rolling 2026 is slow in GNS3.
+    _CMD_WAIT: dict[str, float] = {
+        "configure": 40,
+        "commit":    45,
+        "save":      30,
+        "exit":      30,
+    }
+    _DEFAULT_WAIT: float = 20
+
+    def _open_shell(self):
+        """Open a Paramiko interactive shell and wait for initial prompt."""
+        import paramiko
+        import time as _t
+        client = paramiko.SSHClient()
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        client.connect(
+            self._host,
+            username=self._user,
+            key_filename=self._key_path,
+            timeout=self._timeout,
+        )
+        shell = client.invoke_shell(width=220, height=50)
+
+        def wait_prompt(secs: float) -> str:
+            buf = b""
+            deadline = _t.time() + secs
+            while _t.time() < deadline:
+                if shell.recv_ready():
+                    buf += shell.recv(65535)
+                    text = buf.decode("utf-8", errors="replace")
+                    if "vyos@vyos:~$" in text or "vyos@vyos#" in text:
+                        return text
+                _t.sleep(0.05)
+            return buf.decode("utf-8", errors="replace")
+
+        wait_prompt(15)  # initial shell prompt
+        return client, shell, wait_prompt
+
     def _exec(self, commands: list[str]) -> tuple[bool, str]:
+        """Run a list of VyOS commands in one interactive SSH session."""
         try:
-            import paramiko
+            import paramiko  # noqa: F401 (triggers ImportError if missing)
         except ImportError:
             return False, "paramiko yüklü değil — pip install paramiko"
-
         try:
-            client = paramiko.SSHClient()
-            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-            client.connect(
-                self._host,
-                username=self._user,
-                key_filename=self._key_path,
-                timeout=self._timeout,
-            )
-            cmd = "\n".join(commands)
-            _, stdout, stderr = client.exec_command(cmd)
-            out = stdout.read().decode()
-            err = stderr.read().decode()
+            client, shell, wait_prompt = self._open_shell()
+            all_output: list[str] = []
+            for cmd in commands:
+                shell.send(cmd + "\n")
+                wait = self._CMD_WAIT.get(cmd, self._DEFAULT_WAIT)
+                all_output.append(wait_prompt(wait))
+            shell.close()
             client.close()
-            if "Error" in err or "error" in err.lower():
-                return False, err.strip()
-            return True, out.strip()
+            full = "\n".join(all_output)
+            _FAIL = ("Invalid command", "Set failed", "Commit failed", "Delete failed",
+                     "Configuration path", "not valid")
+            for phrase in _FAIL:
+                if phrase.lower() in full.lower():
+                    return False, full.strip()
+            return True, full.strip()
         except Exception as exc:
             return False, str(exc)
-
-    def _next_rule_num(self) -> int:
-        ok, out = self._exec([f"show firewall name {self._fw_name}"])
-        if not ok:
-            return 100
-        nums = re.findall(r"rule (\d+)", out)
-        return max((int(n) for n in nums), default=99) + 1
 
     def block(
         self,
@@ -246,52 +277,104 @@ class VyOSProvider:
     ) -> BlockResult:
         if not self._ready():
             return BlockResult(False, "vyos", "VyOS credentials eksik")
-        rule_num = self._next_rule_num()
-        commands = [
-            "configure",
-            f"set firewall name {self._fw_name} rule {rule_num} action drop",
-            f"set firewall name {self._fw_name} rule {rule_num} source address {ip}",
-        ]
-        if network_protocol and network_protocol != "any":
-            commands.append(
-                f"set firewall name {self._fw_name} rule {rule_num} protocol {network_protocol}"
-            )
-        if destination_port:
-            commands.append(
-                f"set firewall name {self._fw_name} rule {rule_num} destination port {destination_port}"
-            )
-        commands += ["commit", "save", "exit"]
-        ok, msg = self._exec(commands)
-        if not ok:
-            return BlockResult(False, "vyos", msg)
-        logger.info("VyOS block: %s port=%s proto=%s rule=%d", ip, destination_port, network_protocol, rule_num)
-        return BlockResult(True, "vyos")
+        try:
+            import paramiko  # noqa: F401
+        except ImportError:
+            return BlockResult(False, "vyos", "paramiko yüklü değil — pip install paramiko")
+        try:
+            client, shell, wait_prompt = self._open_shell()
+
+            # Phase 1: enter configure mode and show existing rules
+            shell.send("configure\n")
+            wait_prompt(self._CMD_WAIT["configure"])
+            shell.send(f"show firewall ipv4 name {self._fw_name}\n")
+            show_out = wait_prompt(self._DEFAULT_WAIT)
+
+            # Derive next rule number from existing rules
+            nums = re.findall(r"rule (\d+)", show_out)
+            rule_num = max((int(n) for n in nums), default=99) + 1
+
+            # Phase 2: apply block rules in the already-open configure session
+            set_cmds = [
+                f"set firewall ipv4 name {self._fw_name} rule {rule_num} action drop",
+                f"set firewall ipv4 name {self._fw_name} rule {rule_num} source address {ip}",
+            ]
+            if network_protocol and network_protocol != "any":
+                set_cmds.append(
+                    f"set firewall ipv4 name {self._fw_name} rule {rule_num} protocol {network_protocol}"
+                )
+            if destination_port:
+                set_cmds.append(
+                    f"set firewall ipv4 name {self._fw_name} rule {rule_num} destination port {destination_port}"
+                )
+            set_cmds += ["commit", "save", "exit"]
+
+            all_output = [show_out]
+            for cmd in set_cmds:
+                shell.send(cmd + "\n")
+                wait = self._CMD_WAIT.get(cmd, self._DEFAULT_WAIT)
+                all_output.append(wait_prompt(wait))
+
+            shell.close()
+            client.close()
+            full = "\n".join(all_output)
+            _FAIL = ("Invalid command", "Set failed", "Commit failed", "Delete failed",
+                     "Configuration path", "not valid")
+            for phrase in _FAIL:
+                if phrase.lower() in full.lower():
+                    return BlockResult(False, "vyos", full.strip())
+            logger.info("VyOS block: %s port=%s proto=%s rule=%d", ip, destination_port, network_protocol, rule_num)
+            return BlockResult(True, "vyos")
+        except Exception as exc:
+            return BlockResult(False, "vyos", str(exc))
 
     def unblock(self, ip: str) -> UnblockResult:
         if not self._ready():
             return UnblockResult(False, "vyos", "VyOS credentials eksik")
-        ok, out = self._exec([f"show firewall name {self._fw_name}"])
-        if not ok:
-            return UnblockResult(False, "vyos", out)
-        pattern = re.compile(r"rule (\d+).*?address (\S+)", re.DOTALL)
-        rule_num = None
-        for m in pattern.finditer(out):
-            if m.group(2) == ip:
-                rule_num = int(m.group(1))
-                break
-        if rule_num is None:
-            return UnblockResult(False, "vyos", f"VyOS'ta {ip} kuralı bulunamadı")
-        ok, msg = self._exec([
-            "configure",
-            f"delete firewall name {self._fw_name} rule {rule_num}",
-            "commit",
-            "save",
-            "exit",
-        ])
-        if not ok:
-            return UnblockResult(False, "vyos", msg)
-        logger.info("VyOS unblock başarılı: %s rule=%d", ip, rule_num)
-        return UnblockResult(True, "vyos")
+        try:
+            import paramiko  # noqa: F401
+        except ImportError:
+            return UnblockResult(False, "vyos", "paramiko yüklü değil — pip install paramiko")
+        try:
+            client, shell, wait_prompt = self._open_shell()
+
+            # Phase 1: enter configure mode and show existing rules
+            shell.send("configure\n")
+            wait_prompt(self._CMD_WAIT["configure"])
+            shell.send(f"show firewall ipv4 name {self._fw_name}\n")
+            show_out = wait_prompt(self._DEFAULT_WAIT)
+
+            # Find the rule number for this IP (strip ANSI before parsing)
+            clean = _ANSI_RE.sub("", show_out)
+            pattern = re.compile(r"rule (\d+).*?address (\S+)", re.DOTALL)
+            rule_num = None
+            for m in pattern.finditer(clean):
+                if m.group(2) == ip:
+                    rule_num = int(m.group(1))
+                    break
+
+            if rule_num is None:
+                shell.send("exit\n")
+                wait_prompt(self._CMD_WAIT["exit"])
+                shell.close()
+                client.close()
+                return UnblockResult(False, "vyos", f"VyOS'ta {ip} kuralı bulunamadı")
+
+            # Phase 2: delete the rule in the already-open configure session
+            for cmd in [
+                f"delete firewall ipv4 name {self._fw_name} rule {rule_num}",
+                "commit", "save", "exit",
+            ]:
+                shell.send(cmd + "\n")
+                wait = self._CMD_WAIT.get(cmd, self._DEFAULT_WAIT)
+                wait_prompt(wait)
+
+            shell.close()
+            client.close()
+            logger.info("VyOS unblock başarılı: %s rule=%d", ip, rule_num)
+            return UnblockResult(True, "vyos")
+        except Exception as exc:
+            return UnblockResult(False, "vyos", str(exc))
 
     def list_blocked(self) -> list[str]:
         """VyOS BLOCK-LIST grubundaki engelli IP'leri döndür."""
