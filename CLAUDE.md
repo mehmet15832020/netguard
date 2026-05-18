@@ -99,6 +99,70 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
   - G3-3: GreyNoise Community (internet gürültüsü filtresi) | G3-4: Composite score hesaplama
   - Bağımlılık: yok
 
+### AŞAMA 2.5 — Dashboard Görselleştirme
+
+Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 13, NIST SP 800-94,
+Security Onion 2.4, Malcolm/CISA, ntopng, Arkime, Grafana Best Practices 2024, ArmorPoint SOC KPIs 2025.
+
+**Uygulama sırası:** Blok A (G1 sonrası, bağımsız) → Blok B (G4/G3 sonrası, bağımlı) → Blok C (ertelenebilir)
+
+#### Blok A — Hızlı Kazanımlar (~2 gün, normalized_logs'tan beslenir)
+
+- [ ] **D5** — Alert Volume Stacked Area Chart
+  - `alerts` tablosu GROUP BY hour × severity → critical/high/medium renk kodlaması
+  - Overview sayfası, mevcut LogVolumePanel yanına eklenir
+  - Bağımlılık: yok
+
+- [ ] **D2** — Protocol Distribution Donut
+  - `normalized_logs.network_protocol` GROUP BY → TCP/UDP/DNS/HTTP/SSH/ICMP/diğer
+  - *CIS Control 13.6: port/protokol izleme zorunlu*
+  - Bağımlılık: yok
+
+- [ ] **D3** — Traffic Volume Area Chart (east-west / north-south ayrımı)
+  - RFC1918 kaynak → iç trafik (east-west) vs dış trafik (north-south), stacked area
+  - *Gartner NDR zorunlu: çift yönlü görünürlük*
+  - Bağımlılık: yok
+
+- [ ] **D1** — Top Talkers Panel
+  - Top src IP + top dst IP + top dst port → horizontal ranked bar
+  - *ntopng / Malcolm / Arkime hepsinde var — NetGuard'da eksik*
+  - Endpoint: `GET /api/v1/analytics/top-talkers?hours=24&limit=20`
+  - Bağımlılık: yok
+
+#### Blok B — Bağımlı Dashboard Görselleri (~4-5 gün)
+
+- [ ] **D4** — Kill Chain Swimlane Timeline
+  - Mevcut liste → horizontal swimlane: her satır=kaynak IP, sütunlar=RECON/WEAPONIZE/ACCESS/LATERAL/FULL
+  - Tamamlanan aşama kırmızı, aktif titreşen; tıkla → log detayı
+  - `attack_chain_state` tablosundan beslenir — *G1 bittikten sonra anlamlı*
+  - Bağımlılık: G1
+
+- [ ] **D8** — DNS Analiz Derinleştirme
+  - Sorgu tipi dağılımı (A/AAAA/MX/TXT/PTR/CNAME), NXDOMAIN trend, entropi yüksek domainler
+  - *G4 (DNS tunneling) sigma kuralları olmadan eksik kalır*
+  - Bağımlılık: G4
+
+- [ ] **D6** — Threat Intel Geo Harita + Score Dağılımı
+  - Choropleth harita: `country_code` → saldırı yoğunluğu; AbuseIPDB score bar chart
+  - *G3 (Feodo/ThreatFox/GreyNoise) ile country_code zenginleşirse daha değerli*
+  - Bağımlılık: G3 (opsiyonel, mevcut AbuseIPDB verisiyle de başlanabilir)
+
+#### Blok C — Karmaşık Görseller (ertelenebilir)
+
+- [ ] **D7** — East-West Connection Matrix Heatmap
+  - Satır=kaynak IP, sütun=hedef IP, hücre=connection sayısı (ısı yoğunluğu)
+  - *Gartner NDR zorunlu, Security Onion + Malcolm'da varsayılan olarak yok*
+  - Bağımlılık: F4 (anomaly engine entegrasyonu sonrası daha anlamlı)
+
+- [ ] **D9** — Asset Risk Heatmap
+  - `asset_baselines`: subnet × gün/saat heatmap, spike renk skalası
+  - Bağımlılık: F4
+
+- [ ] **D10** — MTTD/MTTR Metrik Paneli
+  - MTTD: `incident.created_at - first_event.timestamp` | MTTR: kapanma süresi
+  - *SOC KPI standardı (ArmorPoint, CrowdStrike)*
+  - Bağımlılık: incident lifecycle tamamlanmalı
+
 ### AŞAMA 3 — Mimari Temizlik (1 Ay)
 
 - [ ] **F2-3** — 9 test dosyasını PG uyumlu hale getir
