@@ -929,11 +929,11 @@ class TestBreakGlass:
 
 
 class TestRateLimiting:
-    """G5: Rate limiting — block 10/dakika, break-glass 5/dakika."""
+    """G5: Rate limiting — block 10/dakika, unblock 20/dakika, break-glass 5/dakika."""
 
     def _reset(self):
-        import server.routes.active_response as ar_route
-        ar_route.limiter._storage.reset()
+        from server.limiter import limiter
+        limiter._storage.reset()
 
     def test_block_enforces_10_per_minute(self, tmp_db):
         self._reset()
@@ -948,6 +948,39 @@ class TestRateLimiting:
         assert statuses[:10] == [400] * 10
         assert statuses[10] == 429
 
+    def test_block_429_includes_ratelimit_headers(self, tmp_db):
+        self._reset()
+        for _ in range(10):
+            client.post(
+                "/api/v1/response/block",
+                json={"ip": "192.168.1.1", "reason": "rate-limit-test"},
+                headers=_admin_auth(),
+            )
+        r = client.post(
+            "/api/v1/response/block",
+            json={"ip": "192.168.1.1", "reason": "rate-limit-test"},
+            headers=_admin_auth(),
+        )
+        assert r.status_code == 429
+        assert "x-ratelimit-limit" in r.headers
+
+    def test_unblock_enforces_20_per_minute(self, tmp_db, monkeypatch):
+        self._reset()
+        from server import active_response as ar_mod
+        monkeypatch.setattr(
+            ar_mod.ActiveResponseManager, "unblock_ip",
+            lambda self, ip, actor, tenant_id: {"success": True, "provider": "opnsense"},
+        )
+        statuses = []
+        for i in range(21):
+            r = client.delete(
+                f"/api/v1/response/block/203.0.113.{i+1}",
+                headers=_admin_auth(),
+            )
+            statuses.append(r.status_code)
+        assert 429 in statuses
+        assert statuses.index(429) == 20
+
     def test_break_glass_enforces_5_per_minute(self, tmp_db, monkeypatch):
         self._reset()
         import server.routes.active_response as ar_route
@@ -960,4 +993,24 @@ class TestRateLimiting:
             )
             statuses.append(r.status_code)
         assert statuses[:5] == [503] * 5
+        assert statuses[5] == 429
+
+    def test_break_glass_rate_limit_with_valid_token(self, tmp_db, monkeypatch):
+        """Geçerli token ile 5 başarılı unblock, 6.'da 429."""
+        self._reset()
+        import server.routes.active_response as ar_route
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_route, "_BREAK_GLASS_TOKEN", "bg-test-token")
+        monkeypatch.setattr(
+            ar_mod.ActiveResponseManager, "unblock_ip",
+            lambda self, ip, actor, tenant_id: {"success": True, "provider": "opnsense"},
+        )
+        statuses = []
+        for i in range(6):
+            r = client.delete(
+                f"/api/v1/response/break-glass/198.51.100.{i+1}",
+                headers={"x-break-glass-token": "bg-test-token"},
+            )
+            statuses.append(r.status_code)
+        assert statuses[:5] == [200] * 5
         assert statuses[5] == 429

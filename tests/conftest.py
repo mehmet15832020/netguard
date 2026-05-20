@@ -166,17 +166,10 @@ def _patch_sqlite_connect(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def _reset_rate_limiters():
-    """Her test öncesinde route limiter storage'larını sıfırla — test izolasyonu."""
+    """Her test öncesinde shared limiter storage'ını sıfırla — test izolasyonu."""
     try:
-        import server.routes.active_response as ar_route
-        if hasattr(ar_route, "limiter") and hasattr(ar_route.limiter, "_storage"):
-            ar_route.limiter._storage.reset()
-    except Exception:
-        pass
-    try:
-        import server.routes.auth as auth_route
-        if hasattr(auth_route, "limiter") and hasattr(auth_route.limiter, "_storage"):
-            auth_route.limiter._storage.reset()
+        from server.limiter import limiter
+        limiter._storage.reset()
     except Exception:
         pass
 

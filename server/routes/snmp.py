@@ -8,15 +8,13 @@ DELETE /api/v1/snmp/devices/{host} → Cihaz sil
 """
 
 from typing import Literal
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 from server.auth import get_current_user, require_admin, User
 from server.database import db
+from server.limiter import limiter
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 class SNMPPollRequest(BaseModel):
@@ -51,6 +49,7 @@ def _strip_secrets(device: dict) -> dict:
 @limiter.limit("10/minute")
 def snmp_poll(
     request: Request,
+    response: Response,
     body: SNMPPollRequest,
     _: User = Depends(get_current_user),
 ):

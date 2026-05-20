@@ -14,18 +14,16 @@ import os
 import re
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, field_validator
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 from server.auth import User, get_current_user, tenant_scope
 from server.database import db
 from server.fp_manager import fp_manager
+from server.limiter import _auth_key, limiter
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
-limiter = Limiter(key_func=get_remote_address)
 
 _BREAK_GLASS_TOKEN = os.getenv("BREAK_GLASS_TOKEN", "")
 
@@ -124,9 +122,10 @@ class PlaybookRequest(BaseModel):
 
 
 @router.post("/response/block", status_code=201)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=_auth_key)
 async def block_ip(
     request: Request,
+    response: Response,
     req: BlockRequest,
     current_user: User = Depends(_require_admin),
 ):
@@ -190,7 +189,10 @@ async def block_ip(
 
 
 @router.delete("/response/block/{ip}", status_code=200)
+@limiter.limit("20/minute", key_func=_auth_key)
 async def unblock_ip(
+    request: Request,
+    response: Response,
     ip: str,
     current_user: User = Depends(_require_admin),
 ):
@@ -256,7 +258,7 @@ def suggest_playbook(
 
 @router.delete("/response/break-glass/{ip}", status_code=200)
 @limiter.limit("5/minute")
-async def break_glass_unblock(request: Request, ip: str, x_break_glass_token: str = Header(...)):
+async def break_glass_unblock(request: Request, response: Response, ip: str, x_break_glass_token: str = Header(...)):
     if not _BREAK_GLASS_TOKEN:
         raise HTTPException(status_code=503, detail="Break-glass devre dışı (BREAK_GLASS_TOKEN ayarlı değil)")
     if x_break_glass_token != _BREAK_GLASS_TOKEN:

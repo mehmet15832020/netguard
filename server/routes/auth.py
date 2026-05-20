@@ -10,12 +10,11 @@ GET  /api/v1/auth/me           → Mevcut kullanıcı bilgisi
 
 import logging
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, Security, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt, JWTError
 from pydantic import BaseModel
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from server.limiter import limiter
 from server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
@@ -35,12 +34,11 @@ from server.auth import (
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/auth/login", response_model=Token)
 @limiter.limit("5/minute")
-def login(request: Request, body: LoginRequest):
+def login(request: Request, response: Response, body: LoginRequest):
     """Kullanıcı adı ve şifre ile JWT token al."""
     user = authenticate_user(body.username, body.password)
     if not user:
@@ -73,7 +71,7 @@ class RefreshRequest(BaseModel):
 
 @router.post("/auth/refresh", response_model=Token)
 @limiter.limit("10/minute")
-def refresh(request: Request, body: RefreshRequest):
+def refresh(request: Request, response: Response, body: RefreshRequest):
     """Geçerli bir refresh token ile yeni access + refresh token çifti al."""
     payload = verify_token(body.refresh_token, token_type="refresh")
     if not payload:

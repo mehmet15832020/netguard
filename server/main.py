@@ -13,9 +13,9 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
+from server.limiter import limiter
 from server.influx_writer import influx_writer
 from server.routes import agents, alerts, auth, health, snmp, security, logs, correlation, ws, devices, discovery, topology, reports, sigma, maintenance, threat_intel, netflow, incidents, evtx, mitre, compliance, anomaly as anomaly_route, tenants, metrics as metrics_route, attack_chains as attack_chains_route, assets as assets_route, fp_rules as fp_rules_route, network_intel as network_intel_route, active_response as active_response_route
 from shared.protocol import API_VERSION
@@ -211,11 +211,6 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 logger = logging.getLogger("netguard.server")
-
-# Rate limiter
-limiter = Limiter(key_func=get_remote_address)
-
-
 
 
 @asynccontextmanager
