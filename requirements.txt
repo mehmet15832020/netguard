@@ -23,7 +23,7 @@ passlib==1.7.4
 pluggy==1.6.0
 paramiko>=3.0
 psutil==6.0.0
-pyasn1==0.6.3
+pyasn1==0.4.8
 pycparser==3.0
 pydantic==2.8.2
 pydantic_core==2.20.1
