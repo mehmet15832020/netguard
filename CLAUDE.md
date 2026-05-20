@@ -69,7 +69,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### AŞAMA 1 — Acil Güvenlik (Bu Hafta)
 
-- [ ] **G5** — `routes/active_response.py` → `@limiter.limit("10/minute")` block'a, `"5/minute"` break-glass'a
+- [x] **G5** — `routes/active_response.py` → `@limiter.limit("10/minute")` block'a, `"5/minute"` break-glass'a
   - *OWASP API4: rate limiting eksikliği; break-glass JWT bypass yaptığı için özellikle kritik*
   - Bağımlılık: yok — 15 dakikalık iş, G1 öncesi şart
 

@@ -926,3 +926,38 @@ class TestBreakGlass:
         logs = db.get_audit_log(limit=5)
         actions = [l["action"] for l in logs]
         assert "ip_unblocked_break_glass" in actions
+
+
+class TestRateLimiting:
+    """G5: Rate limiting — block 10/dakika, break-glass 5/dakika."""
+
+    def _reset(self):
+        import server.routes.active_response as ar_route
+        ar_route.limiter._storage.reset()
+
+    def test_block_enforces_10_per_minute(self, tmp_db):
+        self._reset()
+        statuses = []
+        for _ in range(11):
+            r = client.post(
+                "/api/v1/response/block",
+                json={"ip": "192.168.1.1", "reason": "rate-limit-test"},
+                headers=_admin_auth(),
+            )
+            statuses.append(r.status_code)
+        assert statuses[:10] == [400] * 10
+        assert statuses[10] == 429
+
+    def test_break_glass_enforces_5_per_minute(self, tmp_db, monkeypatch):
+        self._reset()
+        import server.routes.active_response as ar_route
+        monkeypatch.setattr(ar_route, "_BREAK_GLASS_TOKEN", "")
+        statuses = []
+        for _ in range(6):
+            r = client.delete(
+                "/api/v1/response/break-glass/8.8.8.8",
+                headers={"x-break-glass-token": "anything"},
+            )
+            statuses.append(r.status_code)
+        assert statuses[:5] == [503] * 5
+        assert statuses[5] == 429
