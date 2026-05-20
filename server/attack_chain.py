@@ -21,7 +21,9 @@ Her IP için aşama kaydı bellekte tutulur; 30 dakika geçmişe düşen
 kayıtlar otomatik temizlenir.
 """
 
+import ipaddress
 import logging
+import os
 import threading
 import uuid
 from collections import defaultdict
@@ -29,6 +31,28 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _load_protected_networks() -> list:
+    nets = [
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("127.0.0.0/8"),
+        ipaddress.ip_network("169.254.0.0/16"),
+    ]
+    for cidr in os.getenv("PROTECTED_CIDRS", "").split(","):
+        cidr = cidr.strip()
+        if not cidr:
+            continue
+        try:
+            nets.append(ipaddress.ip_network(cidr, strict=False))
+        except ValueError:
+            logger.warning("PROTECTED_CIDRS geçersiz CIDR atlandı: %s", cidr)
+    return nets
+
+
+_PROTECTED_NETWORKS = _load_protected_networks()
 
 CHAIN_WINDOW_SEC = 1800   # 30 dakika
 PARTIAL_THRESHOLD = 2     # uyarı eşiği
@@ -245,6 +269,47 @@ class AttackChainTracker:
             logger.warning(f"Attack chain DB restore başarısız: {exc}")
 
 
+def _auto_block_full_chain(trigger: dict) -> None:
+    if os.getenv("AUTO_BLOCK_ON_FULL_CHAIN", "0") != "1":
+        return
+    if trigger.get("chain_type") != "FULL_ATTACK_CHAIN":
+        return
+    source_ip = trigger.get("source_ip", "")
+    if not source_ip:
+        return
+    try:
+        addr = ipaddress.ip_address(source_ip)
+    except ValueError:
+        logger.warning("AUTO_BLOCK: geçersiz IP [%s]", source_ip)
+        return
+    if any(addr in net for net in _PROTECTED_NETWORKS):
+        logger.info("AUTO_BLOCK atlandı (korumalı ağ): %s", source_ip)
+        return
+    try:
+        from server.fp_manager import fp_manager
+        if fp_manager.is_suppressed(event_action="full_attack_chain", source_ip=source_ip, tenant_id="default"):
+            logger.info("AUTO_BLOCK atlandı (FP kuralı): %s", source_ip)
+            return
+        from server.database import db
+        if db.is_ip_blocked(source_ip, tenant_id="default"):
+            logger.debug("AUTO_BLOCK atlandı (zaten bloklu): %s", source_ip)
+            return
+        from server.active_response import active_response_manager
+        stages = ", ".join(trigger.get("stages") or ["unknown"])
+        result = active_response_manager.block_ip(
+            source_ip,
+            f"Otomatik bloklama: FULL_ATTACK_CHAIN ({stages})",
+            "system/kill_chain",
+            tenant_id="default",
+        )
+        if result.get("success"):
+            logger.info("AUTO_BLOCK başarılı [%s] provider=%s", source_ip, result.get("provider"))
+        else:
+            logger.error("AUTO_BLOCK provider başarısız [%s]: %s", source_ip, result.get("error"))
+    except Exception as exc:
+        logger.error("AUTO_BLOCK_ON_FULL_CHAIN hata [%s]: %s", source_ip, exc)
+
+
 def chain_trigger_to_correlated_event(trigger: dict, db_save: bool = True):
     """
     AttackChainTracker'dan gelen tetikleme dict'ini CorrelatedEvent'e dönüştürür
@@ -272,6 +337,7 @@ def chain_trigger_to_correlated_event(trigger: dict, db_save: bool = True):
             db.save_correlated_event(event)
         except Exception as exc:
             logger.warning(f"Attack chain event kaydedilemedi: {exc}")
+    _auto_block_full_chain(trigger)
     return event
 
 

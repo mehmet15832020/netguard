@@ -8,6 +8,7 @@ GET  /api/v1/agents/{id}/latest  → Son snapshot
 GET  /api/v1/agents/{id}/history → Geçmiş snapshot'lar
 """
 
+import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -113,7 +114,12 @@ async def receive_metrics(snapshot: MetricSnapshot):
     # Trafik özeti varsa işle
     if snapshot.traffic_summary:
         try:
-            _process_traffic_summary(snapshot.agent_id, snapshot.hostname, snapshot.traffic_summary)
+            await asyncio.to_thread(
+                _process_traffic_summary,
+                snapshot.agent_id,
+                snapshot.hostname,
+                snapshot.traffic_summary,
+            )
         except Exception as exc:
             logger.error(f"Traffic summary işleme hatası: {exc}")
 

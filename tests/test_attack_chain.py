@@ -1,7 +1,14 @@
 """Attack chain (kill chain) dedektörü testleri."""
 
 from datetime import datetime, timedelta, timezone
-from server.attack_chain import AttackChainTracker, CHAIN_WINDOW_SEC
+from unittest.mock import MagicMock, patch
+import pytest
+from server.attack_chain import (
+    AttackChainTracker,
+    CHAIN_WINDOW_SEC,
+    chain_trigger_to_correlated_event,
+    _auto_block_full_chain,
+)
 
 
 def _now():
@@ -128,3 +135,193 @@ class TestGetChains:
         assert "13.0.0.1" in chains
         assert "recon" in chains["13.0.0.1"]
         assert "weaponize" in chains["13.0.0.1"]
+
+
+def _full_trigger(ip="5.6.7.8"):
+    return {
+        "chain_type": "FULL_ATTACK_CHAIN",
+        "severity": "critical",
+        "source_ip": ip,
+        "stages": ["recon", "weaponize", "access"],
+        "stage_labels": ["Keşif", "Erişim Denemeleri", "İlk Erişim"],
+        "event_action": "full_attack_chain_detected",
+        "message": f"TAM SALDIRI ZİNCİRİ — {ip}",
+    }
+
+
+class TestAutoBlock:
+    def test_disabled_by_default_no_block(self, monkeypatch):
+        monkeypatch.delenv("AUTO_BLOCK_ON_FULL_CHAIN", raising=False)
+        mock_manager = MagicMock()
+        with patch("server.active_response.active_response_manager", mock_manager):
+            _auto_block_full_chain(_full_trigger())
+        mock_manager.block_ip.assert_not_called()
+
+    def test_partial_chain_not_blocked(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        partial = {
+            "chain_type": "PARTIAL_ATTACK_CHAIN",
+            "severity": "warning",
+            "source_ip": "5.6.7.8",
+            "stages": ["recon", "weaponize"],
+            "stage_labels": [],
+            "event_action": "partial_attack_chain_detected",
+            "message": "test",
+        }
+        mock_manager = MagicMock()
+        with patch("server.active_response.active_response_manager", mock_manager):
+            _auto_block_full_chain(partial)
+        mock_manager.block_ip.assert_not_called()
+
+    @pytest.mark.parametrize("protected_ip", [
+        "10.0.0.5", "172.16.1.1", "192.168.1.100", "127.0.0.1", "169.254.169.254",
+    ])
+    def test_protected_networks_not_blocked(self, monkeypatch, protected_ip):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_manager = MagicMock()
+        with patch("server.active_response.active_response_manager", mock_manager):
+            _auto_block_full_chain(_full_trigger(protected_ip))
+        mock_manager.block_ip.assert_not_called()
+
+    def test_protected_cidrs_env_not_blocked(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("PROTECTED_CIDRS", "5.6.7.0/24")
+        import importlib
+        import server.attack_chain as ac
+        protected = ac._load_protected_networks()
+        mock_manager = MagicMock()
+        with patch("server.attack_chain._PROTECTED_NETWORKS", protected):
+            with patch("server.active_response.active_response_manager", mock_manager):
+                _auto_block_full_chain(_full_trigger("5.6.7.8"))
+        mock_manager.block_ip.assert_not_called()
+
+    def test_fp_suppressed_not_blocked(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = "fp-rule-001"
+        mock_manager = MagicMock()
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.active_response.active_response_manager", mock_manager):
+                _auto_block_full_chain(_full_trigger("5.6.7.8"))
+        mock_manager.block_ip.assert_not_called()
+        mock_fp.is_suppressed.assert_called_once_with(
+            event_action="full_attack_chain",
+            source_ip="5.6.7.8",
+            tenant_id="default",
+        )
+
+    def test_already_blocked_duplicate_skipped(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = True
+        mock_manager = MagicMock()
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    _auto_block_full_chain(_full_trigger("5.6.7.8"))
+        mock_manager.block_ip.assert_not_called()
+        mock_db.is_ip_blocked.assert_called_once_with("5.6.7.8", tenant_id="default")
+
+    def test_public_ip_blocked_when_enabled(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    _auto_block_full_chain(_full_trigger("5.6.7.8"))
+        mock_manager.block_ip.assert_called_once_with(
+            "5.6.7.8",
+            "Otomatik bloklama: FULL_ATTACK_CHAIN (recon, weaponize, access)",
+            "system/kill_chain",
+            tenant_id="default",
+        )
+
+    def test_provider_failure_logged_as_error(self, monkeypatch, caplog):
+        import logging
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": False, "error": "provider down"}
+        with caplog.at_level(logging.ERROR, logger="server.attack_chain"):
+            with patch("server.fp_manager.fp_manager", mock_fp):
+                with patch("server.database.db", mock_db):
+                    with patch("server.active_response.active_response_manager", mock_manager):
+                        _auto_block_full_chain(_full_trigger("5.6.7.8"))
+        assert any("AUTO_BLOCK provider başarısız" in r.message for r in caplog.records)
+
+    def test_block_error_does_not_propagate(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.side_effect = RuntimeError("OPNsense bağlantı hatası")
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    _auto_block_full_chain(_full_trigger("5.6.7.8"))
+
+    def test_chain_trigger_to_correlated_event_calls_auto_block(self):
+        trigger = _full_trigger("5.6.7.8")
+        with patch("server.attack_chain._auto_block_full_chain") as mock_ab:
+            chain_trigger_to_correlated_event(trigger, db_save=False)
+        mock_ab.assert_called_once_with(trigger)
+
+    def test_invalid_ip_does_not_raise(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        _auto_block_full_chain(_full_trigger("not-an-ip"))
+
+
+class TestAutoBlockIntegration:
+    """
+    Tam pipeline: kill chain kaydı → FULL_ATTACK_CHAIN → chain_trigger_to_correlated_event
+    → _auto_block_full_chain çağrısı.
+    """
+
+    def test_full_chain_triggers_auto_block(self, monkeypatch):
+        t = AttackChainTracker()
+        t.record("5.6.7.8", "port_scan_attempt")
+        t.record("5.6.7.8", "ssh_failure")
+        trigger = t.record("5.6.7.8", "ssh_success")
+        assert trigger is not None
+        assert trigger["chain_type"] == "FULL_ATTACK_CHAIN"
+
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    chain_trigger_to_correlated_event(trigger, db_save=False)
+        mock_manager.block_ip.assert_called_once()
+        call_args = mock_manager.block_ip.call_args
+        assert call_args[0][0] == "5.6.7.8"
+        assert call_args[0][2] == "system/kill_chain"
+
+    def test_partial_chain_does_not_trigger_auto_block(self, monkeypatch):
+        t = AttackChainTracker()
+        t.record("5.6.7.8", "port_scan_attempt")
+        trigger = t.record("5.6.7.8", "ssh_failure")
+        assert trigger is not None
+        assert trigger["chain_type"] == "PARTIAL_ATTACK_CHAIN"
+
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_manager = MagicMock()
+        with patch("server.active_response.active_response_manager", mock_manager):
+            chain_trigger_to_correlated_event(trigger, db_save=False)
+        mock_manager.block_ip.assert_not_called()
