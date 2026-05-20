@@ -73,7 +73,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
   - *OWASP API4: rate limiting eksikliği; break-glass JWT bypass yaptığı için özellikle kritik*
   - Bağımlılık: yok — 15 dakikalık iş, G1 öncesi şart
 
-- [ ] **G1** — `attack_chain.py` FULL_ATTACK_CHAIN → `active_response_manager.block_ip()` çağrısı
+- [x] **G1** — `attack_chain.py` FULL_ATTACK_CHAIN → `active_response_manager.block_ip()` çağrısı
   - *CrowdStrike 2025: ortalama breakout time 48 dakika. Dedektör hazır, plug-in eklemek yeterli*
   - `AUTO_BLOCK_ON_FULL_CHAIN=1` env gate (varsayılan kapalı), `actor = "system/kill_chain"` audit
   - Güvenlik geçitleri korunur: RFC1918 → FP gate → severity gate
