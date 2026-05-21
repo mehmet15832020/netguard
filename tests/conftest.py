@@ -238,6 +238,7 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.routes.network_intel.db", test_db)
     monkeypatch.setattr("server.routes.active_response.db", test_db)
     monkeypatch.setattr("server.routes.mitre.db", test_db)
+    monkeypatch.setattr("server.routes.analytics.db", test_db)
     return test_db
 
 
