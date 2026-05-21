@@ -86,10 +86,11 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### AŞAMA 2 — Tespit Genişletme (2-3 Hafta)
 
-- [ ] **G4** — DNS tunneling sigma kuralları
+- [x] **G4** — DNS tunneling sigma kuralları
   - *MITRE ATT&CK T1071.004: APT41/OilRig/Cobalt Group aktif kullanıyor. Zeek DNS zaten akıyor*
-  - G4-1: Entropi analizi (base64/hex subdomain) | G4-2: Uzun sorgu (>50 karakter)
-  - G4-3: NXDOMAIN spike (5 dakikada 20+) — `ng_dns_burst_base` temel alınabilir
+  - [x] G4-1: Entropi analizi (base64/hex subdomain) — eşik 4.0 bit, min_label 20 char
+  - [x] G4-2: Uzun sorgu (>50 karakter) — [LONG_QUERY:Xc] indikatörü
+  - [x] G4-3: NXDOMAIN spike — 2 katmanlı: 30/1m + 100/15m
   - [x] G4-4: TXT sorgu frekansı — `ng_dns_tunnel_base` mevcut (`network_community.yml`)
   - Bağımlılık: yok
 
