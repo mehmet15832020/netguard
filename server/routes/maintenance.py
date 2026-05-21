@@ -1,9 +1,10 @@
 """
 NetGuard — Maintenance endpoint'leri
 
-POST /api/v1/maintenance/cleanup  → Manuel retention cleanup (admin)
-GET  /api/v1/maintenance/status   → DB tablo boyutları
-GET  /api/v1/maintenance/audit    → Audit log (admin)
+POST /api/v1/maintenance/cleanup      → Manuel retention cleanup (admin)
+GET  /api/v1/maintenance/status       → DB tablo boyutları
+GET  /api/v1/maintenance/audit        → Audit log (admin)
+GET  /api/v1/audit-log/verify         → SHA-256 hash zinciri bütünlük kontrolü (admin)
 """
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -81,3 +82,9 @@ def audit_log(
 ):
     """Admin eylem geçmişini döndür."""
     return {"events": db.get_audit_log(limit=limit, actor=actor)}
+
+
+@router.get("/audit-log/verify")
+def verify_audit_log(_: User = Depends(require_admin)):
+    """SHA-256 hash zinciri bütünlüğünü doğrula (NIST SP 800-92 §3.2)."""
+    return db.verify_audit_chain()

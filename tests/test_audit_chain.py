@@ -1,0 +1,199 @@
+"""U3 — Tamperproof audit log (SHA-256 hash chain) testleri.
+
+NIST SP 800-92 §3.2 + NIS2 Article 21(2)(i) gereksinimlerine uygunluk.
+"""
+
+import hashlib
+import pytest
+from fastapi.testclient import TestClient
+
+
+# ── Fixtures ──────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def db_instance(tmp_db):
+    return tmp_db
+
+
+@pytest.fixture
+def client(tmp_db, admin_token, monkeypatch):
+    monkeypatch.setattr("server.routes.maintenance.db", tmp_db)
+    from server.main import app
+    return TestClient(app), admin_token, tmp_db
+
+
+# ── Yardımcı: hash yeniden hesaplama ──────────────────────────────────────────
+
+def _recompute_hash(row: dict, previous_hash: str) -> str:
+    content = "|".join([
+        row["event_id"], row["actor"], row["action"], row["resource"],
+        row["detail"] or "", row["ip_address"] or "",
+        row["timestamp"], previous_hash,
+    ])
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+# ── Hash Üretim Testleri ───────────────────────────────────────────────────────
+
+class TestAuditHashGeneration:
+    def test_entry_hash_populated(self, db_instance):
+        db_instance.save_audit_event("admin", "test_action", "/res")
+        events = db_instance.get_audit_log(limit=10)
+        assert events[0]["entry_hash"] is not None
+        assert len(events[0]["entry_hash"]) == 64
+
+    def test_previous_hash_genesis(self, db_instance):
+        db_instance.save_audit_event("admin", "first_action", "/res")
+        events = db_instance.get_audit_log(limit=10)
+        assert events[0]["previous_hash"] == "0" * 64
+
+    def test_second_entry_links_to_first(self, db_instance):
+        db_instance.save_audit_event("admin", "action_1", "/a")
+        db_instance.save_audit_event("admin", "action_2", "/b")
+        events = db_instance.get_audit_log(limit=10)
+        # get_audit_log returns DESC — reverse to get ASC
+        events_asc = list(reversed(events))
+        assert events_asc[1]["previous_hash"] == events_asc[0]["entry_hash"]
+
+    def test_hash_is_deterministic(self, db_instance):
+        db_instance.save_audit_event("user1", "login", "session")
+        row = db_instance.get_audit_log(limit=1)[0]
+        recomputed = _recompute_hash(row, row["previous_hash"])
+        assert recomputed == row["entry_hash"]
+
+    def test_hash_covers_all_fields(self, db_instance):
+        db_instance.save_audit_event("actor_x", "action_y", "resource_z", "detail_w", "1.2.3.4")
+        row = db_instance.get_audit_log(limit=1)[0]
+        assert row["actor"] == "actor_x"
+        assert row["action"] == "action_y"
+        assert row["resource"] == "resource_z"
+        assert row["detail"] == "detail_w"
+        assert row["ip_address"] == "1.2.3.4"
+        recomputed = _recompute_hash(row, row["previous_hash"])
+        assert recomputed == row["entry_hash"]
+
+    def test_entry_hash_is_hex_sha256(self, db_instance):
+        db_instance.save_audit_event("admin", "check_type", "/")
+        row = db_instance.get_audit_log(limit=1)[0]
+        assert all(c in "0123456789abcdef" for c in row["entry_hash"])
+        assert len(row["entry_hash"]) == 64
+
+
+# ── Zincir Bütünlük Testleri ──────────────────────────────────────────────────
+
+class TestAuditChainIntegrity:
+    def test_empty_db_valid(self, db_instance):
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is True
+        assert result["checked"] == 0
+
+    def test_single_entry_valid(self, db_instance):
+        db_instance.save_audit_event("admin", "login", "/session")
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is True
+        assert result["checked"] == 1
+
+    def test_chain_of_five_valid(self, db_instance):
+        for i in range(5):
+            db_instance.save_audit_event("admin", f"action_{i}", f"/res/{i}")
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is True
+        assert result["checked"] == 5
+
+    def test_tampered_entry_hash_detected(self, db_instance):
+        db_instance.save_audit_event("admin", "action_1", "/a")
+        db_instance.save_audit_event("admin", "action_2", "/b")
+        with db_instance._connect() as conn:
+            conn.execute("UPDATE audit_log SET entry_hash='deadbeef' || substr(entry_hash,9) WHERE action='action_1'")
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is False
+        assert result["first_broken_at"] is not None
+
+    def test_tampered_field_detected(self, db_instance):
+        db_instance.save_audit_event("admin", "legitimate_action", "/resource")
+        with db_instance._connect() as conn:
+            conn.execute("UPDATE audit_log SET actor='attacker' WHERE action='legitimate_action'")
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is False
+
+    def test_deleted_entry_breaks_chain(self, db_instance):
+        for i in range(3):
+            db_instance.save_audit_event("admin", f"a{i}", f"/r{i}")
+        with db_instance._connect() as conn:
+            row = conn.execute("SELECT id FROM audit_log ORDER BY id ASC LIMIT 1").fetchone()
+            conn.execute("DELETE FROM audit_log WHERE id=?", (row[0],))
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is False
+
+    def test_legacy_null_entries_skipped(self, db_instance):
+        with db_instance._connect() as conn:
+            conn.execute(
+                "INSERT INTO audit_log (event_id, actor, action, resource, timestamp) "
+                "VALUES ('old-uuid', 'admin', 'legacy_action', '/old', '2025-01-01T00:00:00+00:00')"
+            )
+        db_instance.save_audit_event("admin", "new_action", "/new")
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is True
+        assert result["checked"] == 1
+
+    def test_first_broken_at_points_to_correct_id(self, db_instance):
+        for i in range(4):
+            db_instance.save_audit_event("admin", f"act{i}", f"/r{i}")
+        with db_instance._connect() as conn:
+            row = conn.execute(
+                "SELECT id FROM audit_log ORDER BY id ASC LIMIT 1 OFFSET 2"
+            ).fetchone()
+            tampered_id = row[0]
+            conn.execute(
+                "UPDATE audit_log SET entry_hash='0' * 64 WHERE id=?", (tampered_id,)
+            )
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is False
+        assert result["first_broken_at"] is not None
+
+
+# ── Verify API Endpoint Testleri ──────────────────────────────────────────────
+
+class TestVerifyEndpoint:
+    def test_verify_empty_returns_valid(self, client):
+        tc, token, _ = client
+        resp = tc.get("/api/v1/audit-log/verify", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["checked"] == 0
+
+    def test_verify_after_events_returns_valid(self, client):
+        tc, token, test_db = client
+        test_db.save_audit_event("admin", "block_ip", "10.0.0.1")
+        test_db.save_audit_event("admin", "unblock_ip", "10.0.0.1")
+        resp = tc.get("/api/v1/audit-log/verify", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is True
+        assert data["checked"] == 2
+
+    def test_verify_requires_auth(self, client):
+        tc, _, _ = client
+        resp = tc.get("/api/v1/audit-log/verify")
+        assert resp.status_code == 401
+
+    def test_verify_tampered_returns_invalid(self, client):
+        tc, token, test_db = client
+        test_db.save_audit_event("admin", "original_action", "/target")
+        with test_db._connect() as conn:
+            conn.execute("UPDATE audit_log SET actor='hacker' WHERE action='original_action'")
+        resp = tc.get("/api/v1/audit-log/verify", headers={"Authorization": f"Bearer {token}"})
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["valid"] is False
+        assert data["first_broken_at"] is not None
+
+    def test_verify_response_schema(self, client):
+        tc, token, _ = client
+        resp = tc.get("/api/v1/audit-log/verify", headers={"Authorization": f"Bearer {token}"})
+        data = resp.json()
+        assert "valid" in data
+        assert "checked" in data
+        assert "first_broken_at" in data
+        assert "message" in data

@@ -196,14 +196,16 @@ CREATE TABLE IF NOT EXISTS api_keys (
 
 _CREATE_AUDIT_LOG = """
 CREATE TABLE IF NOT EXISTS audit_log (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    event_id    TEXT UNIQUE NOT NULL,
-    actor       TEXT NOT NULL,
-    action      TEXT NOT NULL,
-    resource    TEXT NOT NULL,
-    detail      TEXT,
-    ip_address  TEXT,
-    timestamp   TEXT NOT NULL
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_id      TEXT UNIQUE NOT NULL,
+    actor         TEXT NOT NULL,
+    action        TEXT NOT NULL,
+    resource      TEXT NOT NULL,
+    detail        TEXT,
+    ip_address    TEXT,
+    timestamp     TEXT NOT NULL,
+    previous_hash TEXT,
+    entry_hash    TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_audit_actor     ON audit_log(actor);
 CREATE INDEX IF NOT EXISTS idx_audit_action    ON audit_log(action);
@@ -612,6 +614,7 @@ class DatabaseManager:
         self._migrate_raw_logs_parse_status()
         self._migrate_normalized_logs_columns()
         self._migrate_ecs_field_rename()
+        self._migrate_audit_hash_columns()
         self._migrate_correlated_events_mitre()
         self._migrate_tenant_id()
         self._migrate_dns_hostname_columns()
@@ -2232,14 +2235,23 @@ class DatabaseManager:
         detail: str = "",
         ip_address: str = "",
     ) -> None:
+        import hashlib
         import uuid as _uuid
+        event_id = str(_uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with self._lock:
             with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT entry_hash FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1"
+                ).fetchone()
+                previous_hash = row[0] if row else "0" * 64
+                content = "|".join([event_id, actor, action, resource, detail or "", ip_address or "", now, previous_hash])
+                entry_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
                 conn.execute(
-                    "INSERT INTO audit_log (event_id, actor, action, resource, detail, ip_address, timestamp) "
-                    "VALUES (?,?,?,?,?,?,?)",
-                    (str(_uuid.uuid4()), actor, action, resource, detail, ip_address, now),
+                    "INSERT INTO audit_log "
+                    "(event_id, actor, action, resource, detail, ip_address, timestamp, previous_hash, entry_hash) "
+                    "VALUES (?,?,?,?,?,?,?,?,?)",
+                    (event_id, actor, action, resource, detail, ip_address, now, previous_hash, entry_hash),
                 )
 
     def get_audit_log(self, limit: int = 100, actor: str = "") -> list[dict]:
@@ -2255,6 +2267,65 @@ class DatabaseManager:
                     (limit,),
                 ).fetchall()
             return [dict(r) for r in rows]
+
+    def verify_audit_chain(self) -> dict:
+        """SHA-256 hash zincirini baştan sona doğrula. NIST SP 800-92 §3.2."""
+        import hashlib
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, event_id, actor, action, resource, detail, ip_address, "
+                "timestamp, previous_hash, entry_hash FROM audit_log ORDER BY id ASC"
+            ).fetchall()
+        if not rows:
+            return {"valid": True, "checked": 0, "first_broken_at": None, "message": "Audit log boş"}
+
+        expected_prev = "0" * 64
+        checked = 0
+        for row in rows:
+            entry_hash = row["entry_hash"]
+            if entry_hash is None:
+                continue
+            previous_hash = row["previous_hash"] or "0" * 64
+            if previous_hash != expected_prev:
+                return {
+                    "valid": False,
+                    "checked": checked,
+                    "first_broken_at": row["id"],
+                    "message": f"Önceki hash uyuşmuyor — kayıt id={row['id']} bozulmuş veya silinmiş",
+                }
+            content = "|".join([
+                row["event_id"], row["actor"], row["action"], row["resource"],
+                row["detail"] or "", row["ip_address"] or "",
+                row["timestamp"], previous_hash,
+            ])
+            computed = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            if computed != entry_hash:
+                return {
+                    "valid": False,
+                    "checked": checked,
+                    "first_broken_at": row["id"],
+                    "message": f"Hash uyuşmuyor — kayıt id={row['id']} değiştirilmiş",
+                }
+            expected_prev = entry_hash
+            checked += 1
+
+        return {
+            "valid": True,
+            "checked": checked,
+            "first_broken_at": None,
+            "message": f"Hash zinciri bütün — {checked} kayıt doğrulandı",
+        }
+
+    def _migrate_audit_hash_columns(self) -> None:
+        with self._connect() as conn:
+            cols = {row[1] for row in conn.execute("PRAGMA table_info(audit_log)").fetchall()}
+            if "previous_hash" not in cols:
+                conn.execute("ALTER TABLE audit_log ADD COLUMN previous_hash TEXT")
+            if "entry_hash" not in cols:
+                conn.execute("ALTER TABLE audit_log ADD COLUMN entry_hash TEXT")
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_audit_entry_hash ON audit_log(entry_hash)"
+            )
 
     # ------------------------------------------------------------------ #
     #  TOKEN BLACKLIST
