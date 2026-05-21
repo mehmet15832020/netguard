@@ -252,3 +252,95 @@ def protocol_distribution(
     ]
 
     return ProtocolDistributionResponse(hours=hours, total=total, protocols=protocols)
+
+
+_TRAFFIC_HOUR_EXPR = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+
+_RFC1918_LIKE = """(
+    source_ip LIKE '10.%'
+    OR source_ip LIKE '192.168.%'
+    OR source_ip LIKE '172.16.%' OR source_ip LIKE '172.17.%'
+    OR source_ip LIKE '172.18.%' OR source_ip LIKE '172.19.%'
+    OR source_ip LIKE '172.20.%' OR source_ip LIKE '172.21.%'
+    OR source_ip LIKE '172.22.%' OR source_ip LIKE '172.23.%'
+    OR source_ip LIKE '172.24.%' OR source_ip LIKE '172.25.%'
+    OR source_ip LIKE '172.26.%' OR source_ip LIKE '172.27.%'
+    OR source_ip LIKE '172.28.%' OR source_ip LIKE '172.29.%'
+    OR source_ip LIKE '172.30.%' OR source_ip LIKE '172.31.%'
+    OR source_ip LIKE '127.%'
+    OR source_ip LIKE '169.254.%'
+    OR source_ip LIKE 'fc%'
+    OR source_ip LIKE 'fe80:%'
+    OR source_ip = '::1'
+)"""
+
+
+class _TrafficPoint(BaseModel):
+    t: str
+    v: int
+
+
+class TrafficVolumeResponse(BaseModel):
+    hours: int
+    series: dict[str, list[_TrafficPoint]]
+
+
+@router.get("/analytics/traffic-volume", response_model=TrafficVolumeResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def traffic_volume(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since, since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, since, tid]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                {_TRAFFIC_HOUR_EXPR} AS hour,
+                CASE WHEN {_RFC1918_LIKE} THEN 'internal' ELSE 'external' END AS direction,
+                COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              AND timestamp >= %s
+              {tenant_clause}
+              AND source_ip IS NOT NULL
+            GROUP BY hour, direction
+            ORDER BY hour
+            """,
+            params,
+        ).fetchall()
+
+    since_trunc = since.replace(minute=0, second=0, microsecond=0)
+    now_trunc = now.replace(minute=0, second=0, microsecond=0)
+    n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
+    all_hours = [
+        (since_trunc + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+        for i in range(n_buckets)
+    ]
+
+    bucket: dict[str, dict[str, int]] = {
+        h: {"internal": 0, "external": 0} for h in all_hours
+    }
+    for r in rows:
+        h = r["hour"]
+        if h in bucket and r["direction"] in ("internal", "external"):
+            bucket[h][r["direction"]] += r["cnt"]
+
+    series: dict[str, list[_TrafficPoint]] = {
+        direction: [_TrafficPoint(t=h, v=bucket[h][direction]) for h in all_hours]
+        for direction in ("internal", "external")
+    }
+
+    return TrafficVolumeResponse(hours=hours, series=series)

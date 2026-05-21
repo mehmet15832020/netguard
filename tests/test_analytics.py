@@ -627,3 +627,138 @@ class TestProtocolDistributionTenantIsolation:
 
         data = superadmin_client.get("/api/v1/analytics/protocol-distribution").json()
         assert data["total"] == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Traffic Volume tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTrafficVolumeBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/traffic-volume")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert "hours" in data
+        assert "series" in data
+        assert "internal" in data["series"]
+        assert "external" in data["series"]
+
+    def test_empty_db_returns_aligned_series(self, client):
+        data = client.get("/api/v1/analytics/traffic-volume?hours=2").json()
+        assert len(data["series"]["internal"]) == len(data["series"]["external"])
+        assert len(data["series"]["internal"]) >= 2
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/traffic-volume").json()["hours"] == 24
+
+    def test_hours_param_reflected(self, client):
+        for h in [1, 6, 48, 168]:
+            data = client.get(f"/api/v1/analytics/traffic-volume?hours={h}").json()
+            assert data["hours"] == h
+
+
+class TestTrafficVolumeValidation:
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/traffic-volume?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/traffic-volume?hours=169").status_code == 422
+
+    def test_string_hours_returns_422(self, client):
+        assert client.get("/api/v1/analytics/traffic-volume?hours=x").status_code == 422
+
+
+class TestTrafficVolumeAuth:
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/traffic-volume").status_code == 401
+
+
+class TestTrafficVolumeDirection:
+    def test_rfc1918_10x_is_internal(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+        assert sum(p["v"] for p in data["series"]["external"]) == 0
+
+    def test_rfc1918_192168_is_internal(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="192.168.1.100")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+
+    def test_rfc1918_172_is_internal(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="172.16.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+
+    def test_public_ip_is_external(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="8.8.8.8")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["external"]) == 1
+        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+
+    def test_mixed_traffic_classified(self, client, tmp_db):
+        for _ in range(3):
+            _insert_log(tmp_db, source_ip="10.0.0.1")
+        for _ in range(2):
+            _insert_log(tmp_db, source_ip="1.1.1.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 3
+        assert sum(p["v"] for p in data["series"]["external"]) == 2
+
+    def test_null_source_ip_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip=None)
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+        assert sum(p["v"] for p in data["series"]["external"]) == 0
+
+    def test_series_always_same_length(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1")
+        _insert_log(tmp_db, source_ip="8.8.8.8")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert len(data["series"]["internal"]) == len(data["series"]["external"])
+
+    def test_loopback_is_internal(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="127.0.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+
+
+class TestTrafficVolumeTimestamp:
+    def test_old_logs_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+
+    def test_recent_logs_included(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="8.8.8.8", minutes_ago=10)
+
+        data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
+        assert sum(p["v"] for p in data["series"]["external"]) == 1
+
+
+class TestTrafficVolumeTenantIsolation:
+    def test_admin_sees_only_own_tenant(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", tenant_id="other-tenant")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+
+    def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", tenant_id="other-tenant")
+
+        data = superadmin_client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 2

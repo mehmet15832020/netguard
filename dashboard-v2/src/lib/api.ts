@@ -931,6 +931,19 @@ export interface ProtocolDistributionResponse {
   protocols: ProtocolItem[]
 }
 
+export interface TrafficPoint {
+  t: string
+  v: number
+}
+
+export interface TrafficVolumeResponse {
+  hours:  number
+  series: {
+    internal: TrafficPoint[]
+    external: TrafficPoint[]
+  }
+}
+
 export const analyticsApi = {
   topTalkers: (hours = 24, limit = 10) =>
     request<TopTalkersResponse>(`/analytics/top-talkers?hours=${hours}&limit=${limit}`),
@@ -940,5 +953,8 @@ export const analyticsApi = {
 
   protocolDistribution: (hours = 24) =>
     request<ProtocolDistributionResponse>(`/analytics/protocol-distribution?hours=${hours}`),
+
+  trafficVolume: (hours = 24) =>
+    request<TrafficVolumeResponse>(`/analytics/traffic-volume?hours=${hours}`),
 }
 
