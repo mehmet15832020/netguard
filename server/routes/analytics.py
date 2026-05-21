@@ -233,9 +233,10 @@ def protocol_distribution(
               AND timestamp >= %s
               {tenant_clause}
               AND network_protocol IS NOT NULL
-              AND network_protocol != ''
+              AND LENGTH(TRIM(network_protocol)) > 0
             GROUP BY proto
             ORDER BY cnt DESC
+            LIMIT 50
             """,
             params,
         ).fetchall()

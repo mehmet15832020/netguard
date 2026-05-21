@@ -94,7 +94,12 @@ export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolD
       backgroundColor: '#18181b',
       borderColor: '#3f3f46',
       textStyle: { color: '#f4f4f5', fontSize: 12 },
-      formatter: '{a} <br/> {b}: {c} ({d}%)',
+      formatter: (params: { name: string; value: number; percent: number }) => {
+        const safe = params.name.replace(/[<>&"']/g, (c) =>
+          ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] ?? c)
+        )
+        return `<span style="color:#a1a1aa">${safe}</span><br/><b>${params.value.toLocaleString()}</b> (${params.percent.toFixed(1)}%)`
+      },
     },
   }
 
