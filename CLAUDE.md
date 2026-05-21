@@ -110,9 +110,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 #### Blok A — Hızlı Kazanımlar (~4 gün, bağımsız)
 
-- [ ] **D1** — Top Talkers Panel
+- [x] **D1** — Top Talkers Panel
   - Top src/dst IP + top dst port → horizontal ranked bar; `GET /api/v1/analytics/top-talkers?hours=24&limit=20`
-  - Altyapı: backend route YOK, frontend component YOK
+  - **Teslim:** `server/routes/analytics.py`, `TopTalkersChart.tsx`, `/top-talkers` sayfası, sidebar eklendi; 20 test — 1389 toplam test ✓
 - [ ] **D5** — Alert Volume Stacked Area Chart
   - `alerts` GROUP BY hour × severity → critical/high/medium renk kodlaması
   - Altyapı: `alerts` tablosu VAR ✓, route YOK
@@ -191,7 +191,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1369 test, 0 hata (21 Mayıs 2026)
+**Test durumu:** 1389 test, 0 hata (21 Mayıs 2026)
 
 ---
 
