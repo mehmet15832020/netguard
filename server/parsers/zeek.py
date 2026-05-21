@@ -5,15 +5,47 @@ Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
+import os
 import re
 import uuid
 import logging
 from datetime import datetime, timezone
+from math import log2 as _log2
 from typing import Optional
 
 from shared.models import NormalizedLog, LogSourceType, LogCategory
 
 logger = logging.getLogger(__name__)
+
+_DNS_ENTROPY_THRESHOLD = float(os.getenv("DNS_ENTROPY_THRESHOLD", "4.0"))
+_DNS_LONG_QUERY_THRESHOLD = int(os.getenv("DNS_LONG_QUERY_THRESHOLD", "50"))
+_DNS_ENTROPY_MIN_LABEL_LEN = int(os.getenv("DNS_ENTROPY_MIN_LABEL_LEN", "20"))
+
+
+_MULTI_PART_TLD: frozenset[str] = frozenset({
+    "co.uk", "com.tr", "com.au", "org.uk", "gov.uk", "co.nz",
+    "com.br", "org.au", "net.au", "edu.au", "co.za", "com.cn",
+    "com.mx", "com.ar", "co.in", "co.jp", "ne.jp",
+})
+
+
+def _subdomain_labels(query: str) -> list[str]:
+    parts = query.rstrip(".").split(".")
+    if len(parts) < 2:
+        return []
+    suffix = f"{parts[-2]}.{parts[-1]}"
+    skip = 3 if suffix in _MULTI_PART_TLD else 2
+    return parts[:-skip] if len(parts) > skip else []
+
+
+def _shannon_entropy(s: str) -> float:
+    if not s:
+        return 0.0
+    freq: dict[str, int] = {}
+    for c in s:
+        freq[c] = freq.get(c, 0) + 1
+    n = len(s)
+    return -sum((v / n) * _log2(v / n) for v in freq.values())
 
 
 def _ts(val) -> datetime:
@@ -44,19 +76,41 @@ def parse_dns(row: dict) -> Optional[NormalizedLog]:
     qtype = row.get("qtype_name", "A")
     summary = f"{answers_str}" if answers_str else rcode
 
+    subdomain_labels = _subdomain_labels(query)
+    suspicious_labels = [l for l in subdomain_labels if len(l) >= _DNS_ENTROPY_MIN_LABEL_LEN]
+    max_entropy = max((_shannon_entropy(l) for l in suspicious_labels), default=0.0)
+
+    query_len = len(query.rstrip("."))
+
+    indicators: list[str] = []
+    severity = "info"
+
+    if max_entropy > _DNS_ENTROPY_THRESHOLD:
+        indicators.append(f"[HIGH_ENTROPY:{max_entropy:.1f}]")
+        severity = "high"
+    if query_len > _DNS_LONG_QUERY_THRESHOLD:
+        indicators.append(f"[LONG_QUERY:{query_len}c]")
+        if severity == "info":
+            severity = "warning"
+
+    indicator_str = " ".join(indicators)
+    message = f"DNS {qtype} {query} → {summary}"
+    if indicator_str:
+        message = f"{message} {indicator_str}"
+
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
         raw_id=str(uuid.uuid4()),
         source_type=LogSourceType.ZEEK,
         observer_hostname="zeek",
         timestamp=_ts(row["ts"]),
-        severity="info",
+        severity=severity,
         event_category=LogCategory.NETWORK,
         event_action="dns_query",
         source_ip=row.get("id.orig_h"),
         destination_ip=row.get("id.resp_h"),
         network_protocol=row.get("proto", "udp"),
-        message=f"DNS {qtype} {query} → {summary}",
+        message=message,
         tags=["zeek", "dns"],
     )
 

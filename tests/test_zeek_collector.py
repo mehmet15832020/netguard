@@ -61,6 +61,62 @@ class TestParseDns:
         assert "zeek" in log.tags
         assert "dns" in log.tags
 
+    def test_high_entropy_subdomain_flagged(self):
+        log = parse_dns(self._row(query="XKj3Lm9PABCDabcd12345678901234.evil.com"))
+        assert log is not None
+        assert "[HIGH_ENTROPY:" in log.message
+        assert log.severity == "high"
+
+    def test_normal_subdomain_no_entropy_flag(self):
+        log = parse_dns(self._row(query="mail.example.com"))
+        assert "[HIGH_ENTROPY:" not in log.message
+
+    def test_long_query_flagged(self):
+        long_query = "a" * 51 + ".evil.com"
+        log = parse_dns(self._row(query=long_query))
+        assert "[LONG_QUERY:" in log.message
+        assert log.severity in ("warning", "high")
+
+    def test_short_query_no_long_flag(self):
+        log = parse_dns(self._row(query="short.com"))
+        assert "[LONG_QUERY:" not in log.message
+
+    def test_high_entropy_and_long_both_flagged(self):
+        query = "XKj3Lm9PABCDabcd12345678901234EFGHijklmnop.evil.com"
+        log = parse_dns(self._row(query=query))
+        assert "[HIGH_ENTROPY:" in log.message
+        assert "[LONG_QUERY:" in log.message
+
+    def test_severity_high_for_entropy(self):
+        log = parse_dns(self._row(query="XKj3Lm9PABCDabcd12345678901234.evil.com"))
+        assert log.severity == "high"
+
+    def test_severity_warning_for_long_only(self):
+        log = parse_dns(self._row(query="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.evil.com"))
+        assert "[LONG_QUERY:" in log.message
+        assert log.severity == "warning"
+        assert "[HIGH_ENTROPY:" not in log.message
+
+    def test_cdn_short_label_not_flagged(self):
+        log = parse_dns(self._row(query="d3kq5j8w9x.cloudfront.net"))
+        assert "[HIGH_ENTROPY:" not in log.message
+
+    def test_dkim_selector_not_flagged(self):
+        log = parse_dns(self._row(query="20231101._domainkey.example.com"))
+        assert "[HIGH_ENTROPY:" not in log.message
+
+    def test_acme_challenge_not_flagged(self):
+        log = parse_dns(self._row(query="_acme-challenge.example.com"))
+        assert "[HIGH_ENTROPY:" not in log.message
+
+    def test_multi_part_tld_co_uk(self):
+        log = parse_dns(self._row(query="mail.example.co.uk"))
+        assert "[HIGH_ENTROPY:" not in log.message
+
+    def test_entropy_threshold_is_4(self):
+        log = parse_dns(self._row(query="d111de75b6f9f6e34256854.evil.com"))
+        assert log is not None
+
 
 class TestParseHttp:
     def _row(self, **kw):
