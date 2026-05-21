@@ -137,12 +137,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 ### AŞAMA 3 — Güvenlik Derinleştirme
 
-- [ ] **U3** — Tamperproof audit log (SHA-256 zinciri)
+- [x] **U3** — Tamperproof audit log (SHA-256 zinciri)
   - *NIST SP 800-92 §3.2 + NIS2 Article 21(2)(i): log bütünlüğü yasal gereklilik. Attacker PG'ye erişirse audit siler.*
-  - **Altyapı:** `audit_log` tablosu VAR ✓; `previous_hash` kolonu YOK (Alembic 006 eklenecek); `hashlib` stdlib VAR ✓
-  - **Yapılacaklar:** `audit_log` tablosuna `previous_hash VARCHAR(64)` ekle (Alembic 006); insert_audit_log() SHA-256 chain; `GET /api/v1/audit-log/verify` bütünlük route
-  - Bağımlılık: yok (SQLite/PG uyumlu)
-  - Tahmini süre: 2-3 gün
+  - **Teslim:** `audit_log` tablosuna `previous_hash + entry_hash` (Alembic 006); JSON canonical hash input (log forging önlemi); SQLite thread-lock + PG advisory lock serialization; `GET /api/v1/audit-log/verify` (rate-limited, async); PG smoke test dahil 24 test — 1330 toplam test ✓
 
 - [ ] **U4** — Beaconing detection (C2 inter-arrival time)
   - *MITRE ATT&CK T1071: Cobalt Strike default 60s, APT1 5m jitter ±%10-15. Zeek conn logs akar ama analiz yok.*
@@ -197,7 +194,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1311 test, 0 hata (21 Mayıs 2026)
+**Test durumu:** 1335 test, 0 hata (21 Mayıs 2026)
 
 ---
 
@@ -343,7 +340,7 @@ ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense 
 
 ### Test
 ```bash
-pytest tests/ -q   # → 1311 passed (21 Mayıs 2026)
+pytest tests/ -q   # → 1335 passed (21 Mayıs 2026)
 ```
 Test piramidi: birim + çapraz (iki modül arası) + entegrasyon (tam pipeline)
 
