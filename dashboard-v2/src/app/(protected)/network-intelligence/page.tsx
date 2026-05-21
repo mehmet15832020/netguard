@@ -215,7 +215,7 @@ export default function NetworkIntelligencePage() {
             Network Intelligence
           </h1>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Zeek tabanlı TLS/JA3, x509, FTP, SMTP ve DNS analizi
+            Zeek tabanlı TLS/JA4, x509, FTP, SMTP ve DNS analizi
           </p>
         </div>
         <div className="flex items-center gap-1.5">
@@ -239,9 +239,9 @@ export default function NetworkIntelligencePage() {
       {/* Özet kartlar */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3">
         <SummaryCard
-          label="JA3 Şüpheli Parmak İzi"
+          label="TLS Şüpheli Parmak İzi"
           value={s.ja3_suspicious_count}
-          sub="Bilinen C2 imzası"
+          sub="Bilinen C2 imzası (JA4/JA3)"
           accent="bg-red-500/20 text-red-400"
           icon={Shield}
           danger
@@ -320,25 +320,27 @@ export default function NetworkIntelligencePage() {
             </Panel>
           </div>
 
-          {/* JA3 Şüpheli Parmak İzleri — kritik panel */}
+          {/* TLS Şüpheli Parmak İzleri — kritik panel */}
           <Panel>
             <div className="px-4 py-3">
               <SectionHeader
                 icon={Shield}
-                title="JA3 Şüpheli TLS Parmak İzleri"
+                title="Şüpheli TLS Parmak İzleri (JA4/JA3)"
                 count={data.ja3_suspicious.length}
                 accent="bg-red-500/20 text-red-400"
               />
               {data.ja3_suspicious.length === 0 ? (
-                <EmptyState label="Şüpheli JA3 parmak izi tespit edilmedi" />
+                <EmptyState label="Şüpheli TLS parmak izi tespit edilmedi" />
               ) : (
                 <div className="border border-white/[0.06] rounded-md overflow-hidden">
                   {data.ja3_suspicious.slice(0, 20).map((ev, i) => (
                     <EventRow
                       key={i}
                       ev={ev}
-                      badgeText="C2"
-                      badgeColor="bg-red-500/20 text-red-400"
+                      badgeText={ev.fingerprint_type === 'ja4' ? 'JA4·C2' : 'JA3·C2'}
+                      badgeColor={ev.fingerprint_type === 'ja4'
+                        ? 'bg-red-600/30 text-red-300'
+                        : 'bg-red-500/20 text-red-400'}
                     />
                   ))}
                 </div>

@@ -791,11 +791,12 @@ export interface NetworkIntelSummary {
 }
 
 export interface NetworkIntelEvent {
-  source_ip:      string | null
-  destination_ip: string | null
-  message:        string
-  timestamp:      string
-  severity?:      string
+  source_ip:        string | null
+  destination_ip:   string | null
+  message:          string
+  timestamp:        string
+  severity?:        string
+  fingerprint_type?: 'ja4' | 'ja3'
 }
 
 export interface NetworkIntelResponse {

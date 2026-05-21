@@ -3,7 +3,7 @@ NetGuard — Network Intelligence API
 
 GET /api/v1/network/intelligence — Zeek zenginleştirme özetini döner:
   - Zeek kaynak türlerine göre olay sayıları (24s)
-  - JA3 şüpheli parmak izi tespitleri
+  - JA4/JA3 şüpheli TLS parmak izi tespitleri
   - SSL/x509 sertifika anomalileri
   - FTP hassas komutlar
   - SMTP toplu gönderim
@@ -59,7 +59,7 @@ def network_intelligence(
         for r in rows:
             zeek_distribution[r["event_action"]] = r["cnt"]
 
-        # ── JA3 şüpheli parmak izleri ─────────────────────────────────────
+        # ── TLS şüpheli parmak izleri (JA4 birincil, JA3 legacy) ─────────────
         ja3_suspicious = []
         rows = conn.execute(
             f"""
@@ -74,11 +74,17 @@ def network_intelligence(
             [since, tenant_id],
         ).fetchall()
         for r in rows:
+            msg = r["message"] or ""
+            if "JA4=" in msg or "KNOWN_MALWARE_JA4" in msg:
+                fp_type = "ja4"
+            else:
+                fp_type = "ja3"
             ja3_suspicious.append({
-                "source_ip":      r["source_ip"],
-                "destination_ip": r["destination_ip"],
-                "message":        r["message"],
-                "timestamp":      r["timestamp"],
+                "source_ip":        r["source_ip"],
+                "destination_ip":   r["destination_ip"],
+                "message":          msg,
+                "timestamp":        r["timestamp"],
+                "fingerprint_type": fp_type,
             })
 
         # ── SSL sertifika anomalileri (self-signed + invalid) ──────────────

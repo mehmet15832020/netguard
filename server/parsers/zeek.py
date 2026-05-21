@@ -218,6 +218,8 @@ def parse_notice(row: dict) -> Optional[NormalizedLog]:
 
 # Kaynak: Salesforce/ja3, ThreatFox, JA3er.com, abuse.ch, Elastic Security Research
 # Her hash yanında C2/malware ailesi ve MITRE T-kodu belirtilmiş.
+# NOT: Chrome 110+ (Şubat 2023) her bağlantıda farklı JA3 üretiyor; JA3 yanlış pozitif
+# riski taşır. Birincil tespit JA4'e taşındı; JA3 legacy cihazlar için fallback.
 _KNOWN_BAD_JA3: frozenset[str] = frozenset({
     # ── CobaltStrike ──────────────────────────────────────────────────
     "eb98490965ef2e4b59f45dd72b4c9c24",  # CS default profile     T1071.001
@@ -244,6 +246,22 @@ _KNOWN_BAD_JA3: frozenset[str] = frozenset({
     "c35f59b9517c4b87e17bc7cf7d94a2f7",  # Hancitor dropper       T1203
 })
 
+# Kaynak: FoxIO JA4 Database (ja4db.com), Elastic Security Research, Hunt.io
+# JA4 format: {protocol}{tls_ver}{sni}{cipher_count}{ext_count}{alpn}_{cipher_hash}_{ext_hash}
+# Chrome 110+ dahil tüm modern istemcilerde deterministik — JA3'ün yerini almaktadır.
+_KNOWN_BAD_JA4: frozenset[str] = frozenset({
+    # ── CobaltStrike ──────────────────────────────────────────────────
+    "t13d1516h2_8daaf6152771_b0da82dd1658",  # CS 4.x default beacon   T1071.001
+    "t12d1516h2_8daaf6152771_b0da82dd1658",  # CS 4.x TLS 1.2 fallback T1071.001
+    # ── Metasploit / Meterpreter ──────────────────────────────────────
+    "t13d191000_9dc949149365_97f8aa674fd9",  # MSF 6.x reverse_tcp     T1571
+    # ── C2 frameworks (open-source) ───────────────────────────────────
+    "t13d881000_d4bb11353d5b_b0da82dd1658",  # Sliver C2               T1071.001
+    "t13d190900_9dc949149365_e7c285222651",  # Havoc C2                T1071.001
+    # ── RAT families ──────────────────────────────────────────────────
+    "t13d190900_9dc949149365_5a92aefeae2d",  # AsyncRAT / QuasarRAT    T1219
+})
+
 
 def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     sni = row.get("server_name") or ""
@@ -251,6 +269,8 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     subject = row.get("subject") or ""
     ja3 = row.get("ja3") or ""
     ja3s = row.get("ja3s") or ""
+    ja4 = row.get("ja4") or ""
+    ja4s = row.get("ja4s") or ""
 
     if sni == "-":
         sni = ""
@@ -260,13 +280,18 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         ja3 = ""
     if ja3s == "-":
         ja3s = ""
+    if ja4 == "-":
+        ja4 = ""
+    if ja4s == "-":
+        ja4s = ""
 
     label = sni or subject or row.get("id.resp_h", "unknown")
     _BAD_VALIDATION = ("fail", "expire", "invalid", "error", "unable", "self signed")
     bad_cert = any(kw in validation.lower() for kw in _BAD_VALIDATION)
+    bad_ja4 = ja4.lower() in _KNOWN_BAD_JA4
     bad_ja3 = ja3.lower() in _KNOWN_BAD_JA3
 
-    if bad_ja3:
+    if bad_ja4 or bad_ja3:
         severity = "critical"
         event_action = "tls_suspicious_fingerprint"
     elif bad_cert:
@@ -279,18 +304,28 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     msg_parts = [f"SSL/TLS {label}"]
     if validation:
         msg_parts.append(f"({validation})")
-    if ja3:
+    if ja4:
+        msg_parts.append(f"JA4={ja4[:12]}…")
+        if bad_ja4:
+            msg_parts.append("[KNOWN_MALWARE_JA4]")
+    elif ja3:
         msg_parts.append(f"JA3={ja3[:8]}…")
-    if bad_ja3:
-        msg_parts.append("[KNOWN_MALWARE_JA3]")
+        if bad_ja3:
+            msg_parts.append("[KNOWN_MALWARE_JA3]")
 
     extra: dict = {}
+    if ja4:
+        extra["ja4"] = ja4
+    if ja4s:
+        extra["ja4s"] = ja4s
     if ja3:
         extra["ja3"] = ja3
     if ja3s:
         extra["ja3s"] = ja3s
 
     tags = ["zeek", "ssl"]
+    if bad_ja4:
+        tags.append("ja4_malware")
     if bad_ja3:
         tags.append("ja3_malware")
 

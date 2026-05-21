@@ -104,7 +104,7 @@ class TestNetworkIntelAPI:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  2. JA3 şüpheli parmak izi tespiti
+#  2. TLS şüpheli parmak izi tespiti (JA4 birincil, JA3 legacy)
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestJA3Detection:
@@ -144,6 +144,48 @@ class TestJA3Detection:
 
         resp = client.get("/api/v1/network/intelligence")
         assert resp.json()["summary"]["ja3_suspicious_count"] == 0
+
+    def test_ja4_detection_appears_in_list(self, client, tmp_db):
+        _insert_log(
+            tmp_db, "tls_suspicious_fingerprint",
+            source_ip="5.6.7.8",
+            severity="critical",
+            message="SSL/TLS c2.evil.com JA4=t13d1516h2_8daaf… [KNOWN_MALWARE_JA4]",
+        )
+
+        resp = client.get("/api/v1/network/intelligence")
+        data = resp.json()
+        assert data["summary"]["ja3_suspicious_count"] >= 1
+        ja4_events = [e for e in data["ja3_suspicious"] if e["fingerprint_type"] == "ja4"]
+        assert len(ja4_events) >= 1
+
+    def test_fingerprint_type_ja3_for_ja3_events(self, client, tmp_db):
+        _insert_log(
+            tmp_db, "tls_suspicious_fingerprint",
+            source_ip="5.6.7.9",
+            severity="critical",
+            message="SSL/TLS malware.com JA3=eb989049… [KNOWN_MALWARE_JA3]",
+        )
+
+        resp = client.get("/api/v1/network/intelligence")
+        events = resp.json()["ja3_suspicious"]
+        ja3_events = [e for e in events if e["source_ip"] == "5.6.7.9"]
+        assert len(ja3_events) >= 1
+        assert ja3_events[0]["fingerprint_type"] == "ja3"
+
+    def test_fingerprint_type_ja4_for_ja4_events(self, client, tmp_db):
+        _insert_log(
+            tmp_db, "tls_suspicious_fingerprint",
+            source_ip="5.6.7.10",
+            severity="critical",
+            message="SSL/TLS c2.evil.com JA4=t13d1516h2_8daaf… [KNOWN_MALWARE_JA4]",
+        )
+
+        resp = client.get("/api/v1/network/intelligence")
+        events = resp.json()["ja3_suspicious"]
+        ja4_events = [e for e in events if e["source_ip"] == "5.6.7.10"]
+        assert len(ja4_events) >= 1
+        assert ja4_events[0]["fingerprint_type"] == "ja4"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
