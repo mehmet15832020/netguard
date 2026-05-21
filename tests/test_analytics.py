@@ -23,12 +23,20 @@ def client(tmp_db, admin_token):
     _client.headers.pop("Authorization", None)
 
 
+@pytest.fixture
+def superadmin_client(tmp_db, superadmin_token):
+    _client.headers.update({"Authorization": f"Bearer {superadmin_token}"})
+    yield _client
+    _client.headers.pop("Authorization", None)
+
+
 def _insert_log(
     tmp_db,
     source_ip="1.2.3.4",
     destination_ip="5.6.7.8",
     destination_port=None,
     minutes_ago=5,
+    tenant_id="default",
 ):
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     with tmp_db._connect() as conn:
@@ -44,12 +52,13 @@ def _insert_log(
                     ?, ?, ?,
                     'info', 'network', 'connection',
                     ?, ?, ?,
-                    'test', '[]', 'default')
+                    'test', '[]', ?)
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
                 ts, ts, ts,
                 source_ip, destination_ip, destination_port,
+                tenant_id,
             ),
         )
 
@@ -110,6 +119,14 @@ class TestTopTalkersValidation:
         resp = client.get("/api/v1/analytics/top-talkers?limit=101")
         assert resp.status_code == 422
 
+    def test_hours_string_returns_422(self, client):
+        resp = client.get("/api/v1/analytics/top-talkers?hours=DROP+TABLE")
+        assert resp.status_code == 422
+
+    def test_hours_overflow_returns_422(self, client):
+        resp = client.get("/api/v1/analytics/top-talkers?hours=9999999999")
+        assert resp.status_code == 422
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  3. Kimlik doğrulama
@@ -123,7 +140,31 @@ class TestTopTalkersAuth:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  4. Sıralama doğruluğu
+#  4. Multi-tenant izolasyon
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTopTalkersTenantIsolation:
+    def test_admin_sees_only_own_tenant(self, client, tmp_db, admin_token):
+        _insert_log(tmp_db, source_ip="10.0.0.1", tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", tenant_id="other-tenant")
+
+        resp = client.get("/api/v1/analytics/top-talkers")
+        ips = [s["ip"] for s in resp.json()["top_sources"]]
+        assert "10.0.0.1" in ips
+        assert "10.0.0.2" not in ips
+
+    def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
+        _insert_log(tmp_db, source_ip="11.0.0.1", tenant_id="default")
+        _insert_log(tmp_db, source_ip="11.0.0.2", tenant_id="other-tenant")
+
+        resp = superadmin_client.get("/api/v1/analytics/top-talkers")
+        ips = [s["ip"] for s in resp.json()["top_sources"]]
+        assert "11.0.0.1" in ips
+        assert "11.0.0.2" in ips
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  5. Sıralama doğruluğu
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestTopTalkersOrdering:
@@ -166,7 +207,7 @@ class TestTopTalkersOrdering:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  5. Limit parametresi
+#  6. Limit parametresi
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestTopTalkersLimit:
@@ -192,7 +233,7 @@ class TestTopTalkersLimit:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  6. Timestamp filtresi
+#  7. Timestamp filtresi
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestTopTalkersTimestampFilter:
@@ -223,3 +264,17 @@ class TestTopTalkersTimestampFilter:
         resp = client.get("/api/v1/analytics/top-talkers")
         ports = resp.json()["top_dst_ports"]
         assert not any(p["port"] is None for p in ports)
+
+    def test_invalid_port_zero_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, destination_port=0)
+
+        resp = client.get("/api/v1/analytics/top-talkers")
+        ports = resp.json()["top_dst_ports"]
+        assert not any(p["port"] == 0 for p in ports)
+
+    def test_invalid_port_above_65535_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, destination_port=65536)
+
+        resp = client.get("/api/v1/analytics/top-talkers")
+        ports = resp.json()["top_dst_ports"]
+        assert not any(p["port"] == 65536 for p in ports)

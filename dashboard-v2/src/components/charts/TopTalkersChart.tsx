@@ -23,7 +23,7 @@ export function TopTalkersChart({
   const sorted = [...items].sort((a, b) => a.count - b.count)
   const labels = sorted.map((d) => d.label)
   const values = sorted.map((d) => d.count)
-  const max    = Math.max(...values, 1)
+  const max    = values.reduce((m, v) => (v > m ? v : m), 1)
 
   const option = {
     backgroundColor: 'transparent',
@@ -71,7 +71,10 @@ export function TopTalkersChart({
       textStyle: { color: '#f4f4f5', fontSize: 12 },
       formatter: (params: { name: string; value: number }[]) => {
         const p = params[0]
-        return `<span style="color:#a1a1aa">${p.name}</span><br/><b>${p.value.toLocaleString()}</b> paket`
+        const safeName = p.name.replace(/[<>&"']/g, (c) =>
+          ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] ?? c)
+        )
+        return `<span style="color:#a1a1aa">${safeName}</span><br/><b>${p.value.toLocaleString()}</b> paket`
       },
     },
   }

@@ -21,10 +21,11 @@ export default function TopTalkersPage() {
   const [hours, setHours]   = useState(24)
   const [limit, setLimit]   = useState(10)
 
-  const { data, isLoading, isFetching, refetch } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['top-talkers', hours, limit],
     queryFn:  () => analyticsApi.topTalkers(hours, limit),
     refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
     staleTime: 30_000,
   })
 
@@ -94,6 +95,19 @@ export default function TopTalkersPage() {
           </button>
         </div>
       </div>
+
+      {/* Error state */}
+      {isError && (
+        <div className="rounded-lg border border-red-800 bg-red-950/30 p-4 text-sm text-red-400 flex items-center justify-between">
+          <span>Veri yüklenemedi. Sunucu bağlantısını kontrol edin.</span>
+          <button
+            onClick={() => refetch()}
+            className="text-xs underline hover:text-red-300"
+          >
+            Tekrar dene
+          </button>
+        </div>
+      )}
 
       {/* Charts grid */}
       {isLoading ? (
