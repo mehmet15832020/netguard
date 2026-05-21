@@ -141,12 +141,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - *NIST SP 800-92 §3.2 + NIS2 Article 21(2)(i): log bütünlüğü yasal gereklilik. Attacker PG'ye erişirse audit siler.*
   - **Teslim:** `audit_log` tablosuna `previous_hash + entry_hash` (Alembic 006); JSON canonical hash input (log forging önlemi); SQLite thread-lock + PG advisory lock serialization; `GET /api/v1/audit-log/verify` (rate-limited, async); PG smoke test dahil 24 test — 1330 toplam test ✓
 
-- [ ] **U4** — Beaconing detection (C2 inter-arrival time)
+- [x] **U4** — Beaconing detection (C2 inter-arrival time)
   - *MITRE ATT&CK T1071: Cobalt Strike default 60s, APT1 5m jitter ±%10-15. Zeek conn logs akar ama analiz yok.*
-  - **Altyapı:** `server/detectors/beaconing.py` YOK (yazılacak); STAGE_MAP'te `"firewall_beacon": "recon"` VAR ✓ (`"c2_beaconing"` eklenecek); `normalized_logs` Zeek conn kayıtları VAR ✓; TimescaleDB aggregation uygun ✓
-  - **Yapılacaklar:** `beaconing.py` — (src_ip, dst_ip, dst_port) grup, inter-arrival time stddev; jitter < %20 + interval < 5dk → `c2_beaconing` alert; correlator loop'una ekle (5dk aralık)
-  - Bağımlılık: F4 sonrası yapılırsa kill chain'e daha temiz beslenir
-  - Tahmini süre: 2-3 gün
+  - **Teslim:** `server/detectors/beaconing.py` (IAT algoritması, Bessel stddev, thread-safe _alerted, LRU pruning, FP suppression); STAGE_MAP `"c2_beaconing": "lateral"` (TA0011 C&C); `_beaconing_loop()` 300s aralık, ilk iterasyon anında; 35 test — 1369 toplam test ✓
 
 - [ ] **T2-3** — MFA / TOTP
   - *Verizon DBIR 2025: kimlik ihlallerinin %32'si. NIS2 Article 21(2)(i) zorunlu.*
@@ -194,7 +191,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1335 test, 0 hata (21 Mayıs 2026)
+**Test durumu:** 1369 test, 0 hata (21 Mayıs 2026)
 
 ---
 
