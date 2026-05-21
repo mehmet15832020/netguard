@@ -894,3 +894,18 @@ export const activeResponse = {
       headers: { 'X-Break-Glass-Token': token },
     }),
 }
+
+// ── Analytics ─────────────────────────────────────────────────────────────────
+
+export interface TopTalkersResponse {
+  hours:            number
+  top_sources:      { ip: string; count: number }[]
+  top_destinations: { ip: string; count: number }[]
+  top_dst_ports:    { port: number; count: number }[]
+}
+
+export const analyticsApi = {
+  topTalkers: (hours = 24, limit = 10) =>
+    request<TopTalkersResponse>(`/analytics/top-talkers?hours=${hours}&limit=${limit}`),
+}
+
