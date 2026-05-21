@@ -11,6 +11,7 @@ Desteklenen event ID'ler:
 Gereksinim: python-evtx (pip install python-evtx)
 """
 
+import ipaddress
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
@@ -55,6 +56,8 @@ _LOLBAS: frozenset[str] = frozenset({
     "mshta.exe", "regsvr32.exe", "rundll32.exe", "certutil.exe",
     "bitsadmin.exe", "msiexec.exe", "installutil.exe", "schtasks.exe",
     "at.exe", "wmic.exe", "forfiles.exe", "pcalua.exe",
+    "net.exe", "net1.exe", "sc.exe", "reg.exe", "tasklist.exe",
+    "whoami.exe", "nltest.exe", "systeminfo.exe",
 })
 
 _KNOWN_MALWARE_PROC: frozenset[str] = frozenset({
@@ -63,7 +66,8 @@ _KNOWN_MALWARE_PROC: frozenset[str] = frozenset({
 })
 
 _KERBEROS_WEAK_ENC: frozenset[str] = frozenset({
-    "0x17", "0x18", "23", "24",  # RC4/DES — Kerberoasting indicator
+    "0x17", "0x18", "23", "24",   # RC4 — Kerberoasting indicator
+    "0x1", "0x3", "1", "3",       # DES-CBC-CRC / DES-CBC-MD5 — legacy weak
 })
 
 
@@ -80,7 +84,15 @@ def _get_data(root: ET.Element, name: str) -> str:
 
 
 def _clean_ip(val: str) -> Optional[str]:
-    return val if val not in ("-", "", "::1", "127.0.0.1") else None
+    if not val or val in ("-", "::1", "127.0.0.1", "0.0.0.0", "::", "::"):
+        return None
+    try:
+        addr = ipaddress.ip_address(val)
+        if addr.is_loopback or addr.is_link_local or addr.is_unspecified:
+            return None
+    except ValueError:
+        return None
+    return val
 
 
 def _parse_record_xml(xml_str: str) -> Optional[dict]:
@@ -204,16 +216,25 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         }
 
     if eid == 4768:
-        user     = _get_data(root, "TargetUserName")
-        domain   = _get_data(root, "TargetDomainName")
-        src_ip   = _clean_ip(_get_data(root, "IpAddress"))
-        status   = _get_data(root, "Status")
-        enc_type = _get_data(root, "TicketEncryptionType")
+        user      = _get_data(root, "TargetUserName")
+        domain    = _get_data(root, "TargetDomainName")
+        src_ip    = _clean_ip(_get_data(root, "IpAddress"))
+        status    = _get_data(root, "Status")
+        enc_type  = _get_data(root, "TicketEncryptionType")
+        pre_auth  = _get_data(root, "PreAuthType")
         downgrade = enc_type in _KERBEROS_WEAK_ENC
         failure   = status not in ("0x0", "")
-        severity  = "warning" if (failure or downgrade) else "info"
+        as_rep_roast = (pre_auth == "0" and downgrade)
+        if as_rep_roast:
+            severity = "critical"
+        elif failure or downgrade:
+            severity = "warning"
+        else:
+            severity = "info"
         msg = f"Kerberos TGT: {user}@{domain} status={status} enc={enc_type}"
-        if downgrade:
+        if as_rep_roast:
+            msg += " [AS_REP_ROAST]"
+        elif downgrade:
             msg += " [WEAK_ENCRYPTION]"
         return {
             "event_action":      event_action,
@@ -222,7 +243,7 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "source_ip":         src_ip,
             "observer_hostname": computer,
             "message":           msg,
-            "raw_data":          f"EID=4768 user={user} domain={domain} status={status} enc={enc_type}"[:500],
+            "raw_data":          f"EID=4768 user={user} domain={domain} status={status} enc={enc_type} preauth={pre_auth}"[:500],
             "occurred_at":       occurred_at,
         }
 
@@ -259,7 +280,7 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         parent_name = (parent.split("\\")[-1] if parent else "").lower()
         is_malware = proc_name in _KNOWN_MALWARE_PROC
         is_suspicious = proc_name in _LOLBAS and parent_name not in (
-            "explorer.exe", "powershell.exe", "pwsh.exe", "cmd.exe", ""
+            "explorer.exe", "powershell.exe", "pwsh.exe", "cmd.exe"
         )
         severity = "critical" if is_malware else ("warning" if is_suspicious else "info")
         return {
@@ -278,7 +299,12 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         src_ip   = _clean_ip(_get_data(root, "SourceIp"))
         dst_ip   = _clean_ip(_get_data(root, "DestinationIp"))
         dst_port_str = _get_data(root, "DestinationPort")
-        dst_port = int(dst_port_str) if dst_port_str.isdigit() else None
+        try:
+            dst_port = int(dst_port_str)
+            if not (0 <= dst_port <= 65535):
+                dst_port = None
+        except (ValueError, TypeError):
+            dst_port = None
         proto    = (_get_data(root, "Protocol") or "tcp").lower()
         user     = _get_data(root, "User")
         proc_name = (image.split("\\")[-1] if image else "").lower()

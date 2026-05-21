@@ -44,7 +44,7 @@ def to_normalized_log(rec: dict) -> Optional[NormalizedLog]:
     except (ValueError, AttributeError):
         ts = datetime.now(timezone.utc)
 
-    category = _ACTION_TO_CATEGORY.get(event_action, LogCategory.SYSTEM)
+    category = _ACTION_TO_CATEGORY.get(event_action, LogCategory.UNKNOWN)
 
     dst_port = rec.get("destination_port")
     if dst_port is not None:

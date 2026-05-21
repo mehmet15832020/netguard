@@ -221,7 +221,7 @@ logsource:
 detection:
     selection:
         event_action: windows_kerberos_service
-        message|contains: "[KERBEROAST]"
+        severity: warning
     condition: selection
 level: low
 ---

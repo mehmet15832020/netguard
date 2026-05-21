@@ -1,4 +1,5 @@
 import asyncio
+import ipaddress
 import logging
 import os
 import uuid
@@ -9,6 +10,7 @@ from server.anomaly.collector import MetricsCollector
 from server.anomaly.detector import IsolationForestDetector, StatisticalDetector
 from server.anomaly.models import AnomalyResult, METRICS
 from server.anomaly.store import AnomalyResultStore
+from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
 from server.database import db as _netguard_db
 from shared.models import LogCategory, LogSourceType, NormalizedLog
 
@@ -123,14 +125,20 @@ class AnomalyEngine:
                 self._db.save_normalized_log(log)
                 if r.entity_id:
                     try:
-                        from server.attack_chain import attack_chain_tracker
-                        attack_chain_tracker.record(
+                        ipaddress.ip_address(r.entity_id)
+                    except ValueError:
+                        logger.debug("Anomaly entity_id IP değil, kill chain atlandı: %s", r.entity_id)
+                        continue
+                    try:
+                        trigger = attack_chain_tracker.record(
                             source_ip=r.entity_id,
                             event_action="anomaly_detected",
                             occurred_at=r.detected_at,
                         )
+                        if trigger:
+                            chain_trigger_to_correlated_event(trigger)
                     except Exception as exc:
-                        logger.debug("Anomaly kill chain kaydı başarısız: %s", exc)
+                        logger.debug("Anomaly kill chain kaydı başarısız [%s]: %s", r.entity_id, exc)
             logger.info(
                 f"Anomaly cycle #{self._cycle_count}: "
                 f"{len(all_results)} anomali / {len(snapshots)} entity"
