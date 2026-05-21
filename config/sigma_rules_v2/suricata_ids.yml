@@ -1,0 +1,85 @@
+title: Suricata IDS Alert (Critical)
+id: 8b2e4f1a-9c3d-5e6f-7a8b-9c0d1e2f3a4b
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: suricata_alert
+        severity: critical
+    condition: selection
+level: critical
+tags:
+    - attack.impact
+---
+title: Suricata IDS Alert (Warning)
+id: 7a1d3e2b-8b4c-6d7e-8f9a-0b1c2d3e4f5a
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: suricata_alert
+        severity: warning
+    condition: selection
+level: high
+tags:
+    - attack.impact
+---
+title: Suricata Alert Burst (Base)
+name: ng_suricata_alert_base
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: suricata_alert
+        severity:
+            - critical
+            - warning
+    condition: selection
+level: low
+---
+title: Suricata Alert Burst — Scanning Activity
+id: 6c0e4d3a-7b5e-8f0a-9b1c-2d3e4f5a6b7c
+correlation:
+    type: event_count
+    rules: ng_suricata_alert_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 10
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1046
+---
+title: Suricata Alert Burst — Lateral Movement
+id: 5b9d3c2a-6a4d-7e8f-8a9b-1c2d3e4f5a6b
+correlation:
+    type: event_count
+    rules: ng_suricata_alert_base
+    group-by:
+        - destination_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.lateral_movement
+    - attack.t1021
+---
+title: Suricata Anomaly Detection
+id: 4a8c2b1a-5a3c-6d7e-7a8b-0c1d2e3f4a5b
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: suricata_anomaly
+    condition: selection
+level: medium
+tags:
+    - attack.defense_evasion
+    - attack.t1562

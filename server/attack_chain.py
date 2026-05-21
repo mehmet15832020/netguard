@@ -106,6 +106,11 @@ STAGE_MAP: dict[str, str] = {
     "path_traversal":        "execute",   # Path Traversal
     "xss":                   "execute",   # XSS Attempt
     "sql_injection":         "execute",   # SQL Injection
+    # Suricata IDS
+    "suricata_alert":        "recon",     # IDS uyarısı (varsayılan recon; burst korelasyon lateral'e taşır)
+    "suricata_anomaly":      "recon",     # Protocol anomaly
+    "suricata_alert_burst":  "lateral",   # Suricata Alert Burst (sigma korelasyon çıktısı)
+    "suricata_lateral":      "lateral",   # Lateral movement burst (dst_ip gruplama)
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

@@ -86,12 +86,9 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ---
 
-- [ ] **G2** — Suricata EVE JSON collector
+- [x] **G2** — Suricata EVE JSON collector
   - *CIS Controls v8.1 Safeguard 13.8 zorunlu. Zeek behavioral + Suricata imza = altın standart NSM. Zeek'in göremediği TLS içi payload, exploit kit imzaları Suricata yakalar.*
-  - **Altyapı:** `server/suricata_collector.py` YOK (yazılacak); `zeek_collector.py` template alınacak ✓; `normalized_logs` tablosu uyumlu ✓; sigma kural yükleme mevcut ✓; attack_chain STAGE_MAP genişletilecek
-  - **Yapılacaklar:** EVE JSON `/var/log/suricata/eve.json` poller (byte offset, restart-safe) → ECS mapping → `config/sigma_rules_v2/suricata_alerts.yml` (5+ kural: botnet/trojan/malware classification)
-  - Bağımlılık: yok (F2 olmadan da test edilebilir, zeek pattern birebir)
-  - Tahmini süre: 4-5 gün
+  - **Teslim:** `server/parsers/suricata.py` (9 event_type parser), `server/suricata_collector.py` (inode rotation-safe offset), `config/sigma_rules_v2/suricata_ids.yml` (6 kural), 60 test — 1271 toplam test ✓
 
 - [ ] **U2** — Sysmon / Windows HIDS entegrasyonu
   - *Verizon DBIR 2025: ihlallerin %32'si credential compromise — Windows host blind spot. EVTX parser var ama Sysmon event mapping yok.*

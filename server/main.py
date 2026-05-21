@@ -267,6 +267,9 @@ async def lifespan(app: FastAPI):
     from server.zeek_collector import run_zeek_collector
     zeek_task = asyncio.create_task(run_zeek_collector())
     logger.info("Zeek log collector başlatıldı.")
+    from server.suricata_collector import run_suricata_collector
+    suricata_task = asyncio.create_task(run_suricata_collector())
+    logger.info("Suricata EVE collector başlatıldı.")
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -280,6 +283,7 @@ async def lifespan(app: FastAPI):
     asset_deviation_task.cancel()
     block_expiry_task.cancel()
     zeek_task.cancel()
+    suricata_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()
