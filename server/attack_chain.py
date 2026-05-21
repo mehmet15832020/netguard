@@ -94,6 +94,7 @@ STAGE_MAP: dict[str, str] = {
     "ftp_exfil":             "lateral",   # FTP Exfiltration Burst
     "web_auth":              "weaponize", # Web Auth Brute Force
     "icmp_flood":            "recon",     # ICMP Flood
+    "c2_beaconing":          "lateral",   # C2 Beaconing (IAT analysis — MITRE TA0011 T1071)
     "firewall_beacon":       "recon",     # Firewall Beaconing (C2 beaconing)
     "firewall_ddos":         "recon",     # Firewall DDoS Flood
     "network_connection_fl": "recon",     # Network Connection Flood

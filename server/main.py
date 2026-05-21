@@ -203,6 +203,41 @@ async def _asset_deviation_loop():
             logger.error(f"Asset sapma kontrolü hatası: {exc}")
 
 
+BEACONING_INTERVAL = int(os.getenv("NETGUARD_BEACON_INTERVAL", "300"))  # saniye (5 dakika)
+
+
+async def _beaconing_loop():
+    """Her 5 dakikada bir C2 beaconing tespiti çalıştır (MITRE ATT&CK T1071)."""
+    from server.detectors.beaconing import beaconing_detector
+    from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
+    from server.database import db as _db
+
+    async def _run_once():
+        logs = await asyncio.to_thread(beaconing_detector.detect)
+        for log in logs:
+            _db.save_normalized_log(log)
+            if log.source_ip:
+                try:
+                    trigger = attack_chain_tracker.record(
+                        source_ip=log.source_ip,
+                        event_action=log.event_action,
+                        occurred_at=log.timestamp,
+                    )
+                    if trigger:
+                        chain_trigger_to_correlated_event(trigger)
+                except Exception as exc:
+                    logger.warning("Beaconing kill chain kaydı başarısız: %s", exc)
+        if logs:
+            logger.warning("Beaconing dedektörü: %d C2 beacon tespiti", len(logs))
+
+    while True:
+        try:
+            await _run_once()
+        except Exception as exc:
+            logger.error("Beaconing dedektör hatası: %s", exc)
+        await asyncio.sleep(BEACONING_INTERVAL)
+
+
 load_dotenv()
 
 logging.basicConfig(
@@ -249,6 +284,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Asset baseline döngüsü başlatıldı (güncelleme: {ASSET_BASELINE_UPDATE_INTERVAL}s, sapma: {ASSET_DEVIATION_CHECK_INTERVAL}s)")
     block_expiry_task = asyncio.create_task(_block_expiry_loop())
     logger.info(f"Block expiry döngüsü başlatıldı (her {BLOCK_EXPIRY_INTERVAL}s)")
+    beaconing_task = asyncio.create_task(_beaconing_loop())
+    logger.info(f"C2 beaconing dedektörü başlatıldı (her {BEACONING_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -282,6 +319,7 @@ async def lifespan(app: FastAPI):
     asset_baseline_task.cancel()
     asset_deviation_task.cancel()
     block_expiry_task.cancel()
+    beaconing_task.cancel()
     zeek_task.cancel()
     suricata_task.cancel()
     syslog.stop()
