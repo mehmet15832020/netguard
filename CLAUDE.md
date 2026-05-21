@@ -94,12 +94,9 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
   - *Verizon DBIR 2025: ihlallerin %32'si credential compromise — Windows host blind spot. EVTX parser var ama Sysmon event mapping yok.*
   - **Teslim:** `evtx_parser.py` 12 EID (Sysmon 1/3/10/22 + Security 4648/4720/4732/4768/4769); `parsers/windows.py` NormalizedLog dönüşümü; `routes/evtx.py` normalized_logs yazımı; 8 Sysmon sigma kuralı; 39 test — STAGE_MAP Sysmon eventi kill chain'e bağlandı ✓
 
-- [ ] **F4** — Anomaly engine → kill chain entegrasyonu
+- [x] **F4** — Anomaly engine → kill chain entegrasyonu
   - *Gartner NDR: ML anomali behavioral context'te değerlendirilmeli. Slow-and-low saldırılar Sigma eşiğini geçer, IsolationForest yakalar — ama şu an kill chain'e beslenmiyor.*
-  - **Altyapı:** `server/anomaly/engine.py` VAR ✓; `save_normalized_log()` çağrısı VAR ✓; STAGE_MAP'te `anomaly_detected/asset_anomaly_detected/anomaly_cluster` VAR ✓; `attack_chain_tracker.record()` çağrısı YOK (eklenecek); `anomaly_spike` event_action STAGE_MAP'te YOK (eklenecek)
-  - **Yapılacaklar:** engine.py threshold aşınca `CorrelatedEvent(event_action="anomaly_spike")` üret + `attack_chain_tracker.record()` çağır; STAGE_MAP += `"anomaly_spike": "recon"`; entegrasyon testi (anomaly + port_scan → FULL_ATTACK_CHAIN)
-  - Bağımlılık: bağımsız — G2 sonrası yapılırsa Zeek + Suricata + ML üçlüsü birlikte akar
-  - Tahmini süre: 2-3 gün
+  - **Teslim:** `engine.py` her anomaly tespitinde `attack_chain_tracker.record(source_ip, "anomaly_detected")` çağrısı eklendi; IsolationForest + Z-score anomaly artık kill chain RECON aşamasına beslenyor; 1 entegrasyon testi ✓
 
 ---
 

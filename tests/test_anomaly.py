@@ -359,3 +359,50 @@ class TestAnomalyEngine:
         )
         assert anomaly_log is not None
         assert anomaly_log.source_ip == "1.2.3.4"
+
+    def test_cycle_records_kill_chain_on_anomaly(self, tmp_db, monkeypatch):
+        """F4: anomaly tespiti → attack_chain_tracker.record() çağrılmalı."""
+        engine = AnomalyEngine(tmp_db)
+
+        snap = MetricSnapshot(
+            entity_id="10.0.0.99",
+            window_start=datetime.now(timezone.utc),
+            fw_block_rate=0.0,
+            conn_rate=999.0,
+            unique_dst_ips=0.0,
+            unique_dst_ports=0.0,
+            auth_failure_rate=0.0,
+        )
+        monkeypatch.setattr(engine._collector, "collect", lambda: [snap])
+        for metric in METRICS:
+            bp = BaselinePoint("10.0.0.99", metric, datetime.now(timezone.utc).hour)
+            for _ in range(30):
+                bp.update(10.0)
+            bp.m2 = 29.0
+            engine._baselines.save(bp)
+
+        import server.notifier as notifier_module
+        monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
+        monkeypatch.setattr(
+            __import__("server.anomaly.engine", fromlist=["_netguard_db"])._netguard_db,
+            "save_normalized_log",
+            lambda log, tenant_id="default": None,
+        )
+
+        recorded: list = []
+        import server.attack_chain as ac_module
+        monkeypatch.setattr(
+            ac_module.attack_chain_tracker,
+            "record",
+            lambda source_ip, event_action, occurred_at=None: recorded.append(
+                (source_ip, event_action)
+            ),
+        )
+
+        engine._cycle()
+
+        assert len(recorded) >= 1
+        ips = [r[0] for r in recorded]
+        actions = [r[1] for r in recorded]
+        assert "10.0.0.99" in ips
+        assert all(a == "anomaly_detected" for a in actions)

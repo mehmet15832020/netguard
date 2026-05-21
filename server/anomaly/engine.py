@@ -121,6 +121,16 @@ class AnomalyEngine:
                     tags=["anomaly", r.metric],
                 )
                 self._db.save_normalized_log(log)
+                if r.entity_id:
+                    try:
+                        from server.attack_chain import attack_chain_tracker
+                        attack_chain_tracker.record(
+                            source_ip=r.entity_id,
+                            event_action="anomaly_detected",
+                            occurred_at=r.detected_at,
+                        )
+                    except Exception as exc:
+                        logger.debug("Anomaly kill chain kaydı başarısız: %s", exc)
             logger.info(
                 f"Anomaly cycle #{self._cycle_count}: "
                 f"{len(all_results)} anomali / {len(snapshots)} entity"
