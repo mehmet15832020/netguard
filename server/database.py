@@ -212,12 +212,20 @@ CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_log(timestamp);
 
 _CREATE_THREAT_INTEL = """
 CREATE TABLE IF NOT EXISTS threat_intel_cache (
-    ip          TEXT PRIMARY KEY,
-    score       INTEGER NOT NULL,
-    total_reports INTEGER NOT NULL DEFAULT 0,
-    country_code TEXT,
-    isp         TEXT,
-    queried_at  TEXT NOT NULL
+    ip                       TEXT PRIMARY KEY,
+    score                    INTEGER NOT NULL,
+    total_reports            INTEGER NOT NULL DEFAULT 0,
+    country_code             TEXT,
+    isp                      TEXT,
+    feodo_listed             INTEGER NOT NULL DEFAULT 0,
+    feodo_malware            TEXT,
+    threatfox_score          INTEGER NOT NULL DEFAULT 0,
+    threatfox_malware        TEXT,
+    greynoise_noise          INTEGER NOT NULL DEFAULT 0,
+    greynoise_riot           INTEGER NOT NULL DEFAULT 0,
+    greynoise_classification TEXT,
+    composite_score          INTEGER NOT NULL DEFAULT 0,
+    queried_at               TEXT NOT NULL
 );
 """
 
@@ -2286,17 +2294,41 @@ class DatabaseManager:
         return dict(row) if row else None
 
     def save_threat_intel(self, ip: str, score: int, total_reports: int,
-                          country_code: str, isp: str) -> None:
+                          country_code: str, isp: str,
+                          feodo_listed: bool = False, feodo_malware: str = "",
+                          threatfox_score: int = 0, threatfox_malware: str = "",
+                          greynoise_noise: bool = False, greynoise_riot: bool = False,
+                          greynoise_classification: str = "",
+                          composite_score: int = 0) -> None:
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO threat_intel_cache (ip, score, total_reports, country_code, isp, queried_at)
-                   VALUES (?,?,?,?,?,?)
+                """INSERT INTO threat_intel_cache
+                     (ip, score, total_reports, country_code, isp,
+                      feodo_listed, feodo_malware,
+                      threatfox_score, threatfox_malware,
+                      greynoise_noise, greynoise_riot, greynoise_classification,
+                      composite_score, queried_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                    ON CONFLICT(ip) DO UPDATE SET
-                     score=excluded.score, total_reports=excluded.total_reports,
-                     country_code=excluded.country_code, isp=excluded.isp,
+                     score=excluded.score,
+                     total_reports=excluded.total_reports,
+                     country_code=excluded.country_code,
+                     isp=excluded.isp,
+                     feodo_listed=excluded.feodo_listed,
+                     feodo_malware=excluded.feodo_malware,
+                     threatfox_score=excluded.threatfox_score,
+                     threatfox_malware=excluded.threatfox_malware,
+                     greynoise_noise=excluded.greynoise_noise,
+                     greynoise_riot=excluded.greynoise_riot,
+                     greynoise_classification=excluded.greynoise_classification,
+                     composite_score=excluded.composite_score,
                      queried_at=excluded.queried_at""",
-                (ip, score, total_reports, country_code, isp, now),
+                (ip, score, total_reports, country_code, isp,
+                 int(feodo_listed), feodo_malware,
+                 threatfox_score, threatfox_malware,
+                 int(greynoise_noise), int(greynoise_riot), greynoise_classification,
+                 composite_score, now),
             )
 
     # ------------------------------------------------------------------ #
