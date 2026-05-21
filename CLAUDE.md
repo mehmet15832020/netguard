@@ -79,7 +79,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
   - Güvenlik geçitleri korunur: RFC1918 → FP gate → severity gate
   - Bağımlılık: G5 tamamlanmalı
 
-- [ ] **G6** — JA4 geçişi (JA3 kaldır)
+- [x] **G6** — JA4 geçişi (JA3 kaldır)
   - *Chrome 110+ (2023) her bağlantıda farklı JA3 üretiyor — dashboard yanlış veri gösteriyor*
   - `zeek_collector.py` JA4 field, `network_intel` route güncelleme; JA3 backward-compatible tut
   - Bağımlılık: yok
