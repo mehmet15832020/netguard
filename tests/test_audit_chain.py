@@ -4,8 +4,12 @@ NIST SP 800-92 §3.2 + NIS2 Article 21(2)(i) gereksinimlerine uygunluk.
 """
 
 import hashlib
+import json
+import threading
 import pytest
 from fastapi.testclient import TestClient
+
+from server.database import _audit_content, _AUDIT_CHAIN_GENESIS
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -25,11 +29,11 @@ def client(tmp_db, admin_token, monkeypatch):
 # ── Yardımcı: hash yeniden hesaplama ──────────────────────────────────────────
 
 def _recompute_hash(row: dict, previous_hash: str) -> str:
-    content = "|".join([
+    content = _audit_content(
         row["event_id"], row["actor"], row["action"], row["resource"],
         row["detail"] or "", row["ip_address"] or "",
         row["timestamp"], previous_hash,
-    ])
+    )
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
@@ -45,13 +49,12 @@ class TestAuditHashGeneration:
     def test_previous_hash_genesis(self, db_instance):
         db_instance.save_audit_event("admin", "first_action", "/res")
         events = db_instance.get_audit_log(limit=10)
-        assert events[0]["previous_hash"] == "0" * 64
+        assert events[0]["previous_hash"] == _AUDIT_CHAIN_GENESIS
 
     def test_second_entry_links_to_first(self, db_instance):
         db_instance.save_audit_event("admin", "action_1", "/a")
         db_instance.save_audit_event("admin", "action_2", "/b")
         events = db_instance.get_audit_log(limit=10)
-        # get_audit_log returns DESC — reverse to get ASC
         events_asc = list(reversed(events))
         assert events_asc[1]["previous_hash"] == events_asc[0]["entry_hash"]
 
@@ -77,6 +80,13 @@ class TestAuditHashGeneration:
         row = db_instance.get_audit_log(limit=1)[0]
         assert all(c in "0123456789abcdef" for c in row["entry_hash"])
         assert len(row["entry_hash"]) == 64
+
+    def test_delimiter_injection_distinct_hashes(self, db_instance):
+        """Hash input JSON canonical → delimiter injection üretmez ayrı hash'ler."""
+        db_instance.save_audit_event("admin|extra", "legit", "/r")
+        db_instance.save_audit_event("admin", "extra|legit", "/r")
+        events = list(reversed(db_instance.get_audit_log(limit=10)))
+        assert events[0]["entry_hash"] != events[1]["entry_hash"]
 
 
 # ── Zincir Bütünlük Testleri ──────────────────────────────────────────────────
@@ -135,6 +145,7 @@ class TestAuditChainIntegrity:
         result = db_instance.verify_audit_chain()
         assert result["valid"] is True
         assert result["checked"] == 1
+        assert result["skipped"] == 1
 
     def test_first_broken_at_points_to_correct_id(self, db_instance):
         for i in range(4):
@@ -145,11 +156,29 @@ class TestAuditChainIntegrity:
             ).fetchone()
             tampered_id = row[0]
             conn.execute(
-                "UPDATE audit_log SET entry_hash='0' * 64 WHERE id=?", (tampered_id,)
+                "UPDATE audit_log SET entry_hash=? WHERE id=?", ("0" * 64, tampered_id)
             )
         result = db_instance.verify_audit_chain()
         assert result["valid"] is False
-        assert result["first_broken_at"] is not None
+        assert result["first_broken_at"] == tampered_id
+
+    def test_concurrent_writes_no_chain_fork(self, db_instance):
+        """10 paralel thread: her biri save_audit_event çağırır → chain fork olmaz."""
+        errors = []
+        def write(i):
+            try:
+                db_instance.save_audit_event("thread", f"action_{i}", f"/res/{i}")
+            except Exception as e:
+                errors.append(e)
+        threads = [threading.Thread(target=write, args=(i,)) for i in range(10)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert not errors
+        result = db_instance.verify_audit_chain()
+        assert result["valid"] is True
+        assert result["checked"] == 10
 
 
 # ── Verify API Endpoint Testleri ──────────────────────────────────────────────
@@ -195,5 +224,37 @@ class TestVerifyEndpoint:
         data = resp.json()
         assert "valid" in data
         assert "checked" in data
+        assert "skipped" in data
         assert "first_broken_at" in data
         assert "message" in data
+
+
+# ── PostgreSQL Smoke Testleri ─────────────────────────────────────────────────
+
+class TestAuditChainPostgres:
+    """PostgreSQL ortamında hash chain doğrulama — testcontainers gerektirir."""
+
+    def test_pg_save_and_verify_chain(self, pg_db):
+        """PG: 3 kayıt yaz, zincir geçerli olmalı."""
+        pg_db.save_audit_event("admin", "pg_action_1", "/res/1", "detail1", "10.0.0.1")
+        pg_db.save_audit_event("user1", "pg_action_2", "/res/2")
+        pg_db.save_audit_event("system", "pg_action_3", "/res/3", ip_address="192.168.1.1")
+        result = pg_db.verify_audit_chain()
+        assert result["valid"] is True
+        assert result["checked"] == 3
+
+    def test_pg_chain_links_correctly(self, pg_db):
+        """PG: 2. kaydın previous_hash, 1. kaydın entry_hash'ine eşit olmalı."""
+        pg_db.save_audit_event("admin", "first", "/a")
+        pg_db.save_audit_event("admin", "second", "/b")
+        events = pg_db.get_audit_log(limit=10)
+        events_asc = list(reversed(events))
+        assert events_asc[1]["previous_hash"] == events_asc[0]["entry_hash"]
+
+    def test_pg_tamper_detected(self, pg_db):
+        """PG: actor alanı değiştirilirse verify False döner."""
+        pg_db.save_audit_event("admin", "sensitive_action", "/critical")
+        with pg_db._connect() as conn:
+            conn.execute("UPDATE audit_log SET actor='attacker' WHERE action='sensitive_action'")
+        result = pg_db.verify_audit_chain()
+        assert result["valid"] is False

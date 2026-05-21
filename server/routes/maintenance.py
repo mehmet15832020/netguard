@@ -7,9 +7,12 @@ GET  /api/v1/maintenance/audit        → Audit log (admin)
 GET  /api/v1/audit-log/verify         → SHA-256 hash zinciri bütünlük kontrolü (admin)
 """
 
-from fastapi import APIRouter, Depends, Query, Request
+import asyncio
+
+from fastapi import APIRouter, Depends, Query, Request, Response
 from server.auth import User, require_admin
 from server.database import db
+from server.limiter import _auth_key, limiter
 
 router = APIRouter()
 
@@ -85,6 +88,7 @@ def audit_log(
 
 
 @router.get("/audit-log/verify")
-def verify_audit_log(_: User = Depends(require_admin)):
+@limiter.limit("2/minute", key_func=_auth_key)
+async def verify_audit_log(request: Request, response: Response, _: User = Depends(require_admin)):
     """SHA-256 hash zinciri bütünlüğünü doğrula (NIST SP 800-92 §3.2)."""
-    return db.verify_audit_chain()
+    return await asyncio.to_thread(db.verify_audit_chain)

@@ -36,6 +36,26 @@ DATABASE_URL = os.getenv(
 
 _IP_RE = re.compile(r'^\d{1,3}(\.\d{1,3}){1,3}$')
 
+_AUDIT_CHAIN_GENESIS = "0" * 64
+_AUDIT_CHAIN_LOCK_ID = 0x41554443  # "AUDC" — audit chain serialization lock
+
+
+def _audit_content(
+    event_id: str, actor: str, action: str, resource: str,
+    detail: str, ip_address: str, timestamp_str: str, previous_hash: str,
+) -> str:
+    """JSON canonical hash input — OWASP Log Forging mitigation, NIST SP 800-92 §3.2."""
+    return json.dumps({
+        "action": action,
+        "actor": actor,
+        "detail": detail,
+        "event_id": event_id,
+        "ip_address": ip_address,
+        "previous_hash": previous_hash,
+        "resource": resource,
+        "timestamp": timestamp_str,
+    }, sort_keys=True, separators=(",", ":"))
+
 
 def _dt(val) -> datetime:
     """str veya datetime → timezone-aware datetime."""
@@ -1298,18 +1318,18 @@ class DatabaseManager:
         event_id = str(_uuid_mod.uuid4())
         now = datetime.now(timezone.utc).isoformat()
         with self._connect() as conn:
-            conn.execute("SELECT pg_advisory_xact_lock(7265476483)")
+            conn.execute("SELECT pg_advisory_xact_lock(%s)", (_AUDIT_CHAIN_LOCK_ID,))
             row = conn.execute(
                 "SELECT entry_hash FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1"
             ).fetchone()
-            previous_hash = row["entry_hash"] if row else "0" * 64
-            content = "|".join([event_id, actor, action, resource, detail or "", ip_address or "", now, previous_hash])
+            previous_hash = row["entry_hash"] if row else _AUDIT_CHAIN_GENESIS
+            content = _audit_content(event_id, actor, action, resource, detail or "", ip_address or "", now, previous_hash)
             entry_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
             conn.execute(
                 "INSERT INTO audit_log "
-                "(event_id, actor, action, resource, detail, ip_address, previous_hash, entry_hash) "
-                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                (event_id, actor, action, resource, detail, ip_address, previous_hash, entry_hash),
+                "(event_id, actor, action, resource, detail, ip_address, timestamp, previous_hash, entry_hash) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
+                (event_id, actor, action, resource, detail, ip_address, now, previous_hash, entry_hash),
             )
 
     def get_audit_log(self, limit: int = 100, actor: str = "") -> list[dict]:
@@ -1331,37 +1351,42 @@ class DatabaseManager:
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT id, event_id, actor, action, resource, detail, ip_address, "
-                "timestamp::text, previous_hash, entry_hash FROM audit_log ORDER BY id ASC"
+                "timestamp, previous_hash, entry_hash FROM audit_log ORDER BY id ASC"
             ).fetchall()
         if not rows:
-            return {"valid": True, "checked": 0, "first_broken_at": None, "message": "Audit log boş"}
+            return {"valid": True, "checked": 0, "skipped": 0, "first_broken_at": None, "message": "Audit log boş"}
 
-        expected_prev = "0" * 64
+        expected_prev = _AUDIT_CHAIN_GENESIS
         checked = 0
+        skipped = 0
         for row in rows:
             entry_hash = row["entry_hash"]
             if entry_hash is None:
+                skipped += 1
                 continue
-            previous_hash = row["previous_hash"] or "0" * 64
+            previous_hash = row["previous_hash"] or _AUDIT_CHAIN_GENESIS
             if previous_hash != expected_prev:
                 return {
                     "valid": False,
                     "checked": checked,
+                    "skipped": skipped,
                     "first_broken_at": row["id"],
-                    "message": f"Önceki hash uyuşmuyor — kayıt id={row['id']} bozulmuş veya silinmiş",
+                    "message": "Önceki hash uyuşmuyor — bir kayıt bozulmuş veya silinmiş",
                 }
-            content = "|".join([
+            ts = row["timestamp"]
+            ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+            content = _audit_content(
                 row["event_id"], row["actor"], row["action"], row["resource"],
-                row["detail"] or "", row["ip_address"] or "",
-                row["timestamp"], previous_hash,
-            ])
+                row["detail"] or "", row["ip_address"] or "", ts_str, previous_hash,
+            )
             computed = hashlib.sha256(content.encode("utf-8")).hexdigest()
             if computed != entry_hash:
                 return {
                     "valid": False,
                     "checked": checked,
+                    "skipped": skipped,
                     "first_broken_at": row["id"],
-                    "message": f"Hash uyuşmuyor — kayıt id={row['id']} değiştirilmiş",
+                    "message": "Hash uyuşmuyor — bir kayıt değiştirilmiş",
                 }
             expected_prev = entry_hash
             checked += 1
@@ -1369,8 +1394,9 @@ class DatabaseManager:
         return {
             "valid": True,
             "checked": checked,
+            "skipped": skipped,
             "first_broken_at": None,
-            "message": f"Hash zinciri bütün — {checked} kayıt doğrulandı",
+            "message": f"Hash zinciri bütün — {checked} kayıt doğrulandı, {skipped} eski kayıt atlandı",
         }
 
     # ------------------------------------------------------------------ #
