@@ -904,8 +904,41 @@ export interface TopTalkersResponse {
   top_dst_ports:    { port: number; count: number }[]
 }
 
+export interface AlertPoint {
+  t: string
+  v: number
+}
+
+export interface AlertVolumeResponse {
+  hours:  number
+  series: {
+    critical: AlertPoint[]
+    high:     AlertPoint[]
+    warning:  AlertPoint[]
+    info:     AlertPoint[]
+  }
+}
+
+export interface ProtocolItem {
+  protocol: string
+  count:    number
+  pct:      number
+}
+
+export interface ProtocolDistributionResponse {
+  hours:     number
+  total:     number
+  protocols: ProtocolItem[]
+}
+
 export const analyticsApi = {
   topTalkers: (hours = 24, limit = 10) =>
     request<TopTalkersResponse>(`/analytics/top-talkers?hours=${hours}&limit=${limit}`),
+
+  alertVolume: (hours = 24) =>
+    request<AlertVolumeResponse>(`/analytics/alert-volume?hours=${hours}`),
+
+  protocolDistribution: (hours = 24) =>
+    request<ProtocolDistributionResponse>(`/analytics/protocol-distribution?hours=${hours}`),
 }
 

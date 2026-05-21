@@ -37,6 +37,7 @@ def _insert_log(
     destination_port=None,
     minutes_ago=5,
     tenant_id="default",
+    network_protocol=None,
 ):
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     with tmp_db._connect() as conn:
@@ -47,18 +48,18 @@ def _insert_log(
                timestamp, received_at, processed_at,
                severity, event_category, event_action,
                source_ip, destination_ip, destination_port,
-               message, tags, tenant_id)
+               message, tags, tenant_id, network_protocol)
             VALUES (?, ?, 'test', 'test',
                     ?, ?, ?,
                     'info', 'network', 'connection',
                     ?, ?, ?,
-                    'test', '[]', ?)
+                    'test', '[]', ?, ?)
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
                 ts, ts, ts,
                 source_ip, destination_ip, destination_port,
-                tenant_id,
+                tenant_id, network_protocol,
             ),
         )
 
@@ -278,3 +279,351 @@ class TestTopTalkersTimestampFilter:
         resp = client.get("/api/v1/analytics/top-talkers")
         ports = resp.json()["top_dst_ports"]
         assert not any(p["port"] == 65536 for p in ports)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Alert Volume helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _insert_alert(
+    tmp_db,
+    severity="info",
+    minutes_ago=5,
+    tenant_id="default",
+):
+    ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO alerts
+              (alert_id, agent_id, hostname, severity, status,
+               metric, message, value, threshold, triggered_at, tenant_id)
+            VALUES (?, ?, 'test-host', ?, 'active',
+                    'cpu', 'test', 80.0, 70.0, ?, ?)
+            """,
+            (str(uuid.uuid4()), str(uuid.uuid4()), severity, ts, tenant_id),
+        )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  8. Alert Volume — temel yapı
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/alert-volume")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        assert "hours" in data
+        assert "series" in data
+        for sev in ("critical", "high", "warning", "info"):
+            assert sev in data["series"]
+
+    def test_empty_db_returns_zero_counts(self, client):
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        for sev in ("critical", "high", "warning", "info"):
+            assert all(p["v"] == 0 for p in data["series"][sev])
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/alert-volume").json()["hours"] == 24
+
+    def test_hours_param_reflected(self, client):
+        for h in [1, 6, 48, 168]:
+            assert client.get(f"/api/v1/analytics/alert-volume?hours={h}").json()["hours"] == h
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  9. Alert Volume — doğrulama
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeValidation:
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/alert-volume?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/alert-volume?hours=169").status_code == 422
+
+    def test_string_hours_returns_422(self, client):
+        assert client.get("/api/v1/analytics/alert-volume?hours=abc").status_code == 422
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  10. Alert Volume — kimlik doğrulama
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeAuth:
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/alert-volume").status_code == 401
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  11. Alert Volume — severity ayrımı
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeSeverity:
+    def test_severity_separation(self, client, tmp_db):
+        for sev in ("critical", "high", "warning", "info"):
+            _insert_alert(tmp_db, severity=sev)
+
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        for sev in ("critical", "high", "warning", "info"):
+            assert sum(p["v"] for p in data["series"][sev]) == 1
+
+    def test_all_series_same_length_when_data_exists(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical")
+        _insert_alert(tmp_db, severity="high")
+
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        lengths = [len(data["series"][s]) for s in ("critical", "high", "warning", "info")]
+        assert len(set(lengths)) == 1
+
+    def test_unknown_severity_excluded_from_series(self, client, tmp_db):
+        ts = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
+        with tmp_db._connect() as conn:
+            conn.execute(
+                """INSERT INTO alerts
+                     (alert_id, agent_id, hostname, severity, status,
+                      metric, message, value, threshold, triggered_at, tenant_id)
+                   VALUES (?, ?, 'host', 'unknown', 'active',
+                           'cpu', 'test', 80, 70, ?, 'default')""",
+                (str(uuid.uuid4()), str(uuid.uuid4()), ts),
+            )
+
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        assert "unknown" not in data["series"]
+
+    def test_multiple_alerts_same_severity_aggregated(self, client, tmp_db):
+        for _ in range(3):
+            _insert_alert(tmp_db, severity="critical")
+
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        assert sum(p["v"] for p in data["series"]["critical"]) == 3
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  12. Alert Volume — timestamp filtresi
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeTimestamp:
+    def test_old_alerts_excluded(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical", minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/alert-volume?hours=1").json()
+        assert sum(p["v"] for p in data["series"]["critical"]) == 0
+
+    def test_recent_alerts_included(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="high", minutes_ago=10)
+
+        data = client.get("/api/v1/analytics/alert-volume?hours=1").json()
+        assert sum(p["v"] for p in data["series"]["high"]) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  13. Alert Volume — sıralama
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeOrdering:
+    def test_series_points_ordered_by_time_asc(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical", minutes_ago=120)
+        _insert_alert(tmp_db, severity="critical", minutes_ago=60)
+        _insert_alert(tmp_db, severity="critical", minutes_ago=5)
+
+        data = client.get("/api/v1/analytics/alert-volume?hours=24").json()
+        times = [p["t"] for p in data["series"]["critical"] if p["v"] > 0]
+        assert times == sorted(times)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  14. Alert Volume — multi-tenant izolasyon
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeTenantIsolation:
+    def test_admin_sees_only_own_tenant(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical", tenant_id="default")
+        _insert_alert(tmp_db, severity="critical", tenant_id="other-tenant")
+
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        assert sum(p["v"] for p in data["series"]["critical"]) == 1
+
+    def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
+        _insert_alert(tmp_db, severity="high", tenant_id="default")
+        _insert_alert(tmp_db, severity="high", tenant_id="other-tenant")
+
+        data = superadmin_client.get("/api/v1/analytics/alert-volume").json()
+        assert sum(p["v"] for p in data["series"]["high"]) == 2
+
+    def test_missing_where_clause_would_fail(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="warning", tenant_id="default")
+        _insert_alert(tmp_db, severity="warning", tenant_id="other-tenant")
+        _insert_alert(tmp_db, severity="warning", tenant_id="third-tenant")
+
+        data = client.get("/api/v1/analytics/alert-volume").json()
+        assert sum(p["v"] for p in data["series"]["warning"]) == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  15. Alert Volume — zero-fill & bounds
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeZeroFill:
+    def test_empty_db_returns_equal_length_series(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=2").json()
+        lengths = [len(data["series"][s]) for s in ("critical", "high", "warning", "info")]
+        assert len(set(lengths)) == 1
+        assert lengths[0] >= 2
+
+    def test_sparse_data_still_aligned(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical", minutes_ago=90)
+
+        data = client.get("/api/v1/analytics/alert-volume?hours=3").json()
+        lengths = [len(data["series"][s]) for s in ("critical", "high", "warning", "info")]
+        assert len(set(lengths)) == 1
+
+    def test_future_triggered_at_excluded(self, client, tmp_db):
+        future_ts = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+        with tmp_db._connect() as conn:
+            conn.execute(
+                """INSERT INTO alerts
+                     (alert_id, agent_id, hostname, severity, status,
+                      metric, message, value, threshold, triggered_at, tenant_id)
+                   VALUES (?, ?, 'host', 'critical', 'active',
+                           'cpu', 'test', 80, 70, ?, 'default')""",
+                (str(uuid.uuid4()), str(uuid.uuid4()), future_ts),
+            )
+
+        data = client.get("/api/v1/analytics/alert-volume?hours=1").json()
+        assert sum(p["v"] for p in data["series"]["critical"]) == 0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Protocol Distribution tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestProtocolDistributionBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/protocol-distribution")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        assert "hours" in data
+        assert "total" in data
+        assert "protocols" in data
+
+    def test_empty_db_returns_zero_total(self, client):
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        assert data["total"] == 0
+        assert data["protocols"] == []
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/protocol-distribution").json()["hours"] == 24
+
+    def test_hours_param_reflected(self, client):
+        for h in [1, 6, 48, 168]:
+            data = client.get(f"/api/v1/analytics/protocol-distribution?hours={h}").json()
+            assert data["hours"] == h
+
+
+class TestProtocolDistributionValidation:
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/protocol-distribution?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/protocol-distribution?hours=169").status_code == 422
+
+    def test_string_hours_returns_422(self, client):
+        assert client.get("/api/v1/analytics/protocol-distribution?hours=x").status_code == 422
+
+
+class TestProtocolDistributionAuth:
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/protocol-distribution").status_code == 401
+
+
+class TestProtocolDistributionData:
+    def test_protocol_counted(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol="tcp")
+        _insert_log(tmp_db, network_protocol="tcp")
+        _insert_log(tmp_db, network_protocol="udp")
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        protos = {p["protocol"]: p for p in data["protocols"]}
+        assert protos["tcp"]["count"] == 2
+        assert protos["udp"]["count"] == 1
+        assert data["total"] == 3
+
+    def test_pct_sums_to_100(self, client, tmp_db):
+        for proto in ("tcp", "tcp", "udp", "icmp"):
+            _insert_log(tmp_db, network_protocol=proto)
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        total_pct = sum(p["pct"] for p in data["protocols"])
+        assert abs(total_pct - 100.0) < 0.5
+
+    def test_ordered_by_count_desc(self, client, tmp_db):
+        for _ in range(5):
+            _insert_log(tmp_db, network_protocol="tcp")
+        for _ in range(2):
+            _insert_log(tmp_db, network_protocol="udp")
+        _insert_log(tmp_db, network_protocol="icmp")
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        counts = [p["count"] for p in data["protocols"]]
+        assert counts == sorted(counts, reverse=True)
+        assert data["protocols"][0]["protocol"] == "tcp"
+
+    def test_null_protocol_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol=None)
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        assert data["total"] == 0
+
+    def test_empty_string_protocol_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol="")
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        assert data["total"] == 0
+
+    def test_protocol_lowercased(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol="TCP")
+        _insert_log(tmp_db, network_protocol="tcp")
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        protos = {p["protocol"] for p in data["protocols"]}
+        assert "tcp" in protos
+        assert "TCP" not in protos
+        tcp_count = next(p["count"] for p in data["protocols"] if p["protocol"] == "tcp")
+        assert tcp_count == 2
+
+    def test_old_logs_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol="tcp", minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/protocol-distribution?hours=1").json()
+        assert data["total"] == 0
+
+    def test_recent_logs_included(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol="udp", minutes_ago=10)
+
+        data = client.get("/api/v1/analytics/protocol-distribution?hours=1").json()
+        assert data["total"] == 1
+
+
+class TestProtocolDistributionTenantIsolation:
+    def test_admin_sees_only_own_tenant(self, client, tmp_db):
+        _insert_log(tmp_db, network_protocol="tcp", tenant_id="default")
+        _insert_log(tmp_db, network_protocol="udp", tenant_id="other-tenant")
+
+        data = client.get("/api/v1/analytics/protocol-distribution").json()
+        assert data["total"] == 1
+        assert data["protocols"][0]["protocol"] == "tcp"
+
+    def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
+        _insert_log(tmp_db, network_protocol="tcp", tenant_id="default")
+        _insert_log(tmp_db, network_protocol="udp", tenant_id="other-tenant")
+
+        data = superadmin_client.get("/api/v1/analytics/protocol-distribution").json()
+        assert data["total"] == 2

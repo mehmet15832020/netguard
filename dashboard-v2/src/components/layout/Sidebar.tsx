@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Bell, Shield, FileText, GitMerge, Settings, LogOut,
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
   ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
-  ChevronRight, Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2,
+  ChevronRight, Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -33,8 +33,10 @@ const SECTIONS = [
   {
     label: 'Ağ İzleme',
     items: [
-      { href: '/top-talkers', label: 'Top Talkers',  icon: BarChart2 },
-      { href: '/devices',     label: 'Cihazlar',     icon: Monitor },
+      { href: '/top-talkers',             label: 'Top Talkers',        icon: BarChart2 },
+      { href: '/alert-volume',            label: 'Alert Hacmi',        icon: Activity },
+      { href: '/protocol-distribution',   label: 'Protokol Dağılımı',  icon: PieChart },
+      { href: '/devices',                 label: 'Cihazlar',           icon: Monitor },
       { href: '/topology',    label: 'Topoloji',     icon: Share2 },
       { href: '/agents',      label: 'Agents',       icon: Server },
       { href: '/snmp',        label: 'SNMP',         icon: Network },

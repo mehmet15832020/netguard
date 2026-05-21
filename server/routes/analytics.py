@@ -8,6 +8,7 @@ GET /api/v1/analytics/top-talkers
 """
 
 import logging
+from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -115,3 +116,138 @@ def top_talkers(
         top_destinations=top_destinations,
         top_dst_ports=top_dst_ports,
     )
+
+
+_ALERT_HOUR_EXPR = "to_char(date_trunc('hour', triggered_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+_SEVERITY_LEVELS = ("critical", "high", "warning", "info")
+
+
+class _AlertPoint(BaseModel):
+    t: str
+    v: int
+
+
+class AlertVolumeResponse(BaseModel):
+    hours: int
+    series: dict[str, list[_AlertPoint]]
+
+
+@router.get("/analytics/alert-volume", response_model=AlertVolumeResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def alert_volume(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since, now]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, now, tid]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                {_ALERT_HOUR_EXPR} AS hour,
+                severity,
+                COUNT(*) AS cnt
+            FROM alerts
+            WHERE triggered_at >= %s
+              AND triggered_at <= %s
+              {tenant_clause}
+              AND severity IN ('critical', 'high', 'warning', 'info')
+            GROUP BY hour, severity
+            ORDER BY hour
+            """,
+            params,
+        ).fetchall()
+
+    # Pre-generate complete hourly axis so gaps are zero-filled, not dropped
+    since_trunc = since.replace(minute=0, second=0, microsecond=0)
+    now_trunc = now.replace(minute=0, second=0, microsecond=0)
+    n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
+    all_hours = [
+        (since_trunc + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+        for i in range(n_buckets)
+    ]
+
+    bucket: dict[str, dict[str, int]] = {h: {s: 0 for s in _SEVERITY_LEVELS} for h in all_hours}
+    for r in rows:
+        h = r["hour"]
+        if h in bucket:
+            bucket[h][r["severity"]] = r["cnt"]
+
+    series: dict[str, list[_AlertPoint]] = {
+        sev: [_AlertPoint(t=h, v=bucket[h][sev]) for h in all_hours]
+        for sev in _SEVERITY_LEVELS
+    }
+
+    return AlertVolumeResponse(hours=hours, series=series)
+
+
+class _ProtoCount(BaseModel):
+    protocol: str
+    count: int
+    pct: float
+
+
+class ProtocolDistributionResponse(BaseModel):
+    hours: int
+    total: int
+    protocols: list[_ProtoCount]
+
+
+@router.get("/analytics/protocol-distribution", response_model=ProtocolDistributionResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def protocol_distribution(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since, since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, since, tid]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                LOWER(network_protocol) AS proto,
+                COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              AND timestamp >= %s
+              {tenant_clause}
+              AND network_protocol IS NOT NULL
+              AND network_protocol != ''
+            GROUP BY proto
+            ORDER BY cnt DESC
+            """,
+            params,
+        ).fetchall()
+
+    total = sum(r["cnt"] for r in rows)
+    protocols = [
+        _ProtoCount(
+            protocol=r["proto"],
+            count=r["cnt"],
+            pct=round(r["cnt"] / total * 100, 1) if total > 0 else 0.0,
+        )
+        for r in rows
+    ]
+
+    return ProtocolDistributionResponse(hours=hours, total=total, protocols=protocols)
