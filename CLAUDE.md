@@ -94,11 +94,12 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
   - [x] G4-4: TXT sorgu frekansı — `ng_dns_tunnel_base` mevcut (`network_community.yml`)
   - Bağımlılık: yok
 
-- [ ] **G3** — Çoklu threat intel
+- [x] **G3** — Çoklu threat intel
   - *GreyNoise: CISA KEV eklemelerinden %80 önce tespit. Feodo Tracker: aktif C2 listesi (ücretsiz)*
-  - G3-1: Feodo Tracker (Emotet/QakBot/AsyncRAT C2) | G3-2: ThreatFox IOC
-  - G3-3: GreyNoise Community (internet gürültüsü filtresi) | G3-4: Composite score hesaplama
-  - Bağımlılık: yok
+  - [x] G3-1: Feodo Tracker (Emotet/QakBot/AsyncRAT C2) — in-memory cache, 24h refresh
+  - [x] G3-2: ThreatFox IOC — per-IP POST API, DB cache
+  - [x] G3-3: GreyNoise Community — noise/riot FP filtresi
+  - [x] G3-4: Composite score 0-100 — Feodo dominant, noise/riot cap
 
 ### AŞAMA 2.5 — Dashboard Görselleştirme
 
