@@ -4,21 +4,38 @@ NetGuard — EVTX Dosya Parser
 Windows .evtx formatındaki olay günlüğü dosyalarını parse eder.
 Forensik analiz ve offline inceleme için kullanılır.
 
+Desteklenen event ID'ler:
+  Windows Security: 4624, 4625, 4648, 4688, 4720, 4732, 4768, 4769
+  Sysmon:           1 (Process), 3 (Network), 10 (ProcAccess), 22 (DNS)
+
 Gereksinim: python-evtx (pip install python-evtx)
 """
 
 import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
-from io import BytesIO
 from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_EID_MAP = {
-    4624: ("windows_logon_success", "info"),
-    4625: ("windows_logon_failure", "warning"),
-    4688: ("windows_process_create", "info"),
+_NS = "http://schemas.microsoft.com/win/2004/08/events/event"
+
+# event_action → (default_severity)  — dinamik override mümkün
+_EID_MAP: dict[int, tuple[str, str]] = {
+    # Windows Security Events
+    4624: ("windows_logon_success",       "info"),
+    4625: ("windows_logon_failure",       "warning"),
+    4648: ("windows_explicit_logon",      "warning"),
+    4688: ("windows_process_create",      "info"),
+    4720: ("windows_user_created",        "warning"),
+    4732: ("windows_group_member_added",  "warning"),
+    4768: ("windows_kerberos_tgt",        "info"),
+    4769: ("windows_kerberos_service",    "info"),
+    # Sysmon Events
+    1:    ("windows_sysmon_process",      "info"),
+    3:    ("windows_sysmon_network",      "info"),
+    10:   ("windows_sysmon_proc_access",  "warning"),
+    22:   ("windows_sysmon_dns",          "info"),
 }
 
 _LOGON_TYPES = {
@@ -32,7 +49,22 @@ _LOGON_TYPES = {
     "11": "cached_interactive",
 }
 
-_NS = "http://schemas.microsoft.com/win/2004/08/events/event"
+# Sysmon: süreç adlarına göre şüphe sınıflandırması
+_LOLBAS: frozenset[str] = frozenset({
+    "powershell.exe", "pwsh.exe", "cmd.exe", "wscript.exe", "cscript.exe",
+    "mshta.exe", "regsvr32.exe", "rundll32.exe", "certutil.exe",
+    "bitsadmin.exe", "msiexec.exe", "installutil.exe", "schtasks.exe",
+    "at.exe", "wmic.exe", "forfiles.exe", "pcalua.exe",
+})
+
+_KNOWN_MALWARE_PROC: frozenset[str] = frozenset({
+    "mimikatz.exe", "procdump.exe", "wce.exe", "fgdump.exe",
+    "pwdump.exe", "gsecdump.exe", "lsadump.exe", "sekurlsa.exe",
+})
+
+_KERBEROS_WEAK_ENC: frozenset[str] = frozenset({
+    "0x17", "0x18", "23", "24",  # RC4/DES — Kerberoasting indicator
+})
 
 
 def _xml_text(root: ET.Element, path: str) -> str:
@@ -45,6 +77,10 @@ def _get_data(root: ET.Element, name: str) -> str:
         if el.get("Name") == name:
             return (el.text or "").strip()
     return ""
+
+
+def _clean_ip(val: str) -> Optional[str]:
+    return val if val not in ("-", "", "::1", "127.0.0.1") else None
 
 
 def _parse_record_xml(xml_str: str) -> Optional[dict]:
@@ -64,64 +100,237 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
     if eid not in _EID_MAP:
         return None
 
-    event_action, severity = _EID_MAP[eid]
-    time_str = root.findtext(".//{%s}TimeCreated" % _NS) or ""
-    el_time = root.find(".//{%s}TimeCreated" % _NS)
+    event_action, _ = _EID_MAP[eid]
+    el_time  = root.find(".//{%s}TimeCreated" % _NS)
     occurred_at = el_time.get("SystemTime", "") if el_time is not None else ""
     if not occurred_at:
         occurred_at = datetime.now(timezone.utc).isoformat()
-
     computer = _xml_text(root, "./{%s}System/{%s}Computer" % (_NS, _NS))
+
+    # ── Windows Security Events ───────────────────────────────────────────────
 
     if eid == 4625:
         username  = _get_data(root, "TargetUserName")
-        source_ip = _get_data(root, "IpAddress") or None
-        if source_ip in ("-", ""):
-            source_ip = None
+        source_ip = _clean_ip(_get_data(root, "IpAddress"))
         return {
-            "event_action":  event_action,
-            "severity":    severity,
-            "username":    username,
-            "source_ip":   source_ip,
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          username,
+            "source_ip":         source_ip,
             "observer_hostname": computer,
-            "message":     f"Windows oturum açma başarısız: kullanıcı={username}",
-            "raw_data":    xml_str[:500],
-            "occurred_at": occurred_at,
+            "message":           f"Windows logon failure: user={username}",
+            "raw_data":          xml_str[:500],
+            "occurred_at":       occurred_at,
         }
 
     if eid == 4624:
-        username   = _get_data(root, "TargetUserName")
-        source_ip  = _get_data(root, "IpAddress") or None
-        logon_type = _get_data(root, "LogonType")
+        username    = _get_data(root, "TargetUserName")
+        source_ip   = _clean_ip(_get_data(root, "IpAddress"))
+        logon_type  = _get_data(root, "LogonType")
         logon_label = _LOGON_TYPES.get(logon_type, logon_type)
-        if source_ip in ("-", ""):
-            source_ip = None
         if logon_label in ("service", "batch"):
             return None
         return {
-            "event_action":  event_action,
-            "severity":    severity,
-            "username":    username,
-            "source_ip":   source_ip,
+            "event_action":      event_action,
+            "severity":          "info",
+            "username":          username,
+            "source_ip":         source_ip,
             "observer_hostname": computer,
-            "message":     f"Windows oturum açıldı: kullanıcı={username} tür={logon_label}",
-            "raw_data":    xml_str[:500],
-            "occurred_at": occurred_at,
+            "message":           f"Windows logon success: user={username} type={logon_label}",
+            "raw_data":          xml_str[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4648:
+        subj_user = _get_data(root, "SubjectUserName")
+        tgt_user  = _get_data(root, "AccountName")
+        server    = _get_data(root, "ServerName")
+        process   = _get_data(root, "ProcessName")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          subj_user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Explicit logon: {subj_user} → {tgt_user}@{server} via {process}",
+            "raw_data":          f"EID=4648 subj={subj_user} tgt={tgt_user} server={server}"[:500],
+            "occurred_at":       occurred_at,
         }
 
     if eid == 4688:
         subject_user = _get_data(root, "SubjectUserName")
         process_name = _get_data(root, "NewProcessName")
         cmdline      = _get_data(root, "CommandLine")
+        proc_lower   = (process_name.split("\\")[-1] if process_name else "").lower()
+        severity     = "critical" if proc_lower in _KNOWN_MALWARE_PROC else "info"
         return {
-            "event_action":  event_action,
-            "severity":    severity,
-            "username":    subject_user,
-            "source_ip":   None,
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          subject_user,
+            "source_ip":         None,
             "observer_hostname": computer,
-            "message":     f"Süreç oluşturuldu: {process_name}",
-            "raw_data":    f"EventID=4688 user={subject_user} process={process_name} cmd={cmdline}"[:500],
-            "occurred_at": occurred_at,
+            "message":           f"Process created: {process_name}",
+            "raw_data":          f"EID=4688 user={subject_user} process={process_name} cmd={cmdline}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4720:
+        new_user = _get_data(root, "TargetUserName")
+        creator  = _get_data(root, "SubjectUserName")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          creator,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"User account created: {new_user} by {creator}",
+            "raw_data":          f"EID=4720 new_user={new_user} creator={creator}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4732:
+        member = _get_data(root, "MemberName")
+        group  = _get_data(root, "TargetUserName")
+        actor  = _get_data(root, "SubjectUserName")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          actor,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Group member added: {member} → group={group} by {actor}",
+            "raw_data":          f"EID=4732 member={member} group={group} actor={actor}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4768:
+        user     = _get_data(root, "TargetUserName")
+        domain   = _get_data(root, "TargetDomainName")
+        src_ip   = _clean_ip(_get_data(root, "IpAddress"))
+        status   = _get_data(root, "Status")
+        enc_type = _get_data(root, "TicketEncryptionType")
+        downgrade = enc_type in _KERBEROS_WEAK_ENC
+        failure   = status not in ("0x0", "")
+        severity  = "warning" if (failure or downgrade) else "info"
+        msg = f"Kerberos TGT: {user}@{domain} status={status} enc={enc_type}"
+        if downgrade:
+            msg += " [WEAK_ENCRYPTION]"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         src_ip,
+            "observer_hostname": computer,
+            "message":           msg,
+            "raw_data":          f"EID=4768 user={user} domain={domain} status={status} enc={enc_type}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4769:
+        user      = _get_data(root, "TargetUserName")
+        service   = _get_data(root, "ServiceName")
+        src_ip    = _clean_ip(_get_data(root, "IpAddress"))
+        enc_type  = _get_data(root, "TicketEncryptionType")
+        kerberoast = enc_type in _KERBEROS_WEAK_ENC
+        severity   = "warning" if kerberoast else "info"
+        msg = f"Kerberos ST: {user} → {service} enc={enc_type}"
+        if kerberoast:
+            msg += " [KERBEROAST]"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         src_ip,
+            "observer_hostname": computer,
+            "message":           msg,
+            "raw_data":          f"EID=4769 user={user} service={service} enc={enc_type}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── Sysmon Events ─────────────────────────────────────────────────────────
+
+    if eid == 1:
+        image      = _get_data(root, "Image")
+        cmdline    = _get_data(root, "CommandLine")
+        parent     = _get_data(root, "ParentImage")
+        user       = _get_data(root, "User")
+        hashes     = _get_data(root, "Hashes")
+        proc_name  = (image.split("\\")[-1] if image else "").lower()
+        parent_name = (parent.split("\\")[-1] if parent else "").lower()
+        is_malware = proc_name in _KNOWN_MALWARE_PROC
+        is_suspicious = proc_name in _LOLBAS and parent_name not in (
+            "explorer.exe", "powershell.exe", "pwsh.exe", "cmd.exe", ""
+        )
+        severity = "critical" if is_malware else ("warning" if is_suspicious else "info")
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Sysmon process: {image or '?'} cmd={cmdline[:80] if cmdline else ''}",
+            "raw_data":          f"EID=1 image={image} parent={parent} cmd={cmdline} hashes={hashes}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 3:
+        image    = _get_data(root, "Image")
+        src_ip   = _clean_ip(_get_data(root, "SourceIp"))
+        dst_ip   = _clean_ip(_get_data(root, "DestinationIp"))
+        dst_port_str = _get_data(root, "DestinationPort")
+        dst_port = int(dst_port_str) if dst_port_str.isdigit() else None
+        proto    = (_get_data(root, "Protocol") or "tcp").lower()
+        user     = _get_data(root, "User")
+        proc_name = (image.split("\\")[-1] if image else "").lower()
+        severity = "warning" if proc_name in _LOLBAS else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         src_ip,
+            "destination_ip":    dst_ip,
+            "destination_port":  dst_port,
+            "network_protocol":  proto,
+            "observer_hostname": computer,
+            "message":           f"Sysmon network: {image or '?'} → {dst_ip}:{dst_port}",
+            "raw_data":          f"EID=3 image={image} dst={dst_ip}:{dst_port}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 10:
+        src_image = _get_data(root, "SourceImage")
+        tgt_image = _get_data(root, "TargetImage")
+        access    = _get_data(root, "GrantedAccess")
+        tgt_name  = (tgt_image.split("\\")[-1] if tgt_image else "").lower()
+        # Mimikatz/credential dumping targets lsass.exe
+        severity  = "critical" if tgt_name == "lsass.exe" else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Sysmon proc access: {src_image or '?'} → {tgt_image or '?'} [{access}]",
+            "raw_data":          f"EID=10 src={src_image} tgt={tgt_image} access={access}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 22:
+        proc    = _get_data(root, "Image")
+        query   = _get_data(root, "QueryName")
+        status  = _get_data(root, "QueryStatus")
+        results = _get_data(root, "QueryResults")
+        proc_name = (proc.split("\\")[-1] if proc else "").lower()
+        severity  = "warning" if proc_name in _LOLBAS else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Sysmon DNS: {query} from {proc or '?'} status={status}",
+            "raw_data":          f"EID=22 proc={proc} query={query} status={status} results={results}"[:500],
+            "occurred_at":       occurred_at,
         }
 
     return None
@@ -130,8 +339,7 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
 def parse_evtx_bytes(data: bytes) -> list[dict]:
     """
     .evtx dosya içeriğini (bytes) parse eder.
-    Her tanınan event için dict döner: event_action, severity, username, source_ip,
-    observer_hostname, message, raw_data, occurred_at.
+    Her tanınan event için dict döner.
     """
     try:
         from Evtx.Evtx import FileHeader
@@ -143,19 +351,17 @@ def parse_evtx_bytes(data: bytes) -> list[dict]:
     results: list[dict] = []
     try:
         fh = FileHeader(data, 0x0)
-        for xml_str, record in evtx_file_xml_view(fh):
+        for xml_str, _ in evtx_file_xml_view(fh):
             parsed = _parse_record_xml(xml_str)
             if parsed:
                 results.append(parsed)
     except Exception as exc:
-        logger.warning(f"EVTX parse hatası: {exc}")
+        logger.warning("EVTX parse hatası: %s", exc)
     return results
 
 
 def parse_evtx_xml_strings(xml_strings: list[str]) -> list[dict]:
-    """
-    XML string listesinden parse eder (test ve mock için kullanılır).
-    """
+    """XML string listesinden parse eder (test ve mock için)."""
     results = []
     for xml_str in xml_strings:
         parsed = _parse_record_xml(xml_str)

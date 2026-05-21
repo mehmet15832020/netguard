@@ -136,3 +136,123 @@ tags:
 falsepositives:
     - Authorized penetration testing
     - Security research in isolated environment
+---
+title: Sysmon Credential Dump — LSASS Access
+id: e1f2a3b4-c5d6-7890-efab-901234567890
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: windows_sysmon_proc_access
+        severity: critical
+    condition: selection
+level: critical
+tags:
+    - attack.credential_access
+    - attack.t1003.001
+falsepositives:
+    - Authorized security tooling
+    - EDR agents with LSASS scanning
+---
+title: Sysmon Process Access (Base)
+name: ng_sysmon_proc_access_base
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: windows_sysmon_proc_access
+    condition: selection
+level: low
+---
+title: Sysmon Repeated Process Access Burst
+id: f2a3b4c5-d6e7-8901-fabc-012345678901
+correlation:
+    type: event_count
+    rules: ng_sysmon_proc_access_base
+    group-by:
+        - observer_hostname
+    timespan: 2m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.credential_access
+    - attack.t1003.001
+---
+title: Sysmon Suspicious Network Connection (Base)
+name: ng_sysmon_net_lolbas_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: windows_sysmon_network
+        severity: warning
+    condition: selection
+level: low
+---
+title: Sysmon LOLBAS Outbound Burst
+id: a3b4c5d6-e7f8-9012-abcd-123456789012
+correlation:
+    type: event_count
+    rules: ng_sysmon_net_lolbas_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
+    - attack.defense_evasion
+    - attack.t1218
+falsepositives:
+    - Software updates (msiexec)
+    - Authorized PowerShell automation
+---
+title: Kerberoasting Detection (Base)
+name: ng_kerberoast_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: windows_kerberos_service
+        message|contains: "[KERBEROAST]"
+    condition: selection
+level: low
+---
+title: Kerberoasting Burst
+id: b4c5d6e7-f8a9-0123-bcde-234567890123
+correlation:
+    type: event_count
+    rules: ng_kerberoast_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.credential_access
+    - attack.t1558.003
+falsepositives:
+    - Authorized pentest
+    - Legacy service account enumeration
+---
+title: Windows User Account Created
+id: c5d6e7f8-a9b0-1234-cdef-345678901234
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: windows_user_created
+    condition: selection
+level: high
+tags:
+    - attack.persistence
+    - attack.t1136.001

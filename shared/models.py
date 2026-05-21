@@ -184,11 +184,20 @@ class SecurityEventType(str, Enum):
     DEVICE_DOWN      = "device_down"       # Cihaz erişilemiyor
     DEVICE_UP        = "device_up"         # Cihaz tekrar erişilebilir
     SNMP_TRAP        = "snmp_trap"         # SNMP TRAP alındı
-    WIN_LOGON_SUCCESS = "windows_logon_success"  # Windows başarılı oturum (4624)
-    WIN_LOGON_FAILURE = "windows_logon_failure"  # Windows başarısız oturum (4625)
-    WIN_PROCESS_CREATE = "windows_process_create"  # Windows süreç oluşturma (4688)
-    LATERAL_MOVEMENT  = "lateral_movement"       # İç ağdan iç ağa tarama
-    SUSPICIOUS_CONN   = "suspicious_outbound_connection"  # Şüpheli dış bağlantı
+    WIN_LOGON_SUCCESS      = "windows_logon_success"       # 4624
+    WIN_LOGON_FAILURE      = "windows_logon_failure"       # 4625
+    WIN_EXPLICIT_LOGON     = "windows_explicit_logon"      # 4648 (pass-the-hash göstergesi)
+    WIN_PROCESS_CREATE     = "windows_process_create"      # 4688
+    WIN_USER_CREATED       = "windows_user_created"        # 4720
+    WIN_GROUP_MEMBER_ADDED = "windows_group_member_added"  # 4732
+    WIN_KERBEROS_TGT       = "windows_kerberos_tgt"        # 4768
+    WIN_KERBEROS_SERVICE   = "windows_kerberos_service"    # 4769
+    WIN_SYSMON_PROCESS     = "windows_sysmon_process"      # Sysmon EID 1
+    WIN_SYSMON_NETWORK     = "windows_sysmon_network"      # Sysmon EID 3
+    WIN_SYSMON_PROC_ACCESS = "windows_sysmon_proc_access"  # Sysmon EID 10 (mimikatz)
+    WIN_SYSMON_DNS         = "windows_sysmon_dns"          # Sysmon EID 22
+    LATERAL_MOVEMENT  = "lateral_movement"                 # İç ağdan iç ağa tarama
+    SUSPICIOUS_CONN   = "suspicious_outbound_connection"   # Şüpheli dış bağlantı
 
 
 class SecurityEvent(BaseModel):
@@ -211,6 +220,7 @@ class LogSourceType(str, Enum):
     SURICATA  = "suricata"   # Suricata IDS/IPS
     ZEEK      = "zeek"       # Zeek network monitor
     WAZUH     = "wazuh"      # Wazuh HIDS
+    WINDOWS   = "windows"   # Windows EVTX / Sysmon (doğrudan yükleme)
     SYSLOG    = "syslog"     # Genel syslog
     AUTH_LOG  = "auth_log"   # /var/log/auth.log
     NETGUARD  = "netguard"   # NetGuard internal

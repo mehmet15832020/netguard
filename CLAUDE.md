@@ -90,12 +90,9 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
   - *CIS Controls v8.1 Safeguard 13.8 zorunlu. Zeek behavioral + Suricata imza = altın standart NSM. Zeek'in göremediği TLS içi payload, exploit kit imzaları Suricata yakalar.*
   - **Teslim:** `server/parsers/suricata.py` (9 event_type parser), `server/suricata_collector.py` (inode rotation-safe offset), `config/sigma_rules_v2/suricata_ids.yml` (6 kural), 60 test — 1271 toplam test ✓
 
-- [ ] **U2** — Sysmon / Windows HIDS entegrasyonu
+- [x] **U2** — Sysmon / Windows HIDS entegrasyonu
   - *Verizon DBIR 2025: ihlallerin %32'si credential compromise — Windows host blind spot. EVTX parser var ama Sysmon event mapping yok.*
-  - **Altyapı:** `server/evtx_parser.py` VAR ✓; `server/parsers/sysmon.py` YOK (yazılacak); STAGE_MAP'te `windows_logon_failure/success/lateral_movement/process_create` ZATEN VAR ✓; `config/sigma_rules_v2/windows_events.yml` VAR (genişletilecek) ✓
-  - **Yapılacaklar:** Sysmon Event 1 (ProcessCreate), 3 (NetworkConnect), 4625/4624 (Logon) ECS parse; parent-child process chain; `windows_persistence.yml` sigma kuralı (T1547 registry, T1197)
-  - Bağımlılık: yok
-  - Tahmini süre: 5-6 gün
+  - **Teslim:** `evtx_parser.py` 12 EID (Sysmon 1/3/10/22 + Security 4648/4720/4732/4768/4769); `parsers/windows.py` NormalizedLog dönüşümü; `routes/evtx.py` normalized_logs yazımı; 8 Sysmon sigma kuralı; 39 test — STAGE_MAP Sysmon eventi kill chain'e bağlandı ✓
 
 - [ ] **F4** — Anomaly engine → kill chain entegrasyonu
   - *Gartner NDR: ML anomali behavioral context'te değerlendirilmeli. Slow-and-low saldırılar Sigma eşiğini geçer, IsolationForest yakalar — ama şu an kill chain'e beslenmiyor.*

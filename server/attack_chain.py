@@ -111,6 +111,16 @@ STAGE_MAP: dict[str, str] = {
     "suricata_anomaly":      "recon",     # Protocol anomaly
     "suricata_alert_burst":  "lateral",   # Suricata Alert Burst (sigma korelasyon çıktısı)
     "suricata_lateral":      "lateral",   # Lateral movement burst (dst_ip gruplama)
+    # Windows / Sysmon (U2)
+    "windows_explicit_logon":      "weaponize",  # 4648 — pass-the-hash göstergesi
+    "windows_user_created":        "execute",    # 4720 — persistence (yeni hesap)
+    "windows_group_member_added":  "execute",    # 4732 — privilege escalation
+    "windows_kerberos_tgt":        "weaponize",  # 4768 — credential access / AS-REP roasting
+    "windows_kerberos_service":    "lateral",    # 4769 — Kerberoasting / lateral movement
+    "windows_sysmon_proc_access":  "execute",    # Sysmon EID10 — credential dumping (mimikatz)
+    "windows_sysmon_network":      "lateral",    # Sysmon EID3 — C2 / lateral connection
+    "windows_sysmon_process":      "execute",    # Sysmon EID1 — suspicious execution
+    "windows_sysmon_dns":          "recon",      # Sysmon EID22 — DNS C2 / recon
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.
