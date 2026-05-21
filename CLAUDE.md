@@ -67,177 +67,132 @@ EVTX (Windows)          ARP/DNS/ICMP/port_scan det.
 
 Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, CIS Controls v8.1, NIST SP 800-94, OWASP API Security 2023, Gartner NDR Market Guide 2025.
 
-### AŞAMA 1 — Acil Güvenlik (Bu Hafta)
+> **Üretim eşiği notu (Mayıs 2026):** Tahmini kapasite ~%65 (Security Onion benchmark). G2+U2+F4 tamamlanırsa ~%82, U3+U4+T2-3 ile ~%88. Bu 3 görev olmadan production pilot için kritik kör nokta kalır.
 
-- [x] **G5** — `routes/active_response.py` → `@limiter.limit("10/minute")` block'a, `"5/minute"` break-glass'a
-  - *OWASP API4: rate limiting eksikliği; break-glass JWT bypass yaptığı için özellikle kritik*
-  - Bağımlılık: yok — 15 dakikalık iş, G1 öncesi şart
+### AŞAMA 1 — Acil Güvenlik (Tamamlandı)
 
-- [x] **G1** — `attack_chain.py` FULL_ATTACK_CHAIN → `active_response_manager.block_ip()` çağrısı
-  - *CrowdStrike 2025: ortalama breakout time 48 dakika. Dedektör hazır, plug-in eklemek yeterli*
-  - `AUTO_BLOCK_ON_FULL_CHAIN=1` env gate (varsayılan kapalı), `actor = "system/kill_chain"` audit
-  - Güvenlik geçitleri korunur: RFC1918 → FP gate → severity gate
-  - Bağımlılık: G5 tamamlanmalı
+- [x] **G5** — `routes/active_response.py` rate limiting (`10/minute` block, `5/minute` break-glass)
+- [x] **G1** — FULL_ATTACK_CHAIN → otomatik IP bloklama (`AUTO_BLOCK_ON_FULL_CHAIN=1`)
+- [x] **G6** — JA4 geçişi (JA3 legacy fallback, entropi threshold 4.0, FP regression testleri)
 
-- [x] **G6** — JA4 geçişi (JA3 kaldır)
-  - *Chrome 110+ (2023) her bağlantıda farklı JA3 üretiyor — dashboard yanlış veri gösteriyor*
-  - `zeek_collector.py` JA4 field, `network_intel` route güncelleme; JA3 backward-compatible tut
+### AŞAMA 2 — Tespit Genişletme (Tamamlandı)
+
+- [x] **G4** — DNS tunneling: entropi (4.0 bit), uzun sorgu (>50c), NXDOMAIN 2 katmanlı spike
+- [x] **G3** — Çoklu threat intel: Feodo Tracker + ThreatFox + GreyNoise + composite score 0-100
+
+### AŞAMA 2.5 — Kritik Tespit Eksikleri (ÜRETİM ÖNCESİ ZORUNLU)
+
+> Bu üç görev olmadan NetGuard %65 kapasitede kalır. Sırayla yapılır, paralel değil — G2 bağımsız, U2 bağımsız, F4 ikisinden beslenirse daha güçlü.
+
+---
+
+- [ ] **G2** — Suricata EVE JSON collector
+  - *CIS Controls v8.1 Safeguard 13.8 zorunlu. Zeek behavioral + Suricata imza = altın standart NSM. Zeek'in göremediği TLS içi payload, exploit kit imzaları Suricata yakalar.*
+  - **Altyapı:** `server/suricata_collector.py` YOK (yazılacak); `zeek_collector.py` template alınacak ✓; `normalized_logs` tablosu uyumlu ✓; sigma kural yükleme mevcut ✓; attack_chain STAGE_MAP genişletilecek
+  - **Yapılacaklar:** EVE JSON `/var/log/suricata/eve.json` poller (byte offset, restart-safe) → ECS mapping → `config/sigma_rules_v2/suricata_alerts.yml` (5+ kural: botnet/trojan/malware classification)
+  - Bağımlılık: yok (F2 olmadan da test edilebilir, zeek pattern birebir)
+  - Tahmini süre: 4-5 gün
+
+- [ ] **U2** — Sysmon / Windows HIDS entegrasyonu
+  - *Verizon DBIR 2025: ihlallerin %32'si credential compromise — Windows host blind spot. EVTX parser var ama Sysmon event mapping yok.*
+  - **Altyapı:** `server/evtx_parser.py` VAR ✓; `server/parsers/sysmon.py` YOK (yazılacak); STAGE_MAP'te `windows_logon_failure/success/lateral_movement/process_create` ZATEN VAR ✓; `config/sigma_rules_v2/windows_events.yml` VAR (genişletilecek) ✓
+  - **Yapılacaklar:** Sysmon Event 1 (ProcessCreate), 3 (NetworkConnect), 4625/4624 (Logon) ECS parse; parent-child process chain; `windows_persistence.yml` sigma kuralı (T1547 registry, T1197)
   - Bağımlılık: yok
+  - Tahmini süre: 5-6 gün
 
-### AŞAMA 2 — Tespit Genişletme (2-3 Hafta)
+- [ ] **F4** — Anomaly engine → kill chain entegrasyonu
+  - *Gartner NDR: ML anomali behavioral context'te değerlendirilmeli. Slow-and-low saldırılar Sigma eşiğini geçer, IsolationForest yakalar — ama şu an kill chain'e beslenmiyor.*
+  - **Altyapı:** `server/anomaly/engine.py` VAR ✓; `save_normalized_log()` çağrısı VAR ✓; STAGE_MAP'te `anomaly_detected/asset_anomaly_detected/anomaly_cluster` VAR ✓; `attack_chain_tracker.record()` çağrısı YOK (eklenecek); `anomaly_spike` event_action STAGE_MAP'te YOK (eklenecek)
+  - **Yapılacaklar:** engine.py threshold aşınca `CorrelatedEvent(event_action="anomaly_spike")` üret + `attack_chain_tracker.record()` çağır; STAGE_MAP += `"anomaly_spike": "recon"`; entegrasyon testi (anomaly + port_scan → FULL_ATTACK_CHAIN)
+  - Bağımlılık: bağımsız — G2 sonrası yapılırsa Zeek + Suricata + ML üçlüsü birlikte akar
+  - Tahmini süre: 2-3 gün
 
-- [x] **G4** — DNS tunneling sigma kuralları
-  - *MITRE ATT&CK T1071.004: APT41/OilRig/Cobalt Group aktif kullanıyor. Zeek DNS zaten akıyor*
-  - [x] G4-1: Entropi analizi (base64/hex subdomain) — eşik 4.0 bit, min_label 20 char
-  - [x] G4-2: Uzun sorgu (>50 karakter) — [LONG_QUERY:Xc] indikatörü
-  - [x] G4-3: NXDOMAIN spike — 2 katmanlı: 30/1m + 100/15m
-  - [x] G4-4: TXT sorgu frekansı — `ng_dns_tunnel_base` mevcut (`network_community.yml`)
-  - Bağımlılık: yok
+---
 
-- [x] **G3** — Çoklu threat intel
-  - *GreyNoise: CISA KEV eklemelerinden %80 önce tespit. Feodo Tracker: aktif C2 listesi (ücretsiz)*
-  - [x] G3-1: Feodo Tracker (Emotet/QakBot/AsyncRAT C2) — in-memory cache, 24h refresh
-  - [x] G3-2: ThreatFox IOC — per-IP POST API, DB cache
-  - [x] G3-3: GreyNoise Community — noise/riot FP filtresi
-  - [x] G3-4: Composite score 0-100 — Feodo dominant, noise/riot cap
+### AŞAMA 2.6 — Dashboard Görselleştirme
 
-### AŞAMA 2.5 — Dashboard Görselleştirme
+Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 13, NIST SP 800-94, Security Onion 2.4, Malcolm/CISA, ntopng, Arkime, Grafana Best Practices 2024, ArmorPoint SOC KPIs 2025.
 
-Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 13, NIST SP 800-94,
-Security Onion 2.4, Malcolm/CISA, ntopng, Arkime, Grafana Best Practices 2024, ArmorPoint SOC KPIs 2025.
+**Uygulama sırası:** Blok A (bağımsız, ~4 gün) → Blok B (G4/G3/G2 sonrası) → Blok C (ertelenebilir)
 
-**Uygulama sırası:** Blok A (G1 sonrası, bağımsız) → Blok B (G4/G3 sonrası, bağımlı) → Blok C (ertelenebilir)
+**Altyapı durumu:** Next.js dashboard ✓, api.ts ✓, TanStack Query ✓ — analytics route YOK (yazılacak), top-talkers endpoint YOK (yazılacak)
 
-#### Blok A — Hızlı Kazanımlar (~2 gün, normalized_logs'tan beslenir)
-
-- [ ] **D5** — Alert Volume Stacked Area Chart
-  - `alerts` tablosu GROUP BY hour × severity → critical/high/medium renk kodlaması
-  - Overview sayfası, mevcut LogVolumePanel yanına eklenir
-  - Bağımlılık: yok
-
-- [ ] **D2** — Protocol Distribution Donut
-  - `normalized_logs.network_protocol` GROUP BY → TCP/UDP/DNS/HTTP/SSH/ICMP/diğer
-  - *CIS Control 13.6: port/protokol izleme zorunlu*
-  - Bağımlılık: yok
-
-- [ ] **D3** — Traffic Volume Area Chart (east-west / north-south ayrımı)
-  - RFC1918 kaynak → iç trafik (east-west) vs dış trafik (north-south), stacked area
-  - *Gartner NDR zorunlu: çift yönlü görünürlük*
-  - Bağımlılık: yok
+#### Blok A — Hızlı Kazanımlar (~4 gün, bağımsız)
 
 - [ ] **D1** — Top Talkers Panel
-  - Top src IP + top dst IP + top dst port → horizontal ranked bar
-  - *ntopng / Malcolm / Arkime hepsinde var — NetGuard'da eksik*
-  - Endpoint: `GET /api/v1/analytics/top-talkers?hours=24&limit=20`
-  - Bağımlılık: yok
+  - Top src/dst IP + top dst port → horizontal ranked bar; `GET /api/v1/analytics/top-talkers?hours=24&limit=20`
+  - Altyapı: backend route YOK, frontend component YOK
+- [ ] **D5** — Alert Volume Stacked Area Chart
+  - `alerts` GROUP BY hour × severity → critical/high/medium renk kodlaması
+  - Altyapı: `alerts` tablosu VAR ✓, route YOK
+- [ ] **D2** — Protocol Distribution Donut
+  - `normalized_logs.network_protocol` GROUP BY; CIS Control 13.6
+  - Altyapı: `network_protocol` kolonu VAR ✓, route YOK
+- [ ] **D3** — Traffic Volume Area Chart (east-west / north-south)
+  - RFC1918 kaynak → iç/dış ayrımı, stacked area; Gartner NDR zorunlu
+  - Altyapı: `source_ip` kolonu VAR ✓, RFC1918 check aktif yanıtta VAR ✓
 
 #### Blok B — Bağımlı Dashboard Görselleri (~4-5 gün)
 
-- [ ] **D4** — Kill Chain Swimlane Timeline
-  - Mevcut liste → horizontal swimlane: her satır=kaynak IP, sütunlar=RECON/WEAPONIZE/ACCESS/LATERAL/FULL
-  - Tamamlanan aşama kırmızı, aktif titreşen; tıkla → log detayı
-  - `attack_chain_state` tablosundan beslenir — *G1 bittikten sonra anlamlı*
-  - Bağımlılık: G1
+- [ ] **D4** — Kill Chain Swimlane Timeline — Bağımlılık: G1 ✓ (zaten tamamlandı, yapılabilir)
+- [ ] **D8** — DNS Analiz Derinleştirme — Bağımlılık: G4 ✓
+- [ ] **D6** — Threat Intel Geo Harita + Composite Score — Bağımlılık: G3 ✓
 
-- [ ] **D8** — DNS Analiz Derinleştirme
-  - Sorgu tipi dağılımı (A/AAAA/MX/TXT/PTR/CNAME), NXDOMAIN trend, entropi yüksek domainler
-  - *G4 (DNS tunneling) sigma kuralları olmadan eksik kalır*
-  - Bağımlılık: G4
+#### Blok C — Karmaşık Görseller (ertelenebilir, F4 sonrası)
 
-- [ ] **D6** — Threat Intel Geo Harita + Score Dağılımı
-  - Choropleth harita: `country_code` → saldırı yoğunluğu; AbuseIPDB score bar chart
-  - *G3 (Feodo/ThreatFox/GreyNoise) ile country_code zenginleşirse daha değerli*
-  - Bağımlılık: G3 (opsiyonel, mevcut AbuseIPDB verisiyle de başlanabilir)
+- [ ] **D7** — East-West Connection Matrix Heatmap — Bağımlılık: F4
+- [ ] **D9** — Asset Risk Heatmap — Bağımlılık: F4
+- [ ] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
 
-#### Blok C — Karmaşık Görseller (ertelenebilir)
-
-- [ ] **D7** — East-West Connection Matrix Heatmap
-  - Satır=kaynak IP, sütun=hedef IP, hücre=connection sayısı (ısı yoğunluğu)
-  - *Gartner NDR zorunlu, Security Onion + Malcolm'da varsayılan olarak yok*
-  - Bağımlılık: F4 (anomaly engine entegrasyonu sonrası daha anlamlı)
-
-- [ ] **D9** — Asset Risk Heatmap
-  - `asset_baselines`: subnet × gün/saat heatmap, spike renk skalası
-  - Bağımlılık: F4
-
-- [ ] **D10** — MTTD/MTTR Metrik Paneli
-  - MTTD: `incident.created_at - first_event.timestamp` | MTTR: kapanma süresi
-  - *SOC KPI standardı (ArmorPoint, CrowdStrike)*
-  - Bağımlılık: incident lifecycle tamamlanmalı
-
-### AŞAMA 3 — Mimari Temizlik (1 Ay)
-
-- [ ] **F2-3** — 9 test dosyasını PG uyumlu hale getir
-  - `DatabaseManager(str(path))` → `tmp_db` fixture; Docker yoksa skip
-  - Dosyalar: test_database, test_correlator, test_detectors, test_fts_search, test_fp_manager,
-    test_asset_baseline, test_cross_domain_correlation, test_log_normalizer, test_pipeline_integration
-  - Bağımlılık: yok — ama F2-1/F2-2 için ön koşul
-
-- [ ] **F2-1** — `database.py` → sadece PostgreSQL implementasyonu
-  - SQLite `DatabaseManager` sınıfını sil; `database_pg.py` içeriğini merge et
-  - Bağımlılık: F2-3
-
-- [ ] **F2-2** — `database_pg.py` kaldır
-  - Bağımlılık: F2-1
-
-- [ ] **G2** — Suricata EVE JSON collector
-  - *CIS Controls v8.1 Safeguard 13.8 zorunlu. Zeek behavioral + Suricata imza = altın standart NSM*
-  - `server/suricata_collector.py` (zeek_collector.py pattern), EVE JSON → normalized_logs, 5+ sigma kuralı
-  - Bağımlılık: F2 tamamlanmış olursa testler güvenilir
-
-- [ ] **F3** — Ham SQL → DB metodları (5 modül)
-  - correlator.py → `db.get_normalized_logs_for_rule()`
-  - asset_baseline.py, retention.py, routes/mitre.py, routes/network_intel.py
-  - Bağımlılık: F2 (PG-only, `%s` sabit)
-
-- [ ] **F4** — Anomaly engine → kill chain entegrasyonu
-  - *Gartner NDR: ML anomaly behavioral context içinde değerlendirilmeli*
-  - `anomaly/engine.py`: threshold aşınca `CorrelatedEvent` üret → `attack_chain_tracker.record()`
-  - `event_action = "anomaly_spike"`, severity dynamic
-  - Bağımlılık: bağımsız; G2 sonrası yapılırsa 3 kaynak (Zeek + Suricata + ML) birlikte akar
-
-- [ ] **F2-6** — Alembic: DATABASE_URL zorunlu olduğunda migration notları güncelle
-
-### AŞAMA 4 — Derinleştirme (2-3 Ay)
-
-- [ ] **T2-3** — MFA (TOTP) — `auth.py`'a pyotp entegrasyonu
-  - *Verizon DBIR 2025: kimlik bilgisi hırsızlığı tüm ihlallerin %32'si. NIS2 Article 21(2)(i)*
+### AŞAMA 3 — Güvenlik Derinleştirme
 
 - [ ] **U3** — Tamperproof audit log (SHA-256 zinciri)
-  - Her `audit_log` kaydı önceki kaydın hash'ini içerir
-  - *NIST SP 800-92 §3.2: log bütünlüğü koruması temel gereklilik. T2 ticari ön koşulu*
-  - Bağımlılık: F2 (PG atomik yazma garantisi)
+  - *NIST SP 800-92 §3.2 + NIS2 Article 21(2)(i): log bütünlüğü yasal gereklilik. Attacker PG'ye erişirse audit siler.*
+  - **Altyapı:** `audit_log` tablosu VAR ✓; `previous_hash` kolonu YOK (Alembic 006 eklenecek); `hashlib` stdlib VAR ✓
+  - **Yapılacaklar:** `audit_log` tablosuna `previous_hash VARCHAR(64)` ekle (Alembic 006); insert_audit_log() SHA-256 chain; `GET /api/v1/audit-log/verify` bütünlük route
+  - Bağımlılık: yok (SQLite/PG uyumlu)
+  - Tahmini süre: 2-3 gün
 
-- [ ] **U4** — Beaconing detection (NetFlow inter-arrival time)
-  - *MITRE ATT&CK T1071: C2 implantları ±%10-15 jitter ile düzenli iletişim kurar*
-  - Bağımlılık: F4 (anomaly pipeline hazırsa kill chain'e beslenebilir)
+- [ ] **U4** — Beaconing detection (C2 inter-arrival time)
+  - *MITRE ATT&CK T1071: Cobalt Strike default 60s, APT1 5m jitter ±%10-15. Zeek conn logs akar ama analiz yok.*
+  - **Altyapı:** `server/detectors/beaconing.py` YOK (yazılacak); STAGE_MAP'te `"firewall_beacon": "recon"` VAR ✓ (`"c2_beaconing"` eklenecek); `normalized_logs` Zeek conn kayıtları VAR ✓; TimescaleDB aggregation uygun ✓
+  - **Yapılacaklar:** `beaconing.py` — (src_ip, dst_ip, dst_port) grup, inter-arrival time stddev; jitter < %20 + interval < 5dk → `c2_beaconing` alert; correlator loop'una ekle (5dk aralık)
+  - Bağımlılık: F4 sonrası yapılırsa kill chain'e daha temiz beslenir
+  - Tahmini süre: 2-3 gün
 
-- [ ] **U2** — Sysmon entegrasyonu
-  - *Verizon DBIR 2025: saldırıların %74'ü kimlik bilgisi içeriyor*
-  - EVTX parser mevcut — event 4624/4625/4768/4769 mapping ekle
+- [ ] **T2-3** — MFA / TOTP
+  - *Verizon DBIR 2025: kimlik ihlallerinin %32'si. NIS2 Article 21(2)(i) zorunlu.*
+  - **Altyapı:** `server/auth.py` VAR ✓; `pyotp` YOK (`pip install pyotp` gerekli); `users` tablosunda `totp_secret/totp_enabled` YOK (Alembic 006/007); frontend MFA sayfası YOK
+  - **Yapılacaklar:** `pyotp` bağımlılığı ekle; users tablosuna 2 kolon; `/auth/totp-setup` + `/auth/totp-verify` + `/auth/totp-confirm` route; frontend QR sayfası
+  - Bağımlılık: yok
+  - Tahmini süre: 3-4 gün
 
-- [ ] **U1** — East-West görünürlük (L3 switch NetFlow)
-  - *Gartner NDR: lateral movement iç ağda gerçekleşiyor, perimeter kör nokta*
-  - NetFlow altyapısı mevcut; GNS3 L3 switch konfig gerekir
+### AŞAMA 4 — Mimari Temizlik
 
-- [ ] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler)
-  - G5 point fix'ini genelleştirir; bağımlılık: G5
-
-- [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓ — Port/protocol input (P7) kaldı
+- [ ] **F2-3** — 9 test dosyasını PG uyumlu hale getir (`tmp_db` fixture; Docker yoksa skip)
+- [ ] **F2-1** — `database.py` → sadece PostgreSQL (SQLite sınıfını sil, `database_pg.py` merge)
+- [ ] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
+- [ ] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
+- [ ] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
-- [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle) — bağımlılık: U3 + F4
-- [ ] **U6** — Multi-tenant PostgreSQL RLS — bağımlılık: F2 + U3 + T1
-- [ ] **T1** — Hukuki altyapı (şirket, sözleşme, KVKK DPA, Tech E&O sigortası, SGB)
-- [ ] **T2** — Teknik ticari (T2-1 tamperproof, T2-2 at-rest şifreleme, T2-3 MFA, T2-4 RLS, T2-5 rate limiting)
-- [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — bağımlılık: T2
-- [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı, pricing sayfası) — bağımlılık: T1+T2+T3
+- [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle)
+  - **Altyapı:** `server/notifier.py` webhook VAR ✓; TheHive endpoint YOK; `THEHIVE_URL/THEHIVE_API_KEY` env eklenecek
+  - Bağımlılık: U3 + F4 tamamlanmalı (incident volume stabil olmalı)
+- [ ] **U6** — Multi-tenant PostgreSQL RLS — Bağımlılık: F2 + U3 + T1
+- [ ] **U1** — East-West görünürlük (L3 switch NetFlow) — NetFlow altyapısı VAR ✓, GNS3 L3 konfig gerekli
+- [ ] **T1** — Hukuki altyapı (şirket, KVKK DPA, Tech E&O sigortası)
+- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting)
+- [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — Bağımlılık: T2
+- [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
+- [ ] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler) — G5 point fix'ini genelleştirir
 
 ### Küçük Kod Sorunları (Herhangi Bir Anda)
 
 - [ ] `correlator.py:178` — Yanıltıcı yorum `"JSON + sigma_v1 YAML"` → `"JSON korelasyon kuralları"`
 - [ ] `correlator.py:244` — Sessiz `except: pass` → `logger.debug("ws broadcast: %s", exc)`
+- [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓ — Port/protocol input (P7) kaldı
 
 ---
 
