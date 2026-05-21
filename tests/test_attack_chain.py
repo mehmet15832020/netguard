@@ -205,7 +205,7 @@ class TestAutoBlock:
                 _auto_block_full_chain(_full_trigger("5.6.7.8"))
         mock_manager.block_ip.assert_not_called()
         mock_fp.is_suppressed.assert_called_once_with(
-            event_action="full_attack_chain",
+            event_action="full_attack_chain_detected",
             source_ip="5.6.7.8",
             tenant_id="default",
         )

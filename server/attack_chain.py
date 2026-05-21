@@ -32,14 +32,28 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# Per-IP lock prevents TOCTOU race between is_ip_blocked() check and block_ip() call.
+_block_locks: dict[str, threading.Lock] = defaultdict(threading.Lock)
+_block_locks_meta = threading.Lock()
+
+
+def _get_block_lock(ip: str) -> threading.Lock:
+    with _block_locks_meta:
+        return _block_locks[ip]
+
 
 def _load_protected_networks() -> list:
     nets = [
+        # IPv4 RFC1918 + loopback + link-local
         ipaddress.ip_network("10.0.0.0/8"),
         ipaddress.ip_network("172.16.0.0/12"),
         ipaddress.ip_network("192.168.0.0/16"),
         ipaddress.ip_network("127.0.0.0/8"),
         ipaddress.ip_network("169.254.0.0/16"),
+        # IPv6 loopback, ULA, link-local
+        ipaddress.ip_network("::1/128"),
+        ipaddress.ip_network("fc00::/7"),
+        ipaddress.ip_network("fe80::/10"),
     ]
     for cidr in os.getenv("PROTECTED_CIDRS", "").split(","):
         cidr = cidr.strip()
@@ -301,29 +315,39 @@ def _auto_block_full_chain(trigger: dict) -> None:
     if any(addr in net for net in _PROTECTED_NETWORKS):
         logger.info("AUTO_BLOCK atlandı (korumalı ağ): %s", source_ip)
         return
-    try:
-        from server.fp_manager import fp_manager
-        if fp_manager.is_suppressed(event_action="full_attack_chain", source_ip=source_ip, tenant_id="default"):
-            logger.info("AUTO_BLOCK atlandı (FP kuralı): %s", source_ip)
-            return
-        from server.database import db
-        if db.is_ip_blocked(source_ip, tenant_id="default"):
-            logger.debug("AUTO_BLOCK atlandı (zaten bloklu): %s", source_ip)
-            return
-        from server.active_response import active_response_manager
-        stages = ", ".join(trigger.get("stages") or ["unknown"])
-        result = active_response_manager.block_ip(
-            source_ip,
-            f"Otomatik bloklama: FULL_ATTACK_CHAIN ({stages})",
-            "system/kill_chain",
-            tenant_id="default",
-        )
-        if result.get("success"):
-            logger.info("AUTO_BLOCK başarılı [%s] provider=%s", source_ip, result.get("provider"))
-        else:
-            logger.error("AUTO_BLOCK provider başarısız [%s]: %s", source_ip, result.get("error"))
-    except Exception as exc:
-        logger.error("AUTO_BLOCK_ON_FULL_CHAIN hata [%s]: %s", source_ip, exc)
+
+    min_severity = os.getenv("BLOCK_MIN_SEVERITY", "high")
+    severity = trigger.get("severity", "info")
+    _sev_order = {"info": 1, "warning": 2, "high": 3, "critical": 4}
+    if _sev_order.get(severity, 0) < _sev_order.get(min_severity, 3):
+        logger.info("AUTO_BLOCK atlandı (severity %s < %s): %s", severity, min_severity, source_ip)
+        return
+
+    ip_lock = _get_block_lock(source_ip)
+    with ip_lock:
+        try:
+            from server.fp_manager import fp_manager
+            if fp_manager.is_suppressed(event_action="full_attack_chain_detected", source_ip=source_ip, tenant_id="default"):
+                logger.info("AUTO_BLOCK atlandı (FP kuralı): %s", source_ip)
+                return
+            from server.database import db
+            if db.is_ip_blocked(source_ip, tenant_id="default"):
+                logger.debug("AUTO_BLOCK atlandı (zaten bloklu): %s", source_ip)
+                return
+            from server.active_response import active_response_manager
+            stages = ", ".join(trigger.get("stages") or ["unknown"])
+            result = active_response_manager.block_ip(
+                source_ip,
+                f"Otomatik bloklama: FULL_ATTACK_CHAIN ({stages})",
+                "system/kill_chain",
+                tenant_id="default",
+            )
+            if result.get("success"):
+                logger.info("AUTO_BLOCK başarılı [%s] provider=%s", source_ip, result.get("provider"))
+            else:
+                logger.error("AUTO_BLOCK provider başarısız [%s]: %s", source_ip, result.get("error"))
+        except Exception as exc:
+            logger.error("AUTO_BLOCK_ON_FULL_CHAIN hata [%s]: %s", source_ip, exc, exc_info=True)
 
 
 def chain_trigger_to_correlated_event(trigger: dict, db_save: bool = True):

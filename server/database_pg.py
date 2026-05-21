@@ -1429,16 +1429,36 @@ class DatabaseManager:
             row = conn.execute("SELECT * FROM threat_intel_cache WHERE ip=%s", (ip,)).fetchone()
         return dict(row) if row else None
 
-    def save_threat_intel(self, ip: str, score: int, total_reports: int, country_code: str, isp: str) -> None:
+    def save_threat_intel(self, ip: str, score: int, total_reports: int,
+                          country_code: str, isp: str,
+                          feodo_listed: bool = False, feodo_malware: str = "",
+                          threatfox_score: int = 0, threatfox_malware: str = "",
+                          greynoise_noise: bool = False, greynoise_riot: bool = False,
+                          greynoise_classification: str = "",
+                          composite_score: int = 0) -> None:
         with self._connect() as conn:
             conn.execute(
-                """INSERT INTO threat_intel_cache (ip, score, total_reports, country_code, isp, queried_at)
-                   VALUES (%s,%s,%s,%s,%s,%s)
+                """INSERT INTO threat_intel_cache
+                     (ip, score, total_reports, country_code, isp,
+                      feodo_listed, feodo_malware,
+                      threatfox_score, threatfox_malware,
+                      greynoise_noise, greynoise_riot, greynoise_classification,
+                      composite_score, queried_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (ip) DO UPDATE SET
                        score=EXCLUDED.score, total_reports=EXCLUDED.total_reports,
                        country_code=EXCLUDED.country_code, isp=EXCLUDED.isp,
+                       feodo_listed=EXCLUDED.feodo_listed, feodo_malware=EXCLUDED.feodo_malware,
+                       threatfox_score=EXCLUDED.threatfox_score, threatfox_malware=EXCLUDED.threatfox_malware,
+                       greynoise_noise=EXCLUDED.greynoise_noise, greynoise_riot=EXCLUDED.greynoise_riot,
+                       greynoise_classification=EXCLUDED.greynoise_classification,
+                       composite_score=EXCLUDED.composite_score,
                        queried_at=EXCLUDED.queried_at""",
-                (ip, score, total_reports, country_code, isp, _now()),
+                (ip, score, total_reports, country_code, isp,
+                 feodo_listed, feodo_malware,
+                 threatfox_score, threatfox_malware,
+                 greynoise_noise, greynoise_riot, greynoise_classification,
+                 composite_score, _now()),
             )
 
     # ------------------------------------------------------------------ #

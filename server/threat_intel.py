@@ -10,6 +10,7 @@ Desteklenen kaynaklar:
 composite_score: 0-100 agirlikli skor (G3-4)
 """
 
+import ipaddress
 import json
 import logging
 import os
@@ -62,17 +63,19 @@ def _refresh_feodo() -> None:
         logger.info("Feodo Tracker guncellendi: %d C2 IP", len(new_data))
     except Exception as exc:
         logger.warning("Feodo Tracker cekilemedi: %s", exc)
+        # Back off: update timestamp to avoid hammering on repeated failures.
+        with _feodo_lock:
+            _feodo_last_fetch = time.monotonic()
 
 
 def _feodo_check(ip: str) -> dict:
     with _feodo_lock:
         stale = (time.monotonic() - _feodo_last_fetch) > _FEODO_TTL
-        cached = dict(_feodo_data)
+        entry = _feodo_data.get(ip)
     if stale:
         _refresh_feodo()
         with _feodo_lock:
-            cached = dict(_feodo_data)
-    entry = cached.get(ip)
+            entry = _feodo_data.get(ip)
     if entry:
         return {"listed": True, "malware": entry["malware"], "port": entry["port"]}
     return {"listed": False, "malware": "", "port": 0}
@@ -119,10 +122,13 @@ def _compute_composite(abuseipdb_score: int, feodo_listed: bool,
     score += threatfox_score * 0.25
     if greynoise_classification == "malicious":
         score += 20.0
-    if greynoise_noise:
-        score = min(score, 40.0)
-    if greynoise_riot:
-        score = min(score, 20.0)
+    # RIOT/noise caps apply only when no authoritative C2 feed confirms the IP.
+    # A Feodo-listed C2 server capping to 20 would be a critical false negative.
+    if not feodo_listed:
+        if greynoise_noise:
+            score = min(score, 40.0)
+        if greynoise_riot:
+            score = min(score, 20.0)
     return min(100, int(score))
 
 
@@ -200,6 +206,10 @@ def lookup(ip: str) -> Optional[dict]:
     Once cache'e bakar (24h TTL), sonra tum kaynaklari sirayla cagirdir.
     Private IP → None doner.
     """
+    try:
+        ipaddress.ip_address(ip)
+    except ValueError:
+        return None
     if _is_private_ip(ip):
         return None
 

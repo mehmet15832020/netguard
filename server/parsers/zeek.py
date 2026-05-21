@@ -41,6 +41,7 @@ def _subdomain_labels(query: str) -> list[str]:
 def _shannon_entropy(s: str) -> float:
     if not s:
         return 0.0
+    s = s.lower()
     freq: dict[str, int] = {}
     for c in s:
         freq[c] = freq.get(c, 0) + 1
@@ -85,7 +86,7 @@ def parse_dns(row: dict) -> Optional[NormalizedLog]:
     indicators: list[str] = []
     severity = "info"
 
-    if max_entropy > _DNS_ENTROPY_THRESHOLD:
+    if max_entropy >= _DNS_ENTROPY_THRESHOLD:
         indicators.append(f"[HIGH_ENTROPY:{max_entropy:.1f}]")
         severity = "high"
     if query_len > _DNS_LONG_QUERY_THRESHOLD:
@@ -109,6 +110,8 @@ def parse_dns(row: dict) -> Optional[NormalizedLog]:
         event_action="dns_query",
         source_ip=row.get("id.orig_h"),
         destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
         network_protocol=row.get("proto", "udp"),
         message=message,
         tags=["zeek", "dns"],

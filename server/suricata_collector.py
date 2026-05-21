@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 SURICATA_EVE_LOG  = Path(os.getenv("SURICATA_EVE_LOG", "/var/log/suricata/eve.json"))
 POLL_INTERVAL     = int(os.getenv("SURICATA_POLL_INTERVAL", "5"))
-_OFFSET_FILE      = Path(os.getenv("SURICATA_OFFSET_FILE", "/tmp/netguard_suricata_offset.json"))
+_OFFSET_FILE      = Path(os.getenv("SURICATA_OFFSET_FILE", "/var/lib/netguard/suricata_offset.json"))
 _LOG_RETENTION_DAYS = int(os.getenv("SURICATA_LOG_RETENTION_DAYS", "7"))
 _CLEANUP_INTERVAL   = 3600
 
@@ -42,11 +43,25 @@ def _load_state() -> tuple[int, int]:
 
 
 def _save_offset(offset: int, inode: int) -> None:
+    """Offset'i atomik write ile sakla (tempfile + os.replace)."""
     try:
-        _OFFSET_FILE.write_text(
-            json.dumps({str(SURICATA_EVE_LOG): {"offset": offset, "inode": inode}}),
-            encoding="utf-8",
+        _OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        content = json.dumps({str(SURICATA_EVE_LOG): {"offset": offset, "inode": inode}})
+        fd, tmp_path = tempfile.mkstemp(
+            dir=_OFFSET_FILE.parent, prefix=".suricata_offset_", suffix=".tmp"
         )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, _OFFSET_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except Exception as exc:
         logger.warning("Suricata offset kaydedilemedi: %s", exc)
 
@@ -60,6 +75,9 @@ def collect_once() -> int:
     """
     EVE JSON dosyasını yeni satırlar için tara.
     Döner: normalize edilip kaydedilen satır sayısı.
+
+    Bu fonksiyon senkron / blocking I/O içerir.
+    asyncio bağlamında asyncio.to_thread() ile çağrılmalıdır.
     """
     global _offset, _inode
 
@@ -83,6 +101,7 @@ def collect_once() -> int:
         return 0
 
     written = 0
+    start_offset = _offset
     try:
         with SURICATA_EVE_LOG.open("rb") as fh:
             fh.seek(_offset)
@@ -105,8 +124,12 @@ def collect_once() -> int:
                     written += 1
                 except Exception as exc:
                     logger.error("Suricata log kaydedilemedi: %s", exc)
+                    # At-least-once: rollback offset so this line is retried
+                    _offset -= len(raw_line)
+                    break
     except OSError as exc:
         logger.error("Suricata EVE log okunamadı: %s", exc)
+        _offset = start_offset
         return written
 
     _save_offset(_offset, _inode)
@@ -155,13 +178,13 @@ async def run_suricata_collector() -> None:
     last_cleanup = 0.0
     while True:
         try:
-            collect_once()
+            await asyncio.to_thread(collect_once)
         except Exception as exc:
             logger.error("Suricata collector hatası: %s", exc)
         now = time.time()
         if now - last_cleanup > _CLEANUP_INTERVAL:
             try:
-                cleanup_old_logs()
+                await asyncio.to_thread(cleanup_old_logs)
             except Exception as exc:
                 logger.error("Suricata cleanup hatası: %s", exc)
             last_cleanup = now
