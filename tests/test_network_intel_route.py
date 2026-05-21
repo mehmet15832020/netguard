@@ -187,6 +187,47 @@ class TestJA3Detection:
         assert len(ja4_events) >= 1
         assert ja4_events[0]["fingerprint_type"] == "ja4"
 
+    def test_bad_ja3_with_normal_ja4_fingerprint_type_ja3(self, client, tmp_db):
+        """bad_ja3 + normal_ja4 senaryosu: route 'ja3' döndürmeli."""
+        _insert_log(
+            tmp_db, "tls_suspicious_fingerprint",
+            source_ip="5.6.7.11",
+            severity="critical",
+            message="SSL/TLS c2.evil.com JA4=t13d1234h2_aabbcc… JA3=eb989049…[KNOWN_MALWARE_JA3]",
+        )
+
+        resp = client.get("/api/v1/network/intelligence")
+        events = resp.json()["ja3_suspicious"]
+        matched = [e for e in events if e["source_ip"] == "5.6.7.11"]
+        assert len(matched) >= 1
+        assert matched[0]["fingerprint_type"] == "ja3"
+
+    def test_e2e_parse_ssl_to_route_ja4(self, client, tmp_db):
+        """parse_ssl → log → route: gerçek parser çıktısından fingerprint_type doğrula."""
+        from server.parsers.zeek import parse_ssl, _KNOWN_BAD_JA4
+        bad_ja4 = next(iter(_KNOWN_BAD_JA4))
+        row = {
+            "ts": 1700000000.0, "id.orig_h": "9.8.7.6", "id.resp_h": "203.0.113.1",
+            "id.resp_p": 443, "server_name": "c2.evil.example", "subject": "",
+            "validation_status": "ok", "ja4": bad_ja4,
+        }
+        log = parse_ssl(row)
+        assert log is not None
+        assert log.event_action == "tls_suspicious_fingerprint"
+
+        _insert_log(
+            tmp_db, log.event_action,
+            source_ip="9.8.7.6",
+            severity=log.severity,
+            message=log.message,
+        )
+
+        resp = client.get("/api/v1/network/intelligence")
+        events = resp.json()["ja3_suspicious"]
+        matched = [e for e in events if e["source_ip"] == "9.8.7.6"]
+        assert len(matched) >= 1
+        assert matched[0]["fingerprint_type"] == "ja4"
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  3. SSL Anomali tespiti

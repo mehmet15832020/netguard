@@ -75,7 +75,11 @@ def network_intelligence(
         ).fetchall()
         for r in rows:
             msg = r["message"] or ""
-            if "JA4=" in msg or "KNOWN_MALWARE_JA4" in msg:
+            if "KNOWN_MALWARE_JA4" in msg:
+                fp_type = "ja4"
+            elif "KNOWN_MALWARE_JA3" in msg:
+                fp_type = "ja3"
+            elif "JA4=" in msg:
                 fp_type = "ja4"
             else:
                 fp_type = "ja3"

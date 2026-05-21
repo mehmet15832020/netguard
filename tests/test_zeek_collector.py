@@ -240,7 +240,7 @@ class TestParseSsl:
         assert "KNOWN_MALWARE_JA4" in log.message
 
     def test_unknown_ja4_info(self):
-        log = parse_ssl(self._row(ja4="t13d1234h2_aabbccdd1234_aabbccdd1234"))
+        log = parse_ssl(self._row(ja4="t13d1234h2_8daaf6152771_e5627efa2ab1"))
         assert log.severity == "info"
         assert log.event_action == "ssl_connection"
 
@@ -255,6 +255,15 @@ class TestParseSsl:
         log = parse_ssl(self._row(ja4=ja4, ja3=ja3))
         assert "JA4=" in log.message
         assert "JA3=" not in log.message
+
+    def test_bad_ja3_with_normal_ja4_shows_ja3_malware_in_message(self):
+        bad_ja3 = next(iter(_KNOWN_BAD_JA3))
+        ja4 = "t13d1516h2_8daaf6152771_e5627efa2ab1"
+        log = parse_ssl(self._row(ja4=ja4, ja3=bad_ja3))
+        assert log.severity == "critical"
+        assert "ja3_malware" in log.tags
+        assert "KNOWN_MALWARE_JA3" in log.message
+        assert "JA4=" in log.message
 
     def test_ja3_shown_when_no_ja4(self):
         log = parse_ssl(self._row(ja3="aabbccdd11223344aabbccdd11223344"))

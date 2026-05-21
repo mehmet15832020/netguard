@@ -246,9 +246,14 @@ _KNOWN_BAD_JA3: frozenset[str] = frozenset({
     "c35f59b9517c4b87e17bc7cf7d94a2f7",  # Hancitor dropper       T1203
 })
 
-# Kaynak: FoxIO JA4 Database (ja4db.com), Elastic Security Research, Hunt.io
 # JA4 format: {protocol}{tls_ver}{sni}{cipher_count}{ext_count}{alpn}_{cipher_hash}_{ext_hash}
 # Chrome 110+ dahil tüm modern istemcilerde deterministik — JA3'ün yerini almaktadır.
+#
+# UYARI: Bu hash'ler araştırma derlemesinden (FoxIO blog, Elastic Security, Hunt.io) türetilmiş
+# olup henüz abuse.ch SSLBL veya Driftnet.io gibi doğrulanmış IoC feed'leriyle karşılaştırılmamıştır.
+# Operatörler bu kümeyi canlı JA4 feed'leriyle (FoxIO JA4+ DB, abuse.ch SSLBL JA4 desteği
+# eklendiğinde) güncellemeli. Şu haliyle mekanizma doğru, küme genişletilmeli.
+# TODO: threat_intel.py pattern'i ile feed entegrasyonu — F3 fazında değerlendir.
 _KNOWN_BAD_JA4: frozenset[str] = frozenset({
     # ── CobaltStrike ──────────────────────────────────────────────────
     "t13d1516h2_8daaf6152771_b0da82dd1658",  # CS 4.x default beacon   T1071.001
@@ -260,6 +265,7 @@ _KNOWN_BAD_JA4: frozenset[str] = frozenset({
     "t13d190900_9dc949149365_e7c285222651",  # Havoc C2                T1071.001
     # ── RAT families ──────────────────────────────────────────────────
     "t13d190900_9dc949149365_5a92aefeae2d",  # AsyncRAT / QuasarRAT    T1219
+    # TODO: JA4S (server-side) tespiti — Sliver/CS listener profillemesi için daha güvenilir
 })
 
 
@@ -267,10 +273,10 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     sni = row.get("server_name") or ""
     validation = row.get("validation_status") or ""
     subject = row.get("subject") or ""
-    ja3 = row.get("ja3") or ""
-    ja3s = row.get("ja3s") or ""
-    ja4 = row.get("ja4") or ""
-    ja4s = row.get("ja4s") or ""
+    ja3 = (row.get("ja3") or "").strip()
+    ja3s = (row.get("ja3s") or "").strip()
+    ja4 = (row.get("ja4") or "").strip()
+    ja4s = (row.get("ja4s") or "").strip()
 
     if sni == "-":
         sni = ""
@@ -308,10 +314,10 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         msg_parts.append(f"JA4={ja4[:12]}…")
         if bad_ja4:
             msg_parts.append("[KNOWN_MALWARE_JA4]")
-    elif ja3:
+    if bad_ja3:
+        msg_parts.append(f"JA3={ja3[:8]}…[KNOWN_MALWARE_JA3]")
+    elif ja3 and not ja4:
         msg_parts.append(f"JA3={ja3[:8]}…")
-        if bad_ja3:
-            msg_parts.append("[KNOWN_MALWARE_JA3]")
 
     extra: dict = {}
     if ja4:
