@@ -96,7 +96,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 - [x] **F4** — Anomaly engine → kill chain entegrasyonu
   - *Gartner NDR: ML anomali behavioral context'te değerlendirilmeli. Slow-and-low saldırılar Sigma eşiğini geçer, IsolationForest yakalar — ama şu an kill chain'e beslenmiyor.*
-  - **Teslim:** `engine.py` her anomaly tespitinde `attack_chain_tracker.record(source_ip, "anomaly_detected")` çağrısı eklendi; IsolationForest + Z-score anomaly artık kill chain RECON aşamasına beslenyor; 1 entegrasyon testi ✓
+  - **Teslim:** `engine.py` anomaly tespitinde trigger yakalanıyor → `chain_trigger_to_correlated_event()` çağrısı, FULL_ATTACK_CHAIN alerti/auto-block tetikleniyor; IP doğrulaması; quality audit düzeltmeleri (F4+U2 kritik bulgular) — 1311 toplam test ✓
 
 ---
 
@@ -197,7 +197,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1151 test, 0 hata (17 Mayıs 2026)
+**Test durumu:** 1311 test, 0 hata (21 Mayıs 2026)
 
 ---
 
@@ -343,7 +343,7 @@ ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense 
 
 ### Test
 ```bash
-pytest tests/ -q   # → 1151 passed (16 Mayıs 2026)
+pytest tests/ -q   # → 1311 passed (21 Mayıs 2026)
 ```
 Test piramidi: birim + çapraz (iki modül arası) + entegrasyon (tam pipeline)
 
