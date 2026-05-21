@@ -964,7 +964,7 @@ class TestRateLimiting:
         assert r.status_code == 429
         assert "x-ratelimit-limit" in r.headers
 
-    def test_unblock_enforces_20_per_minute(self, tmp_db, monkeypatch):
+    def test_unblock_enforces_10_per_minute(self, tmp_db, monkeypatch):
         self._reset()
         from server import active_response as ar_mod
         monkeypatch.setattr(
@@ -972,14 +972,14 @@ class TestRateLimiting:
             lambda self, ip, actor, tenant_id: {"success": True, "provider": "opnsense"},
         )
         statuses = []
-        for i in range(21):
+        for i in range(11):
             r = client.delete(
                 f"/api/v1/response/block/203.0.113.{i+1}",
                 headers=_admin_auth(),
             )
             statuses.append(r.status_code)
         assert 429 in statuses
-        assert statuses.index(429) == 20
+        assert statuses.index(429) == 10
 
     def test_break_glass_enforces_5_per_minute(self, tmp_db, monkeypatch):
         self._reset()

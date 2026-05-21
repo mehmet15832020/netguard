@@ -34,8 +34,8 @@ def _auth_key(request: Request) -> str:
             sub = payload.get("sub")
             if sub:
                 return f"user:{sub}"
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("JWT doğrulaması başarısız, IP'ye dönülüyor: %s", exc)
     return get_remote_address(request)
 
 

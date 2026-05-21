@@ -327,10 +327,20 @@ def _auto_block_full_chain(trigger: dict) -> None:
     with ip_lock:
         try:
             from server.fp_manager import fp_manager
+            from server.database import db
             if fp_manager.is_suppressed(event_action="full_attack_chain_detected", source_ip=source_ip, tenant_id="default"):
                 logger.info("AUTO_BLOCK atlandı (FP kuralı): %s", source_ip)
+                try:
+                    db.save_audit_event(
+                        actor="system/kill_chain",
+                        action="auto_block_skipped_fp",
+                        resource=f"ip:{source_ip}",
+                        detail="FP kuralı tetiklendi — FULL_ATTACK_CHAIN otomatik bloklama atlandı",
+                        ip_address=source_ip,
+                    )
+                except Exception:
+                    pass
                 return
-            from server.database import db
             if db.is_ip_blocked(source_ip, tenant_id="default"):
                 logger.debug("AUTO_BLOCK atlandı (zaten bloklu): %s", source_ip)
                 return

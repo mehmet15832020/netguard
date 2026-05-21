@@ -32,12 +32,14 @@ status: stable
 logsource:
     category: intrusion
 detection:
-    selection:
+    selection_alert:
         event_action: suricata_alert
         severity:
             - critical
             - warning
-    condition: selection
+    selection_anomaly:
+        event_action: suricata_anomaly
+    condition: selection_alert or selection_anomaly
 level: low
 ---
 title: Suricata Alert Burst — Scanning Activity

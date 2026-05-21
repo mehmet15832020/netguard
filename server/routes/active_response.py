@@ -189,7 +189,7 @@ async def block_ip(
 
 
 @router.delete("/response/block/{ip}", status_code=200)
-@limiter.limit("20/minute", key_func=_auth_key)
+@limiter.limit("10/minute", key_func=_auth_key)
 async def unblock_ip(
     request: Request,
     response: Response,

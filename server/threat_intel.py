@@ -118,7 +118,7 @@ def _compute_composite(abuseipdb_score: int, feodo_listed: bool,
     score = 0.0
     if feodo_listed:
         score = max(score, 85.0)
-    score += abuseipdb_score * 0.30
+    score += abuseipdb_score * 0.60
     score += threatfox_score * 0.25
     if greynoise_classification == "malicious":
         score += 20.0
