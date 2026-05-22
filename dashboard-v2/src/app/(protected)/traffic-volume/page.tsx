@@ -28,14 +28,16 @@ export default function TrafficVolumePage() {
 
   const isEmpty =
     !data ||
-    (data.series.internal.every((p) => p.v === 0) &&
-      data.series.external.every((p) => p.v === 0))
+    (data.series.east_west.every((p) => p.v === 0) &&
+      data.series.ns_egress.every((p) => p.v === 0) &&
+      data.series.ns_ingress.every((p) => p.v === 0))
 
-  const { totalInternal, totalExternal } = useMemo(() => {
-    if (!data) return { totalInternal: 0, totalExternal: 0 }
+  const { totalEastWest, totalNsEgress, totalNsIngress } = useMemo(() => {
+    if (!data) return { totalEastWest: 0, totalNsEgress: 0, totalNsIngress: 0 }
     return {
-      totalInternal: data.series.internal.reduce((sum, p) => sum + p.v, 0),
-      totalExternal: data.series.external.reduce((sum, p) => sum + p.v, 0),
+      totalEastWest:  data.series.east_west.reduce((sum, p) => sum + p.v, 0),
+      totalNsEgress:  data.series.ns_egress.reduce((sum, p) => sum + p.v, 0),
+      totalNsIngress: data.series.ns_ingress.reduce((sum, p) => sum + p.v, 0),
     }
   }, [data])
 
@@ -105,24 +107,29 @@ export default function TrafficVolumePage() {
         </div>
       )}
 
-      {/* Summary row */}
+      {/* Summary row — 3 istatistik */}
       {data && !isEmpty && (
         <div className="flex items-center gap-6 text-xs text-zinc-500">
-          <span>
-            Son {hours} saat —
-          </span>
+          <span>Son {hours} saat —</span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
-            Dahili Kaynaklı:{' '}
+            İç ↔ İç:{' '}
             <span className="text-zinc-300 font-medium">
-              {totalInternal.toLocaleString('tr-TR')}
+              {totalEastWest.toLocaleString('tr-TR')}
             </span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
-            Harici Kaynaklı:{' '}
+            İç → Dış:{' '}
             <span className="text-zinc-300 font-medium">
-              {totalExternal.toLocaleString('tr-TR')}
+              {totalNsEgress.toLocaleString('tr-TR')}
+            </span>
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
+            Dış → İç:{' '}
+            <span className="text-zinc-300 font-medium">
+              {totalNsIngress.toLocaleString('tr-TR')}
             </span>
           </span>
         </div>

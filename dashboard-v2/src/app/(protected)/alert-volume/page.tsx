@@ -96,7 +96,7 @@ export default function AlertVolumePage() {
         </div>
       ) : (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <AlertVolumeChart series={data!.series} hours={hours} height={320} />
+          <AlertVolumeChart series={data!.series} hours={hours} bucketMinutes={data!.bucket_minutes} height={320} />
         </div>
       )}
 

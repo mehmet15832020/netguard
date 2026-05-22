@@ -910,7 +910,8 @@ export interface AlertPoint {
 }
 
 export interface AlertVolumeResponse {
-  hours:  number
+  hours:          number
+  bucket_minutes: number
   series: {
     critical: AlertPoint[]
     high:     AlertPoint[]
@@ -939,9 +940,45 @@ export interface TrafficPoint {
 export interface TrafficVolumeResponse {
   hours:  number
   series: {
-    internal: TrafficPoint[]
-    external: TrafficPoint[]
+    east_west:  TrafficPoint[]
+    ns_egress:  TrafficPoint[]
+    ns_ingress: TrafficPoint[]
   }
+}
+
+export interface FailedAuthResponse {
+  hours:        number
+  total:        number
+  top_sources:  { ip: string; count: number }[]
+  hourly:       { t: string; v: number }[]
+}
+
+export interface DnsAnalysisResponse {
+  hours:          number
+  top_domains:    { ip: string; count: number }[]
+  nxdomain_count: number
+  nxdomain_rate:  number
+  hourly_volume:  { t: string; v: number }[]
+  unique_domains: number
+}
+
+export interface TlsFingerprintResponse {
+  hours:            number
+  top_fingerprints: { ja4: string; count: number; first_seen: string }[]
+  unique_count:     number
+}
+
+export interface BeaconingSummaryResponse {
+  hours:      number
+  detections: { source_ip: string; dest_ip: string; interval_s: number; count: number; detected_at: string }[]
+  total:      number
+}
+
+export interface ThreatSummaryResponse {
+  hours:          number
+  top_sources:    { ip: string; count: number; last_seen: string }[]
+  total_alerts:   number
+  critical_count: number
 }
 
 export const analyticsApi = {
@@ -956,5 +993,20 @@ export const analyticsApi = {
 
   trafficVolume: (hours = 24) =>
     request<TrafficVolumeResponse>(`/analytics/traffic-volume?hours=${hours}`),
+
+  failedAuth: (hours = 24) =>
+    request<FailedAuthResponse>(`/analytics/failed-auth?hours=${hours}`),
+
+  dnsAnalysis: (hours = 24, limit = 20) =>
+    request<DnsAnalysisResponse>(`/analytics/dns-analysis?hours=${hours}&limit=${limit}`),
+
+  tlsFingerprints: (hours = 24, limit = 20) =>
+    request<TlsFingerprintResponse>(`/analytics/tls-fingerprints?hours=${hours}&limit=${limit}`),
+
+  beaconingSummary: (hours = 24) =>
+    request<BeaconingSummaryResponse>(`/analytics/beaconing-summary?hours=${hours}`),
+
+  threatSummary: (hours = 24, limit = 20) =>
+    request<ThreatSummaryResponse>(`/analytics/threat-summary?hours=${hours}&limit=${limit}`),
 }
 

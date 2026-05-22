@@ -8,6 +8,7 @@ import {
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
   ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
   ChevronRight, Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart, TrendingUp,
+  GitBranch, AlertTriangle, Lock, Globe, Radio,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -31,17 +32,28 @@ const SECTIONS = [
     ],
   },
   {
-    label: 'Ağ İzleme',
+    label: 'Ağ Analitik',
     items: [
       { href: '/top-talkers',             label: 'Top Talkers',        icon: BarChart2 },
       { href: '/alert-volume',            label: 'Alert Hacmi',        icon: Activity },
       { href: '/protocol-distribution',   label: 'Protokol Dağılımı',  icon: PieChart },
       { href: '/traffic-volume',          label: 'Trafik Hacmi',       icon: TrendingUp },
-      { href: '/devices',                 label: 'Cihazlar',           icon: Monitor },
-      { href: '/topology',    label: 'Topoloji',     icon: Share2 },
-      { href: '/agents',      label: 'Agents',       icon: Server },
-      { href: '/snmp',        label: 'SNMP',         icon: Network },
-      { href: '/discovery',   label: 'Keşif',        icon: Radar },
+      { href: '/kill-chain-timeline',     label: 'Kill Chain Timeline', icon: GitBranch },
+      { href: '/threat-intel-summary',    label: 'Threat Intel',       icon: AlertTriangle },
+      { href: '/failed-auth',             label: 'Başarısız Auth',     icon: Lock },
+      { href: '/dns-analysis',            label: 'DNS Analiz',         icon: Globe },
+      { href: '/tls-fingerprints',        label: 'TLS / JA4',          icon: Fingerprint },
+      { href: '/beaconing',               label: 'Beaconing',          icon: Radio },
+    ],
+  },
+  {
+    label: 'Ağ İzleme',
+    items: [
+      { href: '/devices',    label: 'Cihazlar', icon: Monitor },
+      { href: '/topology',   label: 'Topoloji', icon: Share2 },
+      { href: '/agents',     label: 'Agents',   icon: Server },
+      { href: '/snmp',       label: 'SNMP',     icon: Network },
+      { href: '/discovery',  label: 'Keşif',    icon: Radar },
     ],
   },
   {

@@ -10,21 +10,24 @@ interface TrafficPoint {
 
 interface TrafficVolumeChartProps {
   series: {
-    internal: TrafficPoint[]
-    external: TrafficPoint[]
+    east_west:  TrafficPoint[]
+    ns_egress:  TrafficPoint[]
+    ns_ingress: TrafficPoint[]
   }
   hours?: number
   height?: number
 }
 
 const TRAFFIC_COLORS: Record<string, string> = {
-  internal: '#6366f1',
-  external: '#f97316',
+  east_west:  '#6366f1',
+  ns_egress:  '#f97316',
+  ns_ingress: '#ef4444',
 }
 
 const TRAFFIC_LABELS: Record<string, string> = {
-  internal: 'Dahili Kaynaklı',
-  external: 'Harici Kaynaklı',
+  east_west:  'İç ↔ İç (East-West)',
+  ns_egress:  'İç → Dış (N-S Egress)',
+  ns_ingress: 'Dış → İç (N-S Ingress)',
 }
 
 function fmtTime(iso: string, multiDay: boolean): string {
@@ -39,10 +42,15 @@ function fmtTime(iso: string, multiDay: boolean): string {
 
 export function TrafficVolumeChart({ series, hours = 24, height = 320 }: TrafficVolumeChartProps) {
   const multiDay = hours > 24
-  const stackOrder: Array<keyof typeof series> = ['external', 'internal']
+  const stackOrder: Array<keyof typeof series> = ['ns_ingress', 'ns_egress', 'east_west']
 
   const option = useMemo(() => {
-    const src = (series.external?.length ? series.external : series.internal) ?? []
+    const src =
+      series.east_west?.length
+        ? series.east_west
+        : series.ns_egress?.length
+          ? series.ns_egress
+          : series.ns_ingress ?? []
     const times = src.map((p) => fmtTime(p.t, multiDay))
 
     return {
@@ -95,7 +103,7 @@ export function TrafficVolumeChart({ series, hours = 24, height = 320 }: Traffic
         emphasis: { focus: 'series' },
       })),
     }
-  }, [series, hours, height])
+  }, [series, hours])
 
   return (
     <ReactECharts option={option} style={{ height }} notMerge />

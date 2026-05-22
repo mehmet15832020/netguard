@@ -15,8 +15,9 @@ interface AlertVolumeChartProps {
     warning:  AlertPoint[]
     info:     AlertPoint[]
   }
-  hours?: number
-  height?: number
+  hours?:         number
+  bucketMinutes?: number
+  height?:        number
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
@@ -33,22 +34,28 @@ const SEVERITY_LABELS: Record<string, string> = {
   info:     'Bilgi',
 }
 
-function fmtTime(iso: string, multiDay: boolean): string {
+function fmtTime(iso: string, bucketMinutes: number): string {
   const d = new Date(iso)
-  const opts: Intl.DateTimeFormatOptions = multiDay
-    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
-    : { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
-  return multiDay
-    ? d.toLocaleString('tr-TR', opts)
-    : d.toLocaleTimeString('tr-TR', opts)
+  if (bucketMinutes <= 15) {
+    const hh = String(d.getUTCHours()).padStart(2, '0')
+    const mm = String(d.getUTCMinutes()).padStart(2, '0')
+    return `${hh}:${mm}`
+  }
+  if (bucketMinutes <= 60) {
+    const hh = String(d.getUTCHours()).padStart(2, '0')
+    return `${hh}:00`
+  }
+  const day = d.getUTCDate()
+  const hh  = String(d.getUTCHours()).padStart(2, '0')
+  return `${day}. ${hh}:00`
 }
 
-export function AlertVolumeChart({ series, hours = 24, height = 320 }: AlertVolumeChartProps) {
+export function AlertVolumeChart({ series, hours = 24, bucketMinutes = 60, height = 320 }: AlertVolumeChartProps) {
   const multiDay = hours > 24
   const stackOrder: Array<keyof typeof series> = ['info', 'warning', 'high', 'critical']
 
   const option = useMemo(() => {
-    const times = (series.critical ?? []).map((p) => fmtTime(p.t, multiDay))
+    const times = (series.critical ?? []).map((p) => fmtTime(p.t, bucketMinutes))
 
     return {
       backgroundColor: 'transparent',
@@ -94,7 +101,7 @@ export function AlertVolumeChart({ series, hours = 24, height = 320 }: AlertVolu
         emphasis: { focus: 'series' },
       })),
     }
-  }, [series, hours, height])
+  }, [series, hours, bucketMinutes])
 
   return (
     <ReactECharts option={option} style={{ height }} notMerge />
