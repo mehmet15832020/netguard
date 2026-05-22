@@ -10,6 +10,7 @@ GET /api/v1/analytics/dns-analysis          DNS sorgu analizi
 GET /api/v1/analytics/tls-fingerprints      TLS bağlantı parmak izi analizi
 GET /api/v1/analytics/beaconing-summary     C2 beaconing tespiti özeti
 GET /api/v1/analytics/threat-summary        Kritik tehdit özeti
+GET /api/v1/analytics/kill-chain-timeline   Kill chain swimlane — IP başına aşama olayları zaman çizelgesi
 """
 
 import logging
@@ -837,4 +838,109 @@ def threat_summary(
         top_sources=top_sources,
         total_alerts=total_alerts,
         critical_count=critical_count,
+    )
+
+
+# ─── Kill Chain Timeline ──────────────────────────────────────────────────────
+
+_STAGE_LABELS: dict[str, str] = {
+    "recon":    "Keşif",
+    "weaponize": "Silahlanma",
+    "access":   "Erişim",
+    "lateral":  "Yanal Hareket",
+}
+
+_FULL_THRESHOLD = 3
+
+
+class _ChainEvent(BaseModel):
+    stage: str
+    label: str
+    occurred_at: str
+
+
+class _ChainRow(BaseModel):
+    source_ip: str
+    chain_type: str
+    stage_count: int
+    events: list[_ChainEvent]
+    first_seen: str
+    last_seen: str
+
+
+class KillChainTimelineResponse(BaseModel):
+    hours: int
+    window_start: str
+    window_end: str
+    rows: list[_ChainRow]
+
+
+@router.get("/analytics/kill-chain-timeline", response_model=KillChainTimelineResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def kill_chain_timeline(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, tid]
+
+    with db._connect() as conn:
+        raw_rows = conn.execute(
+            f"""
+            SELECT source_ip, stage, occurred_at
+            FROM attack_chain_state
+            WHERE occurred_at >= %s
+              {tenant_clause}
+            ORDER BY occurred_at
+            """,
+            params,
+        ).fetchall()
+
+    ip_events: dict[str, list[dict]] = defaultdict(list)
+    for row in raw_rows:
+        occ = row["occurred_at"]
+        if not isinstance(occ, str):
+            occ = occ.isoformat()
+        ip_events[row["source_ip"]].append({"stage": row["stage"], "occurred_at": occ})
+
+    chain_rows: list[_ChainRow] = []
+    for source_ip, events in ip_events.items():
+        unique_stages = {e["stage"] for e in events}
+        stage_count = len(unique_stages)
+        chain_type = "FULL_ATTACK_CHAIN" if stage_count >= _FULL_THRESHOLD else "PARTIAL_ATTACK_CHAIN"
+        times = [e["occurred_at"] for e in events]
+        chain_rows.append(_ChainRow(
+            source_ip=source_ip,
+            chain_type=chain_type,
+            stage_count=stage_count,
+            events=[
+                _ChainEvent(
+                    stage=e["stage"],
+                    label=_STAGE_LABELS.get(e["stage"], e["stage"]),
+                    occurred_at=e["occurred_at"],
+                )
+                for e in events
+            ],
+            first_seen=min(times),
+            last_seen=max(times),
+        ))
+
+    chain_rows.sort(key=lambda r: (-r.stage_count, r.source_ip))
+
+    return KillChainTimelineResponse(
+        hours=hours,
+        window_start=since.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        window_end=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        rows=chain_rows[:limit],
     )

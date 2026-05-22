@@ -981,6 +981,28 @@ export interface ThreatSummaryResponse {
   critical_count: number
 }
 
+export interface KillChainEvent {
+  stage:       string
+  label:       string
+  occurred_at: string
+}
+
+export interface KillChainRow {
+  source_ip:   string
+  chain_type:  string
+  stage_count: number
+  events:      KillChainEvent[]
+  first_seen:  string
+  last_seen:   string
+}
+
+export interface KillChainTimelineResponse {
+  hours:        number
+  window_start: string
+  window_end:   string
+  rows:         KillChainRow[]
+}
+
 export const analyticsApi = {
   topTalkers: (hours = 24, limit = 10) =>
     request<TopTalkersResponse>(`/analytics/top-talkers?hours=${hours}&limit=${limit}`),
@@ -1008,5 +1030,8 @@ export const analyticsApi = {
 
   threatSummary: (hours = 24, limit = 20) =>
     request<ThreatSummaryResponse>(`/analytics/threat-summary?hours=${hours}&limit=${limit}`),
+
+  killChainTimeline: (hours = 24, limit = 20) =>
+    request<KillChainTimelineResponse>(`/analytics/kill-chain-timeline?hours=${hours}&limit=${limit}`),
 }
 

@@ -9,6 +9,7 @@ GET /api/v1/analytics/dns-analysis
 GET /api/v1/analytics/tls-fingerprints
 GET /api/v1/analytics/beaconing-summary
 GET /api/v1/analytics/threat-summary
+GET /api/v1/analytics/kill-chain-timeline
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -1222,3 +1223,148 @@ class TestThreatSummaryData:
 
         data = client.get("/api/v1/analytics/threat-summary").json()
         assert data["critical_count"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Kill Chain Timeline
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _insert_chain_stage(tmp_db, source_ip="1.2.3.4", stage="recon", minutes_ago=5, tenant_id="default"):
+    ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    with tmp_db._connect() as conn:
+        conn.execute(
+            "INSERT INTO attack_chain_state (source_ip, stage, occurred_at, tenant_id) VALUES (?, ?, ?, ?)",
+            (source_ip, stage, ts, tenant_id),
+        )
+
+
+class TestKillChainTimelineBasic:
+    def test_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/kill-chain-timeline")
+        assert resp.status_code == 200
+
+    def test_response_schema(self, client):
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        assert "hours" in data
+        assert "window_start" in data
+        assert "window_end" in data
+        assert "rows" in data
+        assert data["hours"] == 24
+
+    def test_empty_returns_empty_rows(self, client):
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        assert data["rows"] == []
+
+    def test_hours_reflected(self, client):
+        for h in [6, 48, 168]:
+            data = client.get(f"/api/v1/analytics/kill-chain-timeline?hours={h}").json()
+            assert data["hours"] == h
+
+
+class TestKillChainTimelineData:
+    def test_single_stage_event_returned(self, client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.0.0.1", stage="recon")
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        assert len(data["rows"]) == 1
+        row = data["rows"][0]
+        assert row["source_ip"] == "10.0.0.1"
+        assert len(row["events"]) == 1
+        assert row["events"][0]["stage"] == "recon"
+
+    def test_event_has_required_fields(self, client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.0.0.2", stage="weaponize")
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        ev = data["rows"][0]["events"][0]
+        assert "stage" in ev
+        assert "label" in ev
+        assert "occurred_at" in ev
+
+    def test_stage_label_populated(self, client, tmp_db):
+        for stage, expected_label in [
+            ("recon", "Keşif"),
+            ("weaponize", "Silahlanma"),
+            ("access", "Erişim"),
+            ("lateral", "Yanal Hareket"),
+        ]:
+            _insert_chain_stage(tmp_db, source_ip=f"10.0.1.{STAGE_ORDER_MAP[stage]}", stage=stage)
+
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        label_map = {r["events"][0]["stage"]: r["events"][0]["label"] for r in data["rows"]}
+        assert label_map["recon"] == "Keşif"
+        assert label_map["weaponize"] == "Silahlanma"
+        assert label_map["access"] == "Erişim"
+        assert label_map["lateral"] == "Yanal Hareket"
+
+    def test_full_chain_type_for_3_stages(self, client, tmp_db):
+        for stage in ["recon", "weaponize", "access"]:
+            _insert_chain_stage(tmp_db, source_ip="10.0.0.3", stage=stage)
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        row = next(r for r in data["rows"] if r["source_ip"] == "10.0.0.3")
+        assert row["chain_type"] == "FULL_ATTACK_CHAIN"
+        assert row["stage_count"] == 3
+
+    def test_partial_chain_type_for_2_stages(self, client, tmp_db):
+        for stage in ["recon", "weaponize"]:
+            _insert_chain_stage(tmp_db, source_ip="10.0.0.4", stage=stage)
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        row = next(r for r in data["rows"] if r["source_ip"] == "10.0.0.4")
+        assert row["chain_type"] == "PARTIAL_ATTACK_CHAIN"
+        assert row["stage_count"] == 2
+
+    def test_rows_sorted_by_stage_count_desc(self, client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.1.1.1", stage="recon")
+        for stage in ["recon", "weaponize", "access"]:
+            _insert_chain_stage(tmp_db, source_ip="10.1.1.2", stage=stage)
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        stage_counts = [r["stage_count"] for r in data["rows"]]
+        assert stage_counts == sorted(stage_counts, reverse=True)
+
+    def test_old_events_excluded(self, client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.0.0.5", stage="recon", minutes_ago=200)
+        data = client.get("/api/v1/analytics/kill-chain-timeline?hours=1").json()
+        assert all(r["source_ip"] != "10.0.0.5" for r in data["rows"])
+
+    def test_first_seen_last_seen_order(self, client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.0.0.6", stage="recon",     minutes_ago=20)
+        _insert_chain_stage(tmp_db, source_ip="10.0.0.6", stage="weaponize", minutes_ago=10)
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        row = next(r for r in data["rows"] if r["source_ip"] == "10.0.0.6")
+        assert row["first_seen"] < row["last_seen"]
+
+    def test_multiple_ips_returned(self, client, tmp_db):
+        for ip in ["10.2.1.1", "10.2.1.2", "10.2.1.3"]:
+            _insert_chain_stage(tmp_db, source_ip=ip, stage="recon")
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        ips = {r["source_ip"] for r in data["rows"]}
+        assert {"10.2.1.1", "10.2.1.2", "10.2.1.3"}.issubset(ips)
+
+    def test_limit_respected(self, client, tmp_db):
+        for i in range(10):
+            _insert_chain_stage(tmp_db, source_ip=f"10.3.0.{i + 1}", stage="recon")
+        data = client.get("/api/v1/analytics/kill-chain-timeline?limit=3").json()
+        assert len(data["rows"]) <= 3
+
+    def test_window_start_end_present(self, client, tmp_db):
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        assert data["window_start"] < data["window_end"]
+
+
+class TestKillChainTimelineTenantIsolation:
+    def test_tenant_sees_only_own_data(self, client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.9.9.1", stage="recon", tenant_id="default")
+        _insert_chain_stage(tmp_db, source_ip="10.9.9.2", stage="recon", tenant_id="other")
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        ips = {r["source_ip"] for r in data["rows"]}
+        assert "10.9.9.1" in ips
+        assert "10.9.9.2" not in ips
+
+    def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
+        _insert_chain_stage(tmp_db, source_ip="10.9.9.3", stage="recon", tenant_id="default")
+        _insert_chain_stage(tmp_db, source_ip="10.9.9.4", stage="recon", tenant_id="other")
+        data = superadmin_client.get("/api/v1/analytics/kill-chain-timeline").json()
+        ips = {r["source_ip"] for r in data["rows"]}
+        assert "10.9.9.3" in ips
+        assert "10.9.9.4" in ips
+
+
+STAGE_ORDER_MAP = {"recon": 1, "weaponize": 2, "access": 3, "lateral": 4}
