@@ -113,14 +113,14 @@ export default function TrafficVolumePage() {
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
-            İç (East-West):{' '}
+            Dahili Kaynaklı:{' '}
             <span className="text-zinc-300 font-medium">
               {totalInternal.toLocaleString('tr-TR')}
             </span>
           </span>
           <span className="flex items-center gap-1.5">
             <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
-            Dış (North-South):{' '}
+            Harici Kaynaklı:{' '}
             <span className="text-zinc-300 font-medium">
               {totalExternal.toLocaleString('tr-TR')}
             </span>

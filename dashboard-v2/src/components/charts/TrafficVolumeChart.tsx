@@ -23,16 +23,18 @@ const TRAFFIC_COLORS: Record<string, string> = {
 }
 
 const TRAFFIC_LABELS: Record<string, string> = {
-  internal: 'İç (East-West)',
-  external: 'Dış (North-South)',
+  internal: 'Dahili Kaynaklı',
+  external: 'Harici Kaynaklı',
 }
 
 function fmtTime(iso: string, multiDay: boolean): string {
   const d = new Date(iso)
-  if (multiDay) {
-    return d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-  }
-  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  const opts: Intl.DateTimeFormatOptions = multiDay
+    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
+    : { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
+  return multiDay
+    ? d.toLocaleString('tr-TR', opts)
+    : d.toLocaleTimeString('tr-TR', opts)
 }
 
 export function TrafficVolumeChart({ series, hours = 24, height = 320 }: TrafficVolumeChartProps) {
@@ -40,7 +42,8 @@ export function TrafficVolumeChart({ series, hours = 24, height = 320 }: Traffic
   const stackOrder: Array<keyof typeof series> = ['external', 'internal']
 
   const option = useMemo(() => {
-    const times = (series.external ?? []).map((p) => fmtTime(p.t, multiDay))
+    const src = (series.external?.length ? series.external : series.internal) ?? []
+    const times = src.map((p) => fmtTime(p.t, multiDay))
 
     return {
       backgroundColor: 'transparent',

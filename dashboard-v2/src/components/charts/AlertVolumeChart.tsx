@@ -35,10 +35,12 @@ const SEVERITY_LABELS: Record<string, string> = {
 
 function fmtTime(iso: string, multiDay: boolean): string {
   const d = new Date(iso)
-  if (multiDay) {
-    return d.toLocaleString('tr-TR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-  }
-  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
+  const opts: Intl.DateTimeFormatOptions = multiDay
+    ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
+    : { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' }
+  return multiDay
+    ? d.toLocaleString('tr-TR', opts)
+    : d.toLocaleTimeString('tr-TR', opts)
 }
 
 export function AlertVolumeChart({ series, hours = 24, height = 320 }: AlertVolumeChartProps) {

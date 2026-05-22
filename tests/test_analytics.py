@@ -1,6 +1,9 @@
 """
 Analytics API — birim + entegrasyon testleri.
 GET /api/v1/analytics/top-talkers
+GET /api/v1/analytics/alert-volume
+GET /api/v1/analytics/protocol-distribution
+GET /api/v1/analytics/traffic-volume
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -36,10 +39,12 @@ def _insert_log(
     destination_ip="5.6.7.8",
     destination_port=None,
     minutes_ago=5,
+    received_at_minutes_ago=None,
     tenant_id="default",
     network_protocol=None,
 ):
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    ra = (datetime.now(timezone.utc) - timedelta(minutes=received_at_minutes_ago or minutes_ago)).isoformat()
     with tmp_db._connect() as conn:
         conn.execute(
             """
@@ -57,7 +62,7 @@ def _insert_log(
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
-                ts, ts, ts,
+                ts, ra, ra,
                 source_ip, destination_ip, destination_port,
                 tenant_id, network_protocol,
             ),
@@ -733,6 +738,27 @@ class TestTrafficVolumeDirection:
         data = client.get("/api/v1/analytics/traffic-volume").json()
         assert sum(p["v"] for p in data["series"]["internal"]) == 1
 
+    def test_rfc1918_172_upper_boundary_is_internal(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="172.31.255.254")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+        assert sum(p["v"] for p in data["series"]["external"]) == 0
+
+    def test_rfc1918_172_above_range_is_external(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="172.32.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["external"]) == 1
+        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+
+    def test_rfc1918_172_below_range_is_external(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="172.15.255.255")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["external"]) == 1
+        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+
 
 class TestTrafficVolumeTimestamp:
     def test_old_logs_excluded(self, client, tmp_db):
@@ -746,6 +772,14 @@ class TestTrafficVolumeTimestamp:
 
         data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
         assert sum(p["v"] for p in data["series"]["external"]) == 1
+
+    def test_received_at_determines_bucket_not_timestamp(self, client, tmp_db):
+        # timestamp=3 saat önce (pencere dışı), received_at=5 dakika önce (pencere içi)
+        # Gruplama received_at üzerinden yapılmalı → log dahil edilmeli
+        _insert_log(tmp_db, source_ip="10.0.0.1", minutes_ago=180, received_at_minutes_ago=5)
+
+        data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
+        assert sum(p["v"] for p in data["series"]["internal"]) == 1
 
 
 class TestTrafficVolumeTenantIsolation:

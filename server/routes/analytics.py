@@ -1,10 +1,10 @@
 """
 NetGuard — Analytics API
 
-GET /api/v1/analytics/top-talkers
-  - Top kaynak IP'ler (en çok trafik üreten)
-  - Top hedef IP'ler (en çok trafik alan)
-  - Top hedef portlar (geçerli port aralığı: 1-65535)
+GET /api/v1/analytics/top-talkers           Top kaynak/hedef IP ve port sıralaması
+GET /api/v1/analytics/alert-volume          Saatlik alert hacmi × severity (stacked area)
+GET /api/v1/analytics/protocol-distribution Network protokol dağılımı (donut)
+GET /api/v1/analytics/traffic-volume        Dahili/harici kaynaklı trafik hacmi (stacked area)
 """
 
 import logging
@@ -143,13 +143,15 @@ def alert_volume(
     tid = tenant_scope(current_user)
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
+    since_trunc = since.replace(minute=0, second=0, microsecond=0)
 
+    _sev_ph = ", ".join(["%s"] * len(_SEVERITY_LEVELS))
     if tid is None:
         tenant_clause = ""
-        params: list = [since, now]
+        params: list = [since_trunc, now, *_SEVERITY_LEVELS]
     else:
         tenant_clause = "AND tenant_id = %s"
-        params = [since, now, tid]
+        params = [since_trunc, now, tid, *_SEVERITY_LEVELS]
 
     with db._connect() as conn:
         rows = conn.execute(
@@ -162,7 +164,7 @@ def alert_volume(
             WHERE triggered_at >= %s
               AND triggered_at <= %s
               {tenant_clause}
-              AND severity IN ('critical', 'high', 'warning', 'info')
+              AND severity IN ({_sev_ph})
             GROUP BY hour, severity
             ORDER BY hour
             """,
@@ -254,7 +256,7 @@ def protocol_distribution(
     return ProtocolDistributionResponse(hours=hours, total=total, protocols=protocols)
 
 
-_TRAFFIC_HOUR_EXPR = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+_TRAFFIC_HOUR_EXPR = "to_char(date_trunc('hour', received_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
 
 _RFC1918_LIKE = """(
     source_ip LIKE '10.%'
@@ -296,13 +298,14 @@ def traffic_volume(
     tid = tenant_scope(current_user)
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
+    since_trunc = since.replace(minute=0, second=0, microsecond=0)
 
     if tid is None:
         tenant_clause = ""
-        params: list = [since, since]
+        params: list = [since_trunc]
     else:
         tenant_clause = "AND tenant_id = %s"
-        params = [since, since, tid]
+        params = [since_trunc, tid]
 
     with db._connect() as conn:
         rows = conn.execute(
@@ -313,7 +316,6 @@ def traffic_volume(
                 COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
-              AND timestamp >= %s
               {tenant_clause}
               AND source_ip IS NOT NULL
             GROUP BY hour, direction

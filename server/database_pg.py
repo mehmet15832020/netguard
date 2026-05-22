@@ -88,7 +88,7 @@ class DatabaseManager:
             conninfo=url,
             min_size=2,
             max_size=10,
-            kwargs={"row_factory": dict_row},
+            kwargs={"row_factory": dict_row, "options": "-c timezone=UTC"},
             open=False,
         )
         self._pool.open(wait=True)

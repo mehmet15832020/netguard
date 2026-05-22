@@ -26,18 +26,13 @@ export default function AlertVolumePage() {
     staleTime: 30_000,
   })
 
-  const isEmpty =
-    !data ||
-    (data.series.critical.length === 0 &&
-      data.series.high.length === 0 &&
-      data.series.warning.length === 0 &&
-      data.series.info.length === 0)
-
   const totalAlerts = useMemo(() => {
     if (!data) return 0
     return [...data.series.critical, ...data.series.high, ...data.series.warning, ...data.series.info]
       .reduce((sum, p) => sum + p.v, 0)
   }, [data])
+
+  const isEmpty = !data || totalAlerts === 0
 
   return (
     <div className="p-6 space-y-6">
