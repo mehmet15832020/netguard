@@ -81,6 +81,7 @@ def _make_log(
         ),
         tags        = [proto, f"dst:{destination_port}"],
         extra       = {**extra, "packets": packets, "bytes": octets},
+        network_bytes = octets or None,
     )
 
 

@@ -145,8 +145,10 @@ class TestCorrelatorRun:
     def setup(self, tmp_path, monkeypatch):
         """Geçici DB ve boş kural listesiyle Correlator oluştur."""
         import server.database as db_module
+        import server.log_store as log_store_module
         test_db = DatabaseManager(str(tmp_path / "test.db"))
         monkeypatch.setattr(db_module, "db", test_db)
+        monkeypatch.setattr(log_store_module, "_db", test_db)
 
         import server.correlator as corr_module
         monkeypatch.setattr(corr_module, "db", test_db)
@@ -287,8 +289,10 @@ class TestThreatIntelEscalation:
     @pytest.fixture
     def setup(self, tmp_path, monkeypatch):
         import server.database as db_module
+        import server.log_store as log_store_module
         test_db = DatabaseManager(str(tmp_path / "test.db"))
         monkeypatch.setattr(db_module, "db", test_db)
+        monkeypatch.setattr(log_store_module, "_db", test_db)
         import server.correlator as corr_module
         monkeypatch.setattr(corr_module, "db", test_db)
         c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))

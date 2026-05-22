@@ -113,15 +113,15 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **D1** — Top Talkers Panel
   - Top src/dst IP + top dst port → horizontal ranked bar; `GET /api/v1/analytics/top-talkers?hours=24&limit=20`
   - **Teslim:** `server/routes/analytics.py`, `TopTalkersChart.tsx`, `/top-talkers` sayfası, sidebar eklendi; 20 test — 1389 toplam test ✓
-- [ ] **D5** — Alert Volume Stacked Area Chart
-  - `alerts` GROUP BY hour × severity → critical/high/medium renk kodlaması
-  - Altyapı: `alerts` tablosu VAR ✓, route YOK
-- [ ] **D2** — Protocol Distribution Donut
+- [x] **D5** — Alert Volume Stacked Area Chart
+  - `alerts` GROUP BY hour × severity → critical/high/warning/info renk kodlaması
+  - **Teslim:** `GET /api/v1/analytics/alert-volume`, `AlertVolumeChart.tsx`, `/alert-volume` sayfası; zero-fill (eksik saatler sıfırla), triggered_at <= NOW() guard, Alembic 007 (idx_alerts_tenant_time); 23 test — 1456 toplam test ✓
+- [x] **D2** — Protocol Distribution Donut
   - `normalized_logs.network_protocol` GROUP BY; CIS Control 13.6
-  - Altyapı: `network_protocol` kolonu VAR ✓, route YOK
-- [ ] **D3** — Traffic Volume Area Chart (east-west / north-south)
+  - **Teslim:** `GET /api/v1/analytics/protocol-distribution`, `ProtocolDonutChart.tsx`, `/protocol-distribution` sayfası; LOWER() case-insensitive, NULL/empty dışlama, yüzde hesabı; 20 test — 1456 toplam test ✓
+- [x] **D3** — Traffic Volume Area Chart (east-west / north-south)
   - RFC1918 kaynak → iç/dış ayrımı, stacked area; Gartner NDR zorunlu
-  - Altyapı: `source_ip` kolonu VAR ✓, RFC1918 check aktif yanıtta VAR ✓
+  - **Teslim:** `GET /api/v1/analytics/traffic-volume`, `TrafficVolumeChart.tsx`, `/traffic-volume` sayfası; CASE WHEN LIKE RFC1918 sınıflandırması (SQLite+PG uyumlu), zero-fill; 21 test — 88 analytics testi ✓
 
 #### Blok B — Bağımlı Dashboard Görselleri (~4-5 gün)
 

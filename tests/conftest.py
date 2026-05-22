@@ -173,6 +173,17 @@ def _reset_rate_limiters():
     except Exception:
         pass
 
+
+@pytest.fixture(autouse=True)
+def _reset_attack_chain_tracker():
+    """Her test öncesinde attack_chain_tracker._chains sıfırla — singleton state izolasyonu."""
+    try:
+        from server.attack_chain import attack_chain_tracker
+        with attack_chain_tracker._lock:
+            attack_chain_tracker._chains.clear()
+    except Exception:
+        pass
+
 _PG_TRUNCATE_TABLES = [
     "blocked_ips", "fp_rules", "asset_baselines", "attack_chain_state",
     "incident_events", "incidents", "topology_edges", "topology_nodes",
@@ -239,6 +250,7 @@ def tmp_db(tmp_path, monkeypatch):
     monkeypatch.setattr("server.routes.active_response.db", test_db)
     monkeypatch.setattr("server.routes.mitre.db", test_db)
     monkeypatch.setattr("server.routes.analytics.db", test_db)
+    monkeypatch.setattr("server.log_store._db", test_db)
     return test_db
 
 

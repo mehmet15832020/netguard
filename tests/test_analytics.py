@@ -4,6 +4,11 @@ GET /api/v1/analytics/top-talkers
 GET /api/v1/analytics/alert-volume
 GET /api/v1/analytics/protocol-distribution
 GET /api/v1/analytics/traffic-volume
+GET /api/v1/analytics/failed-auth
+GET /api/v1/analytics/dns-analysis
+GET /api/v1/analytics/tls-fingerprints
+GET /api/v1/analytics/beaconing-summary
+GET /api/v1/analytics/threat-summary
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -42,6 +47,8 @@ def _insert_log(
     received_at_minutes_ago=None,
     tenant_id="default",
     network_protocol=None,
+    event_action="connection",
+    tags="[]",
 ):
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     ra = (datetime.now(timezone.utc) - timedelta(minutes=received_at_minutes_ago or minutes_ago)).isoformat()
@@ -56,15 +63,16 @@ def _insert_log(
                message, tags, tenant_id, network_protocol)
             VALUES (?, ?, 'test', 'test',
                     ?, ?, ?,
-                    'info', 'network', 'connection',
+                    'info', 'network', ?,
                     ?, ?, ?,
-                    'test', '[]', ?, ?)
+                    'test', ?, ?, ?)
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
                 ts, ra, ra,
+                event_action,
                 source_ip, destination_ip, destination_port,
-                tenant_id, network_protocol,
+                tags, tenant_id, network_protocol,
             ),
         )
 
@@ -323,6 +331,7 @@ class TestAlertVolumeBasic:
         data = client.get("/api/v1/analytics/alert-volume").json()
         assert "hours" in data
         assert "series" in data
+        assert "bucket_minutes" in data
         for sev in ("critical", "high", "warning", "info"):
             assert sev in data["series"]
 
@@ -337,6 +346,36 @@ class TestAlertVolumeBasic:
     def test_hours_param_reflected(self, client):
         for h in [1, 6, 48, 168]:
             assert client.get(f"/api/v1/analytics/alert-volume?hours={h}").json()["hours"] == h
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  8b. Alert Volume — adaptive granularity (bucket_minutes)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestAlertVolumeAdaptiveGranularity:
+    def test_hours_1_returns_bucket_15(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=1").json()
+        assert data["bucket_minutes"] == 15
+
+    def test_hours_6_returns_bucket_15(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=6").json()
+        assert data["bucket_minutes"] == 15
+
+    def test_hours_7_returns_bucket_60(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=7").json()
+        assert data["bucket_minutes"] == 60
+
+    def test_hours_24_returns_bucket_60(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=24").json()
+        assert data["bucket_minutes"] == 60
+
+    def test_hours_25_returns_bucket_240(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=25").json()
+        assert data["bucket_minutes"] == 240
+
+    def test_hours_168_returns_bucket_240(self, client):
+        data = client.get("/api/v1/analytics/alert-volume?hours=168").json()
+        assert data["bucket_minutes"] == 240
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -635,7 +674,7 @@ class TestProtocolDistributionTenantIsolation:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-#  Traffic Volume tests
+#  Traffic Volume tests — 3-way East-West sınıflandırma
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestTrafficVolumeBasic:
@@ -647,13 +686,20 @@ class TestTrafficVolumeBasic:
         data = client.get("/api/v1/analytics/traffic-volume").json()
         assert "hours" in data
         assert "series" in data
-        assert "internal" in data["series"]
-        assert "external" in data["series"]
+        assert "east_west" in data["series"]
+        assert "ns_egress" in data["series"]
+        assert "ns_ingress" in data["series"]
+
+    def test_no_internal_or_external_keys(self, client):
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert "internal" not in data["series"]
+        assert "external" not in data["series"]
 
     def test_empty_db_returns_aligned_series(self, client):
         data = client.get("/api/v1/analytics/traffic-volume?hours=2").json()
-        assert len(data["series"]["internal"]) == len(data["series"]["external"])
-        assert len(data["series"]["internal"]) >= 2
+        lengths = [len(data["series"][k]) for k in ("east_west", "ns_egress", "ns_ingress")]
+        assert len(set(lengths)) == 1
+        assert lengths[0] >= 2
 
     def test_default_hours_is_24(self, client):
         assert client.get("/api/v1/analytics/traffic-volume").json()["hours"] == 24
@@ -682,117 +728,497 @@ class TestTrafficVolumeAuth:
 
 
 class TestTrafficVolumeDirection:
-    def test_rfc1918_10x_is_internal(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="10.0.0.1")
+    def test_rfc1918_src_to_rfc1918_dst_is_east_west(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
-        assert sum(p["v"] for p in data["series"]["external"]) == 0
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 1
+        assert sum(p["v"] for p in data["series"]["ns_egress"]) == 0
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 0
 
-    def test_rfc1918_192168_is_internal(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="192.168.1.100")
-
-        data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
-
-    def test_rfc1918_172_is_internal(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="172.16.0.1")
+    def test_rfc1918_src_to_public_dst_is_ns_egress(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="8.8.8.8")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+        assert sum(p["v"] for p in data["series"]["ns_egress"]) == 1
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 0
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 0
 
-    def test_public_ip_is_external(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="8.8.8.8")
-
-        data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["external"]) == 1
-        assert sum(p["v"] for p in data["series"]["internal"]) == 0
-
-    def test_mixed_traffic_classified(self, client, tmp_db):
-        for _ in range(3):
-            _insert_log(tmp_db, source_ip="10.0.0.1")
-        for _ in range(2):
-            _insert_log(tmp_db, source_ip="1.1.1.1")
+    def test_public_src_to_rfc1918_dst_is_ns_ingress(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="8.8.8.8", destination_ip="10.0.0.1")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 3
-        assert sum(p["v"] for p in data["series"]["external"]) == 2
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 1
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 0
+        assert sum(p["v"] for p in data["series"]["ns_egress"]) == 0
 
-    def test_null_source_ip_excluded(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip=None)
+    def test_both_public_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="8.8.8.8", destination_ip="1.1.1.1")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 0
-        assert sum(p["v"] for p in data["series"]["external"]) == 0
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 0
+        assert sum(p["v"] for p in data["series"]["ns_egress"]) == 0
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 0
+
+    def test_192168_src_to_172_dst_is_east_west(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="192.168.1.100", destination_ip="172.16.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 1
+
+    def test_loopback_to_rfc1918_is_east_west(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="127.0.0.1", destination_ip="10.0.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 1
+
+    def test_null_src_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip=None, destination_ip="10.0.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        total = sum(
+            sum(p["v"] for p in data["series"][k])
+            for k in ("east_west", "ns_egress", "ns_ingress")
+        )
+        assert total == 0
+
+    def test_null_dst_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip=None)
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        total = sum(
+            sum(p["v"] for p in data["series"][k])
+            for k in ("east_west", "ns_egress", "ns_ingress")
+        )
+        assert total == 0
 
     def test_series_always_same_length(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="10.0.0.1")
-        _insert_log(tmp_db, source_ip="8.8.8.8")
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1")
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="8.8.8.8")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert len(data["series"]["internal"]) == len(data["series"]["external"])
+        lengths = [len(data["series"][k]) for k in ("east_west", "ns_egress", "ns_ingress")]
+        assert len(set(lengths)) == 1
 
-    def test_loopback_is_internal(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="127.0.0.1")
-
-        data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
-
-    def test_rfc1918_172_upper_boundary_is_internal(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="172.31.255.254")
-
-        data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
-        assert sum(p["v"] for p in data["series"]["external"]) == 0
-
-    def test_rfc1918_172_above_range_is_external(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="172.32.0.1")
+    def test_mixed_traffic_correctly_classified(self, client, tmp_db):
+        for _ in range(3):
+            _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1")
+        for _ in range(2):
+            _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="8.8.8.8")
+        _insert_log(tmp_db, source_ip="1.1.1.1", destination_ip="10.0.0.1")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["external"]) == 1
-        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 3
+        assert sum(p["v"] for p in data["series"]["ns_egress"]) == 2
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 1
 
-    def test_rfc1918_172_below_range_is_external(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="172.15.255.255")
+    def test_172_16_to_172_31_range_is_rfc1918(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="172.31.255.254", destination_ip="172.16.0.1")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["external"]) == 1
-        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 1
+
+    def test_172_above_31_is_public(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="172.32.0.1", destination_ip="10.0.0.1")
+
+        data = client.get("/api/v1/analytics/traffic-volume").json()
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 1
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 0
 
 
 class TestTrafficVolumeTimestamp:
     def test_old_logs_excluded(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="10.0.0.1", minutes_ago=200)
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1", minutes_ago=200)
 
         data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 0
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 0
 
     def test_recent_logs_included(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="8.8.8.8", minutes_ago=10)
+        _insert_log(tmp_db, source_ip="8.8.8.8", destination_ip="10.0.0.1", minutes_ago=10)
 
         data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
-        assert sum(p["v"] for p in data["series"]["external"]) == 1
+        assert sum(p["v"] for p in data["series"]["ns_ingress"]) == 1
 
     def test_received_at_determines_bucket_not_timestamp(self, client, tmp_db):
-        # timestamp=3 saat önce (pencere dışı), received_at=5 dakika önce (pencere içi)
-        # Gruplama received_at üzerinden yapılmalı → log dahil edilmeli
-        _insert_log(tmp_db, source_ip="10.0.0.1", minutes_ago=180, received_at_minutes_ago=5)
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1",
+                    minutes_ago=180, received_at_minutes_ago=5)
 
         data = client.get("/api/v1/analytics/traffic-volume?hours=1").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 1
 
 
 class TestTrafficVolumeTenantIsolation:
     def test_admin_sees_only_own_tenant(self, client, tmp_db):
-        _insert_log(tmp_db, source_ip="10.0.0.1", tenant_id="default")
-        _insert_log(tmp_db, source_ip="10.0.0.2", tenant_id="other-tenant")
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1", tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", destination_ip="192.168.1.2", tenant_id="other-tenant")
 
         data = client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 1
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 1
 
     def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
-        _insert_log(tmp_db, source_ip="10.0.0.1", tenant_id="default")
-        _insert_log(tmp_db, source_ip="10.0.0.2", tenant_id="other-tenant")
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1", tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", destination_ip="192.168.1.2", tenant_id="other-tenant")
 
         data = superadmin_client.get("/api/v1/analytics/traffic-volume").json()
-        assert sum(p["v"] for p in data["series"]["internal"]) == 2
+        assert sum(p["v"] for p in data["series"]["east_west"]) == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Failed Auth tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestFailedAuthBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/failed-auth")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert "hours" in data
+        assert "total" in data
+        assert "top_sources" in data
+        assert "hourly" in data
+
+    def test_empty_db_returns_zero_total(self, client):
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 0
+        assert data["top_sources"] == []
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/failed-auth").json()["hours"] == 24
+
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/failed-auth").status_code == 401
+
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/failed-auth?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/failed-auth?hours=169").status_code == 422
+
+
+class TestFailedAuthData:
+    def test_ssh_failure_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.2.3.4", event_action="ssh_failure")
+        _insert_log(tmp_db, source_ip="1.2.3.4", event_action="ssh_failure")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 2
+        assert data["top_sources"][0]["ip"] == "1.2.3.4"
+        assert data["top_sources"][0]["count"] == 2
+
+    def test_brute_force_detected_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="5.5.5.5", event_action="brute_force_detected")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 1
+
+    def test_windows_logon_failure_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="6.6.6.6", event_action="windows_logon_failure")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 1
+
+    def test_authentication_failed_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="7.7.7.7", event_action="authentication_failed")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 1
+
+    def test_unrelated_event_not_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="8.8.8.8", event_action="connection")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 0
+
+    def test_top_sources_ordered_by_count_desc(self, client, tmp_db):
+        for _ in range(5):
+            _insert_log(tmp_db, source_ip="10.0.0.1", event_action="ssh_failure")
+        for _ in range(2):
+            _insert_log(tmp_db, source_ip="10.0.0.2", event_action="ssh_failure")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["top_sources"][0]["ip"] == "10.0.0.1"
+        assert data["top_sources"][0]["count"] == 5
+
+    def test_hourly_zero_filled(self, client):
+        data = client.get("/api/v1/analytics/failed-auth?hours=3").json()
+        assert len(data["hourly"]) >= 3
+
+    def test_old_logs_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.2.3.4", event_action="ssh_failure", minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/failed-auth?hours=1").json()
+        assert data["total"] == 0
+
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.2.3.4", event_action="ssh_failure", tenant_id="default")
+        _insert_log(tmp_db, source_ip="5.6.7.8", event_action="ssh_failure", tenant_id="other")
+
+        data = client.get("/api/v1/analytics/failed-auth").json()
+        assert data["total"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DNS Analysis tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDnsAnalysisBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/dns-analysis")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert "hours" in data
+        assert "top_queried_destinations" in data
+        assert "nxdomain_count" in data
+        assert "nxdomain_rate" in data
+        assert "hourly_volume" in data
+        assert "unique_destinations" in data
+
+    def test_empty_db_returns_zeros(self, client):
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["nxdomain_count"] == 0
+        assert data["nxdomain_rate"] == 0.0
+        assert data["unique_destinations"] == 0
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/dns-analysis").json()["hours"] == 24
+
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/dns-analysis").status_code == 401
+
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/dns-analysis?hours=0").status_code == 422
+
+    def test_limit_101_returns_422(self, client):
+        assert client.get("/api/v1/analytics/dns-analysis?limit=101").status_code == 422
+
+
+class TestDnsAnalysisData:
+    def test_dns_query_events_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="8.8.8.8")
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="8.8.8.8")
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="1.1.1.1")
+
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["unique_destinations"] == 2
+
+    def test_non_dns_events_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="connection", destination_ip="8.8.8.8")
+
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["unique_destinations"] == 0
+
+    def test_hourly_volume_zero_filled(self, client):
+        data = client.get("/api/v1/analytics/dns-analysis?hours=3").json()
+        assert len(data["hourly_volume"]) >= 3
+
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="8.8.8.8", tenant_id="default")
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="1.1.1.1", tenant_id="other")
+
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["unique_destinations"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  TLS Fingerprints tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTlsFingerprintsBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/tls-fingerprints")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert "hours" in data
+        assert "top_fingerprints" in data
+        assert "unique_count" in data
+
+    def test_empty_db_returns_zero(self, client):
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["unique_count"] == 0
+        assert data["top_fingerprints"] == []
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/tls-fingerprints").json()["hours"] == 24
+
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/tls-fingerprints").status_code == 401
+
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/tls-fingerprints?hours=0").status_code == 422
+
+    def test_limit_101_returns_422(self, client):
+        assert client.get("/api/v1/analytics/tls-fingerprints?limit=101").status_code == 422
+
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="tls_connection", tenant_id="default")
+        _insert_log(tmp_db, event_action="tls_connection", tenant_id="other")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["unique_count"] <= 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Beaconing Summary tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestBeaconingSummaryBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/beaconing-summary")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert "hours" in data
+        assert "detections" in data
+        assert "total" in data
+
+    def test_empty_db_returns_zero(self, client):
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["total"] == 0
+        assert data["detections"] == []
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/beaconing-summary").json()["hours"] == 24
+
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/beaconing-summary").status_code == 401
+
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/beaconing-summary?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/beaconing-summary?hours=169").status_code == 422
+
+
+class TestBeaconingSummaryData:
+    def test_c2_beaconing_events_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.5", destination_ip="1.2.3.4",
+                    event_action="c2_beaconing")
+        _insert_log(tmp_db, source_ip="10.0.0.5", destination_ip="1.2.3.4",
+                    event_action="c2_beaconing")
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["total"] == 2
+
+    def test_non_beaconing_events_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.5", event_action="connection")
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["total"] == 0
+
+    def test_detection_has_required_fields(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.5", destination_ip="1.2.3.4",
+                    event_action="c2_beaconing")
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["total"] == 1
+        det = data["detections"][0]
+        assert "source_ip" in det
+        assert "destination_ip" in det
+        assert "message" in det
+        assert "detected_at" in det
+
+    def test_old_events_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.5", event_action="c2_beaconing", minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/beaconing-summary?hours=1").json()
+        assert data["total"] == 0
+
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", event_action="c2_beaconing", tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", event_action="c2_beaconing", tenant_id="other")
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["total"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Threat Summary tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestThreatSummaryBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/threat-summary")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert "hours" in data
+        assert "top_sources" in data
+        assert "total_alerts" in data
+        assert "critical_count" in data
+
+    def test_empty_db_returns_zeros(self, client):
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["total_alerts"] == 0
+        assert data["critical_count"] == 0
+        assert data["top_sources"] == []
+
+    def test_default_hours_is_24(self, client):
+        assert client.get("/api/v1/analytics/threat-summary").json()["hours"] == 24
+
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/threat-summary").status_code == 401
+
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/threat-summary?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/threat-summary?hours=169").status_code == 422
+
+    def test_limit_101_returns_422(self, client):
+        assert client.get("/api/v1/analytics/threat-summary?limit=101").status_code == 422
+
+
+class TestThreatSummaryData:
+    def test_total_alerts_counts_all_severities(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical")
+        _insert_alert(tmp_db, severity="high")
+        _insert_alert(tmp_db, severity="info")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["total_alerts"] == 3
+
+    def test_critical_count_counts_only_critical(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical")
+        _insert_alert(tmp_db, severity="critical")
+        _insert_alert(tmp_db, severity="high")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["critical_count"] == 2
+
+    def test_threat_intel_sources_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.2.3.4", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["top_sources"][0]["ip"] == "1.2.3.4"
+
+    def test_non_threat_intel_sources_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="9.9.9.9", tags='[]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert not any(s["ip"] == "9.9.9.9" for s in data["top_sources"])
+
+    def test_old_alerts_excluded(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical", minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/threat-summary?hours=1").json()
+        assert data["total_alerts"] == 0
+
+    def test_tenant_isolation_alerts(self, client, tmp_db):
+        _insert_alert(tmp_db, severity="critical", tenant_id="default")
+        _insert_alert(tmp_db, severity="critical", tenant_id="other")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["critical_count"] == 1

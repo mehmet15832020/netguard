@@ -112,6 +112,7 @@ CREATE TABLE IF NOT EXISTS normalized_logs (
     message      TEXT NOT NULL,
     tags         TEXT NOT NULL DEFAULT '[]',
     extra        TEXT NOT NULL DEFAULT '{}',
+    network_bytes        INTEGER,
     processed_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_norm_timestamp   ON normalized_logs(timestamp);
@@ -924,8 +925,8 @@ class DatabaseManager:
                          received_at, severity, event_category, event_action,
                          source_ip, destination_ip, source_hostname, destination_hostname,
                          source_port, destination_port, network_protocol,
-                         username, message, tags, extra, processed_at, tenant_id)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         username, message, tags, extra, network_bytes, processed_at, tenant_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     log.log_id,
                     log.raw_id,
@@ -947,6 +948,7 @@ class DatabaseManager:
                     log.message,
                     json.dumps(log.tags),
                     json.dumps(log.extra),
+                    log.network_bytes,
                     log.processed_at.isoformat(),
                     tenant_id,
                 ))
@@ -1910,6 +1912,9 @@ class DatabaseManager:
             if "extra" not in cols:
                 conn.execute("ALTER TABLE normalized_logs ADD COLUMN extra TEXT NOT NULL DEFAULT '{}'")
                 logger.info("normalized_logs: 'extra' kolonu eklendi")
+            if "network_bytes" not in cols:
+                conn.execute("ALTER TABLE normalized_logs ADD COLUMN network_bytes INTEGER")
+                logger.info("normalized_logs: 'network_bytes' kolonu eklendi")
             if "tenant_id" in cols:
                 result = conn.execute(
                     "UPDATE normalized_logs SET tenant_id='default' WHERE tenant_id IS NULL"

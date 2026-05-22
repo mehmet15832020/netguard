@@ -341,8 +341,8 @@ class DatabaseManager:
                      received_at, severity, event_category, event_action,
                      source_ip, destination_ip, source_hostname, destination_hostname,
                      source_port, destination_port, network_protocol,
-                     username, message, tags, extra, processed_at, tenant_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     username, message, tags, extra, network_bytes, processed_at, tenant_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (log_id) DO NOTHING
             """, (
                 log.log_id,
@@ -365,6 +365,7 @@ class DatabaseManager:
                 log.message,
                 json.dumps(log.tags),
                 json.dumps(log.extra),
+                log.network_bytes,
                 log.processed_at,
                 tenant_id,
             ))

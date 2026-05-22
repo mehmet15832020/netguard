@@ -289,6 +289,7 @@ class NormalizedLog(BaseModel):
     message: str = Field(description="İnsan okunabilir normalize edilmiş mesaj")
     tags: list[str] = Field(default_factory=list, description="Ek etiketler")
     extra: dict = Field(default_factory=dict, description="Kaynağa özgü ek alanlar")
+    network_bytes: Optional[int] = None
     processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

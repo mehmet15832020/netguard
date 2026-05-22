@@ -269,11 +269,13 @@ class TestProcessAndStore:
         """Başarılı parse sonrası raw_logs.parse_status='success' yazılmalı."""
         import server.database as db_module
         import server.log_normalizer as norm_module
+        import server.log_store as log_store_module
 
         test_db_path = str(tmp_path / "test4.db")
         test_db = db_module.DatabaseManager(test_db_path)
         monkeypatch.setattr(db_module, "db", test_db)
         monkeypatch.setattr(norm_module, "db", test_db)
+        monkeypatch.setattr(log_store_module, "_db", test_db)
 
         raw = "Apr 12 10:23:45 myhost sshd[1234]: Failed password for root from 1.2.3.4 port 22 ssh2"
         process_and_store(raw, observer_hostname="myhost")

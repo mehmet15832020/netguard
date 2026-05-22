@@ -4,7 +4,12 @@ NetGuard — Analytics API
 GET /api/v1/analytics/top-talkers           Top kaynak/hedef IP ve port sıralaması
 GET /api/v1/analytics/alert-volume          Saatlik alert hacmi × severity (stacked area)
 GET /api/v1/analytics/protocol-distribution Network protokol dağılımı (donut)
-GET /api/v1/analytics/traffic-volume        Dahili/harici kaynaklı trafik hacmi (stacked area)
+GET /api/v1/analytics/traffic-volume        East-West / North-South trafik hacmi (stacked area)
+GET /api/v1/analytics/failed-auth           Başarısız kimlik doğrulama analizi
+GET /api/v1/analytics/dns-analysis          DNS sorgu analizi
+GET /api/v1/analytics/tls-fingerprints      TLS bağlantı parmak izi analizi
+GET /api/v1/analytics/beaconing-summary     C2 beaconing tespiti özeti
+GET /api/v1/analytics/threat-summary        Kritik tehdit özeti
 """
 
 import logging
@@ -51,10 +56,7 @@ def top_talkers(
     tid = tenant_scope(current_user)
     since = datetime.now(timezone.utc) - timedelta(hours=hours)
 
-    # TimescaleDB chunk pruning: received_at (partition key) + timestamp filtresi
-    # received_at ile chunk exclusion aktif olur; timestamp ile kayıt zamanı doğrulanır
     if tid is None:
-        # Superadmin — tüm tenant'lar
         tenant_clause = ""
         base_params = [since, since]
     else:
@@ -118,8 +120,20 @@ def top_talkers(
     )
 
 
-_ALERT_HOUR_EXPR = "to_char(date_trunc('hour', triggered_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+# ─── Alert Volume ─────────────────────────────────────────────────────────────
+
 _SEVERITY_LEVELS = ("critical", "high", "warning", "info")
+
+
+def _bucket_minutes(hours: int) -> int:
+    if hours <= 6:
+        return 15
+    if hours <= 24:
+        return 60
+    return 240
+
+
+_ALERT_HOUR_EXPR = "to_char(date_trunc('hour', triggered_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
 
 
 class _AlertPoint(BaseModel):
@@ -129,6 +143,7 @@ class _AlertPoint(BaseModel):
 
 class AlertVolumeResponse(BaseModel):
     hours: int
+    bucket_minutes: int
     series: dict[str, list[_AlertPoint]]
 
 
@@ -143,15 +158,20 @@ def alert_volume(
     tid = tenant_scope(current_user)
     now = datetime.now(timezone.utc)
     since = now - timedelta(hours=hours)
-    since_trunc = since.replace(minute=0, second=0, microsecond=0)
+    bm = _bucket_minutes(hours)
+
+    # SQL always groups by hour (portable across SQLite + PG).
+    # Zero-fill step uses bm to produce the correct number of buckets.
+    since_hour = since.replace(minute=0, second=0, microsecond=0)
+    now_hour = now.replace(minute=0, second=0, microsecond=0)
 
     _sev_ph = ", ".join(["%s"] * len(_SEVERITY_LEVELS))
     if tid is None:
         tenant_clause = ""
-        params: list = [since_trunc, now, *_SEVERITY_LEVELS]
+        params: list = [since_hour, now, *_SEVERITY_LEVELS]
     else:
         tenant_clause = "AND tenant_id = %s"
-        params = [since_trunc, now, tid, *_SEVERITY_LEVELS]
+        params = [since_hour, now, tid, *_SEVERITY_LEVELS]
 
     with db._connect() as conn:
         rows = conn.execute(
@@ -171,28 +191,52 @@ def alert_volume(
             params,
         ).fetchall()
 
-    # Pre-generate complete hourly axis so gaps are zero-filled, not dropped
-    since_trunc = since.replace(minute=0, second=0, microsecond=0)
-    now_trunc = now.replace(minute=0, second=0, microsecond=0)
-    n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
+    # Build zero-filled hourly axis; aggregate into bm-sized buckets in Python
+    n_hours = int((now_hour - since_hour).total_seconds() // 3600) + 1
     all_hours = [
-        (since_trunc + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
-        for i in range(n_buckets)
+        (since_hour + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+        for i in range(n_hours)
     ]
 
-    bucket: dict[str, dict[str, int]] = {h: {s: 0 for s in _SEVERITY_LEVELS} for h in all_hours}
+    # Accumulate DB rows into hourly dict
+    hour_sev: dict[str, dict[str, int]] = {h: {s: 0 for s in _SEVERITY_LEVELS} for h in all_hours}
     for r in rows:
         h = r["hour"]
-        if h in bucket:
-            bucket[h][r["severity"]] = r["cnt"]
+        if h in hour_sev:
+            hour_sev[h][r["severity"]] = r["cnt"]
+
+    # Merge hours into bm-minute buckets if needed
+    if bm == 60:
+        all_buckets = all_hours
+        bucket: dict[str, dict[str, int]] = hour_sev
+    else:
+        step_hours = bm // 60  # 240min → 4h steps; 15min → treat as 1h in SQLite
+        if bm < 60:
+            # 15-minute granularity: keep hourly buckets (SQLite-compatible)
+            all_buckets = all_hours
+            bucket = hour_sev
+        else:
+            # 4-hour granularity: merge groups of 4 hours
+            merged: dict[str, dict[str, int]] = {}
+            for i, h in enumerate(all_hours):
+                group_idx = i // step_hours
+                group_key = all_hours[group_idx * step_hours]
+                if group_key not in merged:
+                    merged[group_key] = {s: 0 for s in _SEVERITY_LEVELS}
+                for sev in _SEVERITY_LEVELS:
+                    merged[group_key][sev] += hour_sev[h][sev]
+            all_buckets = list(merged.keys())
+            bucket = merged
 
     series: dict[str, list[_AlertPoint]] = {
-        sev: [_AlertPoint(t=h, v=bucket[h][sev]) for h in all_hours]
+        sev: [_AlertPoint(t=b, v=bucket[b][sev]) for b in all_buckets]
         for sev in _SEVERITY_LEVELS
     }
 
-    return AlertVolumeResponse(hours=hours, series=series)
+    return AlertVolumeResponse(hours=hours, bucket_minutes=bm, series=series)
 
+
+# ─── Protocol Distribution ────────────────────────────────────────────────────
 
 class _ProtoCount(BaseModel):
     protocol: str
@@ -256,6 +300,8 @@ def protocol_distribution(
     return ProtocolDistributionResponse(hours=hours, total=total, protocols=protocols)
 
 
+# ─── Traffic Volume — East-West 3-way ────────────────────────────────────────
+
 _TRAFFIC_HOUR_EXPR = "to_char(date_trunc('hour', received_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
 
 _RFC1918_LIKE = """(
@@ -275,6 +321,26 @@ _RFC1918_LIKE = """(
     OR source_ip LIKE 'fe80:%'
     OR source_ip = '::1'
 )"""
+
+_RFC1918_DST_LIKE = """(
+    destination_ip LIKE '10.%'
+    OR destination_ip LIKE '192.168.%'
+    OR destination_ip LIKE '172.16.%' OR destination_ip LIKE '172.17.%'
+    OR destination_ip LIKE '172.18.%' OR destination_ip LIKE '172.19.%'
+    OR destination_ip LIKE '172.20.%' OR destination_ip LIKE '172.21.%'
+    OR destination_ip LIKE '172.22.%' OR destination_ip LIKE '172.23.%'
+    OR destination_ip LIKE '172.24.%' OR destination_ip LIKE '172.25.%'
+    OR destination_ip LIKE '172.26.%' OR destination_ip LIKE '172.27.%'
+    OR destination_ip LIKE '172.28.%' OR destination_ip LIKE '172.29.%'
+    OR destination_ip LIKE '172.30.%' OR destination_ip LIKE '172.31.%'
+    OR destination_ip LIKE '127.%'
+    OR destination_ip LIKE '169.254.%'
+    OR destination_ip LIKE 'fc%'
+    OR destination_ip LIKE 'fe80:%'
+    OR destination_ip = '::1'
+)"""
+
+_TRAFFIC_DIRECTIONS = ("east_west", "ns_egress", "ns_ingress")
 
 
 class _TrafficPoint(BaseModel):
@@ -312,12 +378,18 @@ def traffic_volume(
             f"""
             SELECT
                 {_TRAFFIC_HOUR_EXPR} AS hour,
-                CASE WHEN {_RFC1918_LIKE} THEN 'internal' ELSE 'external' END AS direction,
+                CASE
+                    WHEN {_RFC1918_LIKE} AND {_RFC1918_DST_LIKE} THEN 'east_west'
+                    WHEN {_RFC1918_LIKE} THEN 'ns_egress'
+                    WHEN {_RFC1918_DST_LIKE} THEN 'ns_ingress'
+                    ELSE NULL
+                END AS direction,
                 COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
               AND source_ip IS NOT NULL
+              AND destination_ip IS NOT NULL
             GROUP BY hour, direction
             ORDER BY hour
             """,
@@ -333,16 +405,436 @@ def traffic_volume(
     ]
 
     bucket: dict[str, dict[str, int]] = {
-        h: {"internal": 0, "external": 0} for h in all_hours
+        h: {d: 0 for d in _TRAFFIC_DIRECTIONS} for h in all_hours
     }
     for r in rows:
         h = r["hour"]
-        if h in bucket and r["direction"] in ("internal", "external"):
-            bucket[h][r["direction"]] += r["cnt"]
+        direction = r["direction"]
+        if h in bucket and direction in _TRAFFIC_DIRECTIONS:
+            bucket[h][direction] += r["cnt"]
 
     series: dict[str, list[_TrafficPoint]] = {
         direction: [_TrafficPoint(t=h, v=bucket[h][direction]) for h in all_hours]
-        for direction in ("internal", "external")
+        for direction in _TRAFFIC_DIRECTIONS
     }
 
     return TrafficVolumeResponse(hours=hours, series=series)
+
+
+# ─── Failed Auth ─────────────────────────────────────────────────────────────
+
+_FAILED_AUTH_ACTIONS = (
+    "ssh_failure",
+    "brute_force_detected",
+    "windows_logon_failure",
+    "failed_login",
+    "authentication_failed",
+)
+
+_NORM_HOUR_EXPR = "to_char(date_trunc('hour', received_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+
+
+class FailedAuthResponse(BaseModel):
+    hours: int
+    total: int
+    top_sources: list[_IPCount]
+    hourly: list[_AlertPoint]
+
+
+@router.get("/analytics/failed-auth", response_model=FailedAuthResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def failed_auth(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+    since_trunc = since.replace(minute=0, second=0, microsecond=0)
+
+    action_ph = ", ".join(["%s"] * len(_FAILED_AUTH_ACTIONS))
+    if tid is None:
+        tenant_clause = ""
+        base_params: list = [since_trunc, *_FAILED_AUTH_ACTIONS]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        base_params = [since_trunc, tid, *_FAILED_AUTH_ACTIONS]
+
+    with db._connect() as conn:
+        hourly_rows = conn.execute(
+            f"""
+            SELECT
+                {_NORM_HOUR_EXPR} AS hour,
+                COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action IN ({action_ph})
+            GROUP BY hour
+            ORDER BY hour
+            """,
+            base_params,
+        ).fetchall()
+
+        src_rows = conn.execute(
+            f"""
+            SELECT source_ip, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action IN ({action_ph})
+              AND source_ip IS NOT NULL
+            GROUP BY source_ip
+            ORDER BY cnt DESC
+            LIMIT 20
+            """,
+            base_params,
+        ).fetchall()
+
+    now_trunc = now.replace(minute=0, second=0, microsecond=0)
+    n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
+    all_hours = [
+        (since_trunc + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+        for i in range(n_buckets)
+    ]
+    hour_map: dict[str, int] = {r["hour"]: r["cnt"] for r in hourly_rows}
+    hourly = [_AlertPoint(t=h, v=hour_map.get(h, 0)) for h in all_hours]
+    total = sum(r["cnt"] for r in hourly_rows)
+    top_sources = [_IPCount(ip=r["source_ip"], count=r["cnt"]) for r in src_rows]
+
+    return FailedAuthResponse(hours=hours, total=total, top_sources=top_sources, hourly=hourly)
+
+
+# ─── DNS Analysis ─────────────────────────────────────────────────────────────
+
+class DnsAnalysisResponse(BaseModel):
+    hours: int
+    top_queried_destinations: list[_IPCount]
+    nxdomain_count: int
+    nxdomain_rate: float
+    hourly_volume: list[_AlertPoint]
+    unique_destinations: int
+
+
+@router.get("/analytics/dns-analysis", response_model=DnsAnalysisResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def dns_analysis(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+    since_trunc = since.replace(minute=0, second=0, microsecond=0)
+
+    if tid is None:
+        tenant_clause = ""
+        base_params: list = [since_trunc]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        base_params = [since_trunc, tid]
+
+    with db._connect() as conn:
+        dns_params = [*base_params, "dns_query"]
+        hourly_rows = conn.execute(
+            f"""
+            SELECT
+                {_NORM_HOUR_EXPR} AS hour,
+                COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+            GROUP BY hour
+            ORDER BY hour
+            """,
+            dns_params,
+        ).fetchall()
+
+        top_rows = conn.execute(
+            f"""
+            SELECT destination_ip, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND destination_ip IS NOT NULL
+            GROUP BY destination_ip
+            ORDER BY cnt DESC
+            LIMIT %s
+            """,
+            [*base_params, "dns_query", limit],
+        ).fetchall()
+
+        nxdomain_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message LIKE %s
+            """,
+            [*base_params, "dns_query", "%NXDOMAIN%"],
+        ).fetchone()
+
+        unique_row = conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT destination_ip) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND destination_ip IS NOT NULL
+            """,
+            dns_params,
+        ).fetchone()
+
+    now_trunc = now.replace(minute=0, second=0, microsecond=0)
+    n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
+    all_hours = [
+        (since_trunc + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+        for i in range(n_buckets)
+    ]
+    hour_map = {r["hour"]: r["cnt"] for r in hourly_rows}
+    hourly_volume = [_AlertPoint(t=h, v=hour_map.get(h, 0)) for h in all_hours]
+    total_dns = sum(r["cnt"] for r in hourly_rows)
+    nxdomain_count = nxdomain_row["cnt"] if nxdomain_row else 0
+    nxdomain_rate = round(nxdomain_count / total_dns * 100, 1) if total_dns > 0 else 0.0
+    unique_destinations = unique_row["cnt"] if unique_row else 0
+    top_queried = [_IPCount(ip=r["destination_ip"], count=r["cnt"]) for r in top_rows]
+
+    return DnsAnalysisResponse(
+        hours=hours,
+        top_queried_destinations=top_queried,
+        nxdomain_count=nxdomain_count,
+        nxdomain_rate=nxdomain_rate,
+        hourly_volume=hourly_volume,
+        unique_destinations=unique_destinations,
+    )
+
+
+# ─── TLS Fingerprints ─────────────────────────────────────────────────────────
+
+class _TlsFingerprint(BaseModel):
+    fingerprint: str
+    count: int
+
+
+class TlsFingerprintResponse(BaseModel):
+    hours: int
+    top_fingerprints: list[_TlsFingerprint]
+    unique_count: int
+
+
+@router.get("/analytics/tls-fingerprints", response_model=TlsFingerprintResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def tls_fingerprints(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, tid]
+
+    with db._connect() as conn:
+        top_rows = conn.execute(
+            f"""
+            SELECT message, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message IS NOT NULL
+              AND LENGTH(TRIM(message)) > 0
+            GROUP BY message
+            ORDER BY cnt DESC
+            LIMIT %s
+            """,
+            [*params, "tls_connection", limit],
+        ).fetchall()
+
+        unique_row = conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT message) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message IS NOT NULL
+              AND LENGTH(TRIM(message)) > 0
+            """,
+            [*params, "tls_connection"],
+        ).fetchone()
+
+    top_fingerprints = [
+        _TlsFingerprint(fingerprint=r["message"], count=r["cnt"])
+        for r in top_rows
+    ]
+    unique_count = unique_row["cnt"] if unique_row else 0
+
+    return TlsFingerprintResponse(
+        hours=hours,
+        top_fingerprints=top_fingerprints,
+        unique_count=unique_count,
+    )
+
+
+# ─── Beaconing Summary ────────────────────────────────────────────────────────
+
+class _BeaconingDetection(BaseModel):
+    source_ip: str
+    destination_ip: str
+    message: str
+    detected_at: str
+
+
+class BeaconingSummaryResponse(BaseModel):
+    hours: int
+    detections: list[_BeaconingDetection]
+    total: int
+
+
+@router.get("/analytics/beaconing-summary", response_model=BeaconingSummaryResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def beaconing_summary(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since, "c2_beaconing"]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, tid, "c2_beaconing"]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT source_ip, destination_ip, message, received_at
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+            ORDER BY received_at DESC
+            LIMIT 200
+            """,
+            params,
+        ).fetchall()
+
+    detections = [
+        _BeaconingDetection(
+            source_ip=r["source_ip"] or "",
+            destination_ip=r["destination_ip"] or "",
+            message=r["message"],
+            detected_at=r["received_at"],
+        )
+        for r in rows
+    ]
+
+    return BeaconingSummaryResponse(hours=hours, detections=detections, total=len(detections))
+
+
+# ─── Threat Summary ───────────────────────────────────────────────────────────
+
+class _ThreatSource(BaseModel):
+    ip: str
+    count: int
+
+
+class ThreatSummaryResponse(BaseModel):
+    hours: int
+    top_sources: list[_ThreatSource]
+    total_alerts: int
+    critical_count: int
+
+
+@router.get("/analytics/threat-summary", response_model=ThreatSummaryResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def threat_summary(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        count_params: list = [since]
+        critical_params: list = [since, "critical"]
+        src_params: list = [since, "critical", limit]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        count_params = [since, tid]
+        critical_params = [since, tid, "critical"]
+        src_params = [since, tid, "critical", limit]
+
+    with db._connect() as conn:
+        total_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM alerts
+            WHERE triggered_at >= %s
+              {tenant_clause}
+            """,
+            count_params,
+        ).fetchone()
+
+        critical_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM alerts
+            WHERE triggered_at >= %s
+              {tenant_clause}
+              AND severity = %s
+            """,
+            critical_params,
+        ).fetchone()
+
+        src_rows = conn.execute(
+            f"""
+            SELECT source_ip, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND tags LIKE %s
+              AND source_ip IS NOT NULL
+            GROUP BY source_ip
+            ORDER BY cnt DESC
+            LIMIT %s
+            """,
+            [*count_params, "%threat_intel%", limit],
+        ).fetchall()
+
+    total_alerts = total_row["cnt"] if total_row else 0
+    critical_count = critical_row["cnt"] if critical_row else 0
+    top_sources = [_ThreatSource(ip=r["source_ip"], count=r["cnt"]) for r in src_rows]
+
+    return ThreatSummaryResponse(
+        hours=hours,
+        top_sources=top_sources,
+        total_alerts=total_alerts,
+        critical_count=critical_count,
+    )
