@@ -288,14 +288,13 @@ def _parse_wazuh(raw: str, observer_hostname: str) -> Optional[dict]:
 def _parse_syslog(raw: str, observer_hostname: str) -> Optional[dict]:
     """Genel syslog satırını parse et — bilinen bir format bulunamazsa."""
     return dict(
-        timestamp         = datetime.now(timezone.utc),
-        severity          = "info",
-        event_category    = LogCategory.SYSTEM,
-        event_action      = "syslog",
-        source_ip         = None,            # Bilinmeyen kaynak — observer_hostname IP değil
-        observer_hostname = observer_hostname,
-        message           = raw[:500],
-        tags              = ["syslog"],
+        timestamp      = datetime.now(timezone.utc),
+        severity       = "info",
+        event_category = LogCategory.SYSTEM,
+        event_action   = "syslog",
+        source_ip      = None,
+        message        = raw[:500],
+        tags           = ["syslog"],
     )
 
 
@@ -397,11 +396,12 @@ def normalize(raw_content: str, observer_hostname: str) -> Optional[NormalizedLo
             logger.warning(f"Log timestamp anomalisi ({observer_hostname}): {reason}")
     parsed["tags"] = tags
 
+    parsed_hostname = parsed.pop("observer_hostname", observer_hostname)
     return NormalizedLog(
-        log_id      = str(uuid.uuid4()),
-        raw_id      = "",           # Çağıran tarafından doldurulur
-        source_type = source_type,
-        observer_hostname = observer_hostname,
+        log_id            = str(uuid.uuid4()),
+        raw_id            = "",
+        source_type       = source_type,
+        observer_hostname = parsed_hostname,
         **parsed,
     )
 
