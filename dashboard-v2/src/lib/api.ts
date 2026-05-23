@@ -100,11 +100,20 @@ async function request<T>(
 //  Auth
 // ------------------------------------------------------------------ //
 
+export interface Token {
+  access_token:  string | null
+  refresh_token: string | null
+  token_type:    string
+  expires_in:    number | null
+  mfa_required:  boolean
+  mfa_token:     string | null
+}
+
 export const authApi = {
   login: async (
     username: string,
     password: string,
-  ): Promise<{ access_token: string; refresh_token: string }> => {
+  ): Promise<Token> => {
     const res = await fetch(`${API}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -119,6 +128,18 @@ export const authApi = {
 
   logout: () =>
     request<{ ok: boolean }>('/auth/logout', { method: 'POST' }),
+
+  totpSetup: () =>
+    request<{ secret: string; otpauth_uri: string }>('/auth/totp-setup', { method: 'POST' }),
+
+  totpConfirm: (code: string) =>
+    request<{ enabled: boolean }>('/auth/totp-confirm', { method: 'POST', body: JSON.stringify({ code }) }),
+
+  totpVerify: (mfa_token: string, code: string) =>
+    request<Token>('/auth/totp-verify', { method: 'POST', body: JSON.stringify({ mfa_token, code }) }),
+
+  totpDisable: () =>
+    request<{ disabled: boolean }>('/auth/totp-disable', { method: 'POST' }),
 }
 
 // ------------------------------------------------------------------ //

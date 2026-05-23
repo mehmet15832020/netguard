@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { Settings, Save, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import { Settings, Save, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { correlationApi } from '@/lib/api'
+import { correlationApi, authApi } from '@/lib/api'
+import { QRCodeSVG } from 'qrcode.react'
 import { SeverityBadge } from '@/components/ui/severity-badge'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -128,6 +129,179 @@ function RuleCard({
   )
 }
 
+type MfaSetupData = { secret: string; otpauth_uri: string }
+
+function MfaSection() {
+  const [mfaEnabled, setMfaEnabled] = useState(false)
+  const [setupData, setSetupData] = useState<MfaSetupData | null>(null)
+  const [confirmCode, setConfirmCode] = useState('')
+  const [setupError, setSetupError] = useState('')
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const [disableLoading, setDisableLoading] = useState(false)
+
+  const handleEnable = async () => {
+    setSetupError('')
+    try {
+      const data = await authApi.totpSetup()
+      setSetupData(data)
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Kurulum başarısız')
+    }
+  }
+
+  const handleConfirm = async () => {
+    setSetupError('')
+    setConfirmLoading(true)
+    try {
+      await authApi.totpConfirm(confirmCode)
+      setMfaEnabled(true)
+      setSetupData(null)
+      setConfirmCode('')
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Geçersiz kod')
+    } finally {
+      setConfirmLoading(false)
+    }
+  }
+
+  const handleDisable = async () => {
+    setSetupError('')
+    setDisableLoading(true)
+    try {
+      await authApi.totpDisable()
+      setMfaEnabled(false)
+      setSetupData(null)
+      setConfirmCode('')
+    } catch (err) {
+      setSetupError(err instanceof Error ? err.message : 'Devre dışı bırakma başarısız')
+    } finally {
+      setDisableLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-sm font-medium text-zinc-300">İki Faktörlü Kimlik Doğrulama</h2>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Hesabınızı yetkisiz erişime karşı koruyun
+          </p>
+        </div>
+        {mfaEnabled ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-green-900/40 border border-green-700 px-2.5 py-0.5 text-xs font-medium text-green-400">
+            <ShieldCheck size={12} /> Etkin
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-zinc-800 border border-zinc-700 px-2.5 py-0.5 text-xs font-medium text-zinc-400">
+            <ShieldOff size={12} /> Devre Dışı
+          </span>
+        )}
+      </div>
+
+      {setupError && (
+        <div className="bg-red-900/30 border border-red-800 rounded px-3 py-2 text-red-400 text-xs">
+          {setupError}
+        </div>
+      )}
+
+      {!mfaEnabled && !setupData && (
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <p className="text-xs text-zinc-400">
+              TOTP tabanlı iki faktörlü kimlik doğrulamayı etkinleştirin.
+              Google Authenticator veya benzeri bir uygulama gereklidir.
+            </p>
+            <Button
+              size="sm"
+              onClick={handleEnable}
+              className="ml-4 shrink-0 bg-indigo-600 hover:bg-indigo-500 text-white text-xs"
+            >
+              Etkinleştir
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {!mfaEnabled && setupData && (
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="p-4 space-y-4">
+            <p className="text-xs text-zinc-400">
+              QR kodu Authenticator uygulamanızla tarayın veya gizli anahtarı manuel olarak girin.
+            </p>
+            <div className="flex justify-center">
+              <QRCodeSVG
+                value={setupData.otpauth_uri}
+                size={160}
+                bgColor="#18181b"
+                fgColor="#f4f4f5"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-zinc-400">Manuel Gizli Anahtar</Label>
+              <p className="font-mono text-xs text-indigo-300 bg-zinc-800 border border-zinc-700 rounded px-3 py-2 break-all select-all">
+                {setupData.secret}
+              </p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="totp-confirm" className="text-xs text-zinc-400">
+                Doğrulama Kodu (6 hane)
+              </Label>
+              <Input
+                id="totp-confirm"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={confirmCode}
+                onChange={(e) => setConfirmCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                className="h-8 text-sm bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleConfirm}
+                disabled={confirmLoading || confirmCode.length !== 6}
+                className="bg-indigo-600 hover:bg-indigo-500 text-white h-7 text-xs"
+              >
+                {confirmLoading ? 'Doğrulanıyor...' : 'Onayla ve Etkinleştir'}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setSetupData(null); setConfirmCode(''); setSetupError('') }}
+                className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-7 text-xs"
+              >
+                İptal
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {mfaEnabled && (
+        <Card className="bg-zinc-900 border-zinc-800">
+          <CardContent className="p-4 flex items-center justify-between">
+            <p className="text-xs text-zinc-400">
+              İki faktörlü kimlik doğrulama etkin. Giriş yaparken Authenticator kodunuz istenecek.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleDisable}
+              disabled={disableLoading}
+              className="ml-4 shrink-0 border-red-800 text-red-400 hover:bg-red-900/30 h-7 text-xs"
+            >
+              {disableLoading ? 'Devre dışı bırakılıyor...' : 'Devre Dışı Bırak'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  )
+}
+
 export default function SettingsPage() {
   const queryClient = useQueryClient()
   const [localRules, setLocalRules] = useState<CorrelationRule[] | null>(null)
@@ -212,6 +386,10 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      <Separator className="bg-zinc-800" />
+
+      <MfaSection />
 
       <Separator className="bg-zinc-800" />
 
