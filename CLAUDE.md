@@ -127,8 +127,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 - [x] **D4** — Kill Chain Swimlane Timeline — Bağımlılık: G1 ✓
   - **Teslim:** `GET /api/v1/analytics/kill-chain-timeline`, SVG swimlane (X=zaman, Y=IP, renkli aşama noktaları), saat seçici (6s/24s/48s/7g), tooltip; 17 test — 1550 toplam test ✓
-- [ ] **D8** — DNS Analiz Derinleştirme — Bağımlılık: G4 ✓
-- [ ] **D6** — Threat Intel Geo Harita + Composite Score — Bağımlılık: G3 ✓
+- [x] **D8** — DNS Analiz Derinleştirme — Bağımlılık: G4 ✓
+- [x] **D6** — Threat Intel Geo Harita + Composite Score — Bağımlılık: G3 ✓
 
 #### Blok C — Karmaşık Görseller (ertelenebilir, F4 sonrası)
 

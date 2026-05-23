@@ -977,11 +977,22 @@ export interface BeaconingSummaryResponse {
   total:      number
 }
 
+export interface ThreatSource {
+  ip:              string
+  count:           number
+  last_seen:       string
+  composite_score: number
+  country_code:    string
+  isp:             string
+}
+
 export interface ThreatSummaryResponse {
-  hours:          number
-  top_sources:    { ip: string; count: number; last_seen: string }[]
-  total_alerts:   number
-  critical_count: number
+  hours:                number
+  top_sources:          ThreatSource[]
+  total_alerts:         number
+  critical_count:       number
+  high_risk_count:      number
+  country_distribution: { country_code: string; ip_count: number }[]
 }
 
 export interface KillChainEvent {
