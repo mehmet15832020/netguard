@@ -1278,6 +1278,170 @@ class TestThreatSummaryData:
         assert data["critical_count"] == 1
 
 
+def _insert_threat_intel_cache(tmp_db, ip, composite_score=0, country_code="", isp=""):
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO threat_intel_cache
+              (ip, score, total_reports, country_code, isp,
+               feodo_listed, threatfox_score, greynoise_noise, greynoise_riot,
+               composite_score, queried_at)
+            VALUES (?, 0, 0, ?, ?, 0, 0, 0, 0, ?, datetime('now'))
+            """,
+            (ip, country_code or None, isp or None, composite_score),
+        )
+
+
+class TestThreatSummaryNewFields:
+    def test_response_has_new_fields(self, client):
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert "high_risk_count" in data
+        assert "country_distribution" in data
+
+    def test_top_source_has_extended_fields(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.2.3.4", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = data["top_sources"][0]
+        assert "last_seen" in src
+        assert "composite_score" in src
+        assert "country_code" in src
+        assert "isp" in src
+
+    def test_high_risk_count_zero_when_no_high_score_ips(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.2.3.4", tags='["threat_intel"]')
+        _insert_threat_intel_cache(tmp_db, ip="1.2.3.4", composite_score=50)
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["high_risk_count"] == 0
+
+    def test_high_risk_count_includes_score_70_and_above(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", tags='["threat_intel"]')
+        _insert_log(tmp_db, source_ip="10.0.0.2", tags='["threat_intel"]')
+        _insert_log(tmp_db, source_ip="10.0.0.3", tags='["threat_intel"]')
+        _insert_threat_intel_cache(tmp_db, ip="10.0.0.1", composite_score=70)
+        _insert_threat_intel_cache(tmp_db, ip="10.0.0.2", composite_score=100)
+        _insert_threat_intel_cache(tmp_db, ip="10.0.0.3", composite_score=69)
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["high_risk_count"] == 2
+
+    def test_high_risk_count_excludes_no_cache_entry(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="5.5.5.5", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["high_risk_count"] == 0
+
+    def test_composite_score_populated_from_cache(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="2.2.2.2", tags='["threat_intel"]')
+        _insert_threat_intel_cache(tmp_db, ip="2.2.2.2", composite_score=85)
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = next(s for s in data["top_sources"] if s["ip"] == "2.2.2.2")
+        assert src["composite_score"] == 85
+
+    def test_composite_score_zero_when_no_cache(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="3.3.3.3", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = next(s for s in data["top_sources"] if s["ip"] == "3.3.3.3")
+        assert src["composite_score"] == 0
+
+    def test_country_code_populated_from_cache(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="4.4.4.4", tags='["threat_intel"]')
+        _insert_threat_intel_cache(tmp_db, ip="4.4.4.4", country_code="RU")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = next(s for s in data["top_sources"] if s["ip"] == "4.4.4.4")
+        assert src["country_code"] == "RU"
+
+    def test_country_code_empty_when_no_cache(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="5.5.5.5", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = next(s for s in data["top_sources"] if s["ip"] == "5.5.5.5")
+        assert src["country_code"] == ""
+
+    def test_isp_populated_from_cache(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="6.6.6.6", tags='["threat_intel"]')
+        _insert_threat_intel_cache(tmp_db, ip="6.6.6.6", isp="Shady ISP Ltd")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = next(s for s in data["top_sources"] if s["ip"] == "6.6.6.6")
+        assert src["isp"] == "Shady ISP Ltd"
+
+    def test_last_seen_is_string(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="7.7.7.7", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        src = next(s for s in data["top_sources"] if s["ip"] == "7.7.7.7")
+        assert isinstance(src["last_seen"], str)
+        assert len(src["last_seen"]) > 0
+
+    def test_country_distribution_empty_when_no_data(self, client):
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["country_distribution"] == []
+
+    def test_country_distribution_grouped_by_country(self, client, tmp_db):
+        for ip in ("10.0.1.1", "10.0.1.2"):
+            _insert_log(tmp_db, source_ip=ip, tags='["threat_intel"]')
+            _insert_threat_intel_cache(tmp_db, ip=ip, country_code="CN")
+        _insert_log(tmp_db, source_ip="10.0.1.3", tags='["threat_intel"]')
+        _insert_threat_intel_cache(tmp_db, ip="10.0.1.3", country_code="RU")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        dist = {d["country_code"]: d["ip_count"] for d in data["country_distribution"]}
+        assert dist["CN"] == 2
+        assert dist["RU"] == 1
+
+    def test_country_distribution_unknown_becomes_xx(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="11.0.0.1", tags='["threat_intel"]')
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        dist = {d["country_code"]: d["ip_count"] for d in data["country_distribution"]}
+        assert "XX" in dist
+
+    def test_country_distribution_ordered_by_ip_count_desc(self, client, tmp_db):
+        for i, (cc, count) in enumerate([("US", 3), ("CN", 5), ("RU", 1)]):
+            for j in range(count):
+                ip = f"20.{i}.0.{j + 1}"
+                _insert_log(tmp_db, source_ip=ip, tags='["threat_intel"]')
+                _insert_threat_intel_cache(tmp_db, ip=ip, country_code=cc)
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        counts = [d["ip_count"] for d in data["country_distribution"]]
+        assert counts == sorted(counts, reverse=True)
+
+    def test_top_sources_ordered_by_composite_score_desc(self, client, tmp_db):
+        for ip, score in [("30.0.0.1", 20), ("30.0.0.2", 90), ("30.0.0.3", 60)]:
+            _insert_log(tmp_db, source_ip=ip, tags='["threat_intel"]')
+            _insert_threat_intel_cache(tmp_db, ip=ip, composite_score=score)
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        scores = [s["composite_score"] for s in data["top_sources"]]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_tenant_isolation_high_risk_count(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="40.0.0.1", tags='["threat_intel"]', tenant_id="default")
+        _insert_log(tmp_db, source_ip="40.0.0.2", tags='["threat_intel"]', tenant_id="other")
+        _insert_threat_intel_cache(tmp_db, ip="40.0.0.1", composite_score=80)
+        _insert_threat_intel_cache(tmp_db, ip="40.0.0.2", composite_score=80)
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        assert data["high_risk_count"] == 1
+
+    def test_tenant_isolation_country_distribution(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="50.0.0.1", tags='["threat_intel"]', tenant_id="default")
+        _insert_log(tmp_db, source_ip="50.0.0.2", tags='["threat_intel"]', tenant_id="other")
+        _insert_threat_intel_cache(tmp_db, ip="50.0.0.1", country_code="DE")
+        _insert_threat_intel_cache(tmp_db, ip="50.0.0.2", country_code="FR")
+
+        data = client.get("/api/v1/analytics/threat-summary").json()
+        codes = {d["country_code"] for d in data["country_distribution"]}
+        assert "DE" in codes
+        assert "FR" not in codes
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 #  Kill Chain Timeline
 # ─────────────────────────────────────────────────────────────────────────────

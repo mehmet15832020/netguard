@@ -801,6 +801,15 @@ def beaconing_summary(
 class _ThreatSource(BaseModel):
     ip: str
     count: int
+    last_seen: str
+    composite_score: int
+    country_code: str
+    isp: str
+
+
+class _CountryCount(BaseModel):
+    country_code: str
+    ip_count: int
 
 
 class ThreatSummaryResponse(BaseModel):
@@ -808,6 +817,8 @@ class ThreatSummaryResponse(BaseModel):
     top_sources: list[_ThreatSource]
     total_alerts: int
     critical_count: int
+    high_risk_count: int
+    country_distribution: list[_CountryCount]
 
 
 @router.get("/analytics/threat-summary", response_model=ThreatSummaryResponse)
@@ -826,12 +837,10 @@ def threat_summary(
         tenant_clause = ""
         count_params: list = [since]
         critical_params: list = [since, "critical"]
-        src_params: list = [since, "critical", limit]
     else:
         tenant_clause = "AND tenant_id = %s"
         count_params = [since, tid]
         critical_params = [since, tid, "critical"]
-        src_params = [since, tid, "critical", limit]
 
     with db._connect() as conn:
         total_row = conn.execute(
@@ -857,28 +866,86 @@ def threat_summary(
 
         src_rows = conn.execute(
             f"""
-            SELECT source_ip, COUNT(*) AS cnt
-            FROM normalized_logs
-            WHERE received_at >= %s
+            SELECT
+                n.source_ip,
+                COUNT(*) AS cnt,
+                MAX(n.received_at) AS last_seen,
+                COALESCE(t.composite_score, 0) AS composite_score,
+                COALESCE(t.country_code, '') AS country_code,
+                COALESCE(t.isp, '') AS isp
+            FROM normalized_logs n
+            LEFT JOIN threat_intel_cache t ON t.ip = n.source_ip
+            WHERE n.received_at >= %s
               {tenant_clause}
-              AND tags LIKE %s
-              AND source_ip IS NOT NULL
-            GROUP BY source_ip
-            ORDER BY cnt DESC
+              AND n.tags LIKE %s
+              AND n.source_ip IS NOT NULL
+            GROUP BY n.source_ip, t.composite_score, t.country_code, t.isp
+            ORDER BY composite_score DESC, cnt DESC
             LIMIT %s
             """,
             [*count_params, "%threat_intel%", limit],
         ).fetchall()
 
+        country_rows = conn.execute(
+            f"""
+            SELECT
+                COALESCE(t.country_code, 'XX') AS country_code,
+                COUNT(DISTINCT n.source_ip) AS ip_count
+            FROM normalized_logs n
+            LEFT JOIN threat_intel_cache t ON t.ip = n.source_ip
+            WHERE n.received_at >= %s
+              {tenant_clause}
+              AND n.tags LIKE %s
+              AND n.source_ip IS NOT NULL
+            GROUP BY COALESCE(t.country_code, 'XX')
+            ORDER BY ip_count DESC
+            LIMIT 20
+            """,
+            [*count_params, "%threat_intel%"],
+        ).fetchall()
+
+        high_risk_row = conn.execute(
+            f"""
+            SELECT COUNT(DISTINCT n.source_ip) AS cnt
+            FROM normalized_logs n
+            LEFT JOIN threat_intel_cache t ON t.ip = n.source_ip
+            WHERE n.received_at >= %s
+              {tenant_clause}
+              AND n.tags LIKE %s
+              AND n.source_ip IS NOT NULL
+              AND COALESCE(t.composite_score, 0) >= 70
+            """,
+            [*count_params, "%threat_intel%"],
+        ).fetchone()
+
     total_alerts = total_row["cnt"] if total_row else 0
     critical_count = critical_row["cnt"] if critical_row else 0
-    top_sources = [_ThreatSource(ip=r["source_ip"], count=r["cnt"]) for r in src_rows]
+    high_risk_count = high_risk_row["cnt"] if high_risk_row else 0
+
+    top_sources = [
+        _ThreatSource(
+            ip=r["source_ip"],
+            count=r["cnt"],
+            last_seen=str(r["last_seen"]) if r["last_seen"] else "",
+            composite_score=r["composite_score"],
+            country_code=r["country_code"],
+            isp=r["isp"],
+        )
+        for r in src_rows
+    ]
+
+    country_distribution = [
+        _CountryCount(country_code=r["country_code"], ip_count=r["ip_count"])
+        for r in country_rows
+    ]
 
     return ThreatSummaryResponse(
         hours=hours,
         top_sources=top_sources,
         total_alerts=total_alerts,
         critical_count=critical_count,
+        high_risk_count=high_risk_count,
+        country_distribution=country_distribution,
     )
 
 
