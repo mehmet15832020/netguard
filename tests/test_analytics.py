@@ -1025,6 +1025,59 @@ class TestDnsAnalysisData:
         data = client.get("/api/v1/analytics/dns-analysis").json()
         assert data["unique_destinations"] == 1
 
+    def test_new_fields_present_in_response(self, client):
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert "high_entropy_count" in data
+        assert "long_query_count" in data
+        assert "anomaly_count" in data
+
+    def test_high_entropy_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="8.8.8.8",
+                    tags='["dns_query"]')
+        # Simulate high entropy message
+        with tmp_db._connect() as conn:
+            conn.execute(
+                """
+                UPDATE normalized_logs SET message = 'DNS sorgusu: [HIGH_ENTROPY:5.2] abc.example.com'
+                WHERE event_action = 'dns_query'
+                """
+            )
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["high_entropy_count"] == 1
+
+    def test_long_query_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="dns_query", destination_ip="8.8.8.8")
+        with tmp_db._connect() as conn:
+            conn.execute(
+                """
+                UPDATE normalized_logs SET message = 'DNS sorgusu: [LONG_QUERY:65] verylongsubdomain.example.com'
+                WHERE event_action = 'dns_query'
+                """
+            )
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["long_query_count"] == 1
+
+    def test_anomaly_burst_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="dns_query_burst", destination_ip="8.8.8.8")
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["anomaly_count"] == 1
+
+    def test_empty_new_fields_are_zero(self, client):
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert data["high_entropy_count"] == 0
+        assert data["long_query_count"] == 0
+        assert data["anomaly_count"] == 0
+
+    def test_nxdomain_rate_is_percentage(self, client, tmp_db):
+        for _ in range(3):
+            _insert_log(tmp_db, event_action="dns_query", destination_ip="8.8.8.8")
+        with tmp_db._connect() as conn:
+            conn.execute(
+                "UPDATE normalized_logs SET message = 'NXDOMAIN notfound.example.com'"
+            )
+        data = client.get("/api/v1/analytics/dns-analysis").json()
+        assert 0 <= data["nxdomain_rate"] <= 100
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 #  TLS Fingerprints tests

@@ -954,12 +954,15 @@ export interface FailedAuthResponse {
 }
 
 export interface DnsAnalysisResponse {
-  hours:          number
-  top_domains:    { ip: string; count: number }[]
-  nxdomain_count: number
-  nxdomain_rate:  number
-  hourly_volume:  { t: string; v: number }[]
-  unique_domains: number
+  hours:                    number
+  top_queried_destinations: { ip: string; count: number }[]
+  nxdomain_count:           number
+  nxdomain_rate:            number
+  hourly_volume:            { t: string; v: number }[]
+  unique_destinations:      number
+  high_entropy_count:       number
+  long_query_count:         number
+  anomaly_count:            number
 }
 
 export interface TlsFingerprintResponse {

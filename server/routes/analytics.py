@@ -517,6 +517,9 @@ class DnsAnalysisResponse(BaseModel):
     nxdomain_rate: float
     hourly_volume: list[_AlertPoint]
     unique_destinations: int
+    high_entropy_count: int
+    long_query_count: int
+    anomaly_count: int
 
 
 @router.get("/analytics/dns-analysis", response_model=DnsAnalysisResponse)
@@ -596,6 +599,41 @@ def dns_analysis(
             dns_params,
         ).fetchone()
 
+        high_entropy_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message LIKE %s
+            """,
+            [*base_params, "dns_query", "%[HIGH_ENTROPY:%"],
+        ).fetchone()
+
+        long_query_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message LIKE %s
+            """,
+            [*base_params, "dns_query", "%[LONG_QUERY:%"],
+        ).fetchone()
+
+        anomaly_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+            """,
+            [*base_params, "dns_query_burst"],
+        ).fetchone()
+
     now_trunc = now.replace(minute=0, second=0, microsecond=0)
     n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
     all_hours = [
@@ -617,6 +655,9 @@ def dns_analysis(
         nxdomain_rate=nxdomain_rate,
         hourly_volume=hourly_volume,
         unique_destinations=unique_destinations,
+        high_entropy_count=high_entropy_row["cnt"] if high_entropy_row else 0,
+        long_query_count=long_query_row["cnt"] if long_query_row else 0,
+        anomaly_count=anomaly_row["cnt"] if anomaly_row else 0,
     )
 
 
