@@ -158,6 +158,19 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [ ] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
 - [ ] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
 
+### AŞAMA 4.5 — Kural Yönetimi UI (Aşama 3/4 sonrası)
+
+- [ ] **R1** — Korelasyon Kuralları CRUD UI (4-5 gün, düşük risk)
+  - Backend: `GET/POST/PUT/DELETE /api/v1/correlation/rules` — JSON dosyasını API'ye taşı
+  - Frontend: Form builder (kural adı, event tipi, threshold, time window, severity, MITRE tag)
+  - Hot-reload: Correlator 60s döngüde zaten dosyayı okur
+- [ ] **R2** — Sigma Rule Wizard (6-7 gün, orta risk) — Bağımlılık: R1
+  - Dropdown tabanlı kural oluşturucu → arka planda Sigma YAML üretir
+  - Hedef kitle için kritik: IT adminin YAML bilmeden kural yazması
+- [ ] **R3** — Sigma YAML Monaco Editör (8-10 gün, yüksek risk, isteğe bağlı)
+  - Monaco Editor + `POST /api/v1/sigma/validate` pySigma syntax check
+  - Enable/disable toggle per rule, hot-reload
+
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
 - [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle)
