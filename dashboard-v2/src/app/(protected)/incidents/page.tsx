@@ -266,7 +266,7 @@ export default function IncidentsPage() {
 
   const blockMutation = useMutation({
     mutationFn: ({ ip, reason }: { ip: string; reason: string }) =>
-      activeResponse.block(ip, reason, selected?.incident_id),
+      activeResponse.block({ ip, reason, source_incident_id: selected?.incident_id }),
     onSuccess: () => {
       setShowBlockDialog(false)
       setBlockReason('')

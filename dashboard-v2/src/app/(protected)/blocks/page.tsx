@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldOff, RefreshCw, ShieldCheck, AlertTriangle, Zap } from 'lucide-react'
+import { ShieldOff, RefreshCw, ShieldCheck, AlertTriangle, Zap, Plus, X } from 'lucide-react'
 import { activeResponse, type BlockedIP, type BlockVerifyResponse } from '@/lib/api'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -93,6 +93,127 @@ function VerifyPanel({ result }: { result: BlockVerifyResponse }) {
   )
 }
 
+function ManualBlockForm({ onSuccess }: { onSuccess: () => void }) {
+  const [open, setOpen] = useState(false)
+  const [ip, setIp] = useState('')
+  const [reason, setReason] = useState('')
+  const [port, setPort] = useState('')
+  const [protocol, setProtocol] = useState('')
+  const [ttl, setTtl] = useState('')
+  const [error, setError] = useState('')
+
+  const blockMutation = useMutation({
+    mutationFn: () => activeResponse.block({
+      ip: ip.trim(),
+      reason: reason.trim(),
+      destination_port: port ? parseInt(port, 10) : null,
+      network_protocol: protocol || null,
+      ttl_hours: ttl ? parseFloat(ttl) : null,
+    }),
+    onSuccess: () => {
+      setOpen(false)
+      setIp(''); setReason(''); setPort(''); setProtocol(''); setTtl(''); setError('')
+      onSuccess()
+    },
+    onError: (err: Error) => setError(err.message),
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    blockMutation.mutate()
+  }
+
+  if (!open) {
+    return (
+      <Button size="sm" onClick={() => setOpen(true)} className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white">
+        <Plus className="w-4 h-4" /> Manuel Blok
+      </Button>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-semibold text-zinc-200">Manuel IP Blokla</h3>
+        <button onClick={() => { setOpen(false); setError('') }} className="text-zinc-500 hover:text-zinc-300">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">IP Adresi *</label>
+            <Input
+              value={ip} onChange={e => setIp(e.target.value)}
+              placeholder="1.2.3.4"
+              required
+              className="font-mono text-sm bg-zinc-800 border-zinc-700 text-zinc-100 h-8"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">Sebep *</label>
+            <Input
+              value={reason} onChange={e => setReason(e.target.value)}
+              placeholder="Manuel blok"
+              required
+              className="text-sm bg-zinc-800 border-zinc-700 text-zinc-100 h-8"
+            />
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">Port <span className="text-zinc-600">(opsiyonel)</span></label>
+            <Input
+              value={port} onChange={e => setPort(e.target.value.replace(/\D/g, ''))}
+              placeholder="443"
+              maxLength={5}
+              className="font-mono text-sm bg-zinc-800 border-zinc-700 text-zinc-100 h-8"
+            />
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">Protokol <span className="text-zinc-600">(opsiyonel)</span></label>
+            <select
+              value={protocol} onChange={e => setProtocol(e.target.value)}
+              className="w-full h-8 rounded-md border border-zinc-700 bg-zinc-800 text-sm text-zinc-100 px-2 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+            >
+              <option value="">—</option>
+              <option value="tcp">TCP</option>
+              <option value="udp">UDP</option>
+              <option value="icmp">ICMP</option>
+              <option value="any">ANY</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="text-xs text-zinc-400">TTL (saat) <span className="text-zinc-600">(opsiyonel)</span></label>
+            <Input
+              value={ttl} onChange={e => setTtl(e.target.value)}
+              placeholder="24"
+              className="font-mono text-sm bg-zinc-800 border-zinc-700 text-zinc-100 h-8"
+            />
+          </div>
+        </div>
+        {error && (
+          <p className="text-xs text-red-400 flex items-center gap-1">
+            <AlertTriangle className="w-3 h-3 flex-shrink-0" /> {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={() => { setOpen(false); setError('') }}
+            className="text-xs px-3 py-1.5 rounded border border-zinc-700 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors">
+            İptal
+          </button>
+          <button type="submit" disabled={blockMutation.isPending}
+            className="text-xs px-3 py-1.5 rounded border border-red-700 bg-red-900/30 text-red-300 hover:bg-red-900/50 hover:text-red-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5">
+            {blockMutation.isPending && <RefreshCw className="w-3 h-3 animate-spin" />}
+            Blokla
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 export default function BlocksPage() {
   const qc = useQueryClient()
 
@@ -175,6 +296,7 @@ export default function BlocksPage() {
           )}
         </div>
         <div className="flex items-center gap-2">
+          <ManualBlockForm onSuccess={() => qc.invalidateQueries({ queryKey: ['active-blocks'] })} />
           <Button
             variant="outline"
             size="sm"

@@ -886,10 +886,17 @@ export interface BlockVerifyResponse {
 }
 
 export const activeResponse = {
-  block: (ip: string, reason: string, source_incident_id?: string) =>
+  block: (params: {
+    ip: string
+    reason: string
+    source_incident_id?: string
+    destination_port?: number | null
+    network_protocol?: string | null
+    ttl_hours?: number | null
+  }) =>
     request<{ success: boolean; provider: string; error?: string }>('/response/block', {
       method: 'POST',
-      body: JSON.stringify({ ip, reason, source_incident_id }),
+      body: JSON.stringify(params),
     }),
 
   unblock: (ip: string) =>

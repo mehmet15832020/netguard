@@ -188,7 +188,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 - [ ] `correlator.py:178` — Yanıltıcı yorum `"JSON + sigma_v1 YAML"` → `"JSON korelasyon kuralları"`
 - [ ] `correlator.py:244` — Sessiz `except: pass` → `logger.debug("ws broadcast: %s", exc)`
-- [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓ — Port/protocol input (P7) kaldı
+- [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓, Port/protocol input (P7) ✓
 
 ---
 
@@ -268,7 +268,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 ### Frontend Sayfaları (dashboard-v2)
 
-Overview, Logs, Incidents, Aktif Bloklar, Alerts, Agents, Correlation, Network Intelligence, MITRE ATT&CK, Timeline, Topology, Devices/SNMP/Discovery, Settings/Audit, Reports/Security, Uyumluluk (Compliance) — **⏳ Eksik:** Port/protocol input (P7)
+Overview, Logs, Incidents, Aktif Bloklar, Alerts, Agents, Correlation, Network Intelligence, MITRE ATT&CK, Timeline, Topology, Devices/SNMP/Discovery, Settings/Audit, Reports/Security, Uyumluluk (Compliance)
 
 ---
 
