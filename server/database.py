@@ -642,6 +642,7 @@ class DatabaseManager:
         self._migrate_incident_v1_4_columns()
         self._migrate_blocked_ips_expires_at()
         self._migrate_blocked_ips_offense_count()
+        self._migrate_db_users_totp_columns()
         self.ensure_default_tenant()
         self._init_fts()
         self._apply_schema_version(CURRENT_SCHEMA_VERSION, "initial schema + tenant_id migrations")
@@ -2055,6 +2056,18 @@ class DatabaseManager:
                 except Exception:
                     pass
 
+    def _migrate_db_users_totp_columns(self) -> None:
+        """db_users tablosuna TOTP kolonları ekle."""
+        with self._lock:
+            with self._connect() as conn:
+                cols = [r[1] for r in conn.execute("PRAGMA table_info(db_users)").fetchall()]
+                if "totp_secret" not in cols:
+                    conn.execute("ALTER TABLE db_users ADD COLUMN totp_secret TEXT")
+                    logger.info("db_users: 'totp_secret' kolonu eklendi")
+                if "totp_enabled" not in cols:
+                    conn.execute("ALTER TABLE db_users ADD COLUMN totp_enabled INTEGER NOT NULL DEFAULT 0")
+                    logger.info("db_users: 'totp_enabled' kolonu eklendi")
+
     # ------------------------------------------------------------------ #
     #  TENANTS
     # ------------------------------------------------------------------ #
@@ -2213,6 +2226,43 @@ class DatabaseManager:
                     "UPDATE db_users SET role=? WHERE username=?", (role, username)
                 )
                 return cur.rowcount > 0
+
+    def get_user_totp(self, username: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT totp_secret, totp_enabled FROM db_users WHERE username=%s",
+                (username,),
+            ).fetchone()
+        if not row:
+            return {"totp_secret": None, "totp_enabled": False}
+        return {
+            "totp_secret": row["totp_secret"],
+            "totp_enabled": bool(row["totp_enabled"]),
+        }
+
+    def set_user_totp_secret(self, username: str, secret: str) -> None:
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE db_users SET totp_secret=%s, totp_enabled=0 WHERE username=%s",
+                    (secret, username),
+                )
+
+    def enable_user_totp(self, username: str) -> None:
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE db_users SET totp_enabled=1 WHERE username=%s",
+                    (username,),
+                )
+
+    def disable_user_totp(self, username: str) -> None:
+        with self._lock:
+            with self._connect() as conn:
+                conn.execute(
+                    "UPDATE db_users SET totp_enabled=0, totp_secret=NULL WHERE username=%s",
+                    (username,),
+                )
 
     # ------------------------------------------------------------------ #
     #  API KEYS

@@ -1,11 +1,15 @@
 """
 NetGuard — Auth endpoint'leri
 
-POST /api/v1/auth/login        → JWT token al
-POST /api/v1/auth/refresh      → Yeni access token al (refresh token ile)
-POST /api/v1/auth/logout       → Token blacklist'e ekle (çıkış)
-POST /api/v1/auth/agent-key    → Agent API key al (admin only)
-GET  /api/v1/auth/me           → Mevcut kullanıcı bilgisi
+POST /api/v1/auth/login          → JWT token al (TOTP etkinse mfa_required=true)
+POST /api/v1/auth/refresh        → Yeni access token al (refresh token ile)
+POST /api/v1/auth/logout         → Token blacklist'e ekle (çıkış)
+POST /api/v1/auth/agent-key      → Agent API key al (admin only)
+GET  /api/v1/auth/me             → Mevcut kullanıcı bilgisi
+POST /api/v1/auth/totp-setup     → TOTP secret üret, otpauth URI döner
+POST /api/v1/auth/totp-confirm   → TOTP kodunu doğrula ve etkinleştir
+POST /api/v1/auth/totp-verify    → MFA pending token + kod → tam token
+POST /api/v1/auth/totp-disable   → TOTP'u devre dışı bırak
 """
 
 import logging
@@ -14,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, Securi
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt, JWTError
 from pydantic import BaseModel
+import pyotp
 from server.limiter import limiter
 from server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
@@ -23,6 +28,7 @@ from server.auth import (
     Token,
     authenticate_user,
     create_access_token,
+    create_mfa_token,
     create_refresh_token,
     get_current_user,
     register_agent_key,
@@ -39,7 +45,7 @@ router = APIRouter()
 @router.post("/auth/login", response_model=Token)
 @limiter.limit("5/minute")
 def login(request: Request, response: Response, body: LoginRequest):
-    """Kullanıcı adı ve şifre ile JWT token al."""
+    from server.database import db
     user = authenticate_user(body.username, body.password)
     if not user:
         raise HTTPException(
@@ -47,10 +53,15 @@ def login(request: Request, response: Response, body: LoginRequest):
             detail="Kullanıcı adı veya şifre hatalı",
         )
 
+    user_totp = db.get_user_totp(user.username)
+    if user_totp["totp_enabled"]:
+        mfa_token = create_mfa_token(user.username, user.role, user.tenant_id)
+        logger.info("MFA gerekli: %s", user.username)
+        return Token(mfa_required=True, mfa_token=mfa_token)
+
     access  = create_access_token(user.username, user.role, user.tenant_id)
     refresh = create_refresh_token(user.username, user.role, user.tenant_id)
-    logger.info(f"Giriş başarılı: {user.username} ({user.role})")
-
+    logger.info("Giriş başarılı: %s (%s)", user.username, user.role)
     return Token(
         access_token=access,
         refresh_token=refresh,
@@ -61,7 +72,6 @@ def login(request: Request, response: Response, body: LoginRequest):
 
 @router.get("/auth/me", response_model=User)
 def get_me(current_user: User = Depends(get_current_user)):
-    """Mevcut kullanıcı bilgisini döndür."""
     return current_user
 
 
@@ -72,7 +82,6 @@ class RefreshRequest(BaseModel):
 @router.post("/auth/refresh", response_model=Token)
 @limiter.limit("10/minute")
 def refresh(request: Request, response: Response, body: RefreshRequest):
-    """Geçerli bir refresh token ile yeni access + refresh token çifti al."""
     payload = verify_token(body.refresh_token, token_type="refresh")
     if not payload:
         raise HTTPException(
@@ -97,7 +106,6 @@ def logout(
     credentials: HTTPAuthorizationCredentials = Security(bearer_scheme),
     current_user: User = Depends(get_current_user),
 ):
-    """Access token'ı blacklist'e ekle — anında geçersiz kılar."""
     from server.database import db
     token = credentials.credentials
     try:
@@ -118,7 +126,6 @@ def create_agent_key(
     agent_id: str,
     admin: User = Depends(require_admin),
 ):
-    """Agent için API key oluştur. Sadece admin kullanabilir. Key yalnızca bir kez gösterilir."""
     from server.database import db
     api_key = register_agent_key(agent_id)
     if api_key is None:
@@ -143,7 +150,6 @@ def delete_agent_key(
     agent_id: str,
     admin: User = Depends(require_admin),
 ):
-    """Agent API key'ini sil (sıfırlamak için önce sil, sonra yeniden oluştur)."""
     from server.database import db
     if db.get_api_key(agent_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key bulunamadı")
@@ -153,3 +159,122 @@ def delete_agent_key(
         ip_address=request.client.host if request.client else "",
     )
     return {"ok": True, "agent_id": agent_id}
+
+
+# ─── TOTP endpoint'leri ──────────────────────────────────────────
+
+
+class TotpConfirmRequest(BaseModel):
+    code: str
+
+
+class TotpVerifyRequest(BaseModel):
+    mfa_token: str
+    code: str
+
+
+@router.post("/auth/totp-setup")
+def totp_setup(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
+    from server.database import db
+    secret = pyotp.random_base32()
+    db.set_user_totp_secret(current_user.username, secret)
+    totp = pyotp.TOTP(secret)
+    uri = totp.provisioning_uri(
+        name=current_user.username,
+        issuer_name="NetGuard",
+    )
+    db.save_audit_event(
+        actor=current_user.username, action="totp.setup", resource=current_user.username,
+        ip_address=request.client.host if request.client else "",
+    )
+    return {"secret": secret, "otpauth_uri": uri}
+
+
+@router.post("/auth/totp-confirm")
+@limiter.limit("5/minute")
+def totp_confirm(
+    request: Request,
+    response: Response,
+    body: TotpConfirmRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from server.database import db
+    user_totp = db.get_user_totp(current_user.username)
+    if not user_totp["totp_secret"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Önce TOTP kurulumu yapınız (/auth/totp-setup)",
+        )
+    totp = pyotp.TOTP(user_totp["totp_secret"])
+    if not totp.verify(body.code, valid_window=1):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Geçersiz TOTP kodu",
+        )
+    db.enable_user_totp(current_user.username)
+    db.save_audit_event(
+        actor=current_user.username, action="totp.enabled", resource=current_user.username,
+        ip_address=request.client.host if request.client else "",
+    )
+    return {"ok": True, "message": "TOTP başarıyla etkinleştirildi"}
+
+
+@router.post("/auth/totp-verify", response_model=Token)
+@limiter.limit("5/minute")
+def totp_verify(request: Request, response: Response, body: TotpVerifyRequest):
+    from server.database import db
+    payload = verify_token(body.mfa_token, token_type="mfa_pending")
+    if not payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Geçersiz veya süresi dolmuş MFA token",
+        )
+    username  = payload["sub"]
+    role      = payload["role"]
+    tenant_id = payload.get("tid", "default")
+
+    user_totp = db.get_user_totp(username)
+    if not user_totp["totp_secret"] or not user_totp["totp_enabled"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Bu kullanıcı için TOTP etkin değil",
+        )
+    totp = pyotp.TOTP(user_totp["totp_secret"])
+    if not totp.verify(body.code, valid_window=1):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Geçersiz TOTP kodu",
+        )
+    access      = create_access_token(username, role, tenant_id)
+    refresh_new = create_refresh_token(username, role, tenant_id)
+    logger.info("MFA doğrulama başarılı: %s", username)
+    return Token(
+        access_token=access,
+        refresh_token=refresh_new,
+        token_type="bearer",
+        expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+@router.post("/auth/totp-disable")
+def totp_disable(
+    request: Request,
+    target_username: str = "",
+    current_user: User = Depends(get_current_user),
+):
+    from server.database import db
+    subject = target_username if target_username else current_user.username
+    if subject != current_user.username and current_user.role not in ("admin", "superadmin"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Başka kullanıcının TOTP'unu kapatmak için admin yetkisi gerekli",
+        )
+    db.disable_user_totp(subject)
+    db.save_audit_event(
+        actor=current_user.username, action="totp.disabled", resource=subject,
+        ip_address=request.client.host if request.client else "",
+    )
+    return {"ok": True, "message": f"{subject} için TOTP devre dışı bırakıldı"}

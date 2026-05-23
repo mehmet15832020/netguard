@@ -146,12 +146,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - *MITRE ATT&CK T1071: Cobalt Strike default 60s, APT1 5m jitter ±%10-15. Zeek conn logs akar ama analiz yok.*
   - **Teslim:** `server/detectors/beaconing.py` (IAT algoritması, Bessel stddev, thread-safe _alerted, LRU pruning, FP suppression); STAGE_MAP `"c2_beaconing": "lateral"` (TA0011 C&C); `_beaconing_loop()` 300s aralık, ilk iterasyon anında; 35 test — 1369 toplam test ✓
 
-- [ ] **T2-3** — MFA / TOTP
+- [x] **T2-3** — MFA / TOTP
   - *Verizon DBIR 2025: kimlik ihlallerinin %32'si. NIS2 Article 21(2)(i) zorunlu.*
-  - **Altyapı:** `server/auth.py` VAR ✓; `pyotp` YOK (`pip install pyotp` gerekli); `users` tablosunda `totp_secret/totp_enabled` YOK (Alembic 006/007); frontend MFA sayfası YOK
-  - **Yapılacaklar:** `pyotp` bağımlılığı ekle; users tablosuna 2 kolon; `/auth/totp-setup` + `/auth/totp-verify` + `/auth/totp-confirm` route; frontend QR sayfası
-  - Bağımlılık: yok
-  - Tahmini süre: 3-4 gün
+  - **Teslim:** `pyotp>=2.9.0` requirements; Alembic 010 (totp_secret + totp_enabled); SQLite migration `_migrate_db_users_totp_columns()`; `create_mfa_token()` + `Token.mfa_required/mfa_token`; 4 yeni route (setup/confirm/verify/disable); rate limit 5/min; 30 test — 1604 toplam test ✓
 
 ### AŞAMA 4 — Mimari Temizlik
 
@@ -192,7 +189,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1389 test, 0 hata (21 Mayıs 2026)
+**Test durumu:** 1604 test, 0 hata (23 Mayıs 2026)
 
 ---
 

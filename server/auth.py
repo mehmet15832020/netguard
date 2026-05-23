@@ -12,6 +12,7 @@ import hashlib
 import os
 import secrets
 import logging
+import uuid
 import bcrypt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -57,10 +58,28 @@ class UserInDB(User):
 
 
 class Token(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
+    access_token:  Optional[str] = None
+    refresh_token: Optional[str] = None
+    token_type:    str = "bearer"
+    expires_in:    Optional[int] = None
+    mfa_required:  bool = False
+    mfa_token:     Optional[str] = None
+
+
+MFA_TOKEN_EXPIRE_MINUTES = 5
+
+
+def create_mfa_token(username: str, role: str, tenant_id: Optional[str]) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=MFA_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "sub": username,
+        "role": role,
+        "tid": tenant_id,
+        "type": "mfa_pending",
+        "exp": expire,
+        "jti": str(uuid.uuid4()),
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
 class LoginRequest(BaseModel):

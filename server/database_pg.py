@@ -1284,6 +1284,40 @@ class DatabaseManager:
             cur = conn.execute("UPDATE db_users SET role=%s WHERE username=%s", (role, username))
             return cur.rowcount > 0
 
+    def get_user_totp(self, username: str) -> dict:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT totp_secret, totp_enabled FROM db_users WHERE username=%s",
+                (username,),
+            ).fetchone()
+        if not row:
+            return {"totp_secret": None, "totp_enabled": False}
+        return {
+            "totp_secret": row["totp_secret"],
+            "totp_enabled": bool(row["totp_enabled"]),
+        }
+
+    def set_user_totp_secret(self, username: str, secret: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE db_users SET totp_secret=%s, totp_enabled=0 WHERE username=%s",
+                (secret, username),
+            )
+
+    def enable_user_totp(self, username: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE db_users SET totp_enabled=1 WHERE username=%s",
+                (username,),
+            )
+
+    def disable_user_totp(self, username: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE db_users SET totp_enabled=0, totp_secret=NULL WHERE username=%s",
+                (username,),
+            )
+
     # ------------------------------------------------------------------ #
     #  API KEYS
     # ------------------------------------------------------------------ #
