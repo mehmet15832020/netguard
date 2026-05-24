@@ -202,7 +202,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1604 test, 0 hata (23 Mayıs 2026)
+**Test durumu:** 1604 test, 0 hata (24 Mayıs 2026) — analytics quality audit düzeltmeleri + MFA post-commit fix
 
 ---
 
