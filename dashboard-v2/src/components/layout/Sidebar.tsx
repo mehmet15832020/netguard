@@ -26,6 +26,7 @@ const SECTIONS = [
     items: [
       { href: '/alerts',                label: 'Alertler',              icon: Bell },
       { href: '/correlation',           label: 'Korelasyon',            icon: GitMerge },
+      { href: '/correlation-rules',     label: 'Kural Yönetimi',        icon: GitMerge },
       { href: '/timeline',              label: 'Kill Chain',            icon: Swords },
       { href: '/mitre',                 label: 'MITRE ATT&CK',          icon: Crosshair },
       { href: '/network-intelligence',  label: 'Network Intelligence',  icon: Fingerprint },

@@ -172,15 +172,20 @@ export interface CorrelatedEvent {
 }
 
 export interface CorrelationRule {
-  rule_id: string
-  name: string
-  description: string
-  match_event_action: string
-  group_by: string
-  window_seconds: number
-  threshold: number
-  severity: Severity
+  rule_id:             string
+  name:                string
+  description:         string
+  match_event_action:  string
+  group_by:            string
+  distinct_by:         string | null
+  window_seconds:      number
+  threshold:           number
+  severity:            Severity
   output_event_action: string
+  enabled:             boolean
+  match_severity:      string | null
+  keywords:            string[] | null
+  tags:                string[]
 }
 
 // ------------------------------------------------------------------ //

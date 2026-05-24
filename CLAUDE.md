@@ -135,9 +135,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **D7** — East-West Connection Matrix Heatmap — Bağımlılık: F4
   - **Teslim:** `GET /api/v1/analytics/east-west-matrix` (RFC1918→RFC1918, top-N, hours, tenant isolation); `EastWestHeatmapChart.tsx` (ECharts heatmap, visualMap, tooltip); `/east-west-matrix` sayfası (saat seçici, özet stats); sidebar eklendi; 20 test — 1624 toplam test ✓
 - [x] **D9** — Asset Risk Heatmap — Bağımlılık: F4
-  - **Teslim:** `GET /api/v1/analytics/asset-risk` (RFC1918 IP bazında 3 risk boyutu: activity_score/chain_score/block_score, weighted total, tenant isolation); `AssetRiskHeatmapChart.tsx` (ECharts heatmap, Y=IP, X=boyutlar, kırmızı ton); `/asset-risk` sayfası (saat seçici, blok sayısı, en riskli IP özeti, legend); sidebar eklendi; 21 test
+  - **Teslim:** `GET /api/v1/analytics/asset-risk` (RFC1918 IP bazında 3 risk boyutu: activity_score/chain_score/block_score, weighted total, tenant isolation); `AssetRiskHeatmapChart.tsx` (ECharts heatmap, Y=IP, X=boyutlar, kırmızı ton); `/asset-risk` sayfası (saat seçici, blok sayısı, en riskli IP özeti, legend); sidebar eklendi; 21 test — 1645 toplam test ✓
 - [x] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
-  - **Teslim:** `GET /api/v1/analytics/mttd-mttr` (days, tenant isolation, overall MTTD/MTTR, resolution_rate, günlük trend, severity breakdown + SLA uyumu); SLA hedefleri SANS 2023 + Prophet Security: Critical 15dk/60dk, High 60dk/120dk; negatif diff + outlier >30g guard; `MttdMttrChart.tsx` (ECharts çift çizgi, MTTD mavi MTTR turuncu); `/mttd-mttr` sayfası (3 KPI kartı, trend grafik, severity SLA tablosu, kaynak notu); 27 test (basic/hesaplama/veri kalitesi/sla/tenant)
+  - **Teslim:** `GET /api/v1/analytics/mttd-mttr` (days, tenant isolation, overall MTTD/MTTR, resolution_rate, günlük trend, severity breakdown + SLA uyumu); SLA hedefleri SANS 2023 + Prophet Security: Critical 15dk/60dk, High 60dk/120dk; negatif diff + outlier >30g guard; `MttdMttrChart.tsx` (ECharts çift çizgi, MTTD mavi MTTR turuncu); `/mttd-mttr` sayfası (3 KPI kartı, trend grafik, severity SLA tablosu, kaynak notu); 27 test (basic/hesaplama/veri kalitesi/sla/tenant) — 1672 toplam test ✓
 
 ### AŞAMA 3 — Güvenlik Derinleştirme
 
@@ -163,10 +163,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 ### AŞAMA 4.5 — Kural Yönetimi UI (Aşama 3/4 sonrası)
 
-- [ ] **R1** — Korelasyon Kuralları CRUD UI (4-5 gün, düşük risk)
-  - Backend: `GET/POST/PUT/DELETE /api/v1/correlation/rules` — JSON dosyasını API'ye taşı
-  - Frontend: Form builder (kural adı, event tipi, threshold, time window, severity, MITRE tag)
-  - Hot-reload: Correlator 60s döngüde zaten dosyayı okur
+- [x] **R1** — Korelasyon Kuralları CRUD UI (4-5 gün, düşük risk)
+  - **Teslim:** `GET/POST/PUT/DELETE/PATCH /api/v1/correlation/rules[/{rule_id}[/toggle]]` (CorrelationRuleIn Pydantic validation: slug regex, frozenset sev/group_by, window 10-86400, threshold 1-10000, 409 duplicate, 404 missing, hot-reload via correlator.load_rules()); `/correlation-rules` liste sayfası (Power toggle, Pencil edit, Trash2 sil, delete confirm dialog, stats bar); `RuleFormModal.tsx` (tüm alanlar, create/update mutations, enabled toggle); sidebar "Kural Yönetimi"; `correlationApi` 5 yeni metod; 30 test — 1702 toplam test ✓
 - [ ] **R2** — Sigma Rule Wizard (6-7 gün, orta risk) — Bağımlılık: R1
   - Dropdown tabanlı kural oluşturucu → arka planda Sigma YAML üretir
   - Hedef kitle için kritik: IT adminin YAML bilmeden kural yazması

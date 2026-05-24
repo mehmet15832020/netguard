@@ -280,6 +280,32 @@ export const correlationApi = {
       method: 'PUT',
       body: JSON.stringify({ rules }),
     }),
+
+  getRule: (rule_id: string) =>
+    request<CorrelationRule>(`/correlation/rules/${rule_id}`),
+
+  createRule: (data: Omit<CorrelationRule, never>) =>
+    request<{ rule_id: string; loaded_count: number }>('/correlation/rules', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  updateRule: (rule_id: string, data: CorrelationRule) =>
+    request<{ rule_id: string; loaded_count: number }>(`/correlation/rules/${rule_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  deleteRule: (rule_id: string) =>
+    request<{ deleted: string; loaded_count: number }>(`/correlation/rules/${rule_id}`, {
+      method: 'DELETE',
+    }),
+
+  toggleRule: (rule_id: string) =>
+    request<{ rule_id: string; enabled: boolean; loaded_count: number }>(
+      `/correlation/rules/${rule_id}/toggle`,
+      { method: 'PATCH' },
+    ),
 }
 
 // ------------------------------------------------------------------ //
