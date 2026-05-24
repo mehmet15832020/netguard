@@ -1015,6 +1015,36 @@ export interface BeaconingSummaryResponse {
   total:      number
 }
 
+export interface MttdMttrDayPoint {
+  date:           string
+  mttd_minutes:   number
+  mttr_minutes:   number
+  count:          number
+}
+
+export interface MttdMttrSeverityBreakdown {
+  severity:             string
+  count:                number
+  avg_mttd_minutes:     number | null
+  avg_mttr_minutes:     number | null
+  mttd_sla_pct:         number
+  mttr_sla_pct:         number
+  mttd_target_minutes:  number
+  mttr_target_minutes:  number
+}
+
+export interface MttdMttrResponse {
+  days:                    number
+  total_incidents:         number
+  resolved_incidents:      number
+  acknowledged_incidents:  number
+  resolution_rate:         number
+  overall_mttd_minutes:    number | null
+  overall_mttr_minutes:    number | null
+  trend:                   MttdMttrDayPoint[]
+  by_severity:             MttdMttrSeverityBreakdown[]
+}
+
 export interface AssetRiskEntry {
   ip:             string
   activity_score: number
@@ -1121,5 +1151,8 @@ export const analyticsApi = {
 
   assetRisk: (hours = 24, limit = 20) =>
     request<AssetRiskResponse>(`/analytics/asset-risk?hours=${hours}&limit=${limit}`),
+
+  mttdMttr: (days = 30) =>
+    request<MttdMttrResponse>(`/analytics/mttd-mttr?days=${days}`),
 }
 

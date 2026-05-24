@@ -136,7 +136,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **Teslim:** `GET /api/v1/analytics/east-west-matrix` (RFC1918→RFC1918, top-N, hours, tenant isolation); `EastWestHeatmapChart.tsx` (ECharts heatmap, visualMap, tooltip); `/east-west-matrix` sayfası (saat seçici, özet stats); sidebar eklendi; 20 test — 1624 toplam test ✓
 - [x] **D9** — Asset Risk Heatmap — Bağımlılık: F4
   - **Teslim:** `GET /api/v1/analytics/asset-risk` (RFC1918 IP bazında 3 risk boyutu: activity_score/chain_score/block_score, weighted total, tenant isolation); `AssetRiskHeatmapChart.tsx` (ECharts heatmap, Y=IP, X=boyutlar, kırmızı ton); `/asset-risk` sayfası (saat seçici, blok sayısı, en riskli IP özeti, legend); sidebar eklendi; 21 test
-- [ ] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
+- [x] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
+  - **Teslim:** `GET /api/v1/analytics/mttd-mttr` (days, tenant isolation, overall MTTD/MTTR, resolution_rate, günlük trend, severity breakdown + SLA uyumu); SLA hedefleri SANS 2023 + Prophet Security: Critical 15dk/60dk, High 60dk/120dk; negatif diff + outlier >30g guard; `MttdMttrChart.tsx` (ECharts çift çizgi, MTTD mavi MTTR turuncu); `/mttd-mttr` sayfası (3 KPI kartı, trend grafik, severity SLA tablosu, kaynak notu); 27 test (basic/hesaplama/veri kalitesi/sla/tenant)
 
 ### AŞAMA 3 — Güvenlik Derinleştirme
 
@@ -204,7 +205,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1645 test, 0 hata (24 Mayıs 2026) — D7 + D9 eklendi
+**Test durumu:** 1672 test, 0 hata (24 Mayıs 2026) — D7 + D9 + D10 eklendi
 
 ---
 

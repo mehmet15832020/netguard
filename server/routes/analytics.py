@@ -1275,3 +1275,179 @@ def asset_risk(
     entries.sort(key=lambda e: e.total_score, reverse=True)
 
     return AssetRiskResponse(hours=hours, limit=limit, assets=entries[:limit])
+
+
+# ─── MTTD / MTTR ─────────────────────────────────────────────────���───────────
+# SLA hedefleri: SANS 2023 Incident Response Survey + Prophet Security benchmarks
+# Critical <15dk MTTD / <60dk MTTR; High <60dk/<120dk; Warning <4s/<8s
+_SLA_MTTD: dict[str, int] = {
+    "critical": 15,
+    "high":     60,
+    "warning":  240,
+    "info":     1440,
+}
+_SLA_MTTR: dict[str, int] = {
+    "critical": 60,
+    "high":     120,
+    "warning":  480,
+    "info":     1440,
+}
+_MAX_VALID_MINUTES = 60 * 24 * 30  # 30 gün üstü outlier
+
+
+def _parse_dt(s: str | None) -> datetime | None:
+    if s is None:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _safe_diff_minutes(end: datetime | None, start: datetime | None) -> float | None:
+    if end is None or start is None:
+        return None
+    delta = (end - start).total_seconds() / 60
+    if delta < 0 or delta > _MAX_VALID_MINUTES:
+        return None  # negatif veya aşırı büyük — veri kalitesi sorunu, atla
+    return delta
+
+
+class _DayPoint(BaseModel):
+    date: str
+    mttd_minutes: float
+    mttr_minutes: float
+    count: int
+
+
+class _SeverityBreakdown(BaseModel):
+    severity: str
+    count: int
+    avg_mttd_minutes: float | None
+    avg_mttr_minutes: float | None
+    mttd_sla_pct: float
+    mttr_sla_pct: float
+    mttd_target_minutes: int
+    mttr_target_minutes: int
+
+
+class MttdMttrResponse(BaseModel):
+    days: int
+    total_incidents: int
+    resolved_incidents: int
+    acknowledged_incidents: int
+    resolution_rate: float
+    overall_mttd_minutes: float | None
+    overall_mttr_minutes: float | None
+    trend: list[_DayPoint]
+    by_severity: list[_SeverityBreakdown]
+
+
+@router.get("/analytics/mttd-mttr", response_model=MttdMttrResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def mttd_mttr(
+    request: Request,
+    response: Response,
+    days: int = Query(default=30, ge=1, le=90),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(days=days)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, tid]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT created_at, acknowledged_at, resolved_at, severity, status
+            FROM incidents
+            WHERE created_at >= %s
+              {tenant_clause}
+            ORDER BY created_at DESC
+            """,
+            params,
+        ).fetchall()
+
+    total = len(rows)
+    resolved = sum(1 for r in rows if r["status"] in ("resolved", "closed"))
+    acked = sum(1 for r in rows if r["acknowledged_at"] is not None)
+    resolution_rate = round(resolved / total * 100, 1) if total > 0 else 0.0
+
+    mttd_vals: list[float] = []
+    mttr_vals: list[float] = []
+    sev_data: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"mttd": [], "mttr": []})
+    day_data: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"mttd": [], "mttr": []})
+
+    for r in rows:
+        created = _parse_dt(r["created_at"])
+        mttd = _safe_diff_minutes(_parse_dt(r["acknowledged_at"]), created)
+        mttr = _safe_diff_minutes(_parse_dt(r["resolved_at"]), created)
+        sev = r["severity"] or "info"
+        day_key = created.date().isoformat() if created else None
+
+        if mttd is not None:
+            mttd_vals.append(mttd)
+            sev_data[sev]["mttd"].append(mttd)
+            if day_key:
+                day_data[day_key]["mttd"].append(mttd)
+        if mttr is not None:
+            mttr_vals.append(mttr)
+            sev_data[sev]["mttr"].append(mttr)
+            if day_key:
+                day_data[day_key]["mttr"].append(mttr)
+
+    overall_mttd = round(sum(mttd_vals) / len(mttd_vals), 1) if mttd_vals else None
+    overall_mttr = round(sum(mttr_vals) / len(mttr_vals), 1) if mttr_vals else None
+
+    all_days = [
+        (since.date() + timedelta(days=i)).isoformat()
+        for i in range(days + 1)
+    ]
+    trend: list[_DayPoint] = []
+    for d in all_days:
+        dd = day_data.get(d, {"mttd": [], "mttr": []})
+        trend.append(_DayPoint(
+            date=d,
+            mttd_minutes=round(sum(dd["mttd"]) / len(dd["mttd"]), 1) if dd["mttd"] else 0.0,
+            mttr_minutes=round(sum(dd["mttr"]) / len(dd["mttr"]), 1) if dd["mttr"] else 0.0,
+            count=max(len(dd["mttd"]), len(dd["mttr"])),
+        ))
+
+    by_severity: list[_SeverityBreakdown] = []
+    for sev in ("critical", "high", "warning", "info"):
+        count_sev = sum(1 for r in rows if (r["severity"] or "info") == sev)
+        if count_sev == 0:
+            continue
+        dd = sev_data.get(sev, {"mttd": [], "mttr": []})
+        m_list = dd["mttd"]
+        r_list = dd["mttr"]
+        t_mttd = _SLA_MTTD[sev]
+        t_mttr = _SLA_MTTR[sev]
+        by_severity.append(_SeverityBreakdown(
+            severity=sev,
+            count=count_sev,
+            avg_mttd_minutes=round(sum(m_list) / len(m_list), 1) if m_list else None,
+            avg_mttr_minutes=round(sum(r_list) / len(r_list), 1) if r_list else None,
+            mttd_sla_pct=round(sum(1 for v in m_list if v <= t_mttd) / len(m_list) * 100, 1) if m_list else 0.0,
+            mttr_sla_pct=round(sum(1 for v in r_list if v <= t_mttr) / len(r_list) * 100, 1) if r_list else 0.0,
+            mttd_target_minutes=t_mttd,
+            mttr_target_minutes=t_mttr,
+        ))
+
+    return MttdMttrResponse(
+        days=days,
+        total_incidents=total,
+        resolved_incidents=resolved,
+        acknowledged_incidents=acked,
+        resolution_rate=resolution_rate,
+        overall_mttd_minutes=overall_mttd,
+        overall_mttr_minutes=overall_mttr,
+        trend=trend,
+        by_severity=by_severity,
+    )

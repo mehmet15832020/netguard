@@ -8,7 +8,7 @@ import {
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
   ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
   ChevronRight, Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart, TrendingUp,
-  GitBranch, AlertTriangle, Lock, Globe, Radio, Grid2X2, Gauge,
+  GitBranch, AlertTriangle, Lock, Globe, Radio, Grid2X2, Gauge, Clock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -46,6 +46,7 @@ const SECTIONS = [
       { href: '/beaconing',               label: 'Beaconing',          icon: Radio },
       { href: '/east-west-matrix',        label: 'E-W Matrix',         icon: Grid2X2 },
       { href: '/asset-risk',             label: 'Asset Risk',         icon: Gauge },
+      { href: '/mttd-mttr',              label: 'MTTD / MTTR',        icon: Clock },
     ],
   },
   {
