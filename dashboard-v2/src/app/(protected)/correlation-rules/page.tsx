@@ -24,6 +24,7 @@ export default function CorrelationRulesPage() {
   const qc = useQueryClient()
   const [editing, setEditing] = useState<CorrelationRule | null | 'new'>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [mutError, setMutError] = useState<string | null>(null)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['correlation', 'rules'],
@@ -33,15 +34,21 @@ export default function CorrelationRulesPage() {
 
   const toggleMut = useMutation({
     mutationFn: (rule_id: string) => correlationApi.toggleRule(rule_id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['correlation', 'rules'] }),
+    onSuccess: () => {
+      setMutError(null)
+      qc.invalidateQueries({ queryKey: ['correlation', 'rules'] })
+    },
+    onError: (e: Error) => setMutError(e.message),
   })
 
   const deleteMut = useMutation({
     mutationFn: (rule_id: string) => correlationApi.deleteRule(rule_id),
     onSuccess: () => {
       setConfirmDelete(null)
+      setMutError(null)
       qc.invalidateQueries({ queryKey: ['correlation', 'rules'] })
     },
+    onError: (e: Error) => setMutError(e.message),
   })
 
   const rules = data?.rules ?? []
@@ -65,6 +72,13 @@ export default function CorrelationRulesPage() {
           Yeni Kural
         </button>
       </div>
+
+      {/* Mutation hata mesajı */}
+      {mutError && (
+        <p className="text-sm text-red-400 bg-red-950/30 rounded px-3 py-2 border border-red-900/50">
+          {mutError}
+        </p>
+      )}
 
       {/* Stats */}
       {data && (
@@ -205,6 +219,11 @@ export default function CorrelationRulesPage() {
               <span className="font-mono text-zinc-200">{confirmDelete}</span> kuralı kalıcı olarak silinecek.
               Bu işlem geri alınamaz.
             </p>
+            {mutError && (
+              <p className="text-sm text-red-400 bg-red-950/30 rounded px-3 py-2 border border-red-900/50">
+                {mutError}
+              </p>
+            )}
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirmDelete(null)}

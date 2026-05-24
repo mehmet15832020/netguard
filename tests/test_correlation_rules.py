@@ -54,10 +54,10 @@ _RULE_B = {
 
 @pytest.fixture()
 def rules_file(tmp_path, monkeypatch):
-    """Kuralları izole geçici dosyaya yönlendir."""
+    """Kuralları izole geçici dosyaya yönlendir.
+    Route, correlator._rules_path'i tek kaynak olarak kullanır."""
     path = tmp_path / "correlation_rules.json"
     path.write_text(json.dumps([dict(_RULE_A)]), encoding="utf-8")
-    monkeypatch.setattr(_corr_route, "RULES_PATH", str(path))
     monkeypatch.setattr(_correlator, "_rules_path", str(path))
     return path
 
@@ -353,3 +353,131 @@ class TestToggleRule:
         ).json()["rules"]
         disabled = [r for r in rules if not r["enabled"]]
         assert len(disabled) >= 1
+
+    def test_toggle_reflects_in_correlator_rules(self, rules_file, admin_token):
+        """Toggle sonrası correlator.rules enabled=False kuralı listesinden çıkarır."""
+        from server.correlator import correlator as _corr
+        client.patch(
+            "/api/v1/correlation/rules/ssh_brute/toggle",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        active_ids = [r.rule_id for r in _corr.rules]
+        assert "ssh_brute" not in active_ids
+
+
+# ─── Boundary değerleri ───────────────────────────────────────────────────────
+
+class TestBoundaryValues:
+    @pytest.mark.parametrize("window,expected", [
+        (9, 422), (10, 201), (86400, 201), (86401, 422),
+    ])
+    def test_window_seconds_boundary(self, rules_file, admin_token, window, expected):
+        rule = dict(_RULE_B, rule_id=f"bnd_win_{window}", window_seconds=window)
+        r = client.post(
+            "/api/v1/correlation/rules",
+            json=rule,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == expected
+
+    @pytest.mark.parametrize("threshold,expected", [
+        (0, 422), (1, 201), (10000, 201), (10001, 422),
+    ])
+    def test_threshold_boundary(self, rules_file, admin_token, threshold, expected):
+        rule = dict(_RULE_B, rule_id=f"bnd_thr_{threshold}", threshold=threshold)
+        r = client.post(
+            "/api/v1/correlation/rules",
+            json=rule,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == expected
+
+    @pytest.mark.parametrize("rule_id,expected", [
+        ("a", 422),       # 1 karakter — çok kısa
+        ("ab", 201),      # 2 karakter — minimum
+        ("a" * 64, 201),  # 64 karakter — maximum
+        ("a" * 65, 422),  # 65 karakter — çok uzun
+    ])
+    def test_rule_id_length_boundary(self, rules_file, admin_token, rule_id, expected):
+        rule = dict(_RULE_B, rule_id=rule_id)
+        r = client.post(
+            "/api/v1/correlation/rules",
+            json=rule,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == expected
+
+    def test_distinct_by_invalid_column_returns_422(self, rules_file, admin_token):
+        rule = dict(_RULE_B, rule_id="bnd_dst", distinct_by="nonexistent_column")
+        r = client.post(
+            "/api/v1/correlation/rules",
+            json=rule,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == 422
+
+    def test_description_max_length(self, rules_file, admin_token):
+        rule = dict(_RULE_B, rule_id="bnd_desc", description="x" * 501)
+        r = client.post(
+            "/api/v1/correlation/rules",
+            json=rule,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == 422
+
+    def test_match_event_action_max_length(self, rules_file, admin_token):
+        rule = dict(_RULE_B, rule_id="bnd_mea", match_event_action="x" * 121)
+        r = client.post(
+            "/api/v1/correlation/rules",
+            json=rule,
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == 422
+
+
+# ─── Bulk PUT validasyon ──────────────────────────────────────────────────────
+
+class TestBulkPutValidation:
+    def test_bulk_put_validates_each_rule(self, rules_file, admin_token):
+        """Bulk PUT artık CorrelationRuleIn ile tam validasyon yapar."""
+        invalid_rule = dict(_RULE_B, severity="extreme")
+        r = client.put(
+            "/api/v1/correlation/rules",
+            json={"rules": [dict(_RULE_A), invalid_rule]},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == 422
+
+    def test_bulk_put_valid_rules_succeed(self, rules_file, admin_token):
+        r = client.put(
+            "/api/v1/correlation/rules",
+            json={"rules": [dict(_RULE_A), dict(_RULE_B)]},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == 200
+        assert r.json()["saved"] == 2
+
+    def test_bulk_put_invalid_group_by_returns_422(self, rules_file, admin_token):
+        bad = dict(_RULE_B, group_by="bad_column")
+        r = client.put(
+            "/api/v1/correlation/rules",
+            json={"rules": [bad]},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert r.status_code == 422
+
+
+# ─── Unified path testi ───────────────────────────────────────────────────────
+
+class TestUnifiedPath:
+    def test_write_and_reload_use_same_path(self, rules_file, admin_token):
+        """Route yazması correlator'ın okuduğu aynı dosyaya gitmelidir.
+        POST sonrası correlator.load_rules() çağrılır; yeni kural correlator.rules'ta görünür."""
+        from server.correlator import correlator as _corr
+        client.post(
+            "/api/v1/correlation/rules",
+            json=dict(_RULE_B),
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        active_ids = [r.rule_id for r in _corr.rules]
+        assert "port_sweep" in active_ids
