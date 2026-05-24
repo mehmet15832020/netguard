@@ -309,6 +309,62 @@ export const correlationApi = {
 }
 
 // ------------------------------------------------------------------ //
+//  Sigma
+// ------------------------------------------------------------------ //
+
+export interface SigmaRuleMeta {
+  rule_id:        string
+  title:          string
+  status:         string
+  description:    string
+  level:          string
+  tags:           string[]
+  falsepositives: string[]
+  enabled:        boolean
+  filename:       string
+}
+
+export interface SigmaValidateResponse {
+  valid:          boolean
+  rule_id:        string
+  title:          string
+  level:          string
+  is_correlation: boolean
+  rule_count:     number
+}
+
+export const sigmaApi = {
+  listRules: () =>
+    request<{ count: number; rules: SigmaRuleMeta[] }>('/sigma/rules'),
+
+  getRule: (rule_id: string) =>
+    request<{ rule_id: string; filename: string; yaml_content: string }>(`/sigma/rules/${rule_id}`),
+
+  validateRule: (yaml_content: string) =>
+    request<SigmaValidateResponse>('/sigma/rules/validate', {
+      method: 'POST',
+      body: JSON.stringify({ yaml_content }),
+    }),
+
+  createRule: (yaml_content: string) =>
+    request<{ saved: string; filename: string; total_rules: number }>('/sigma/rules', {
+      method: 'POST',
+      body: JSON.stringify({ yaml_content }),
+    }),
+
+  deleteRule: (rule_id: string) =>
+    request<{ deleted: string; total_rules: number }>(`/sigma/rules/${rule_id}`, {
+      method: 'DELETE',
+    }),
+
+  toggleRule: (rule_id: string) =>
+    request<{ rule_id: string; enabled: boolean; filename: string; loaded_count: number }>(
+      `/sigma/rules/${rule_id}/toggle`,
+      { method: 'PATCH' },
+    ),
+}
+
+// ------------------------------------------------------------------ //
 //  SNMP
 // ------------------------------------------------------------------ //
 

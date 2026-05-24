@@ -166,9 +166,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **R1** — Korelasyon Kuralları CRUD UI (4-5 gün, düşük risk)
   - **Teslim:** `GET/POST/PUT/DELETE/PATCH /api/v1/correlation/rules[/{rule_id}[/toggle]]` (CorrelationRuleIn Pydantic validation: slug regex, frozenset sev/group_by, window 10-86400, threshold 1-10000, 409 duplicate, 404 missing, hot-reload via correlator.load_rules()); `/correlation-rules` liste sayfası (Power toggle, Pencil edit, Trash2 sil, delete confirm dialog, stats bar); `RuleFormModal.tsx` (tüm alanlar, create/update mutations, enabled toggle); sidebar "Kural Yönetimi"; `correlationApi` 5 yeni metod; 30 test — 1702 toplam test ✓
   - **Quality audit düzeltmeleri:** atomik yazma (tempfile+fsync+os.replace), threading.Lock, correlator._rules_path tek kaynak, _VALID_GROUP_COLS import, max_length sınırları, bulk PUT tam validasyon, boundary testleri (50 test)
-- [ ] **R2** — Sigma Rule Wizard (6-7 gün, orta risk) — Bağımlılık: R1
-  - Dropdown tabanlı kural oluşturucu → arka planda Sigma YAML üretir
-  - Hedef kitle için kritik: IT adminin YAML bilmeden kural yazması
+- [x] **R2** — Sigma Rule Wizard (6-7 gün, orta risk) — Bağımlılık: R1
+  - **Teslim:** `PATCH /api/v1/sigma/rules/{rule_id}/toggle` (.yml ↔ .yml.disabled hot-reload); `_list_sigma_files()` disabled dosyaları da listeler; `/sigma-rules` liste sayfası (Power toggle, Trash2 sil, level badge, tag'lar); `/sigma-wizard` 4 adımlı form (Tespit→Korelasyon→Metadata→Önizleme); TypeScript YAML üretici (event_action, modifier, extra_filters, group_by, timespan, threshold, MITRE ATT&CK v17, false positives); doğrula + kaydet akışı; `sigmaApi` 6 metod; sidebar 2 yeni giriş; 28 test — MITRE ATT&CK v17, Sigma HQ spec, pySigma v2 kaynaklı
 - [ ] **R3** — Sigma YAML Monaco Editör (8-10 gün, yüksek risk, isteğe bağlı)
   - Monaco Editor + `POST /api/v1/sigma/validate` pySigma syntax check
   - Enable/disable toggle per rule, hot-reload

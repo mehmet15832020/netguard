@@ -33,11 +33,15 @@ def _rule_path(rule_id: str) -> Path:
 def _list_sigma_files() -> list[Path]:
     if not SIGMA_DIR.exists():
         return []
-    return sorted(SIGMA_DIR.glob("**/*.y*ml"))
+    enabled = sorted(SIGMA_DIR.glob("**/*.yml"))
+    disabled = sorted(SIGMA_DIR.glob("**/*.yml.disabled"))
+    return enabled + disabled
 
 
 def _parse_v2_rule(path: Path) -> dict | None:
-    """V2 pySigma dosyasını oku ve metadata döndür (son kural öncelikli)."""
+    """V2 pySigma dosyasını oku ve metadata döndür (son kural öncelikli).
+    .yml.disabled uzantılı dosyalar enabled=False olarak işaretlenir."""
+    enabled = path.suffix != ".disabled"
     try:
         text = path.read_text(encoding="utf-8")
         collection = _SC.from_yaml(text)
@@ -57,7 +61,7 @@ def _parse_v2_rule(path: Path) -> dict | None:
                 "level":          level,
                 "tags":           tags,
                 "falsepositives": fps,
-                "enabled":        True,
+                "enabled":        enabled,
                 "filename":       path.name,
             }
     except Exception:
@@ -147,6 +151,30 @@ def upload_sigma_rule(body: SigmaRuleUpload, _: User = Depends(require_admin)):
     loaded = correlator.load_rules()
     logger.info(f"SIGMA V2 kural yüklendi: {rule_id} → {dest.name}")
     return {"saved": rule_id, "filename": dest.name, "total_rules": loaded}
+
+
+@router.patch("/sigma/rules/{rule_id}/toggle")
+def toggle_sigma_rule(rule_id: str, _: User = Depends(require_admin)):
+    """Sigma kuralını aktif/pasif yap (.yml ↔ .yml.disabled yeniden adlandır)."""
+    target: Path | None = None
+    for f in _list_sigma_files():
+        meta = _parse_v2_rule(f)
+        if meta and meta["rule_id"] == rule_id:
+            target = f
+            break
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Kural bulunamadı: {rule_id}")
+
+    if target.suffix == ".disabled":
+        new_path = Path(str(target)[: -len(".disabled")])  # foo.yml.disabled → foo.yml
+    else:
+        new_path = Path(str(target) + ".disabled")         # foo.yml → foo.yml.disabled
+
+    target.rename(new_path)
+    loaded = correlator.load_rules()
+    enabled = not str(new_path).endswith(".disabled")
+    logger.info(f"Sigma kuralı toggle: {rule_id} → enabled={enabled}")
+    return {"rule_id": rule_id, "enabled": enabled, "filename": new_path.name, "loaded_count": loaded}
 
 
 @router.delete("/sigma/rules/{rule_id}")
