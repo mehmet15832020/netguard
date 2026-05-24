@@ -168,9 +168,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **Quality audit düzeltmeleri:** atomik yazma (tempfile+fsync+os.replace), threading.Lock, correlator._rules_path tek kaynak, _VALID_GROUP_COLS import, max_length sınırları, bulk PUT tam validasyon, boundary testleri (50 test)
 - [x] **R2** — Sigma Rule Wizard (6-7 gün, orta risk) — Bağımlılık: R1
   - **Teslim:** `PATCH /api/v1/sigma/rules/{rule_id}/toggle` (.yml ↔ .yml.disabled hot-reload); `_list_sigma_files()` disabled dosyaları da listeler; `/sigma-rules` liste sayfası (Power toggle, Trash2 sil, level badge, tag'lar); `/sigma-wizard` 4 adımlı form (Tespit→Korelasyon→Metadata→Önizleme); TypeScript YAML üretici (event_action, modifier, extra_filters, group_by, timespan, threshold, MITRE ATT&CK v17, false positives); doğrula + kaydet akışı; `sigmaApi` 6 metod; sidebar 2 yeni giriş; 28 test — MITRE ATT&CK v17, Sigma HQ spec, pySigma v2 kaynaklı
-- [ ] **R3** — Sigma YAML Monaco Editör (8-10 gün, yüksek risk, isteğe bağlı)
-  - Monaco Editor + `POST /api/v1/sigma/validate` pySigma syntax check
-  - Enable/disable toggle per rule, hot-reload
+- [x] **R3** — Sigma YAML Monaco Editör (8-10 gün, yüksek risk, isteğe bağlı)
+  - **Teslim:** `@monaco-editor/react` kurulumu; `/sigma-editor` sayfası (Monaco Editor ssr:false, YAML dili, vs-dark tema, 6 şablon); `?rule_id=` ile mevcut kural yükleme + üzerine yazma; Doğrula→Kaydet akışı (POST /sigma/rules/validate → POST /sigma/rules); `/sigma-rules` listesine Pencil edit butonu; sidebar "YAML Editör" (FileCode2); test_sigma_editor.py 16 test; test_correlation_routes.py RULES_PATH→correlator instance fix — 1766 toplam test ✓
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
@@ -203,7 +202,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1672 test, 0 hata (24 Mayıs 2026) — D7 + D9 + D10 eklendi
+**Test durumu:** 1766 test, 0 hata (24 Mayıs 2026) — R1 + R2 + R3 eklendi
 
 ---
 
