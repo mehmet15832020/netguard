@@ -1585,3 +1585,139 @@ class TestKillChainTimelineTenantIsolation:
 
 
 STAGE_ORDER_MAP = {"recon": 1, "weaponize": 2, "access": 3, "lateral": 4}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  East-West Connection Matrix
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestEastWestMatrixBasic:
+    def test_endpoint_returns_200(self, client):
+        resp = client.get("/api/v1/analytics/east-west-matrix")
+        assert resp.status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert "hours" in data
+        assert "rows" in data
+        assert "max_count" in data
+        assert "unique_pairs" in data
+
+    def test_empty_db_returns_empty_rows(self, client):
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["rows"] == []
+        assert data["max_count"] == 0
+
+    def test_default_hours_is_24(self, client):
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["hours"] == 24
+
+    def test_hours_param_reflected(self, client):
+        data = client.get("/api/v1/analytics/east-west-matrix?hours=48").json()
+        assert data["hours"] == 48
+
+
+class TestEastWestMatrixValidation:
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/east-west-matrix?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/east-west-matrix?hours=169").status_code == 422
+
+    def test_limit_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/east-west-matrix?limit=0").status_code == 422
+
+    def test_limit_101_returns_422(self, client):
+        assert client.get("/api/v1/analytics/east-west-matrix?limit=101").status_code == 422
+
+
+class TestEastWestMatrixAuth:
+    def test_requires_auth_returns_401(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/east-west-matrix").status_code == 401
+
+
+class TestEastWestMatrixData:
+    def test_rfc1918_to_rfc1918_counted(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert len(data["rows"]) == 1
+        assert data["rows"][0]["src"] == "10.0.0.1"
+        assert data["rows"][0]["dst"] == "192.168.1.1"
+
+    def test_rfc1918_to_public_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="8.8.8.8")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["rows"] == []
+
+    def test_public_to_rfc1918_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="8.8.8.8", destination_ip="10.0.0.1")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["rows"] == []
+
+    def test_both_public_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="1.1.1.1", destination_ip="8.8.8.8")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["rows"] == []
+
+    def test_ordered_by_count_desc(self, client, tmp_db):
+        for _ in range(5):
+            _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1")
+        for _ in range(2):
+            _insert_log(tmp_db, source_ip="10.0.0.2", destination_ip="192.168.1.2")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["rows"][0]["src"] == "10.0.0.1"
+        assert data["rows"][0]["dst"] == "192.168.1.1"
+        assert data["rows"][0]["count"] == 5
+
+    def test_limit_restricts_result_count(self, client, tmp_db):
+        for i in range(5):
+            _insert_log(tmp_db, source_ip=f"10.0.{i}.1", destination_ip=f"192.168.{i}.1")
+
+        data = client.get("/api/v1/analytics/east-west-matrix?limit=2").json()
+        assert len(data["rows"]) <= 2
+
+    def test_max_count_equals_highest_count(self, client, tmp_db):
+        for _ in range(7):
+            _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1")
+        for _ in range(3):
+            _insert_log(tmp_db, source_ip="10.0.0.2", destination_ip="192.168.1.2")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        assert data["max_count"] == 7
+
+    def test_old_logs_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1",
+                    received_at_minutes_ago=180)
+
+        data = client.get("/api/v1/analytics/east-west-matrix?hours=1").json()
+        assert data["rows"] == []
+
+
+class TestEastWestMatrixTenantIsolation:
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.0.0.1", destination_ip="192.168.1.1",
+                    tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.0.0.2", destination_ip="192.168.1.2",
+                    tenant_id="other-tenant")
+
+        data = client.get("/api/v1/analytics/east-west-matrix").json()
+        srcs = [r["src"] for r in data["rows"]]
+        assert "10.0.0.1" in srcs
+        assert "10.0.0.2" not in srcs
+
+    def test_superadmin_sees_all(self, superadmin_client, tmp_db):
+        _insert_log(tmp_db, source_ip="10.1.0.1", destination_ip="192.168.2.1",
+                    tenant_id="default")
+        _insert_log(tmp_db, source_ip="10.1.0.2", destination_ip="192.168.2.2",
+                    tenant_id="other-tenant")
+
+        data = superadmin_client.get("/api/v1/analytics/east-west-matrix").json()
+        srcs = [r["src"] for r in data["rows"]]
+        assert "10.1.0.1" in srcs
+        assert "10.1.0.2" in srcs

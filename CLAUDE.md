@@ -132,7 +132,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 #### Blok C — Karmaşık Görseller (ertelenebilir, F4 sonrası)
 
-- [ ] **D7** — East-West Connection Matrix Heatmap — Bağımlılık: F4
+- [x] **D7** — East-West Connection Matrix Heatmap — Bağımlılık: F4
+  - **Teslim:** `GET /api/v1/analytics/east-west-matrix` (RFC1918→RFC1918, top-N, hours, tenant isolation); `EastWestHeatmapChart.tsx` (ECharts heatmap, visualMap, tooltip); `/east-west-matrix` sayfası (saat seçici, özet stats); sidebar eklendi; 20 test — 1624 toplam test ✓
 - [ ] **D9** — Asset Risk Heatmap — Bağımlılık: F4
 - [ ] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
 
@@ -186,8 +187,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 ### Küçük Kod Sorunları (Herhangi Bir Anda)
 
-- [ ] `correlator.py:178` — Yanıltıcı yorum `"JSON + sigma_v1 YAML"` → `"JSON korelasyon kuralları"`
-- [ ] `correlator.py:244` — Sessiz `except: pass` → `logger.debug("ws broadcast: %s", exc)`
+- [x] `correlator.py:178` — Yanıltıcı yorum düzeltildi ✓
+- [x] `correlator.py:244` — Sessiz `except: pass` → `logger.debug` ✓
 - [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓, Port/protocol input (P7) ✓
 
 ---
@@ -202,7 +203,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1604 test, 0 hata (24 Mayıs 2026) — analytics quality audit düzeltmeleri + MFA post-commit fix
+**Test durumu:** 1624 test, 0 hata (24 Mayıs 2026) — D7 East-West Matrix eklendi
 
 ---
 

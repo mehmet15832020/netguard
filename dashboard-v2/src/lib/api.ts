@@ -1015,6 +1015,19 @@ export interface BeaconingSummaryResponse {
   total:      number
 }
 
+export interface EastWestMatrixRow {
+  src: string
+  dst: string
+  count: number
+}
+
+export interface EastWestMatrixResponse {
+  hours:        number
+  rows:         EastWestMatrixRow[]
+  max_count:    number
+  unique_pairs: number
+}
+
 export interface ThreatSource {
   ip:              string
   count:           number
@@ -1085,5 +1098,8 @@ export const analyticsApi = {
 
   killChainTimeline: (hours = 24, limit = 20) =>
     request<KillChainTimelineResponse>(`/analytics/kill-chain-timeline?hours=${hours}&limit=${limit}`),
+
+  eastWestMatrix: (hours = 24, limit = 20) =>
+    request<EastWestMatrixResponse>(`/analytics/east-west-matrix?hours=${hours}&limit=${limit}`),
 }
 

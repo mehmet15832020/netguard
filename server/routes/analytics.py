@@ -1054,3 +1054,66 @@ def kill_chain_timeline(
         window_end=now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         rows=chain_rows[:limit],
     )
+
+
+# ─── East-West Connection Matrix ─────────────────────────────────────────────
+
+class _MatrixRow(BaseModel):
+    src: str
+    dst: str
+    count: int
+
+
+class EastWestMatrixResponse(BaseModel):
+    hours: int
+    rows: list[_MatrixRow]
+    max_count: int
+    unique_pairs: int
+
+
+@router.get("/analytics/east-west-matrix", response_model=EastWestMatrixResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def east_west_matrix(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, tid]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT source_ip AS src, destination_ip AS dst, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND source_ip IS NOT NULL
+              AND destination_ip IS NOT NULL
+              AND {_RFC1918_LIKE}
+              AND {_RFC1918_DST_LIKE}
+            GROUP BY src, dst
+            ORDER BY cnt DESC
+            LIMIT %s
+            """,
+            [*params, limit],
+        ).fetchall()
+
+    matrix_rows = [_MatrixRow(src=r["src"], dst=r["dst"], count=r["cnt"]) for r in rows]
+    max_count = matrix_rows[0].count if matrix_rows else 0
+
+    return EastWestMatrixResponse(
+        hours=hours,
+        rows=matrix_rows,
+        max_count=max_count,
+        unique_pairs=len(matrix_rows),
+    )
