@@ -28,8 +28,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-def _to_dt(s: str) -> datetime:
-    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+def _to_dt(s) -> datetime:
+    if isinstance(s, datetime):
+        return s
+    return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
 
 
 class _IPCount(BaseModel):
@@ -1295,12 +1297,14 @@ _SLA_MTTR: dict[str, int] = {
 _MAX_VALID_MINUTES = 60 * 24 * 30  # 30 gün üstü outlier
 
 
-def _parse_dt(s: str | None) -> datetime | None:
+def _parse_dt(s) -> datetime | None:
     if s is None:
         return None
+    if isinstance(s, datetime):
+        return s
     try:
-        return datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except ValueError:
+        return datetime.fromisoformat(str(s).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
         return None
 
 
