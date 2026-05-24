@@ -55,7 +55,12 @@ export function AlertVolumeChart({ series, hours = 24, bucketMinutes = 60, heigh
   const stackOrder: Array<keyof typeof series> = ['info', 'warning', 'high', 'critical']
 
   const option = useMemo(() => {
-    const times = (series.critical ?? []).map((p) => fmtTime(p.t, bucketMinutes))
+    const times = (
+      series.critical?.length  ? series.critical  :
+      series.high?.length      ? series.high      :
+      series.warning?.length   ? series.warning   :
+      series.info             ?? []
+    ).map((p) => fmtTime(p.t, bucketMinutes))
 
     return {
       backgroundColor: 'transparent',

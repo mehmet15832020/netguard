@@ -109,7 +109,17 @@ export interface Token {
   mfa_token:     string | null
 }
 
+export interface CurrentUser {
+  username: string
+  role: string
+  tenant_id: string | null
+  totp_enabled: boolean
+}
+
 export const authApi = {
+  me: () =>
+    request<CurrentUser>('/auth/me'),
+
   login: async (
     username: string,
     password: string,
@@ -995,13 +1005,13 @@ export interface DnsAnalysisResponse {
 
 export interface TlsFingerprintResponse {
   hours:            number
-  top_fingerprints: { ja4: string; count: number; first_seen: string }[]
+  top_fingerprints: { fingerprint: string; count: number }[]
   unique_count:     number
 }
 
 export interface BeaconingSummaryResponse {
   hours:      number
-  detections: { source_ip: string; dest_ip: string; interval_s: number; count: number; detected_at: string }[]
+  detections: { source_ip: string; destination_ip: string; message: string; detected_at: string }[]
   total:      number
 }
 

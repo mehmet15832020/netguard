@@ -14,12 +14,7 @@ const HOURS_OPTIONS = [
   { label: '7g',  value: 168 },
 ]
 
-function fmtDate(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleString('tr-TR', { timeZone: 'UTC' })
-}
-
-function truncateJa4(hash: string, maxLen = 20): string {
+function truncateFingerprint(hash: string, maxLen = 32): string {
   if (hash.length <= maxLen) return hash
   return `${hash.slice(0, maxLen)}…`
 }
@@ -110,7 +105,7 @@ export default function TlsFingerprintsPage() {
         ) : !data || data.top_fingerprints.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
             <Fingerprint className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">Veri yok</p>
+            <p className="text-sm">Bu zaman aralığında TLS bağlantısı tespit edilmedi</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -118,28 +113,24 @@ export default function TlsFingerprintsPage() {
               <thead>
                 <tr className="border-b border-zinc-800 text-xs text-zinc-500">
                   <th className="text-left px-4 py-2.5 font-medium">#</th>
-                  <th className="text-left px-4 py-2.5 font-medium">JA4 Hash</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Bağlantı Sayısı</th>
-                  <th className="text-left px-4 py-2.5 font-medium">İlk Görülme</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Parmak İzi</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Görülme Sayısı</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
                 {data.top_fingerprints.map((fp, idx) => (
-                  <tr key={fp.ja4} className="hover:bg-zinc-800/30 transition-colors">
+                  <tr key={fp.fingerprint} className="hover:bg-zinc-800/30 transition-colors">
                     <td className="px-4 py-2.5 text-zinc-600 text-xs">{idx + 1}</td>
                     <td className="px-4 py-2.5">
                       <span
-                        title={fp.ja4}
+                        title={fp.fingerprint}
                         className="font-mono text-xs text-indigo-300 cursor-default"
                       >
-                        {truncateJa4(fp.ja4)}
+                        {truncateFingerprint(fp.fingerprint)}
                       </span>
                     </td>
                     <td className="px-4 py-2.5 text-zinc-300 font-semibold text-sm">
                       {fp.count.toLocaleString('tr-TR')}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-500 text-xs">
-                      {fmtDate(fp.first_seen)}
                     </td>
                   </tr>
                 ))}

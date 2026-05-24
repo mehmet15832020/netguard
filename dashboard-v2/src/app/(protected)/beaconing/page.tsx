@@ -14,18 +14,6 @@ const HOURS_OPTIONS = [
   { label: '7g',  value: 168 },
 ]
 
-function intervalColor(s: number): string {
-  if (s < 120)  return 'text-red-400'
-  if (s <= 600) return 'text-orange-400'
-  return 'text-yellow-400'
-}
-
-function intervalBadge(s: number): string {
-  if (s < 120)  return 'Agresif'
-  if (s <= 600) return 'Orta'
-  return 'Yavaş'
-}
-
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleString('tr-TR', { timeZone: 'UTC' })
 }
@@ -90,32 +78,26 @@ export default function BeaconingPage() {
       {isLoading ? (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-20 animate-pulse" />
       ) : data ? (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 inline-flex items-center gap-4">
-          <Radio className="w-6 h-6 text-orange-400 flex-shrink-0" />
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-4">
+          <div className={`p-2 rounded-lg ${data.total > 0 ? 'bg-red-500/15 text-red-400' : 'bg-zinc-700/40 text-zinc-400'}`}>
+            <Radio className="w-4 h-4" />
+          </div>
           <div>
             <p className="text-xs text-zinc-500">Toplam Tespit</p>
-            <p className="text-2xl font-bold text-zinc-100">
-              {data.total.toLocaleString('tr-TR')}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-2xl font-bold text-zinc-100">
+                {data.total.toLocaleString('tr-TR')}
+              </p>
+              {data.total > 0 && (
+                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900/50 text-red-400 border border-red-800">
+                  UYARI
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-zinc-500 mt-0.5">Son {hours} saat</p>
           </div>
         </div>
       ) : null}
-
-      {/* İnterval açıklaması */}
-      <div className="flex gap-4 text-xs text-zinc-500">
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-          Agresif (&lt;120s)
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
-          Orta (120–600s)
-        </span>
-        <span className="flex items-center gap-1.5">
-          <span className="inline-block w-2 h-2 rounded-full bg-yellow-500" />
-          Yavaş (&gt;600s)
-        </span>
-      </div>
 
       {/* Tablo */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800">
@@ -130,10 +112,10 @@ export default function BeaconingPage() {
             ))}
           </div>
         ) : !data || data.detections.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
-            <Radio className="w-8 h-8 mb-2 opacity-30" />
-            <p className="text-sm">Veri yok</p>
-            <p className="text-xs mt-1">Beaconing aktivitesi tespit edilmedi</p>
+          <div className="flex flex-col items-center justify-center py-16 rounded-b-xl bg-emerald-950/20 border-t border-emerald-900/40">
+            <Radio className="w-8 h-8 mb-2 text-emerald-500 opacity-60" />
+            <p className="text-sm text-emerald-400 font-medium">Bu zaman aralığında beaconing tespiti yapılmadı</p>
+            <p className="text-xs text-emerald-600 mt-1">Ağda C2 beacon aktivitesi gözlemlenmedi</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -142,31 +124,22 @@ export default function BeaconingPage() {
                 <tr className="border-b border-zinc-800 text-xs text-zinc-500">
                   <th className="text-left px-4 py-2.5 font-medium">Kaynak IP</th>
                   <th className="text-left px-4 py-2.5 font-medium">Hedef IP</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Interval</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Tespit Sayısı</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Son Tespit</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Mesaj</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Tespit Zamanı</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800/50">
                 {data.detections.map((det, idx) => (
                   <tr
-                    key={`${det.source_ip}-${det.dest_ip}-${idx}`}
+                    key={`${det.source_ip}-${det.destination_ip}-${idx}`}
                     className="hover:bg-zinc-800/30 transition-colors"
                   >
                     <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">{det.source_ip}</td>
-                    <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">{det.dest_ip}</td>
-                    <td className="px-4 py-2.5">
-                      <span className={`font-semibold text-xs ${intervalColor(det.interval_s)}`}>
-                        {det.interval_s}s
-                      </span>
-                      <span className="ml-1.5 text-[10px] text-zinc-600">
-                        ({intervalBadge(det.interval_s)})
-                      </span>
+                    <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">{det.destination_ip}</td>
+                    <td className="px-4 py-2.5 text-zinc-400 text-xs max-w-sm truncate" title={det.message}>
+                      {det.message}
                     </td>
-                    <td className="px-4 py-2.5 text-zinc-300 text-sm font-semibold">
-                      {det.count.toLocaleString('tr-TR')}
-                    </td>
-                    <td className="px-4 py-2.5 text-zinc-500 text-xs">
+                    <td className="px-4 py-2.5 text-zinc-500 text-xs whitespace-nowrap">
                       {fmtDate(det.detected_at)}
                     </td>
                   </tr>
