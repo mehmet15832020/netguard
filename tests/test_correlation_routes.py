@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from server.main import app
 import server.routes.correlation as _corr_route
+from server.correlator import correlator as _correlator
 
 client = TestClient(app)
 
@@ -44,7 +45,7 @@ class TestCorrelationRoutes:
         """PUT /correlation/rules gerçek config dosyası yerine tmp dosyaya yazar."""
         tmp_rules = tmp_path / "rules.json"
         tmp_rules.write_text("[]")
-        monkeypatch.setattr(_corr_route, "RULES_PATH", str(tmp_rules))
+        monkeypatch.setattr(_correlator, "_rules_path", str(tmp_rules))
         r = client.put(
             "/api/v1/correlation/rules",
             json={"rules": [VALID_RULE]},
@@ -58,7 +59,7 @@ class TestCorrelationRoutes:
     def test_update_rules_rejects_missing_field(self, admin_token, tmp_path, monkeypatch):
         tmp_rules = tmp_path / "rules.json"
         tmp_rules.write_text("[]")
-        monkeypatch.setattr(_corr_route, "RULES_PATH", str(tmp_rules))
+        monkeypatch.setattr(_correlator, "_rules_path", str(tmp_rules))
         bad_rule = {k: v for k, v in VALID_RULE.items() if k != "output_event_action"}
         r = client.put(
             "/api/v1/correlation/rules",

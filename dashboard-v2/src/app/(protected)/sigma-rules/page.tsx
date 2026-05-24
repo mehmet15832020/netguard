@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldCheck, Plus, Trash2, Power, Wand2 } from 'lucide-react'
+import { ShieldCheck, Plus, Trash2, Power, Wand2, Pencil } from 'lucide-react'
 import { sigmaApi } from '@/lib/api'
 import { useState } from 'react'
 import { cn } from '@/lib/utils'
@@ -169,6 +169,13 @@ export default function SigmaRulesPage() {
                   </td>
                   <td className="py-3 px-4">
                     <div className="flex items-center gap-1 justify-end">
+                      <Link
+                        href={`/sigma-editor?rule_id=${rule.rule_id}`}
+                        className="p-1.5 rounded text-zinc-500 hover:text-violet-400 hover:bg-violet-950/30 transition-colors"
+                        title="YAML Editörde Düzenle"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Link>
                       <button
                         onClick={() => setConfirmDelete(rule.rule_id)}
                         className="p-1.5 rounded text-zinc-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"

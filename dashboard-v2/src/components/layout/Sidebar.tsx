@@ -9,7 +9,7 @@ import {
   ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
   ChevronRight, Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart, TrendingUp,
   GitBranch, AlertTriangle, Lock, Globe, Radio, Grid2X2, Gauge, Clock,
-  ShieldCheck, Wand2,
+  ShieldCheck, Wand2, FileCode2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -33,6 +33,7 @@ const SECTIONS = [
       { href: '/network-intelligence',  label: 'Network Intelligence',  icon: Fingerprint },
       { href: '/sigma-rules',           label: 'Sigma Kuralları',       icon: ShieldCheck },
       { href: '/sigma-wizard',          label: 'Sigma Sihirbazı',       icon: Wand2 },
+      { href: '/sigma-editor',          label: 'YAML Editör',           icon: FileCode2 },
     ],
   },
   {
