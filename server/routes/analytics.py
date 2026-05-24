@@ -1117,3 +1117,161 @@ def east_west_matrix(
         max_count=max_count,
         unique_pairs=len(matrix_rows),
     )
+
+
+# ─── Asset Risk Heatmap ───────────────────────────────────────────────────────
+
+_ASSET_SEV_WEIGHTS: dict[str, int] = {
+    "critical": 40, "high": 15, "warning": 5, "info": 1,
+}
+_ASSET_SEV_RANK: dict[str, int] = {
+    "critical": 4, "high": 3, "warning": 2, "info": 1,
+}
+
+# Kill-chain event_action → danger weight (recon=2, weaponize=8, lateral/C2=20)
+_CHAIN_ACTION_WEIGHTS: dict[str, int] = {
+    "port_scan": 2, "dns_anomaly": 2, "arp_attack": 2, "web_scan_detected": 2,
+    "anomaly_detected": 2, "asset_anomaly_detected": 2, "arp_spoof": 2,
+    "zeek_port": 2, "dns_query": 2, "icmp_flood": 2, "tls_suspicious": 2,
+    "ssl_self": 2, "ssl_cert": 2, "firewall_beacon": 2, "firewall_ddos": 2,
+    "network_connection_fl": 2, "anomaly_cluster": 2, "coordinated": 2,
+    "suricata_alert": 2, "suricata_anomaly": 2, "multi_source_attack_detected": 2,
+    "ssh_failure": 8, "windows_logon_failure": 8, "windows_brute_force": 8,
+    "brute_force": 8, "ssh_brute_force": 8, "windows_pass_the_hash": 8,
+    "ssh_target": 8, "web_auth": 8, "brute_force_detected": 8,
+    "lateral_movement": 20, "windows_lateral_movement": 20, "windows_lateral": 20,
+    "ssh_lateral": 20, "dns_c2": 20, "dns_tunnel": 20, "ftp_exfil": 20,
+    "c2_beaconing": 20,
+    "FULL_ATTACK_CHAIN": 50, "PARTIAL_ATTACK_CHAIN": 25,
+}
+_CHAIN_ACTIONS: tuple[str, ...] = tuple(_CHAIN_ACTION_WEIGHTS.keys())
+_CHAIN_PH = ", ".join(["%s"] * len(_CHAIN_ACTIONS))
+
+
+class AssetRiskEntry(BaseModel):
+    ip: str
+    activity_score: float
+    chain_score: float
+    block_score: float
+    total_score: float
+    is_blocked: bool
+    top_severity: str | None
+    event_count: int
+
+
+class AssetRiskResponse(BaseModel):
+    hours: int
+    limit: int
+    assets: list[AssetRiskEntry]
+
+
+@router.get("/analytics/asset-risk", response_model=AssetRiskResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def asset_risk(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    limit: int = Query(default=20, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        base_params: list = [since]
+        chain_params: list = [since, *_CHAIN_ACTIONS]
+        blocked_tenant_clause = ""
+        blocked_params: list = [now]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        base_params = [since, tid]
+        chain_params = [since, *_CHAIN_ACTIONS, tid]
+        blocked_tenant_clause = "AND tenant_id = %s"
+        blocked_params = [now, tid]
+
+    with db._connect() as conn:
+        act_rows = conn.execute(
+            f"""
+            SELECT source_ip, severity, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              AND source_ip IS NOT NULL
+              AND {_RFC1918_LIKE}
+              {tenant_clause}
+            GROUP BY source_ip, severity
+            """,
+            base_params,
+        ).fetchall()
+
+        chain_rows = conn.execute(
+            f"""
+            SELECT source_ip, event_action, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              AND source_ip IS NOT NULL
+              AND {_RFC1918_LIKE}
+              AND event_action IN ({_CHAIN_PH})
+              {tenant_clause}
+            GROUP BY source_ip, event_action
+            """,
+            chain_params,
+        ).fetchall()
+
+        blocked_rows = conn.execute(
+            f"""
+            SELECT ip FROM blocked_ips
+            WHERE is_active = 1
+              AND (expires_at IS NULL OR expires_at > %s)
+              {blocked_tenant_clause}
+            """,
+            blocked_params,
+        ).fetchall()
+
+    blocked_set = {r["ip"] for r in blocked_rows}
+
+    ip_sev: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    ip_total: dict[str, int] = defaultdict(int)
+    for r in act_rows:
+        ip = r["source_ip"]
+        ip_sev[ip][r["severity"]] += r["cnt"]
+        ip_total[ip] += r["cnt"]
+
+    ip_chain_raw: dict[str, float] = defaultdict(float)
+    for r in chain_rows:
+        ip = r["source_ip"]
+        ip_chain_raw[ip] += _CHAIN_ACTION_WEIGHTS.get(r["event_action"], 0) * r["cnt"]
+
+    all_ips = set(ip_sev.keys()) | set(ip_chain_raw.keys())
+
+    entries: list[AssetRiskEntry] = []
+    for ip in all_ips:
+        sev_counts = ip_sev[ip]
+        act_raw = sum(
+            _ASSET_SEV_WEIGHTS.get(sev, 0) * cnt for sev, cnt in sev_counts.items()
+        )
+        activity_score = min(100.0, float(act_raw))
+        chain_score = min(100.0, float(ip_chain_raw.get(ip, 0.0)))
+        is_blocked = ip in blocked_set
+        block_score = 100.0 if is_blocked else 0.0
+        total_score = round(activity_score * 0.5 + chain_score * 0.3 + block_score * 0.2, 1)
+
+        top_severity: str | None = None
+        if sev_counts:
+            top_severity = max(sev_counts, key=lambda s: _ASSET_SEV_RANK.get(s, 0))
+
+        entries.append(AssetRiskEntry(
+            ip=ip,
+            activity_score=round(activity_score, 1),
+            chain_score=round(chain_score, 1),
+            block_score=block_score,
+            total_score=total_score,
+            is_blocked=is_blocked,
+            top_severity=top_severity,
+            event_count=ip_total.get(ip, 0),
+        ))
+
+    entries.sort(key=lambda e: e.total_score, reverse=True)
+
+    return AssetRiskResponse(hours=hours, limit=limit, assets=entries[:limit])

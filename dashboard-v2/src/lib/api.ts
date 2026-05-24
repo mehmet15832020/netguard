@@ -1015,6 +1015,23 @@ export interface BeaconingSummaryResponse {
   total:      number
 }
 
+export interface AssetRiskEntry {
+  ip:             string
+  activity_score: number
+  chain_score:    number
+  block_score:    number
+  total_score:    number
+  is_blocked:     boolean
+  top_severity:   string | null
+  event_count:    number
+}
+
+export interface AssetRiskResponse {
+  hours:  number
+  limit:  number
+  assets: AssetRiskEntry[]
+}
+
 export interface EastWestMatrixRow {
   src: string
   dst: string
@@ -1101,5 +1118,8 @@ export const analyticsApi = {
 
   eastWestMatrix: (hours = 24, limit = 20) =>
     request<EastWestMatrixResponse>(`/analytics/east-west-matrix?hours=${hours}&limit=${limit}`),
+
+  assetRisk: (hours = 24, limit = 20) =>
+    request<AssetRiskResponse>(`/analytics/asset-risk?hours=${hours}&limit=${limit}`),
 }
 

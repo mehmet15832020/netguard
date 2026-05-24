@@ -134,7 +134,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 - [x] **D7** — East-West Connection Matrix Heatmap — Bağımlılık: F4
   - **Teslim:** `GET /api/v1/analytics/east-west-matrix` (RFC1918→RFC1918, top-N, hours, tenant isolation); `EastWestHeatmapChart.tsx` (ECharts heatmap, visualMap, tooltip); `/east-west-matrix` sayfası (saat seçici, özet stats); sidebar eklendi; 20 test — 1624 toplam test ✓
-- [ ] **D9** — Asset Risk Heatmap — Bağımlılık: F4
+- [x] **D9** — Asset Risk Heatmap — Bağımlılık: F4
+  - **Teslim:** `GET /api/v1/analytics/asset-risk` (RFC1918 IP bazında 3 risk boyutu: activity_score/chain_score/block_score, weighted total, tenant isolation); `AssetRiskHeatmapChart.tsx` (ECharts heatmap, Y=IP, X=boyutlar, kırmızı ton); `/asset-risk` sayfası (saat seçici, blok sayısı, en riskli IP özeti, legend); sidebar eklendi; 21 test
 - [ ] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
 
 ### AŞAMA 3 — Güvenlik Derinleştirme
@@ -203,7 +204,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1624 test, 0 hata (24 Mayıs 2026) — D7 East-West Matrix eklendi
+**Test durumu:** 1645 test, 0 hata (24 Mayıs 2026) — D7 + D9 eklendi
 
 ---
 

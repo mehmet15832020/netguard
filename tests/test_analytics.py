@@ -1721,3 +1721,189 @@ class TestEastWestMatrixTenantIsolation:
         srcs = [r["src"] for r in data["rows"]]
         assert "10.1.0.1" in srcs
         assert "10.1.0.2" in srcs
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Asset Risk Heatmap
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _insert_risk_log(
+    tmp_db,
+    source_ip="10.0.0.1",
+    destination_ip="192.168.1.1",
+    severity="info",
+    event_action="connection",
+    minutes_ago=5,
+    tenant_id="default",
+):
+    ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO normalized_logs
+              (log_id, raw_id, source_type, observer_hostname,
+               timestamp, received_at, processed_at,
+               severity, event_category, event_action,
+               source_ip, destination_ip,
+               message, tags, tenant_id)
+            VALUES (?, ?, 'test', 'test',
+                    ?, ?, ?,
+                    ?, 'network', ?,
+                    ?, ?,
+                    'test', '[]', ?)
+            """,
+            (
+                str(uuid.uuid4()), str(uuid.uuid4()),
+                ts, ts, ts,
+                severity, event_action,
+                source_ip, destination_ip,
+                tenant_id,
+            ),
+        )
+
+
+def _insert_blocked(tmp_db, ip="10.0.0.1", tenant_id="default", expired=False):
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    expires_at = (now - timedelta(hours=1) if expired else now + timedelta(hours=1)).isoformat()
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO blocked_ips
+              (block_id, ip, reason, blocked_at, blocked_by,
+               is_active, provider, tenant_id, expires_at, offense_count)
+            VALUES (?, ?, 'test', ?, 'test', 1, 'opnsense', ?, ?, 1)
+            """,
+            (str(uuid.uuid4()), ip, now.isoformat(), tenant_id, expires_at),
+        )
+
+
+class TestAssetRiskBasic:
+    def test_endpoint_returns_200(self, client):
+        assert client.get("/api/v1/analytics/asset-risk").status_code == 200
+
+    def test_response_has_required_keys(self, client):
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert "hours" in data
+        assert "limit" in data
+        assert "assets" in data
+
+    def test_empty_db_returns_empty_list(self, client):
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert data["assets"] == []
+
+    def test_requires_auth(self):
+        c = TestClient(app)
+        assert c.get("/api/v1/analytics/asset-risk").status_code == 401
+
+    def test_hours_zero_returns_422(self, client):
+        assert client.get("/api/v1/analytics/asset-risk?hours=0").status_code == 422
+
+    def test_hours_169_returns_422(self, client):
+        assert client.get("/api/v1/analytics/asset-risk?hours=169").status_code == 422
+
+    def test_limit_51_returns_422(self, client):
+        assert client.get("/api/v1/analytics/asset-risk?limit=51").status_code == 422
+
+    def test_entry_has_required_fields(self, client, tmp_db):
+        _insert_risk_log(tmp_db, severity="high")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        entry = data["assets"][0]
+        for field in ("ip", "activity_score", "chain_score", "block_score",
+                      "total_score", "is_blocked", "event_count"):
+            assert field in entry
+
+    def test_only_rfc1918_ips_appear(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="critical")
+        _insert_risk_log(tmp_db, source_ip="8.8.8.8", severity="critical")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        ips = [a["ip"] for a in data["assets"]]
+        assert "10.0.0.1" in ips
+        assert "8.8.8.8" not in ips
+
+    def test_sorted_by_total_score_desc(self, client, tmp_db):
+        for _ in range(3):
+            _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="critical")
+        _insert_risk_log(tmp_db, source_ip="10.0.0.2", severity="info")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        scores = [a["total_score"] for a in data["assets"]]
+        assert scores == sorted(scores, reverse=True)
+
+    def test_critical_scores_higher_than_info(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="critical")
+        _insert_risk_log(tmp_db, source_ip="10.0.0.2", severity="info")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        by_ip = {a["ip"]: a for a in data["assets"]}
+        assert by_ip["10.0.0.1"]["activity_score"] > by_ip["10.0.0.2"]["activity_score"]
+
+    def test_limit_restricts_result_count(self, client, tmp_db):
+        for i in range(5):
+            _insert_risk_log(tmp_db, source_ip=f"10.0.0.{i+1}", severity="high")
+        data = client.get("/api/v1/analytics/asset-risk?limit=3").json()
+        assert len(data["assets"]) <= 3
+
+    def test_hours_filter_excludes_old_logs(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="critical", minutes_ago=180)
+        data = client.get("/api/v1/analytics/asset-risk?hours=1").json()
+        assert data["assets"] == []
+
+    def test_chain_events_increase_chain_score(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", event_action="lateral_movement")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert len(data["assets"]) > 0
+        assert data["assets"][0]["chain_score"] > 0
+
+    def test_top_severity_reflects_highest_seen(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="info")
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="critical")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert data["assets"][0]["top_severity"] == "critical"
+
+    def test_event_count_matches_inserted_logs(self, client, tmp_db):
+        for _ in range(4):
+            _insert_risk_log(tmp_db, source_ip="10.0.0.1", severity="high")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert data["assets"][0]["event_count"] == 4
+
+
+class TestAssetRiskBlocked:
+    def test_blocked_ip_has_block_score_100(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1")
+        _insert_blocked(tmp_db, ip="10.0.0.1")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert data["assets"][0]["block_score"] == 100.0
+        assert data["assets"][0]["is_blocked"] is True
+
+    def test_expired_block_not_counted(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1")
+        _insert_blocked(tmp_db, ip="10.0.0.1", expired=True)
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        assert data["assets"][0]["is_blocked"] is False
+        assert data["assets"][0]["block_score"] == 0.0
+
+    def test_blocked_increases_total_score(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1")
+        data_before = client.get("/api/v1/analytics/asset-risk").json()
+        score_before = data_before["assets"][0]["total_score"]
+        _insert_blocked(tmp_db, ip="10.0.0.1")
+        data_after = client.get("/api/v1/analytics/asset-risk").json()
+        score_after = data_after["assets"][0]["total_score"]
+        assert score_after > score_before
+
+
+class TestAssetRiskTenantIsolation:
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.0.0.1", tenant_id="default", severity="critical")
+        _insert_risk_log(tmp_db, source_ip="10.0.0.2", tenant_id="other-tenant", severity="critical")
+        data = client.get("/api/v1/analytics/asset-risk").json()
+        ips = [a["ip"] for a in data["assets"]]
+        assert "10.0.0.1" in ips
+        assert "10.0.0.2" not in ips
+
+    def test_superadmin_sees_all_tenants(self, superadmin_client, tmp_db):
+        _insert_risk_log(tmp_db, source_ip="10.1.0.1", tenant_id="default", severity="high")
+        _insert_risk_log(tmp_db, source_ip="10.1.0.2", tenant_id="other-tenant", severity="high")
+        data = superadmin_client.get("/api/v1/analytics/asset-risk").json()
+        ips = [a["ip"] for a in data["assets"]]
+        assert "10.1.0.1" in ips
+        assert "10.1.0.2" in ips
