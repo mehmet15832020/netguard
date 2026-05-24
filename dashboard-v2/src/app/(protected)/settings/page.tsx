@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Settings, Save, RefreshCw, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { correlationApi, authApi } from '@/lib/api'
@@ -132,12 +132,22 @@ function RuleCard({
 type MfaSetupData = { secret: string; otpauth_uri: string }
 
 function MfaSection() {
+  const { data: me } = useQuery({
+    queryKey: ['auth', 'me'],
+    queryFn: () => authApi.me(),
+    staleTime: 30_000,
+  })
+
   const [mfaEnabled, setMfaEnabled] = useState(false)
   const [setupData, setSetupData] = useState<MfaSetupData | null>(null)
   const [confirmCode, setConfirmCode] = useState('')
   const [setupError, setSetupError] = useState('')
   const [confirmLoading, setConfirmLoading] = useState(false)
   const [disableLoading, setDisableLoading] = useState(false)
+
+  useEffect(() => {
+    if (me) setMfaEnabled(me.totp_enabled)
+  }, [me])
 
   const handleEnable = async () => {
     setSetupError('')

@@ -354,13 +354,13 @@ class TestAlertVolumeBasic:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class TestAlertVolumeAdaptiveGranularity:
-    def test_hours_1_returns_bucket_15(self, client):
+    def test_hours_1_returns_bucket_60(self, client):
         data = client.get("/api/v1/analytics/alert-volume?hours=1").json()
-        assert data["bucket_minutes"] == 15
+        assert data["bucket_minutes"] == 60
 
-    def test_hours_6_returns_bucket_15(self, client):
+    def test_hours_6_returns_bucket_60(self, client):
         data = client.get("/api/v1/analytics/alert-volume?hours=6").json()
-        assert data["bucket_minutes"] == 15
+        assert data["bucket_minutes"] == 60
 
     def test_hours_7_returns_bucket_60(self, client):
         data = client.get("/api/v1/analytics/alert-volume?hours=7").json()

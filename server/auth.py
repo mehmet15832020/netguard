@@ -51,6 +51,7 @@ class User(BaseModel):
     username: str
     role: str = "viewer"          # superadmin | admin | viewer
     tenant_id: Optional[str] = "default"   # None → superadmin (tüm tenant'lar)
+    totp_enabled: bool = False
 
 
 class UserInDB(User):

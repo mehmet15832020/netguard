@@ -1297,8 +1297,17 @@ class DatabaseManager:
             "totp_enabled": bool(row["totp_enabled"]),
         }
 
-    def set_user_totp_secret(self, username: str, secret: str) -> None:
+    def set_user_totp_secret(
+        self, username: str, secret: str,
+        role: str = "viewer", tenant_id: str = "default",
+    ) -> None:
         with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO db_users (username, password_hash, role, tenant_id)"
+                " VALUES (%s, '__TOTP_ONLY__', %s, %s)"
+                " ON CONFLICT (username) DO NOTHING",
+                (username, role, tenant_id),
+            )
             conn.execute(
                 "UPDATE db_users SET totp_secret=%s, totp_enabled=0 WHERE username=%s",
                 (secret, username),

@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _to_dt(s: str) -> datetime:
+    return datetime.fromisoformat(s.replace("Z", "+00:00"))
+
+
 class _IPCount(BaseModel):
     ip: str
     count: int
@@ -59,10 +63,10 @@ def top_talkers(
 
     if tid is None:
         tenant_clause = ""
-        base_params = [since, since]
+        base_params = [since]
     else:
         tenant_clause = "AND tenant_id = %s"
-        base_params = [since, since, tid]
+        base_params = [since, tid]
 
     with db._connect() as conn:
         rows = conn.execute(
@@ -70,7 +74,6 @@ def top_talkers(
             SELECT source_ip, COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
-              AND timestamp >= %s
               {tenant_clause}
               AND source_ip IS NOT NULL
             GROUP BY source_ip
@@ -86,7 +89,6 @@ def top_talkers(
             SELECT destination_ip, COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
-              AND timestamp >= %s
               {tenant_clause}
               AND destination_ip IS NOT NULL
             GROUP BY destination_ip
@@ -102,7 +104,6 @@ def top_talkers(
             SELECT destination_port, COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
-              AND timestamp >= %s
               {tenant_clause}
               AND destination_port BETWEEN 1 AND 65535
             GROUP BY destination_port
@@ -127,8 +128,6 @@ _SEVERITY_LEVELS = ("critical", "high", "warning", "info")
 
 
 def _bucket_minutes(hours: int) -> int:
-    if hours <= 6:
-        return 15
     if hours <= 24:
         return 60
     return 240
@@ -264,10 +263,10 @@ def protocol_distribution(
 
     if tid is None:
         tenant_clause = ""
-        params: list = [since, since]
+        params: list = [since]
     else:
         tenant_clause = "AND tenant_id = %s"
-        params = [since, since, tid]
+        params = [since, tid]
 
     with db._connect() as conn:
         rows = conn.execute(
@@ -277,7 +276,6 @@ def protocol_distribution(
                 COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
-              AND timestamp >= %s
               {tenant_clause}
               AND network_protocol IS NOT NULL
               AND LENGTH(TRIM(network_protocol)) > 0
@@ -316,6 +314,7 @@ _RFC1918_LIKE = """(
     OR source_ip LIKE '172.26.%%' OR source_ip LIKE '172.27.%%'
     OR source_ip LIKE '172.28.%%' OR source_ip LIKE '172.29.%%'
     OR source_ip LIKE '172.30.%%' OR source_ip LIKE '172.31.%%'
+    OR source_ip LIKE '100.64.%%'
     OR source_ip LIKE '127.%%'
     OR source_ip LIKE '169.254.%%'
     OR source_ip LIKE 'fc%%'
@@ -334,6 +333,7 @@ _RFC1918_DST_LIKE = """(
     OR destination_ip LIKE '172.26.%%' OR destination_ip LIKE '172.27.%%'
     OR destination_ip LIKE '172.28.%%' OR destination_ip LIKE '172.29.%%'
     OR destination_ip LIKE '172.30.%%' OR destination_ip LIKE '172.31.%%'
+    OR destination_ip LIKE '100.64.%%'
     OR destination_ip LIKE '127.%%'
     OR destination_ip LIKE '169.254.%%'
     OR destination_ip LIKE 'fc%%'
@@ -584,7 +584,7 @@ def dns_analysis(
               AND event_action = %s
               AND message LIKE %s
             """,
-            [*base_params, "dns_query", "%NXDOMAIN%"],
+            [*base_params, "dns_query", "% → NXDOMAIN%"],
         ).fetchone()
 
         unique_row = conn.execute(
@@ -1027,7 +1027,9 @@ def kill_chain_timeline(
         unique_stages = {e["stage"] for e in events}
         stage_count = len(unique_stages)
         chain_type = "FULL_ATTACK_CHAIN" if stage_count >= _FULL_THRESHOLD else "PARTIAL_ATTACK_CHAIN"
-        times = [e["occurred_at"] for e in events]
+        dt_times = [_to_dt(e["occurred_at"]) for e in events]
+        first_seen = min(dt_times).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+        last_seen = max(dt_times).strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
         chain_rows.append(_ChainRow(
             source_ip=source_ip,
             chain_type=chain_type,
@@ -1040,8 +1042,8 @@ def kill_chain_timeline(
                 )
                 for e in events
             ],
-            first_seen=min(times),
-            last_seen=max(times),
+            first_seen=first_seen,
+            last_seen=last_seen,
         ))
 
     chain_rows.sort(key=lambda r: (-r.stage_count, r.source_ip))

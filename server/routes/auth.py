@@ -72,7 +72,14 @@ def login(request: Request, response: Response, body: LoginRequest):
 
 @router.get("/auth/me", response_model=User)
 def get_me(current_user: User = Depends(get_current_user)):
-    return current_user
+    from server.database import db
+    totp_data = db.get_user_totp(current_user.username)
+    return User(
+        username=current_user.username,
+        role=current_user.role,
+        tenant_id=current_user.tenant_id,
+        totp_enabled=totp_data["totp_enabled"],
+    )
 
 
 class RefreshRequest(BaseModel):
@@ -174,13 +181,18 @@ class TotpVerifyRequest(BaseModel):
 
 
 @router.post("/auth/totp-setup")
+@limiter.limit("5/minute")
 def totp_setup(
     request: Request,
+    response: Response,
     current_user: User = Depends(get_current_user),
 ):
     from server.database import db
     secret = pyotp.random_base32()
-    db.set_user_totp_secret(current_user.username, secret)
+    db.set_user_totp_secret(
+        current_user.username, secret,
+        current_user.role, current_user.tenant_id or "default",
+    )
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(
         name=current_user.username,
@@ -260,8 +272,10 @@ def totp_verify(request: Request, response: Response, body: TotpVerifyRequest):
 
 
 @router.post("/auth/totp-disable")
+@limiter.limit("5/minute")
 def totp_disable(
     request: Request,
+    response: Response,
     target_username: str = "",
     current_user: User = Depends(get_current_user),
 ):
