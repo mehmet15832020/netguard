@@ -322,9 +322,14 @@ rsync -av --relative --checksum \
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
   "cd ~/netguard/dashboard-v2 && npm run build"
 
-# 3. Service restart
+# 3a. Frontend service restart (Next.js)
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
   "sudo systemctl restart netguard-dashboard"
+
+# 3b. Backend service restart (uvicorn) — server/routes/*.py değiştiyse ZORUNLU
+#     Python yeni kodu ancak restart sonrası yükler
+ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
+  "sudo systemctl restart netguard"
 
 # 4. Doğrula — beklenen: Cache-Control: no-cache, no-store, must-revalidate
 curl -sk -I https://192.168.203.134/overview | grep -i cache-control
