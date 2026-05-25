@@ -306,6 +306,40 @@ POST /api/v1/response/block
 
 ---
 
+## Dashboard Deploy (Laptop → Production VM)
+
+**Laptop** (`192.168.203.1`) geliştirme ortamı, **Production VM** (`192.168.203.134`) ayrı codebase'dir.
+Docker rebuild'lar SADECE laptop'ı etkiler. Production'a değişiklik göndermek için:
+
+```bash
+# 1. Değişen dosyaları rsync ile VM'e gönder (--relative zorunlu)
+rsync -av --relative --checksum \
+  dashboard-v2/src/... server/routes/... \
+  -e "ssh -i ~/.ssh/id_ed25519" \
+  netguard@192.168.203.134:/home/netguard/netguard/
+
+# 2. VM'de build al
+ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
+  "cd ~/netguard/dashboard-v2 && npm run build"
+
+# 3. Service restart
+ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
+  "sudo systemctl restart netguard-dashboard"
+
+# 4. Doğrula — beklenen: Cache-Control: no-cache, no-store, must-revalidate
+curl -sk -I https://192.168.203.134/overview | grep -i cache-control
+```
+
+**VM servis:** `systemctl status netguard-dashboard` — WorkingDirectory: `/home/netguard/netguard/dashboard-v2/`
+**VM nginx:** `/etc/nginx/sites-enabled/netguard` — `location /` → no-cache, `/_next/static/` → immutable
+
+### Next.js 16 Kuralları (proxy.ts)
+- `middleware.ts` → `src/proxy.ts` (dosya adı değişti)
+- Export: `export function proxy(request: NextRequest)` (`middleware` değil)
+- GitHub SSH key laptop'ta yok → rsync kullan, git push yapma
+
+---
+
 ## GNS3 Lab
 
 ```
