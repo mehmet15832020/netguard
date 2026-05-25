@@ -14,6 +14,7 @@ GET /api/v1/analytics/kill-chain-timeline   Kill chain swimlane — IP başına 
 """
 
 import logging
+import re
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 
@@ -665,15 +666,41 @@ def dns_analysis(
 
 # ─── TLS Fingerprints ─────────────────────────────────────────────────────────
 
-class _TlsFingerprint(BaseModel):
+_JA4_RE = re.compile(r'JA4=([a-z0-9_]+)', re.IGNORECASE)
+_SNI_RE = re.compile(r'SSL/TLS\s+(\S+)', re.IGNORECASE)
+_TLS_VERSION_MAP = {
+    't13': 'TLS 1.3',
+    't12': 'TLS 1.2',
+    't11': 'TLS 1.1',
+    't10': 'TLS 1.0',
+}
+
+
+class _TlsFingerprintItem(BaseModel):
     fingerprint: str
+    count: int
+    is_malicious: bool
+
+
+class _TlsVersionItem(BaseModel):
+    version: str
+    count: int
+
+
+class _TlsSniItem(BaseModel):
+    sni: str
     count: int
 
 
 class TlsFingerprintResponse(BaseModel):
     hours: int
-    top_fingerprints: list[_TlsFingerprint]
+    total_connections: int
     unique_count: int
+    suspicious_count: int
+    self_signed_count: int
+    top_fingerprints: list[_TlsFingerprintItem]
+    tls_version_dist: list[_TlsVersionItem]
+    top_sni: list[_TlsSniItem]
 
 
 @router.get("/analytics/tls-fingerprints", response_model=TlsFingerprintResponse)
@@ -696,21 +723,39 @@ def tls_fingerprints(
         params = [since, tid]
 
     with db._connect() as conn:
-        top_rows = conn.execute(
+        total_row = conn.execute(
             f"""
-            SELECT message, COUNT(*) AS cnt
+            SELECT COUNT(*) AS cnt
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action = %s
-              AND message IS NOT NULL
-              AND LENGTH(TRIM(message)) > 0
-            GROUP BY message
-            ORDER BY cnt DESC
-            LIMIT %s
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
             """,
-            [*params, "tls_connection", limit],
-        ).fetchall()
+            params,
+        ).fetchone()
+
+        suspicious_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = 'tls_suspicious_fingerprint'
+            """,
+            params,
+        ).fetchone()
+
+        self_signed_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
+              AND LOWER(message) LIKE %s
+            """,
+            [*params, '%self signed%'],
+        ).fetchone()
 
         unique_row = conn.execute(
             f"""
@@ -718,31 +763,113 @@ def tls_fingerprints(
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action = %s
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
               AND message IS NOT NULL
               AND LENGTH(TRIM(message)) > 0
             """,
-            [*params, "tls_connection"],
+            params,
         ).fetchone()
 
-    top_fingerprints = [
-        _TlsFingerprint(fingerprint=r["message"], count=r["cnt"])
-        for r in top_rows
-    ]
+        detail_rows = conn.execute(
+            f"""
+            SELECT message, event_action, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
+              AND message IS NOT NULL
+              AND LENGTH(TRIM(message)) > 0
+            GROUP BY message, event_action
+            ORDER BY cnt DESC
+            LIMIT 500
+            """,
+            params,
+        ).fetchall()
+
+    total_connections = total_row["cnt"] if total_row else 0
+    suspicious_count = suspicious_row["cnt"] if suspicious_row else 0
+    self_signed_count = self_signed_row["cnt"] if self_signed_row else 0
     unique_count = unique_row["cnt"] if unique_row else 0
+
+    fp_counts: dict[str, tuple[int, bool]] = {}
+    version_counts: dict[str, int] = defaultdict(int)
+    sni_counts: dict[str, int] = defaultdict(int)
+
+    for r in detail_rows:
+        msg = r["message"] or ""
+        cnt = r["cnt"]
+
+        ja4_match = _JA4_RE.search(msg)
+        if ja4_match:
+            fp = ja4_match.group(1)
+            is_malicious = '[KNOWN_MALWARE_JA' in msg
+            existing_cnt, existing_mal = fp_counts.get(fp, (0, False))
+            fp_counts[fp] = (existing_cnt + cnt, existing_mal or is_malicious)
+
+            version_key = fp[:3].lower()
+            version_label = _TLS_VERSION_MAP.get(version_key, 'Unknown')
+            version_counts[version_label] += cnt
+
+        sni_match = _SNI_RE.search(msg)
+        if sni_match:
+            sni = sni_match.group(1)
+            if sni.lower() != 'unknown':
+                sni_counts[sni] += cnt
+
+    top_fingerprints = [
+        _TlsFingerprintItem(fingerprint=fp, count=cnt, is_malicious=mal)
+        for fp, (cnt, mal) in sorted(fp_counts.items(), key=lambda x: -x[1][0])
+    ][:limit]
+
+    tls_version_dist = [
+        _TlsVersionItem(version=ver, count=cnt)
+        for ver, cnt in sorted(version_counts.items(), key=lambda x: -x[1])
+    ]
+
+    top_sni = [
+        _TlsSniItem(sni=sni, count=cnt)
+        for sni, cnt in sorted(sni_counts.items(), key=lambda x: -x[1])
+    ][:10]
 
     return TlsFingerprintResponse(
         hours=hours,
-        top_fingerprints=top_fingerprints,
+        total_connections=total_connections,
         unique_count=unique_count,
+        suspicious_count=suspicious_count,
+        self_signed_count=self_signed_count,
+        top_fingerprints=top_fingerprints,
+        tls_version_dist=tls_version_dist,
+        top_sni=top_sni,
     )
 
 
 # ─── Beaconing Summary ────────────────────────────────────────────────────────
 
+_IAT_RE = re.compile(r'mean_iat=(\d+\.?\d*)s')
+_JITTER_RE = re.compile(r'jitter=(\d+\.?\d*)%')
+_CONN_RE = re.compile(r'(\d+)\s+conn')
+
+
+def _parse_beaconing_message(msg: str) -> tuple[float | None, float | None, int | None]:
+    iat_match = _IAT_RE.search(msg)
+    jitter_match = _JITTER_RE.search(msg)
+    conn_match = _CONN_RE.search(msg)
+
+    mean_iat = float(iat_match.group(1)) if iat_match else None
+    jitter = round(float(jitter_match.group(1)) / 100, 6) if jitter_match else None
+    conn_count = int(conn_match.group(1)) if conn_match else None
+
+    return mean_iat, jitter, conn_count
+
+
 class _BeaconingDetection(BaseModel):
     source_ip: str
     destination_ip: str
+    destination_port: int | None = None
+    network_protocol: str | None = None
+    mean_iat: float | None = None
+    jitter: float | None = None
+    conn_count: int | None = None
     message: str
     detected_at: str
 
@@ -774,7 +901,8 @@ def beaconing_summary(
     with db._connect() as conn:
         rows = conn.execute(
             f"""
-            SELECT source_ip, destination_ip, message, received_at
+            SELECT source_ip, destination_ip, destination_port,
+                   network_protocol, message, received_at
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
@@ -785,15 +913,21 @@ def beaconing_summary(
             params,
         ).fetchall()
 
-    detections = [
-        _BeaconingDetection(
+    detections = []
+    for r in rows:
+        msg = r["message"] or ""
+        mean_iat, jitter, conn_count = _parse_beaconing_message(msg)
+        detections.append(_BeaconingDetection(
             source_ip=r["source_ip"] or "",
             destination_ip=r["destination_ip"] or "",
-            message=r["message"],
-            detected_at=r["received_at"],
-        )
-        for r in rows
-    ]
+            destination_port=r["destination_port"],
+            network_protocol=r["network_protocol"],
+            mean_iat=mean_iat,
+            jitter=jitter,
+            conn_count=conn_count,
+            message=msg,
+            detected_at=str(r["received_at"]),
+        ))
 
     return BeaconingSummaryResponse(hours=hours, detections=detections, total=len(detections))
 

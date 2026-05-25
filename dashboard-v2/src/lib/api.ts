@@ -1085,15 +1085,48 @@ export interface DnsAnalysisResponse {
   anomaly_count:            number
 }
 
+export interface TlsFingerprintItem {
+  fingerprint:  string
+  count:        number
+  is_malicious: boolean
+}
+
+export interface TlsVersionItem {
+  version: string
+  count:   number
+}
+
+export interface TlsSniItem {
+  sni:   string
+  count: number
+}
+
 export interface TlsFingerprintResponse {
-  hours:            number
-  top_fingerprints: { fingerprint: string; count: number }[]
-  unique_count:     number
+  hours:             number
+  total_connections: number
+  unique_count:      number
+  suspicious_count:  number
+  self_signed_count: number
+  top_fingerprints:  TlsFingerprintItem[]
+  tls_version_dist:  TlsVersionItem[]
+  top_sni:           TlsSniItem[]
+}
+
+export interface BeaconingDetection {
+  source_ip:        string
+  destination_ip:   string
+  destination_port: number | null
+  network_protocol: string | null
+  mean_iat:         number | null
+  jitter:           number | null
+  conn_count:       number | null
+  message:          string
+  detected_at:      string
 }
 
 export interface BeaconingSummaryResponse {
   hours:      number
-  detections: { source_ip: string; destination_ip: string; message: string; detected_at: string }[]
+  detections: BeaconingDetection[]
   total:      number
 }
 

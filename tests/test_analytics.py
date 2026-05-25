@@ -50,6 +50,7 @@ def _insert_log(
     network_protocol=None,
     event_action="connection",
     tags="[]",
+    message="test",
 ):
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     ra = (datetime.now(timezone.utc) - timedelta(minutes=received_at_minutes_ago or minutes_ago)).isoformat()
@@ -66,14 +67,14 @@ def _insert_log(
                     ?, ?, ?,
                     'info', 'network', ?,
                     ?, ?, ?,
-                    'test', ?, ?, ?)
+                    ?, ?, ?, ?)
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
                 ts, ra, ra,
                 event_action,
                 source_ip, destination_ip, destination_port,
-                tags, tenant_id, network_protocol,
+                message, tags, tenant_id, network_protocol,
             ),
         )
 
@@ -1093,10 +1094,18 @@ class TestTlsFingerprintsBasic:
         assert "hours" in data
         assert "top_fingerprints" in data
         assert "unique_count" in data
+        assert "total_connections" in data
+        assert "suspicious_count" in data
+        assert "self_signed_count" in data
+        assert "tls_version_dist" in data
+        assert "top_sni" in data
 
     def test_empty_db_returns_zero(self, client):
         data = client.get("/api/v1/analytics/tls-fingerprints").json()
         assert data["unique_count"] == 0
+        assert data["total_connections"] == 0
+        assert data["suspicious_count"] == 0
+        assert data["self_signed_count"] == 0
         assert data["top_fingerprints"] == []
 
     def test_default_hours_is_24(self, client):
@@ -1113,11 +1122,115 @@ class TestTlsFingerprintsBasic:
         assert client.get("/api/v1/analytics/tls-fingerprints?limit=101").status_code == 422
 
     def test_tenant_isolation(self, client, tmp_db):
-        _insert_log(tmp_db, event_action="tls_connection", tenant_id="default")
-        _insert_log(tmp_db, event_action="tls_connection", tenant_id="other")
+        _insert_log(tmp_db, event_action="ssl_connection", tenant_id="default")
+        _insert_log(tmp_db, event_action="ssl_connection", tenant_id="other")
 
         data = client.get("/api/v1/analytics/tls-fingerprints").json()
-        assert data["unique_count"] <= 1
+        assert data["total_connections"] <= 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  TLS Fingerprints — data tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestTlsFingerprintsData:
+    def test_ssl_connection_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS example.com JA4=t13d190900_abcdef123456")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["total_connections"] == 1
+
+    def test_suspicious_fingerprint_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="tls_suspicious_fingerprint",
+                    message="SSL/TLS malware.com JA4=t12d010101_deadbeef0000")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["suspicious_count"] == 1
+
+    def test_self_signed_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS example.com (self signed)")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["self_signed_count"] == 1
+
+    def test_self_signed_case_insensitive(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS bad.example.com SELF SIGNED certificate")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["self_signed_count"] == 1
+
+    def test_non_self_signed_not_counted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS legit.example.com JA4=t13d190900_aabbccdd1122")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["self_signed_count"] == 0
+
+    def test_malicious_fingerprint_flagged(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS evil.com JA4=t13d999999_aabbccddee11 [KNOWN_MALWARE_JA4]")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert len(data["top_fingerprints"]) == 1
+        assert data["top_fingerprints"][0]["is_malicious"] is True
+
+    def test_benign_fingerprint_not_flagged(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS good.com JA4=t13d190900_aabb11223344")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert len(data["top_fingerprints"]) == 1
+        assert data["top_fingerprints"][0]["is_malicious"] is False
+
+    def test_tls_version_dist_extracted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS foo.com JA4=t13d190900_aabbccdd1122")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        versions = {v["version"] for v in data["tls_version_dist"]}
+        assert "TLS 1.3" in versions
+
+    def test_tls_12_version_extracted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS foo.com JA4=t12d010203_aabbccdd1122")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        versions = {v["version"] for v in data["tls_version_dist"]}
+        assert "TLS 1.2" in versions
+
+    def test_top_sni_extracted(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS google.com JA4=t13d190900_aabbccdd1122")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        sni_names = [s["sni"] for s in data["top_sni"]]
+        assert "google.com" in sni_names
+
+    def test_unknown_sni_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS unknown JA4=t13d190900_aabbccdd1122")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        sni_names = [s["sni"] for s in data["top_sni"]]
+        assert "unknown" not in sni_names
+
+    def test_no_ja4_message_not_in_fingerprints(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS some.host no fingerprint here")
+
+        data = client.get("/api/v1/analytics/tls-fingerprints").json()
+        assert data["top_fingerprints"] == []
+
+    def test_old_events_excluded(self, client, tmp_db):
+        _insert_log(tmp_db, event_action="ssl_connection",
+                    message="SSL/TLS old.com JA4=t13d190900_aabbccdd1122",
+                    minutes_ago=200)
+
+        data = client.get("/api/v1/analytics/tls-fingerprints?hours=1").json()
+        assert data["total_connections"] == 0
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1181,6 +1294,10 @@ class TestBeaconingSummaryData:
         assert "destination_ip" in det
         assert "message" in det
         assert "detected_at" in det
+        assert "destination_port" in det
+        assert "mean_iat" in det
+        assert "jitter" in det
+        assert "conn_count" in det
 
     def test_old_events_excluded(self, client, tmp_db):
         _insert_log(tmp_db, source_ip="10.0.0.5", event_action="c2_beaconing", minutes_ago=200)
@@ -1194,6 +1311,84 @@ class TestBeaconingSummaryData:
 
         data = client.get("/api/v1/analytics/beaconing-summary").json()
         assert data["total"] == 1
+
+
+class TestBeaconingParsing:
+    _STRUCTURED_MSG = (
+        "C2 Beaconing: 10.0.0.5 → 1.2.3.4:443 | 10 conn / 300s"
+        " | mean_iat=30.1s jitter=2.50% [MITRE ATT&CK T1071]"
+    )
+
+    def test_structured_message_parsed(self, client, tmp_db):
+        _insert_log(
+            tmp_db,
+            source_ip="10.0.0.5",
+            destination_ip="1.2.3.4",
+            destination_port=443,
+            event_action="c2_beaconing",
+            message=self._STRUCTURED_MSG,
+        )
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["total"] == 1
+        det = data["detections"][0]
+        assert det["mean_iat"] == pytest.approx(30.1)
+        assert det["jitter"] == pytest.approx(0.025)
+        assert det["conn_count"] == 10
+
+    def test_destination_port_returned(self, client, tmp_db):
+        _insert_log(
+            tmp_db,
+            source_ip="10.0.0.5",
+            destination_ip="1.2.3.4",
+            destination_port=8443,
+            event_action="c2_beaconing",
+            message=self._STRUCTURED_MSG,
+        )
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["detections"][0]["destination_port"] == 8443
+
+    def test_network_protocol_returned(self, client, tmp_db):
+        _insert_log(
+            tmp_db,
+            source_ip="10.0.0.5",
+            destination_ip="1.2.3.4",
+            event_action="c2_beaconing",
+            network_protocol="tcp",
+            message=self._STRUCTURED_MSG,
+        )
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        assert data["detections"][0]["network_protocol"] == "tcp"
+
+    def test_missing_iat_is_none(self, client, tmp_db):
+        _insert_log(
+            tmp_db,
+            source_ip="10.0.0.6",
+            destination_ip="2.2.2.2",
+            event_action="c2_beaconing",
+            message="C2 Beaconing: 10.0.0.6 → 2.2.2.2:80 no metrics",
+        )
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        det = data["detections"][0]
+        assert det["mean_iat"] is None
+        assert det["jitter"] is None
+        assert det["conn_count"] is None
+
+    def test_jitter_converted_from_percent_to_ratio(self, client, tmp_db):
+        _insert_log(
+            tmp_db,
+            source_ip="10.0.0.7",
+            destination_ip="3.3.3.3",
+            event_action="c2_beaconing",
+            message="C2 Beaconing: x | 5 conn / 60s | mean_iat=60.0s jitter=10.00%",
+        )
+
+        data = client.get("/api/v1/analytics/beaconing-summary").json()
+        det = data["detections"][0]
+        assert det["jitter"] == pytest.approx(0.1)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
