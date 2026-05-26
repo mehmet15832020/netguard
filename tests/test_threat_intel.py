@@ -206,3 +206,44 @@ class TestFullLookup:
         assert result is not None
         assert "composite_score" in result
         assert result["composite_score"] == 0
+
+
+class TestIsPrivateIp:
+    def test_rfc1918_addresses(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("10.0.0.1") is True
+        assert _is_private_ip("172.16.0.1") is True
+        assert _is_private_ip("172.31.255.255") is True
+        assert _is_private_ip("192.168.1.1") is True
+
+    def test_loopback(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("127.0.0.1") is True
+        assert _is_private_ip("::1") is True
+
+    def test_link_local(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("169.254.0.1") is True
+        assert _is_private_ip("fe80::1") is True
+
+    def test_cgnat_rfc6598(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("100.64.0.1") is True
+        assert _is_private_ip("100.127.255.255") is True
+
+    def test_ipv6_ula(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("fc00::1") is True
+        assert _is_private_ip("fd12:3456:789a::1") is True
+
+    def test_public_addresses(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("8.8.8.8") is False
+        assert _is_private_ip("1.1.1.1") is False
+        assert _is_private_ip("45.33.32.156") is False
+
+    def test_invalid_input(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("not-an-ip") is False
+        assert _is_private_ip("") is False
+        assert _is_private_ip("999.999.999.999") is False

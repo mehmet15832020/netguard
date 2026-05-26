@@ -1014,3 +1014,60 @@ class TestRateLimiting:
             statuses.append(r.status_code)
         assert statuses[:5] == [200] * 5
         assert statuses[5] == 429
+
+
+class TestFailedBlockUnblockAudit:
+    def test_failed_block_writes_audit_event(self, tmp_db, monkeypatch):
+        monkeypatch.setattr(
+            OPNsenseProvider, "block",
+            lambda self, ip, dst_port=None, proto=None: BlockResult(False, "opnsense", "connection refused"),
+        )
+        monkeypatch.setattr(
+            VyOSProvider, "block",
+            lambda self, ip, dst_port=None, proto=None: BlockResult(False, "vyos", "ssh timeout"),
+        )
+
+        mgr = ActiveResponseManager()
+        result = mgr.block_ip("203.0.113.50", "test block fail", "admin", tenant_id="default")
+
+        assert result["success"] is False
+        audit = tmp_db.get_audit_log(limit=10)
+        actions = [a["action"] for a in audit]
+        assert "ip_block_failed" in actions
+        failed_entry = next(a for a in audit if a["action"] == "ip_block_failed")
+        assert "ssh timeout" in failed_entry["detail"]
+
+    def test_failed_unblock_writes_audit_event(self, tmp_db, monkeypatch):
+        block_id = str(uuid.uuid4())
+        tmp_db.block_ip(block_id, "203.0.113.51", "reason", "admin",
+                        provider="opnsense", tenant_id="default")
+
+        monkeypatch.setattr(
+            OPNsenseProvider, "unblock",
+            lambda self, ip: UnblockResult(False, "opnsense", "alias not found"),
+        )
+
+        mgr = ActiveResponseManager()
+        result = mgr.unblock_ip("203.0.113.51", "admin", tenant_id="default")
+
+        assert result["success"] is False
+        audit = tmp_db.get_audit_log(limit=10)
+        actions = [a["action"] for a in audit]
+        assert "ip_unblock_failed" in actions
+        failed_entry = next(a for a in audit if a["action"] == "ip_unblock_failed")
+        assert "alias not found" in failed_entry["detail"]
+
+    def test_successful_block_does_not_write_block_failed_audit(self, tmp_db, monkeypatch):
+        monkeypatch.setattr(
+            OPNsenseProvider, "block",
+            lambda self, ip, dst_port=None, proto=None: BlockResult(True, "opnsense"),
+        )
+
+        mgr = ActiveResponseManager()
+        result = mgr.block_ip("203.0.113.52", "normal block", "admin", tenant_id="default")
+
+        assert result["success"] is True
+        audit = tmp_db.get_audit_log(limit=10)
+        actions = [a["action"] for a in audit]
+        assert "ip_block_failed" not in actions
+        assert "ip_blocked" in actions

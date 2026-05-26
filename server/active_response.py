@@ -448,6 +448,12 @@ class ActiveResponseManager:
             )
         else:
             logger.error("Tüm aktif yanıt provider'ları başarısız: %s", ip)
+            db.save_audit_event(
+                actor="system",
+                action="ip_block_failed",
+                resource=f"ip:{ip}",
+                detail=f"firewall error: {result.error}",
+            )
 
         return {
             "success":  result.success,
@@ -481,6 +487,14 @@ class ActiveResponseManager:
                 action="ip_unblocked",
                 resource=f"ip:{ip}",
                 detail=f"provider={provider}",
+            )
+        else:
+            logger.error("Unblock başarısız: %s — %s", ip, result.error)
+            db.save_audit_event(
+                actor="system",
+                action="ip_unblock_failed",
+                resource=f"ip:{ip}",
+                detail=f"firewall error: {result.error}",
             )
         return {
             "success":  result.success,

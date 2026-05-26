@@ -25,6 +25,7 @@ from server.dns_resolver import resolve_and_update_bg
 from server.log_store import log_store
 from server.ntp_validator import ntp_validator
 from server.parsers.firewall import detect_and_parse as _fw_detect_and_parse
+from server.parsers.suricata import parse_eve_line as _suricata_parse_eve_line
 from server.parsers.web_log import detect_and_parse as _web_detect_and_parse
 from shared.models import (
     LogCategory,
@@ -160,65 +161,28 @@ def _parse_auth_log(raw: str, observer_hostname: str) -> Optional[dict]:
 
 
 def _parse_suricata(raw: str, observer_hostname: str) -> Optional[dict]:
-    """Suricata EVE JSON formatını parse et."""
+    """Suricata EVE JSON satırını parsers.suricata modülüne delege et."""
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
         return None
-
-    event_action = data.get("event_action", "unknown")
-    timestamp_str = data.get("timestamp", "")
-    try:
-        ts = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
-    except (ValueError, AttributeError):
-        ts = datetime.now(timezone.utc)
-
-    source_ip   = data.get("source_ip")
-    destination_ip   = data.get("destination_ip") or data.get("dest_ip")
-    source_port = data.get("source_port")
-    destination_port = data.get("dest_port")
-
-    if event_action == "alert":
-        rule = data.get("alert", {})
-        return dict(
-            timestamp  = ts,
-            severity   = "critical" if rule.get("severity", 3) <= 1 else "warning",
-            event_category   = LogCategory.INTRUSION,
-            event_action = "suricata_alert",
-            source_ip     = source_ip,
-            destination_ip     = destination_ip,
-            source_port   = source_port,
-            destination_port   = destination_port,
-            message    = rule.get("signature", "Suricata alert"),
-            tags       = ["suricata", "ids_alert", rule.get("event_category", "")],
-        )
-
-    if event_action == "dns":
-        dns = data.get("dns", {})
-        return dict(
-            timestamp  = ts,
-            severity   = "info",
-            event_category   = LogCategory.NETWORK,
-            event_action = "dns_query",
-            source_ip     = source_ip,
-            destination_ip     = destination_ip,
-            message    = f"DNS sorgusu: {dns.get('rrname', '')} ({dns.get('rrtype', '')})",
-            tags       = ["suricata", "dns"],
-        )
-
-    # Diğer Suricata event tipleri (flow, http, tls vb.)
-    return dict(
-        timestamp  = ts,
-        severity   = "info",
-        event_category   = LogCategory.NETWORK,
-        event_action = f"suricata_{event_action}",
-        source_ip     = source_ip,
-        destination_ip     = destination_ip,
-        source_port   = source_port,
-        destination_port   = destination_port,
-        message    = f"Suricata {event_action} olayı",
-        tags       = ["suricata", event_action],
-    )
+    norm = _suricata_parse_eve_line(data)
+    if norm is None:
+        return None
+    return {
+        "timestamp":        norm.timestamp,
+        "severity":         norm.severity,
+        "event_category":   norm.event_category,
+        "event_action":     norm.event_action,
+        "source_ip":        norm.source_ip,
+        "destination_ip":   norm.destination_ip,
+        "source_port":      norm.source_port,
+        "destination_port": norm.destination_port,
+        "network_protocol": norm.network_protocol,
+        "message":          norm.message,
+        "tags":             list(norm.tags),
+        "extra":            dict(norm.extra),
+    }
 
 
 def _parse_zeek(raw: str, observer_hostname: str) -> Optional[dict]:

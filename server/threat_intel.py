@@ -83,20 +83,20 @@ def _feodo_check(ip: str) -> dict:
 
 # -- Yardimci ----------------------------------------------------------------
 
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_private_ip(ip: str) -> bool:
-    parts = ip.split(".")
-    if len(parts) != 4:
-        return False
     try:
-        a, b = int(parts[0]), int(parts[1])
+        addr = ipaddress.ip_address(ip)
+        return (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr in _CGNAT_NETWORK
+        )
     except ValueError:
         return False
-    return (
-        a == 10
-        or (a == 172 and 16 <= b <= 31)
-        or (a == 192 and b == 168)
-        or a == 127
-    )
 
 
 def _cache_fresh(queried_at) -> bool:

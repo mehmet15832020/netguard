@@ -105,15 +105,17 @@ class TestAuthLogParse:
 class TestSuricataParse:
     def test_suricata_alert_parsed(self):
         raw = """{
+            "event_type": "alert",
             "event_action": "alert",
             "timestamp": "2026-04-12T10:00:00+00:00",
-            "source_ip": "10.0.0.1",
+            "src_ip": "10.0.0.1",
             "dest_ip": "192.168.1.1",
-            "source_port": 12345,
+            "src_port": 12345,
             "dest_port": 80,
+            "proto": "TCP",
             "alert": {
                 "signature": "ET SCAN Port Scan",
-                "event_category": "Attempted Information Leak",
+                "category": "Attempted Information Leak",
                 "severity": 2
             }
         }"""
@@ -128,11 +130,13 @@ class TestSuricataParse:
 
     def test_suricata_dns_parsed(self):
         raw = """{
+            "event_type": "dns",
             "event_action": "dns",
             "timestamp": "2026-04-12T10:00:00+00:00",
-            "source_ip": "10.0.0.5",
+            "src_ip": "10.0.0.5",
             "dest_ip": "8.8.8.8",
-            "dns": {"rrname": "example.com", "rrtype": "A"}
+            "proto": "UDP",
+            "dns": {"rrname": "example.com", "rrtype": "A", "type": "query"}
         }"""
         norm = normalize(raw, observer_hostname="sensor1")
         assert norm is not None
@@ -329,3 +333,66 @@ class TestNginxWebLog:
         norm = normalize(raw, observer_hostname="10.0.10.2")
         assert norm is not None
         assert norm.event_action == "web_auth_fail"
+
+
+class TestSuricataDelegation:
+    def test_http_event_type_handled_via_parse_eve_line(self):
+        import json as _json
+        from server.log_normalizer import normalize
+        raw = _json.dumps({
+            "event_type": "http",
+            "event_action": "http",
+            "timestamp": "2026-05-01T10:00:00+00:00",
+            "src_ip": "10.0.0.1",
+            "src_port": 54321,
+            "dest_ip": "93.184.216.34",
+            "dest_port": 80,
+            "proto": "TCP",
+            "http": {
+                "hostname": "example.com",
+                "url": "/index.html",
+                "http_method": "GET",
+                "status": 200,
+            },
+        })
+        norm = normalize(raw, observer_hostname="sensor1")
+        assert norm is not None
+        assert norm.event_action == "http_request"
+        assert norm.source_ip == "10.0.0.1"
+        assert norm.destination_port == 80
+
+    def test_tls_event_type_handled_via_parse_eve_line(self):
+        import json as _json
+        from server.log_normalizer import normalize
+        raw = _json.dumps({
+            "event_type": "tls",
+            "event_action": "tls",
+            "timestamp": "2026-05-01T11:00:00+00:00",
+            "src_ip": "10.0.0.2",
+            "src_port": 43210,
+            "dest_ip": "93.184.216.34",
+            "dest_port": 443,
+            "proto": "TCP",
+            "tls": {
+                "sni": "example.com",
+                "version": "TLSv1.3",
+            },
+        })
+        norm = normalize(raw, observer_hostname="sensor1")
+        assert norm is not None
+        assert norm.event_action == "ssl_connection"
+        assert norm.destination_port == 443
+        assert "tls" in norm.tags
+
+    def test_unknown_event_type_returns_none(self):
+        import json as _json
+        from server.log_normalizer import normalize
+        raw = _json.dumps({
+            "event_type": "nonexistent_type",
+            "event_action": "nonexistent_type",
+            "timestamp": "2026-05-01T10:00:00+00:00",
+            "src_ip": "10.0.0.1",
+            "dest_ip": "1.2.3.4",
+        })
+        norm = normalize(raw, observer_hostname="sensor1")
+        assert norm is None
