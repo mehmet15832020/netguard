@@ -2,8 +2,8 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ShieldAlert, RefreshCw, Plus, X, CheckCheck } from 'lucide-react'
-import { incidentApi, activeResponse, type Incident, type IncidentEvent, type IncidentEnrichment } from '@/lib/api'
+import { ShieldAlert, RefreshCw, Plus, X, CheckCheck, Clock, ChevronDown, ChevronUp, TrendingUp } from 'lucide-react'
+import { incidentApi, activeResponse, analyticsApi, type Incident, type IncidentEvent, type IncidentEnrichment } from '@/lib/api'
 import { useCurrentUser } from '@/hooks/useCurrentUser'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,6 +14,8 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
+import { MttdMttrChart } from '@/components/charts/MttdMttrChart'
+import { cn } from '@/lib/utils'
 
 const SEV_DOT: Record<string, string> = {
   critical: 'bg-red-500',
@@ -180,15 +182,171 @@ const SEV_COLORS: Record<string, string> = {
   info:     'text-blue-400',
 }
 
-function SummaryCard({ label, value, color }: { label: string; value: number; color: string }) {
+function SummaryCard({ label, value, color, sub }: { label: string; value: number; color: string; sub?: string }) {
   return (
     <Card className="bg-zinc-900 border-zinc-800">
       <CardContent className="pt-4 pb-4">
         <p className="text-xs text-zinc-400 mb-1">{label}</p>
         <p className={`text-2xl font-bold ${color}`}>{value}</p>
+        {sub && <p className="text-[11px] text-zinc-600 mt-0.5">{sub}</p>}
       </CardContent>
     </Card>
   )
+}
+
+// ─── MTTD / MTTR Performans Paneli ───────────────────────────────────────────
+
+const SLA_TARGETS: Record<string, { mttd: number; mttr: number }> = {
+  critical: { mttd: 15,  mttr: 60  },
+  high:     { mttd: 60,  mttr: 120 },
+  warning:  { mttd: 120, mttr: 240 },
+  info:     { mttd: 240, mttr: 480 },
+}
+
+function fmtMin(min: number | null) {
+  if (min === null) return '—'
+  if (min < 60) return `${Math.round(min)}dk`
+  return `${(min / 60).toFixed(1)}s`
+}
+
+function SlaBar({ pct }: { pct: number }) {
+  const color = pct >= 90 ? 'bg-emerald-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-red-500'
+  return (
+    <div className="flex items-center gap-2">
+      <div className="w-16 h-1.5 bg-zinc-700 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
+      </div>
+      <span className={cn('text-[11px] font-mono', pct >= 90 ? 'text-emerald-400' : pct >= 70 ? 'text-yellow-400' : 'text-red-400')}>
+        {pct.toFixed(0)}%
+      </span>
+    </div>
+  )
+}
+
+function MttdMttrSection() {
+  const [expanded, setExpanded] = useState(false)
+  const { data } = useQuery({
+    queryKey: ['mttd-mttr-incidents'],
+    queryFn:  () => analyticsApi.mttdMttr(30),
+    refetchInterval: 300_000,
+    staleTime: 120_000,
+  })
+
+  const rate = data?.resolution_rate ?? null
+
+  return (
+    <div className="border border-white/[0.06] rounded-lg bg-[#13161e] overflow-hidden">
+      {/* Header — always visible */}
+      <button
+        onClick={() => setExpanded(v => !v)}
+        className="w-full flex items-center gap-4 px-4 py-3 hover:bg-white/[0.03] transition-colors"
+      >
+        <TrendingUp size={14} className="text-zinc-500 flex-shrink-0" />
+        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide flex-1 text-left">
+          MTTD / MTTR Performansı — Son 30 Gün
+        </span>
+        {/* KPI chips */}
+        <div className="hidden md:flex items-center gap-6 mr-4">
+          <div className="text-center">
+            <p className="text-xs font-mono font-bold text-blue-400">{fmtMin(data?.overall_mttd_minutes ?? null)}</p>
+            <p className="text-[10px] text-zinc-600">Ort. MTTD</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs font-mono font-bold text-orange-400">{fmtMin(data?.overall_mttr_minutes ?? null)}</p>
+            <p className="text-[10px] text-zinc-600">Ort. MTTR</p>
+          </div>
+          <div className="text-center">
+            <p className={cn('text-xs font-mono font-bold', rate === null ? 'text-zinc-500' : rate >= 80 ? 'text-emerald-400' : 'text-yellow-400')}>
+              {rate !== null ? `${rate.toFixed(0)}%` : '—'}
+            </p>
+            <p className="text-[10px] text-zinc-600">Çözüm Oranı</p>
+          </div>
+        </div>
+        {expanded ? <ChevronUp size={14} className="text-zinc-600 flex-shrink-0" /> : <ChevronDown size={14} className="text-zinc-600 flex-shrink-0" />}
+      </button>
+
+      {/* Expanded content */}
+      {expanded && data && (
+        <div className="border-t border-white/[0.06] p-4 space-y-5">
+          {/* Trend chart */}
+          {data.trend.length > 1 && (
+            <div>
+              <p className="text-[11px] text-zinc-500 mb-2 uppercase tracking-wide">Günlük MTTD / MTTR Trendi</p>
+              <MttdMttrChart trend={data.trend} height={180} />
+            </div>
+          )}
+
+          {/* SLA tablosu */}
+          {data.by_severity.length > 0 && (
+            <div>
+              <p className="text-[11px] text-zinc-500 mb-2 uppercase tracking-wide">Severity SLA Uyumu</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-zinc-500 border-b border-white/[0.06]">
+                      <th className="text-left py-2 pr-4 font-medium">Severity</th>
+                      <th className="text-right py-2 px-3 font-medium">Hedef MTTD</th>
+                      <th className="text-left py-2 px-3 font-medium">MTTD SLA</th>
+                      <th className="text-right py-2 px-3 font-medium">Ort. MTTD</th>
+                      <th className="text-right py-2 px-3 font-medium">Hedef MTTR</th>
+                      <th className="text-left py-2 px-3 font-medium">MTTR SLA</th>
+                      <th className="text-right py-2 px-3 font-medium">Ort. MTTR</th>
+                      <th className="text-right py-2 pl-3 font-medium">Incident</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.by_severity.map(row => (
+                      <tr key={row.severity} className="border-b border-white/[0.04] last:border-0">
+                        <td className="py-2 pr-4">
+                          <span className={cn('font-medium uppercase', {
+                            critical: 'text-red-400',
+                            high:     'text-orange-400',
+                            warning:  'text-yellow-400',
+                            info:     'text-blue-400',
+                          }[row.severity] ?? 'text-zinc-400')}>{row.severity}</span>
+                        </td>
+                        <td className="py-2 px-3 text-right text-zinc-500">{fmtMin(row.mttd_target_minutes)}</td>
+                        <td className="py-2 px-3"><SlaBar pct={row.mttd_sla_pct} /></td>
+                        <td className="py-2 px-3 text-right font-mono text-zinc-300">{fmtMin(row.avg_mttd_minutes)}</td>
+                        <td className="py-2 px-3 text-right text-zinc-500">{fmtMin(row.mttr_target_minutes)}</td>
+                        <td className="py-2 px-3"><SlaBar pct={row.mttr_sla_pct} /></td>
+                        <td className="py-2 px-3 text-right font-mono text-zinc-300">{fmtMin(row.avg_mttr_minutes)}</td>
+                        <td className="py-2 pl-3 text-right text-zinc-500">{row.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-[10px] text-zinc-600 mt-2">Kaynak: SANS Incident Response 2023, Prophet Security SOC KPIs 2025</p>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Incident Yaşlanma ────────────────────────────────────────────────────────
+
+function IncidentAge({ createdAt, resolvedAt, severity, status }: {
+  createdAt: string; resolvedAt?: string | null; severity: string; status: string
+}) {
+  const end = resolvedAt ? new Date(resolvedAt) : new Date()
+  const mins = Math.floor((end.getTime() - new Date(createdAt).getTime()) / 60000)
+  const sla = SLA_TARGETS[severity]?.mttr ?? 480
+
+  let text: string
+  if (mins < 60) text = `${mins}dk`
+  else if (mins < 1440) text = `${Math.floor(mins / 60)}s ${mins % 60}dk`
+  else text = `${Math.floor(mins / 1440)}g`
+
+  const isActive = status === 'open' || status === 'investigating'
+  const color = !isActive ? 'text-zinc-600'
+    : mins > sla       ? 'text-red-400'
+    : mins > sla * 0.7 ? 'text-yellow-400'
+    : 'text-zinc-500'
+
+  return <span className={cn('text-xs font-mono', color)}>{text}</span>
 }
 
 export default function IncidentsPage() {
@@ -308,11 +466,14 @@ export default function IncidentsPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <SummaryCard label="Toplam"      value={summary?.total         ?? 0} color="text-zinc-200" />
-        <SummaryCard label="Açık"        value={summary?.open          ?? 0} color="text-red-400" />
-        <SummaryCard label="İnceleniyor" value={summary?.investigating ?? 0} color="text-yellow-400" />
-        <SummaryCard label="Çözüldü"     value={summary?.resolved      ?? 0} color="text-emerald-400" />
+        <SummaryCard label="Toplam"      value={summary?.total         ?? 0} color="text-zinc-200"    sub="Tüm zamanlar" />
+        <SummaryCard label="Açık"        value={summary?.open          ?? 0} color="text-red-400"     sub="Müdahale bekliyor" />
+        <SummaryCard label="İnceleniyor" value={summary?.investigating ?? 0} color="text-yellow-400"  sub="Aktif analiz" />
+        <SummaryCard label="Çözüldü"     value={summary?.resolved      ?? 0} color="text-emerald-400" sub="Kapatıldı" />
       </div>
+
+      {/* MTTD / MTTR Performansı */}
+      <MttdMttrSection />
 
       {/* Create Form */}
       {showCreate && (
@@ -373,6 +534,7 @@ export default function IncidentsPage() {
           <SelectContent>
             <SelectItem value="all">Tüm Severity</SelectItem>
             <SelectItem value="critical">Critical</SelectItem>
+            <SelectItem value="high">High</SelectItem>
             <SelectItem value="warning">Warning</SelectItem>
             <SelectItem value="info">Info</SelectItem>
           </SelectContent>
@@ -391,6 +553,9 @@ export default function IncidentsPage() {
                 <TableHead>Durum</TableHead>
                 <TableHead>Atanan</TableHead>
                 <TableHead>Tarih</TableHead>
+                <TableHead title="Incident'ın açık olduğu süre (SLA'ya göre renklenir)">
+                  <Clock size={12} className="inline mr-1 text-zinc-600" />Süre
+                </TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -416,6 +581,14 @@ export default function IncidentsPage() {
                   <TableCell className="text-zinc-400 text-sm">{inc.assigned_to ?? '—'}</TableCell>
                   <TableCell className="text-zinc-500 text-xs">
                     {new Date(inc.created_at).toLocaleString('tr-TR')}
+                  </TableCell>
+                  <TableCell>
+                    <IncidentAge
+                      createdAt={inc.created_at}
+                      resolvedAt={inc.resolved_at}
+                      severity={inc.severity}
+                      status={inc.status}
+                    />
                   </TableCell>
                   <TableCell>
                     <Button variant="ghost" size="sm" onClick={() => {

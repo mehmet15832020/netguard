@@ -98,7 +98,7 @@ export default function DiscoveryPage() {
   const isRunning = status?.running ?? false
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-5">
       {/* Başlık */}
       <div>
         <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">

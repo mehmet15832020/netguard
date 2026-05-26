@@ -243,7 +243,7 @@ export default function DevicesPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-5">
       {snmpDevice && (
         <SNMPModal device={snmpDevice} onClose={() => setSnmpDevice(null)} />
       )}

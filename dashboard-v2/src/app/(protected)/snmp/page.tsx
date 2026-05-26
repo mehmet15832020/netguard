@@ -172,7 +172,7 @@ export default function SNMPPage() {
   const inputCls = "bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-600"
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Başlık */}
       <div>
         <h1 className="text-xl font-semibold text-zinc-100">SNMP Sorgulama</h1>

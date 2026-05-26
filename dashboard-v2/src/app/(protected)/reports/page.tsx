@@ -117,7 +117,7 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-zinc-100">Raporlar</h1>
         <p className="text-sm text-zinc-500 mt-0.5">Sistem verilerini CSV olarak dışa aktar</p>

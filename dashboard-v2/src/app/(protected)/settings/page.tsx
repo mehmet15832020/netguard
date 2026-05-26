@@ -346,7 +346,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       <div>
         <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
           <Settings size={18} /> Ayarlar

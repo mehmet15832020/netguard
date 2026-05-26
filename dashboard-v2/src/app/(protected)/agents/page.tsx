@@ -2,8 +2,8 @@
 
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
-import { Server, Search, Circle, ChevronRight } from 'lucide-react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Server, Search, Circle, ChevronRight, Wifi, WifiOff, Activity } from 'lucide-react'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { useAgents, useLatestSnapshot } from '@/hooks/useMetrics'
 
 const PAGE_SIZE = 20
@@ -79,12 +79,50 @@ export default function AgentsPage() {
     setPage(1)
   }
 
+  const onlineCount  = agents.filter(a => Date.now() - new Date(a.last_seen).getTime() < 60_000).length
+  const offlineCount = agents.length - onlineCount
+
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Başlık */}
-      <div>
-        <h1 className="text-xl font-semibold text-zinc-100">Agents</h1>
-        <p className="text-sm text-zinc-500 mt-0.5">{agents.length} agent kayıtlı</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
+            <Server size={18} className="text-indigo-400" /> Agents
+          </h1>
+          <p className="text-sm text-zinc-500 mt-0.5">{agents.length} agent kayıtlı</p>
+        </div>
+      </div>
+
+      {/* KPI Kartlar */}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-emerald-500/10">
+            <Wifi size={16} className="text-emerald-400" />
+          </div>
+          <div>
+            <p className="text-xs text-zinc-500">Online</p>
+            <p className="text-2xl font-bold text-emerald-400">{onlineCount}</p>
+          </div>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-zinc-700/40">
+            <WifiOff size={16} className="text-zinc-500" />
+          </div>
+          <div>
+            <p className="text-xs text-zinc-500">Offline</p>
+            <p className="text-2xl font-bold text-zinc-400">{offlineCount}</p>
+          </div>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4 flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-indigo-500/10">
+            <Activity size={16} className="text-indigo-400" />
+          </div>
+          <div>
+            <p className="text-xs text-zinc-500">Toplam</p>
+            <p className="text-2xl font-bold text-zinc-100">{agents.length}</p>
+          </div>
+        </div>
       </div>
 
       <Card className="bg-zinc-900 border-zinc-800">

@@ -58,12 +58,13 @@ function EventRow({ ev, badgeText, badgeColor }: {
   const ts = ev.timestamp
     ? new Date(ev.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     : '—'
+  const hash = extractHash(ev.message ?? '')
 
   return (
     <div className="flex items-start gap-3 px-4 py-2.5 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
       <div className="flex-1 min-w-0">
         <p className="text-xs text-zinc-300 font-medium truncate">{ev.message}</p>
-        <div className="flex items-center gap-2 mt-0.5">
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {ev.source_ip && (
             <span className="text-[11px] text-zinc-600 font-mono">{ev.source_ip}</span>
           )}
@@ -72,6 +73,11 @@ function EventRow({ ev, badgeText, badgeColor }: {
               <span className="text-zinc-700">→</span>
               <span className="text-[11px] text-zinc-600 font-mono">{ev.destination_ip}</span>
             </>
+          )}
+          {hash && (
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700" title="TLS fingerprint hash">
+              {hash}…
+            </span>
           )}
         </div>
       </div>
@@ -134,6 +140,25 @@ function SummaryCard({
 }
 
 // ────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ────────────────────────────────────────────────────────────────────────────
+
+function shannonEntropy(s: string): number {
+  const freq: Record<string, number> = {}
+  for (const c of s) freq[c] = (freq[c] ?? 0) + 1
+  const n = s.length
+  return -Object.values(freq).reduce((acc, f) => {
+    const p = f / n
+    return acc + p * Math.log2(p)
+  }, 0)
+}
+
+function extractHash(msg: string): string | null {
+  const m = msg.match(/(?:JA4|JA3)=([a-f0-9_]{12,})/i)
+  return m ? m[1].slice(0, 16) : null
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 // Zeek dağılım grafiği
 // ────────────────────────────────────────────────────────────────────────────
 
@@ -155,9 +180,11 @@ function ZeekDistribution({ data }: { data: Record<string, number> }) {
   const total = Object.values(data).reduce((a, b) => a + b, 0)
   if (total === 0) return <EmptyState label="Zeek verisi yok" />
 
+  const sorted = Object.entries(data).sort((a, b) => b[1] - a[1])
+
   return (
     <div className="px-4 py-3 space-y-2">
-      {Object.entries(data).map(([action, count]) => {
+      {sorted.map(([action, count]) => {
         const pct = total > 0 ? (count / total) * 100 : 0
         const color = ZEEK_COLORS[action] ?? 'bg-zinc-600'
         return (
@@ -166,7 +193,10 @@ function ZeekDistribution({ data }: { data: Record<string, number> }) {
               <span className="text-[11px] text-zinc-400 font-mono truncate max-w-[60%]">
                 {action.replace(/_/g, ' ')}
               </span>
-              <span className="text-[11px] text-zinc-500 font-mono">{count.toLocaleString()}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-zinc-600">{pct.toFixed(1)}%</span>
+                <span className="text-[11px] text-zinc-500 font-mono w-12 text-right">{count.toLocaleString()}</span>
+              </div>
             </div>
             <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
               <div
@@ -205,7 +235,7 @@ export default function NetworkIntelligencePage() {
   }
 
   return (
-    <div className="p-5 space-y-4 max-w-[1600px]">
+    <div className="p-6 space-y-6 max-w-[1600px]">
 
       {/* Başlık */}
       <div className="flex items-center justify-between">
@@ -295,7 +325,17 @@ export default function NetworkIntelligencePage() {
         </div>
       )}
 
-      {data && (
+      {data && data.summary.zeek_total_24h === 0 && (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-lg border border-white/[0.06] bg-[#13161e]">
+          <Wifi size={32} className="text-zinc-700" />
+          <p className="text-sm text-zinc-500 font-medium">Zeek veri akışı bekleniyor</p>
+          <p className="text-xs text-zinc-600 max-w-sm text-center">
+            Son {hours} saatte normalize edilmiş Zeek logu bulunamadı. Zeek collector ve Zeek agent durumunu kontrol edin.
+          </p>
+        </div>
+      )}
+
+      {data && data.summary.zeek_total_24h > 0 && (
         <>
           {/* Zaman serisi + Zeek dağılımı */}
           <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
@@ -459,19 +499,30 @@ export default function NetworkIntelligencePage() {
             <Panel title="En Aktif Kaynak IP'ler (Zeek)">
               {(data.top_sources ?? []).length === 0 ? (
                 <EmptyState label="Zeek kaynak IP verisi yok" />
-              ) : (
-                <div className="divide-y divide-white/[0.04]">
-                  {data.top_sources.map((src, i) => (
-                    <div key={i} className="flex items-center justify-between px-4 py-2.5">
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-zinc-600 w-5 text-right">{i + 1}</span>
-                        <span className="text-sm text-zinc-300 font-mono">{src.ip}</span>
+              ) : (() => {
+                const maxCount = Math.max(...data.top_sources.map(s => s.count), 1)
+                return (
+                  <div className="divide-y divide-white/[0.04]">
+                    {data.top_sources.map((src, i) => (
+                      <div key={i} className="px-4 py-2.5">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] text-zinc-600 w-5 text-right">{i + 1}</span>
+                            <span className="text-sm text-zinc-300 font-mono">{src.ip}</span>
+                          </div>
+                          <span className="text-xs font-mono text-indigo-400">{src.count.toLocaleString()}</span>
+                        </div>
+                        <div className="ml-7 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-indigo-500/60 rounded-full"
+                            style={{ width: `${(src.count / maxCount) * 100}%` }}
+                          />
+                        </div>
                       </div>
-                      <span className="text-xs font-mono text-indigo-400">{src.count.toLocaleString()}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )
+              })()}
             </Panel>
 
             <Panel title="En Çok DNS Sorgusu">
@@ -479,15 +530,30 @@ export default function NetworkIntelligencePage() {
                 <EmptyState label="DNS sorgu verisi yok" />
               ) : (
                 <div className="divide-y divide-white/[0.04]">
-                  {data.dns_top.map((d, i) => (
-                    <div key={i} className="flex items-center justify-between px-4 py-2.5">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <span className="text-[11px] text-zinc-600 w-5 text-right flex-shrink-0">{i + 1}</span>
-                        <span className="text-xs text-zinc-300 truncate">{d.query}</span>
+                  {data.dns_top.map((d, i) => {
+                    const host = d.query.replace(/\.$/, '').split('.').slice(-2).join('.')
+                    const entropy = shannonEntropy(host)
+                    const isDga = entropy > 3.5
+                    return (
+                      <div key={i} className="flex items-center justify-between px-4 py-2.5">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <span className="text-[11px] text-zinc-600 w-5 text-right flex-shrink-0">{i + 1}</span>
+                          <span className={cn('text-xs truncate', isDga ? 'text-orange-300' : 'text-zinc-300')}>
+                            {d.query}
+                          </span>
+                          {isDga && (
+                            <span
+                              className="flex-shrink-0 text-[9px] px-1 py-0.5 rounded bg-orange-900/40 text-orange-400 border border-orange-800/40 font-bold"
+                              title={`Shannon entropy: ${entropy.toFixed(2)} — DGA olabilir`}
+                            >
+                              DGA?
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-xs font-mono text-blue-400 ml-2 flex-shrink-0">{d.count.toLocaleString()}</span>
                       </div>
-                      <span className="text-xs font-mono text-blue-400 ml-2 flex-shrink-0">{d.count.toLocaleString()}</span>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </Panel>
@@ -497,3 +563,4 @@ export default function NetworkIntelligencePage() {
     </div>
   )
 }
+
