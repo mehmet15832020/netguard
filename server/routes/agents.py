@@ -12,7 +12,7 @@ import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from shared.models import (
     AgentRegistration, MetricSnapshot, SecurityEvent, SecurityEventType,
@@ -25,6 +25,7 @@ from server.influx_writer import influx_writer
 from server.notifier import notifier
 from server.ws_manager import ws_manager
 from server.auth import get_agent_from_api_key
+from server.limiter import limiter
 from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
 
 SUSPICIOUS_WARN_THRESHOLD    = 5
@@ -36,7 +37,8 @@ router = APIRouter()
 
 
 @router.post("/agents/register", status_code=201)
-def register_agent(registration: AgentRegistration):
+@limiter.limit("120/minute")
+def register_agent(request: Request, response: Response, registration: AgentRegistration):
     """Agent'ı kaydet."""
     storage.register_agent(registration)
     db.save_device(
@@ -104,7 +106,8 @@ def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSumma
 
 
 @router.post("/agents/metrics", status_code=202)
-async def receive_metrics(snapshot: MetricSnapshot):
+@limiter.limit("120/minute")
+async def receive_metrics(request: Request, response: Response, snapshot: MetricSnapshot):
     """Agent'tan gelen snapshot'ı depola, alert kontrolü yap ve WS'e broadcast et."""
     storage.store_snapshot(snapshot)
 
@@ -151,7 +154,10 @@ class SecurityEventBatch(BaseModel):
 
 
 @router.post("/agents/security-events", status_code=202)
+@limiter.limit("120/minute")
 def receive_security_events(
+    request: Request,
+    response: Response,
     batch: SecurityEventBatch,
     agent_id: str = Depends(get_agent_from_api_key),
 ):

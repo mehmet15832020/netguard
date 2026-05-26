@@ -9,9 +9,10 @@ import uuid
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request, Response
 
 from server.auth import User, get_current_user, tenant_scope
+from server.limiter import limiter, _auth_key
 from server.database import db
 from server.evtx_parser import parse_evtx_bytes
 from server.log_store import log_store
@@ -33,7 +34,10 @@ _KNOWN_WIN_TYPES: list[str] = [
 
 
 @router.post("/evtx/upload")
+@limiter.limit("10/minute", key_func=_auth_key)
 async def upload_evtx(
+    request: Request,
+    response: Response,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
 ):

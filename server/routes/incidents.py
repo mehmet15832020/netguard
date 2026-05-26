@@ -13,10 +13,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from server.auth import User, get_current_user, tenant_scope
+from server.limiter import limiter, _auth_key
 from server.database import db
 from server.incident_enricher import enrich_incident
 from shared.models import Incident, IncidentStatus
@@ -50,7 +51,10 @@ class UpdateIncidentRequest(BaseModel):
 
 
 @router.post("/incidents", status_code=201)
+@limiter.limit("30/minute", key_func=_auth_key)
 def create_incident(
+    request: Request,
+    response: Response,
     req: CreateIncidentRequest,
     current_user: User = Depends(get_current_user),
 ):
@@ -80,7 +84,8 @@ def create_incident(
 
 
 @router.post("/incidents/resolve-all")
-def resolve_all_incidents(current_user: User = Depends(get_current_user)):
+@limiter.limit("10/minute", key_func=_auth_key)
+def resolve_all_incidents(request: Request, response: Response, current_user: User = Depends(get_current_user)):
     """Tüm açık ve inceleniyor incident'ları resolved yapar."""
     if current_user.role not in ("admin", "superadmin"):
         raise HTTPException(status_code=403, detail="Sadece admin kullanabilir")
@@ -197,7 +202,10 @@ def get_incident_events(incident_id: str, current_user: User = Depends(get_curre
 
 
 @router.delete("/incidents/{incident_id}", status_code=204)
+@limiter.limit("30/minute", key_func=_auth_key)
 def delete_incident(
+    request: Request,
+    response: Response,
     incident_id: str,
     current_user: User = Depends(get_current_user),
 ):

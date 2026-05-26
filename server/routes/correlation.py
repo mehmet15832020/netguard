@@ -22,12 +22,13 @@ import threading
 from pathlib import Path
 from typing import Any, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, Field, field_validator
 
 from server.auth import User, get_current_user, require_admin, tenant_scope
 from server.correlator import correlator, _VALID_GROUP_COLS
 from server.database import db
+from server.limiter import limiter, _auth_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -156,7 +157,8 @@ def get_rule(rule_id: str, _: User = Depends(get_current_user)):
 
 
 @router.post("/correlation/rules", status_code=201)
-def create_rule(body: CorrelationRuleIn, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def create_rule(request: Request, response: Response, body: CorrelationRuleIn, _: User = Depends(require_admin)):
     with _rules_lock:
         rules = _read_all_rules()
         if any(r.get("rule_id") == body.rule_id for r in rules):
@@ -168,7 +170,8 @@ def create_rule(body: CorrelationRuleIn, _: User = Depends(require_admin)):
 
 
 @router.put("/correlation/rules/{rule_id}")
-def update_rule(rule_id: str, body: CorrelationRuleIn, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def update_rule(request: Request, response: Response, rule_id: str, body: CorrelationRuleIn, _: User = Depends(require_admin)):
     with _rules_lock:
         rules = _read_all_rules()
         idx = next((i for i, r in enumerate(rules) if r.get("rule_id") == rule_id), None)
@@ -183,7 +186,8 @@ def update_rule(rule_id: str, body: CorrelationRuleIn, _: User = Depends(require
 
 
 @router.delete("/correlation/rules/{rule_id}")
-def delete_rule(rule_id: str, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def delete_rule(request: Request, response: Response, rule_id: str, _: User = Depends(require_admin)):
     with _rules_lock:
         rules = _read_all_rules()
         new_rules = [r for r in rules if r.get("rule_id") != rule_id]
@@ -195,7 +199,8 @@ def delete_rule(rule_id: str, _: User = Depends(require_admin)):
 
 
 @router.patch("/correlation/rules/{rule_id}/toggle")
-def toggle_rule(rule_id: str, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def toggle_rule(request: Request, response: Response, rule_id: str, _: User = Depends(require_admin)):
     with _rules_lock:
         rules = _read_all_rules()
         idx = next((i for i, r in enumerate(rules) if r.get("rule_id") == rule_id), None)
@@ -210,13 +215,16 @@ def toggle_rule(rule_id: str, _: User = Depends(require_admin)):
 # ─── Bulk compat + ops ───────────────────────────────────────────────────────
 
 @router.put("/correlation/rules")
+@limiter.limit("20/minute", key_func=_auth_key)
 def update_rules_bulk(
-    request: RulesUpdateRequest,
+    request: Request,
+    response: Response,
+    body: RulesUpdateRequest,
     _: User = Depends(require_admin),
 ):
     """Korelasyon kurallarını toplu güncelle (backward compat). Her kural Pydantic ile valide edilir."""
     validated: list[dict] = []
-    for i, rule in enumerate(request.rules):
+    for i, rule in enumerate(body.rules):
         try:
             validated.append(CorrelationRuleIn(**rule).model_dump())
         except Exception as exc:
@@ -228,12 +236,14 @@ def update_rules_bulk(
 
 
 @router.post("/correlation/run")
-def run_correlation(_: User = Depends(get_current_user)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def run_correlation(request: Request, response: Response, _: User = Depends(get_current_user)):
     events = correlator.run()
     return {"triggered": len(events), "events": events}
 
 
 @router.post("/correlation/rules/reload")
-def reload_rules(_: User = Depends(get_current_user)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def reload_rules(request: Request, response: Response, _: User = Depends(get_current_user)):
     count = correlator.load_rules()
     return {"loaded": count, "rules": [r.rule_id for r in correlator.rules]}

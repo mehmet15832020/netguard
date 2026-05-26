@@ -41,6 +41,7 @@ def _auth_key(request: Request) -> str:
 
 limiter = Limiter(
     key_func=get_remote_address,
+    default_limits=["60/minute"],
     storage_uri=_STORAGE_URI,
     headers_enabled=True,
     key_style="endpoint",

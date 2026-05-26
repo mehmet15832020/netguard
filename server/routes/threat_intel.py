@@ -5,15 +5,17 @@ GET /api/v1/threat-intel/{ip}         → IP sorgusu (cache + AbuseIPDB)
 GET /api/v1/threat-intel/batch        → Çoklu IP sorgusu
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from server.auth import get_current_user, User
 from server import threat_intel
+from server.limiter import limiter, _auth_key
 
 router = APIRouter()
 
 
 @router.get("/threat-intel/{ip}")
-def get_threat_intel(ip: str, _: User = Depends(get_current_user)):
+@limiter.limit("10/minute", key_func=_auth_key)
+def get_threat_intel(request: Request, response: Response, ip: str, _: User = Depends(get_current_user)):
     """Tek bir IP için TI skoru döndür."""
     result = threat_intel.lookup(ip)
     if result is None:
@@ -23,7 +25,10 @@ def get_threat_intel(ip: str, _: User = Depends(get_current_user)):
 
 
 @router.get("/threat-intel")
+@limiter.limit("10/minute", key_func=_auth_key)
 def get_threat_intel_batch(
+    request: Request,
+    response: Response,
     ips: list[str] = Query(...),
     _: User = Depends(get_current_user),
 ):

@@ -11,9 +11,10 @@ GET /api/v1/reports/topology.csv      → Topoloji kenarları CSV
 import csv
 import io
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from server.auth import get_current_user, User, tenant_scope
+from server.limiter import limiter, _auth_key
 import server.database as _db_mod
 
 router = APIRouter()
@@ -45,7 +46,8 @@ def _csv_response(rows: list[dict], filename: str) -> StreamingResponse:
 
 
 @router.get("/reports/security-status")
-def security_status(current_user: User = Depends(get_current_user)):
+@limiter.limit("10/minute", key_func=_auth_key)
+def security_status(request: Request, response: Response, current_user: User = Depends(get_current_user)):
     """Anlık güvenlik durumu ve risk skoru — overview sayfası için."""
     tid = tenant_scope(current_user)
 
@@ -93,7 +95,8 @@ def security_status(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/reports/summary")
-def report_summary(current_user: User = Depends(get_current_user)):
+@limiter.limit("10/minute", key_func=_auth_key)
+def report_summary(request: Request, response: Response, current_user: User = Depends(get_current_user)):
     """Kullanıcının tenant'ına ait özet — dashboard widget ve rapor sayfası için."""
     tid         = tenant_scope(current_user)
     devices     = _db_mod.db.get_devices(tenant_id=tid)
@@ -145,7 +148,10 @@ def report_summary(current_user: User = Depends(get_current_user)):
 
 
 @router.get("/reports/devices.csv")
+@limiter.limit("10/minute", key_func=_auth_key)
 def report_devices(
+    request: Request,
+    response: Response,
     device_type: str = Query(default=""),
     current_user: User = Depends(get_current_user),
 ):
@@ -162,7 +168,10 @@ def report_devices(
 
 
 @router.get("/reports/alerts.csv")
+@limiter.limit("10/minute", key_func=_auth_key)
 def report_alerts(
+    request: Request,
+    response: Response,
     limit: int = Query(default=1000, le=5000),
     current_user: User = Depends(get_current_user),
 ):
@@ -182,7 +191,10 @@ def report_alerts(
 
 
 @router.get("/reports/security.csv")
+@limiter.limit("10/minute", key_func=_auth_key)
 def report_security(
+    request: Request,
+    response: Response,
     limit: int = Query(default=2000, le=10000),
     current_user: User = Depends(get_current_user),
 ):
@@ -204,7 +216,8 @@ def report_security(
 
 
 @router.get("/reports/topology.csv")
-def report_topology(current_user: User = Depends(get_current_user)):  # noqa: ARG001 — topology henüz tenant-aware değil
+@limiter.limit("10/minute", key_func=_auth_key)
+def report_topology(request: Request, response: Response, current_user: User = Depends(get_current_user)):  # noqa: ARG001 — topology henüz tenant-aware değil
     """Topoloji kenarlarını CSV olarak indir."""
     graph   = _db_mod.db.get_topology_graph()
     nodes_by_id = {n["node_id"]: n for n in graph["nodes"]}

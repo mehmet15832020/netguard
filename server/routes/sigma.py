@@ -11,13 +11,14 @@ POST   /api/v1/sigma/rules/validate     → Kural geçerliliğini test et (kayde
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from sigma.collection import SigmaCollection as _SC
 from sigma.correlations import SigmaCorrelationRule
 
 from server.auth import User, get_current_user, require_admin
 from server.correlator import correlator, SIGMA_RULES_V2_DIR
+from server.limiter import limiter, _auth_key
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -101,7 +102,8 @@ def get_sigma_rule(rule_id: str, _: User = Depends(get_current_user)):
 
 
 @router.post("/sigma/rules/validate")
-def validate_sigma_rule(body: SigmaRuleUpload, _: User = Depends(get_current_user)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def validate_sigma_rule(request: Request, response: Response, body: SigmaRuleUpload, _: User = Depends(get_current_user)):
     """SIGMA V2 kuralını kaydetmeden pySigma ile geçerlilik kontrolü yap."""
     try:
         collection = _SC.from_yaml(body.yaml_content)
@@ -128,7 +130,8 @@ def validate_sigma_rule(body: SigmaRuleUpload, _: User = Depends(get_current_use
 
 
 @router.post("/sigma/rules")
-def upload_sigma_rule(body: SigmaRuleUpload, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def upload_sigma_rule(request: Request, response: Response, body: SigmaRuleUpload, _: User = Depends(require_admin)):
     """Yeni SIGMA V2 kuralı yükle ve korelasyon motorunu yeniden yükle."""
     try:
         collection = _SC.from_yaml(body.yaml_content)
@@ -154,7 +157,8 @@ def upload_sigma_rule(body: SigmaRuleUpload, _: User = Depends(require_admin)):
 
 
 @router.patch("/sigma/rules/{rule_id}/toggle")
-def toggle_sigma_rule(rule_id: str, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def toggle_sigma_rule(request: Request, response: Response, rule_id: str, _: User = Depends(require_admin)):
     """Sigma kuralını aktif/pasif yap (.yml ↔ .yml.disabled yeniden adlandır)."""
     target: Path | None = None
     for f in _list_sigma_files():
@@ -178,7 +182,8 @@ def toggle_sigma_rule(rule_id: str, _: User = Depends(require_admin)):
 
 
 @router.delete("/sigma/rules/{rule_id}")
-def delete_sigma_rule(rule_id: str, _: User = Depends(require_admin)):
+@limiter.limit("20/minute", key_func=_auth_key)
+def delete_sigma_rule(request: Request, response: Response, rule_id: str, _: User = Depends(require_admin)):
     """SIGMA V2 kuralını sil ve motoru yeniden yükle."""
     path = _rule_path(rule_id)
     if not path.exists():

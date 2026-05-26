@@ -13,11 +13,12 @@ POST /api/v1/logs/webserver/batch     → Toplu web server log gönder
 import logging
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from typing import List
 
 from server.auth import User, get_current_user, get_agent_from_api_key, tenant_scope
+from server.limiter import limiter, _auth_key
 from server.database import db
 from server.log_normalizer import process_and_store
 from server.parsers.firewall import detect_and_parse as detect_firewall
@@ -33,7 +34,10 @@ class LogIngestRequest(BaseModel):
 
 
 @router.get("/logs/normalized")
+@limiter.limit("30/minute", key_func=_auth_key)
 def list_normalized_logs(
+    request: Request,
+    response: Response,
     source_type: str = None,
     event_category: str = None,
     source_ip: str = None,
@@ -65,7 +69,10 @@ def list_normalized_logs(
 
 
 @router.get("/logs/search")
+@limiter.limit("30/minute", key_func=_auth_key)
 def search_logs(
+    request: Request,
+    response: Response,
     q: str = "",
     source_type: str = None,
     event_category: str = None,
@@ -92,7 +99,10 @@ def search_logs(
 
 
 @router.get("/logs/raw")
+@limiter.limit("30/minute", key_func=_auth_key)
 def list_raw_logs(
+    request: Request,
+    response: Response,
     normalized: bool = None,
     limit: int = 100,
     _: User = Depends(get_current_user),

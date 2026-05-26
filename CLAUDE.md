@@ -182,7 +182,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting)
 - [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — Bağımlılık: T2
 - [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
-- [ ] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler) — G5 point fix'ini genelleştirir
+- [x] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler) — G5 point fix'ini genelleştirir
+  - **Teslim:** SlowAPI `default_limits=["60/minute"]` + `_auth_key` (JWT→user:x, fallback IP); 10 route dosyası; kategori limitleri: discovery 2/min, reports 10/min, logs 30/min, agents 120/min, sigma/correlation 20/min, incidents 30/min, threat-intel 10/min; `response: Response` enjeksiyonu (X-RateLimit-* header'ları); 27 test — 1834 toplam test ✓
 
 ### Küçük Kod Sorunları (Herhangi Bir Anda)
 
@@ -202,7 +203,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1766 test, 0 hata (24 Mayıs 2026) — R1 + R2 + R3 eklendi
+**Test durumu:** 1834 test, 0 hata (26 Mayıs 2026) — T2-5 sistematik rate limiting (27 yeni test)
 
 ---
 
@@ -369,6 +370,15 @@ ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense 
 ---
 
 ## Kurallar
+
+### Araştırma Önce, Kodlama Sonra (26 Mayıs 2026 — KESİNLİKLE UYULACAK)
+
+**Her yeni değişiklik veya özellik için, başlamadan önce:**
+1. Güvenilir kaynaklardan (NIST, CIS, Gartner, SANS, OWASP, MITRE, RFC, ilgili akademik/endüstri standartları) detaylı analiz yapılır
+2. Analiz ve yaklaşım kullanıcıya sunulur, onay alınır
+3. Onaydan sonra implementasyona geçilir
+
+Bu adım atlanamaz. "Basit değişiklik" veya "küçük ekleme" olsa bile araştırma zorunludur.
 
 ### Commit
 - Format: `feat(detection):`, `refactor(db):`, `fix(security):`, `docs:`

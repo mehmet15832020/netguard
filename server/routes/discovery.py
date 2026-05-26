@@ -12,10 +12,11 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from server.auth import User, get_current_user, require_admin, tenant_scope
+from server.limiter import limiter, _auth_key
 from server.database import db
 
 logger = logging.getLogger(__name__)
@@ -41,7 +42,10 @@ class ScanRequest(BaseModel):
 
 
 @router.post("/discovery/scan", status_code=202)
+@limiter.limit("2/minute", key_func=_auth_key)
 async def start_scan(
+    request: Request,
+    response: Response,
     req: ScanRequest,
     current_user: User = Depends(require_admin),
 ):
