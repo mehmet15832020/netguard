@@ -331,10 +331,57 @@ class TestSigmaToggle:
         r = client.patch("/api/v1/sigma/rules/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/toggle")
         assert r.status_code == 401
 
-    def test_toggle_disabled_rule_not_in_correlator_active(self, sigma_dir, admin_token):
-        """Pasif edilen kural correlator'ın aktif listesine girmez."""
-        client.patch("/api/v1/sigma/rules/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/toggle",
-                     headers={"Authorization": f"Bearer {admin_token}"})
+    def test_toggle_calls_load_rules(self, sigma_dir, admin_token):
+        """Toggle endpoint'i her zaman correlator.load_rules() çağırır."""
+        from unittest.mock import patch
         from server.correlator import correlator as _corr
-        sigma_titles = {r.title for r in _corr._sigma_executor.rules}
-        assert "SSH Brute Force (Wizard Test)" not in sigma_titles
+        with patch.object(_corr, "load_rules", wraps=_corr.load_rules) as mock_reload:
+            r = client.patch(
+                "/api/v1/sigma/rules/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/toggle",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+            assert r.status_code == 200
+            mock_reload.assert_called_once()
+
+
+# ─── Birim testleri: C1 hot-reload ────────────────────────────────────────────
+
+class TestLoadRulesReloadsSigmaExecutor:
+    def test_load_rules_calls_sigma_executor_load_dir(self, tmp_path):
+        """load_rules() her çağrıldığında _sigma_executor.load_dir() çağrılmalı."""
+        from unittest.mock import MagicMock
+        from server.correlator import Correlator
+        corr = Correlator(rules_path=str(tmp_path / "nonexistent.json"))
+        corr._sigma_executor = MagicMock()
+        corr._sigma_executor.load_dir.return_value = 3
+        corr._sigma_executor.rules = []
+        result = corr.load_rules()
+        corr._sigma_executor.load_dir.assert_called_once()
+        assert result == 3
+
+    def test_load_rules_returns_combined_count(self, tmp_path):
+        """load_rules() dönüş değeri JSON + Sigma toplam kural sayısıdır."""
+        import json
+        from unittest.mock import MagicMock
+        from server.correlator import Correlator
+        rules_path = tmp_path / "rules.json"
+        rules_path.write_text(json.dumps([
+            {
+                "rule_id": "test-rule-1",
+                "name": "Test Rule",
+                "description": "",
+                "match_event_action": "ssh_failure",
+                "group_by": "source_ip",
+                "window_seconds": 60,
+                "threshold": 5,
+                "severity": "high",
+                "output_event_action": "ssh_brute_force",
+                "enabled": True,
+            }
+        ]))
+        corr = Correlator(rules_path=str(rules_path))
+        corr._sigma_executor = MagicMock()
+        corr._sigma_executor.load_dir.return_value = 7
+        corr._sigma_executor.rules = []
+        result = corr.load_rules()
+        assert result == 8

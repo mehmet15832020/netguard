@@ -153,8 +153,13 @@ class Correlator:
                 logger.error(f"JSON kural dosyası okunamadı: {exc}")
 
         self._rules = list(rule_map.values())
-        logger.info(f"{len(self._rules)} korelasyon kuralı yüklendi: {[r.rule_id for r in self._rules]}")
-        return len(self._rules)
+        sigma_count = self._sigma_executor.load_dir()
+        total = len(self._rules) + sigma_count
+        logger.info(
+            "%d korelasyon kuralı yüklendi (JSON=%d, Sigma=%d): %s",
+            total, len(self._rules), sigma_count, [r.rule_id for r in self._rules],
+        )
+        return total
 
     @property
     def rules(self) -> list[CorrelationRule]:

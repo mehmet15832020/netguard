@@ -9,6 +9,9 @@ POST   /api/v1/sigma/rules/validate     → Kural geçerliliğini test et (kayde
 """
 
 import logging
+import os
+import tempfile
+import threading
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -24,6 +27,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 SIGMA_DIR = Path(SIGMA_RULES_V2_DIR)
+_sigma_lock = threading.Lock()
 
 
 def _rule_path(rule_id: str) -> Path:
@@ -149,9 +153,21 @@ def upload_sigma_rule(request: Request, response: Response, body: SigmaRuleUploa
 
     SIGMA_DIR.mkdir(parents=True, exist_ok=True)
     dest = _rule_path(rule_id)
-    dest.write_text(body.yaml_content, encoding="utf-8")
-
-    loaded = correlator.load_rules()
+    with _sigma_lock:
+        tmp_fd, tmp_path = tempfile.mkstemp(dir=SIGMA_DIR, suffix=".yml.tmp")
+        try:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(body.yaml_content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, dest)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+        loaded = correlator.load_rules()
     logger.info(f"SIGMA V2 kural yüklendi: {rule_id} → {dest.name}")
     return {"saved": rule_id, "filename": dest.name, "total_rules": loaded}
 
@@ -174,8 +190,9 @@ def toggle_sigma_rule(request: Request, response: Response, rule_id: str, _: Use
     else:
         new_path = Path(str(target) + ".disabled")         # foo.yml → foo.yml.disabled
 
-    target.rename(new_path)
-    loaded = correlator.load_rules()
+    with _sigma_lock:
+        target.rename(new_path)
+        loaded = correlator.load_rules()
     enabled = not str(new_path).endswith(".disabled")
     logger.info(f"Sigma kuralı toggle: {rule_id} → enabled={enabled}")
     return {"rule_id": rule_id, "enabled": enabled, "filename": new_path.name, "loaded_count": loaded}
@@ -195,7 +212,8 @@ def delete_sigma_rule(request: Request, response: Response, rule_id: str, _: Use
         else:
             raise HTTPException(status_code=404, detail=f"Kural bulunamadı: {rule_id}")
 
-    path.unlink()
-    loaded = correlator.load_rules()
+    with _sigma_lock:
+        path.unlink()
+        loaded = correlator.load_rules()
     logger.info(f"SIGMA V2 kural silindi: {rule_id}")
     return {"deleted": rule_id, "total_rules": loaded}
