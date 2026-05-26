@@ -26,6 +26,16 @@ client = TestClient(app)
 _VALID_KEY = Fernet.generate_key().decode()
 
 
+@pytest.fixture(autouse=True)
+def _clear_fernet_cache():
+    """lru_cache'i her test öncesinde temizle — farklı anahtar testleri için."""
+    crypto._get_fernet.cache_clear()
+    crypto._key_warning_logged = False
+    yield
+    crypto._get_fernet.cache_clear()
+    crypto._key_warning_logged = False
+
+
 def _auth(username: str = "admin", role: str = "admin") -> dict:
     token = create_access_token(username=username, role=role, tenant_id="default")
     return {"Authorization": f"Bearer {token}"}
@@ -66,10 +76,21 @@ class TestEncryptDecrypt:
             assert crypto.decrypt(None) is None
 
     def test_decrypt_plaintext_fallback(self):
-        """Anahtar varken plaintext değer decrypt edilmeye çalışılırsa olduğu gibi döner."""
+        """Anahtar varken Fernet-format-dışı değer (eski plaintext) olduğu gibi döner."""
         with patch.dict(os.environ, {crypto._KEY_ENV: _VALID_KEY}):
             result = crypto.decrypt("JBSWY3DPEHPK3PXP")
         assert result == "JBSWY3DPEHPK3PXP"
+
+    def test_wrong_key_raises_for_fernet_token(self):
+        """Yanlış anahtar + Fernet token → InvalidToken yükseltilir (sessiz başarısızlık yok)."""
+        key_a = Fernet.generate_key().decode()
+        key_b = Fernet.generate_key().decode()
+        with patch.dict(os.environ, {crypto._KEY_ENV: key_a}):
+            ciphertext = crypto.encrypt("my_secret")
+        with patch.dict(os.environ, {crypto._KEY_ENV: key_b}):
+            from cryptography.fernet import InvalidToken
+            with pytest.raises(InvalidToken):
+                crypto.decrypt(ciphertext)
 
     def test_different_encryptions_of_same_plaintext(self):
         """Fernet her seferinde farklı ciphertext üretir (IV randomness)."""
@@ -82,6 +103,12 @@ class TestEncryptDecrypt:
         key = crypto.generate_key()
         assert isinstance(key, str)
         Fernet(key.encode())
+
+    def test_fernet_token_prefix(self):
+        """Fernet token gAAAAA ile başlar — format tespiti için kullanılır."""
+        with patch.dict(os.environ, {crypto._KEY_ENV: _VALID_KEY}):
+            ct = crypto.encrypt("test")
+        assert ct.startswith("gAAAAA")
 
 
 # ─── Çapraz: DB encrypt/decrypt entegrasyonu ─────────────────────────────────
