@@ -58,6 +58,7 @@ const SECTIONS: Section[] = [
     entries: [
       { href: '/correlation',          label: 'Korelasyon',          icon: GitMerge },
       { href: '/mitre',                label: 'MITRE ATT&CK',        icon: Crosshair },
+      { href: '/anomaly',              label: 'Anomali Tespiti',      icon: Activity },
       { href: '/network-intelligence', label: 'Network Intelligence', icon: Fingerprint },
       {
         kind: 'group',
@@ -69,6 +70,7 @@ const SECTIONS: Section[] = [
           { href: '/sigma-rules',       label: 'Sigma Kuralları',      icon: ShieldCheck },
           { href: '/sigma-wizard',      label: 'Sigma Sihirbazı',      icon: Wand2 },
           { href: '/sigma-editor',      label: 'YAML Editör',          icon: FileCode2 },
+          { href: '/fp-management',     label: 'FP Yönetimi',          icon: ShieldOff },
         ],
       },
     ],

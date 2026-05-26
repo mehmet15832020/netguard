@@ -11,8 +11,9 @@ POST /api/v1/logs/webserver/batch     → Toplu web server log gönder
 """
 
 import logging
+from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from typing import List
 
@@ -36,18 +37,27 @@ def list_normalized_logs(
     source_type: str = None,
     event_category: str = None,
     source_ip: str = None,
+    destination_ip: str = None,
+    network_protocol: str = None,
     event_action: str = None,
+    severity: str = None,
+    hours: int = Query(default=None, ge=1, le=168),
     limit: int = 100,
     current_user: User = Depends(get_current_user),
 ):
     """Normalize edilmiş logları filtreli listele."""
     if limit < 1 or limit > 1000:
         raise HTTPException(status_code=400, detail="limit 1-1000 arasında olmalı")
+    since = datetime.now(timezone.utc) - timedelta(hours=hours) if hours else None
     logs = db.get_normalized_logs(
         source_type=source_type,
         event_category=event_category,
         source_ip=source_ip,
+        destination_ip=destination_ip,
+        network_protocol=network_protocol,
         event_action=event_action,
+        severity=severity,
+        since=since,
         limit=limit,
         tenant_id=tenant_scope(current_user),
     )

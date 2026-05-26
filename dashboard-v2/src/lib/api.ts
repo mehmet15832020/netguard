@@ -213,15 +213,23 @@ export const logsApi = {
     source_type?: string
     event_category?: string
     source_ip?: string
+    destination_ip?: string
+    network_protocol?: string
     event_action?: string
+    severity?: string
+    hours?: number
     limit?: number
   }) => {
     const q = new URLSearchParams()
-    if (params?.source_type) q.set('source_type', params.source_type)
-    if (params?.event_category) q.set('event_category', params.event_category)
-    if (params?.source_ip) q.set('source_ip', params.source_ip)
-    if (params?.event_action) q.set('event_action', params.event_action)
-    if (params?.limit) q.set('limit', String(params.limit))
+    if (params?.source_type)       q.set('source_type', params.source_type)
+    if (params?.event_category)    q.set('event_category', params.event_category)
+    if (params?.source_ip)         q.set('source_ip', params.source_ip)
+    if (params?.destination_ip)    q.set('destination_ip', params.destination_ip)
+    if (params?.network_protocol)  q.set('network_protocol', params.network_protocol)
+    if (params?.event_action)      q.set('event_action', params.event_action)
+    if (params?.severity)          q.set('severity', params.severity)
+    if (params?.hours)             q.set('hours', String(params.hours))
+    if (params?.limit)             q.set('limit', String(params.limit))
     return request<{ count: number; logs: NormalizedLog[] }>(`/logs/normalized?${q}`)
   },
 
@@ -547,6 +555,15 @@ export const maintenanceApi = {
     const q = qs.toString()
     return request<{ events: AuditEvent[] }>(`/maintenance/audit${q ? `?${q}` : ''}`)
   },
+
+  auditVerify: () =>
+    request<{
+      valid: boolean
+      checked: number
+      skipped: number
+      first_broken_at: number | null
+      message: string
+    }>('/audit-log/verify'),
 }
 
 export interface ThreatIntel {
@@ -852,12 +869,13 @@ export interface FPRule {
 }
 
 export interface FPRuleCreate {
-  event_action?:     string
-  source_ip?:        string
-  destination_ip?:   string
-  destination_port?: string
-  reason:            string
-  expires_in_days?:  number
+  event_action?:      string
+  source_ip?:         string
+  destination_ip?:    string
+  destination_port?:  string
+  observer_hostname?: string
+  reason:             string
+  expires_in_days?:   number
 }
 
 export const fpRulesApi = {
@@ -869,6 +887,61 @@ export const fpRulesApi = {
 
   deactivate: (id: string) =>
     request<{ ok: boolean }>(`/fp-rules/${id}`, { method: 'DELETE' }),
+}
+
+export interface AnomalyResult {
+  result_id:      string
+  entity_id:      string
+  metric:         string
+  observed_value: number
+  baseline_mean:  number
+  baseline_std:   number
+  z_score:        number
+  severity:       string
+  confidence:     number
+  message:        string
+  detected_at:    string
+  extra:          Record<string, unknown>
+}
+
+export interface AnomalySummary {
+  total:             number
+  critical:          number
+  high:              number
+  warning:           number
+  affected_entities: number
+}
+
+export interface AnomalyEntity {
+  entity_id:     string
+  metric_count:  number
+  total_samples: number
+  min_samples:   number
+  last_seen:     string | null
+}
+
+export interface AnomalyWarmup {
+  warmed_up:    boolean
+  sample_count: number
+  needed:       number
+  progress_pct: number
+}
+
+export const anomalyApi = {
+  results: (params?: { limit?: number; entity_id?: string; severity?: string; since_hours?: number }) => {
+    const q = new URLSearchParams()
+    if (params?.limit)       q.set('limit',       String(params.limit))
+    if (params?.entity_id)   q.set('entity_id',   params.entity_id)
+    if (params?.severity)    q.set('severity',     params.severity)
+    if (params?.since_hours) q.set('since_hours',  String(params.since_hours))
+    return request<{ count: number; results: AnomalyResult[] }>(`/anomaly/results?${q}`)
+  },
+  summary: (since_hours = 24) =>
+    request<AnomalySummary>(`/anomaly/summary?since_hours=${since_hours}`),
+  baselines: () =>
+    request<{ count: number; entities: AnomalyEntity[] }>('/anomaly/baselines'),
+  warmupStatus: (entity_id: string) =>
+    request<AnomalyWarmup>(`/anomaly/status/${encodeURIComponent(entity_id)}`),
 }
 
 export interface AssetBaseline {
@@ -947,6 +1020,8 @@ export interface BlockedIP {
   unblocked_at: string | null
   unblocked_by: string | null
   tenant_id: string
+  offense_count: number
+  expires_at: string | null
 }
 
 export interface PlaybookSuggestion {
@@ -968,13 +1043,13 @@ export interface BlockListResponse {
 }
 
 export interface BlockVerifyResponse {
-  ok: boolean
-  missing: string[]
-  extra: string[]
+  status: 'ok' | 'mismatch'
+  synced: string[]
+  phantom: string[]
+  orphan: string[]
+  fw_reachable: boolean
   opnsense_up: boolean
   vyos_up: boolean
-  db_count: number
-  fw_count: number
 }
 
 export const activeResponse = {
@@ -1067,10 +1142,31 @@ export interface TrafficVolumeResponse {
 }
 
 export interface FailedAuthResponse {
-  hours:        number
-  total:        number
-  top_sources:  { ip: string; count: number }[]
-  hourly:       { t: string; v: number }[]
+  hours:                number
+  total:                number
+  top_sources:          { ip: string; count: number }[]
+  hourly:               { t: string; v: number }[]
+  unique_source_count:  number
+  external_source_count: number
+  top_target_users:     { user: string; count: number }[]
+}
+
+export interface SourceHealthItem {
+  source_type:  string
+  last_seen:    string | null
+  age_minutes:  number | null
+  stale:        boolean
+}
+
+export interface SourceHealthResponse {
+  sources:    SourceHealthItem[]
+  checked_at: string
+}
+
+export interface DnsEvent {
+  source_ip:  string | null
+  message:    string
+  timestamp:  string
 }
 
 export interface DnsAnalysisResponse {
@@ -1083,6 +1179,9 @@ export interface DnsAnalysisResponse {
   high_entropy_count:       number
   long_query_count:         number
   anomaly_count:            number
+  high_entropy_domains:     DnsEvent[]
+  long_query_domains:       DnsEvent[]
+  nxdomain_top_sources:     { ip: string; count: number }[]
 }
 
 export interface TlsFingerprintItem {
@@ -1191,12 +1290,18 @@ export interface EastWestMatrixResponse {
 }
 
 export interface ThreatSource {
-  ip:              string
-  count:           number
-  last_seen:       string
-  composite_score: number
-  country_code:    string
-  isp:             string
+  ip:                       string
+  count:                    number
+  last_seen:                string
+  composite_score:          number
+  country_code:             string
+  isp:                      string
+  feodo_listed:             boolean
+  feodo_malware:            string
+  threatfox_score:          number
+  threatfox_malware:        string
+  greynoise_noise:          boolean
+  greynoise_classification: string
 }
 
 export interface ThreatSummaryResponse {
@@ -1230,6 +1335,30 @@ export interface KillChainTimelineResponse {
   rows:         KillChainRow[]
 }
 
+export interface LogVolumeApiResponse {
+  hours:          number
+  bucket_minutes: number
+  series: {
+    critical: AlertPoint[]
+    high:     AlertPoint[]
+    warning:  AlertPoint[]
+    info:     AlertPoint[]
+  }
+}
+
+export interface LogFacetItem {
+  key:   string
+  count: number
+}
+
+export interface LogFacetsApiResponse {
+  hours:      number
+  total:      number
+  sources:    LogFacetItem[]
+  categories: LogFacetItem[]
+  severities: LogFacetItem[]
+}
+
 export const analyticsApi = {
   topTalkers: (hours = 24, limit = 10) =>
     request<TopTalkersResponse>(`/analytics/top-talkers?hours=${hours}&limit=${limit}`),
@@ -1245,6 +1374,9 @@ export const analyticsApi = {
 
   failedAuth: (hours = 24) =>
     request<FailedAuthResponse>(`/analytics/failed-auth?hours=${hours}`),
+
+  sourceHealth: () =>
+    request<SourceHealthResponse>('/analytics/source-health'),
 
   dnsAnalysis: (hours = 24, limit = 20) =>
     request<DnsAnalysisResponse>(`/analytics/dns-analysis?hours=${hours}&limit=${limit}`),
@@ -1269,5 +1401,15 @@ export const analyticsApi = {
 
   mttdMttr: (days = 30) =>
     request<MttdMttrResponse>(`/analytics/mttd-mttr?days=${days}`),
+
+  logVolume: (hours = 24, source_type?: string, event_category?: string) => {
+    const q = new URLSearchParams({ hours: String(hours) })
+    if (source_type) q.set('source_type', source_type)
+    if (event_category) q.set('event_category', event_category)
+    return request<LogVolumeApiResponse>(`/analytics/log-volume?${q}`)
+  },
+
+  logFacets: (hours = 24) =>
+    request<LogFacetsApiResponse>(`/analytics/log-facets?hours=${hours}`),
 }
 

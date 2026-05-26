@@ -980,7 +980,11 @@ class DatabaseManager:
         source_type: Optional[str] = None,
         event_category: Optional[str] = None,
         source_ip: Optional[str] = None,
+        destination_ip: Optional[str] = None,
+        network_protocol: Optional[str] = None,
         event_action: Optional[str] = None,
+        severity: Optional[str] = None,
+        since=None,
         limit: int = 100,
         tenant_id: Optional[str] = None,
     ) -> list[NormalizedLog]:
@@ -995,9 +999,21 @@ class DatabaseManager:
         if source_ip:
             clauses.append("source_ip = ?")
             params.append(source_ip)
+        if destination_ip:
+            clauses.append("destination_ip = ?")
+            params.append(destination_ip)
+        if network_protocol:
+            clauses.append("network_protocol = ?")
+            params.append(network_protocol)
         if event_action:
             clauses.append("event_action = ?")
             params.append(event_action)
+        if severity:
+            clauses.append("severity = ?")
+            params.append(severity)
+        if since is not None:
+            clauses.append("timestamp >= ?")
+            params.append(since)
         if tenant_id is not None:
             clauses.append("tenant_id = ?")
             params.append(tenant_id)

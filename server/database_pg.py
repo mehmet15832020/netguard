@@ -391,7 +391,11 @@ class DatabaseManager:
         source_type: Optional[str] = None,
         event_category: Optional[str] = None,
         source_ip: Optional[str] = None,
+        destination_ip: Optional[str] = None,
+        network_protocol: Optional[str] = None,
         event_action: Optional[str] = None,
+        severity: Optional[str] = None,
+        since=None,
         limit: int = 100,
         tenant_id: Optional[str] = None,
     ) -> list[NormalizedLog]:
@@ -402,8 +406,16 @@ class DatabaseManager:
             clauses.append("event_category = %s"); params.append(event_category)
         if source_ip:
             clauses.append("source_ip = %s"); params.append(source_ip)
+        if destination_ip:
+            clauses.append("destination_ip = %s"); params.append(destination_ip)
+        if network_protocol:
+            clauses.append("network_protocol = %s"); params.append(network_protocol)
         if event_action:
             clauses.append("event_action = %s"); params.append(event_action)
+        if severity:
+            clauses.append("severity = %s"); params.append(severity)
+        if since is not None:
+            clauses.append("timestamp >= %s"); params.append(since)
         if tenant_id is not None:
             clauses.append("tenant_id = %s"); params.append(tenant_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""

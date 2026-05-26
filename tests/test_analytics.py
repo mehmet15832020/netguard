@@ -10,6 +10,8 @@ GET /api/v1/analytics/tls-fingerprints
 GET /api/v1/analytics/beaconing-summary
 GET /api/v1/analytics/threat-summary
 GET /api/v1/analytics/kill-chain-timeline
+GET /api/v1/analytics/log-volume
+GET /api/v1/analytics/log-facets
 """
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -2102,3 +2104,160 @@ class TestAssetRiskTenantIsolation:
         ips = [a["ip"] for a in data["assets"]]
         assert "10.1.0.1" in ips
         assert "10.1.0.2" in ips
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Log Volume
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _insert_vol_log(tmp_db, severity="info", source_type="syslog",
+                    event_category="network", minutes_ago=30, tenant_id="default"):
+    ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    with tmp_db._connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO normalized_logs
+              (log_id, raw_id, source_type, observer_hostname,
+               timestamp, received_at, processed_at,
+               severity, event_category, event_action,
+               source_ip, destination_ip, message, tags, tenant_id)
+            VALUES (?, ?, ?, 'test', ?, ?, ?, ?, ?, 'conn',
+                    '1.2.3.4', '5.6.7.8', 'msg', '[]', ?)
+            """,
+            (str(uuid.uuid4()), str(uuid.uuid4()), source_type,
+             ts, ts, ts, severity, event_category, tenant_id),
+        )
+
+
+class TestLogVolumeBasic:
+    def test_returns_200(self, client):
+        assert client.get("/api/v1/analytics/log-volume").status_code == 200
+
+    def test_response_schema(self, client):
+        d = client.get("/api/v1/analytics/log-volume").json()
+        assert "hours" in d
+        assert "bucket_minutes" in d
+        assert "series" in d
+        for sev in ("critical", "high", "warning", "info"):
+            assert sev in d["series"]
+
+    def test_default_hours_24(self, client):
+        assert client.get("/api/v1/analytics/log-volume").json()["hours"] == 24
+
+    def test_custom_hours(self, client):
+        assert client.get("/api/v1/analytics/log-volume?hours=48").json()["hours"] == 48
+
+    def test_empty_db_zero_series(self, client):
+        d = client.get("/api/v1/analytics/log-volume").json()
+        for sev, pts in d["series"].items():
+            assert all(p["v"] == 0 for p in pts)
+
+    def test_invalid_hours(self, client):
+        assert client.get("/api/v1/analytics/log-volume?hours=0").status_code == 422
+        assert client.get("/api/v1/analytics/log-volume?hours=169").status_code == 422
+
+    def test_requires_auth(self):
+        assert _client.get("/api/v1/analytics/log-volume").status_code == 401
+
+
+class TestLogVolumeData:
+    def test_counts_recent_log(self, client, tmp_db):
+        _insert_vol_log(tmp_db, severity="critical", minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-volume?hours=1").json()
+        total = sum(p["v"] for p in d["series"]["critical"])
+        assert total >= 1
+
+    def test_source_type_filter(self, client, tmp_db):
+        _insert_vol_log(tmp_db, severity="info", source_type="zeek", minutes_ago=10)
+        d_all  = client.get("/api/v1/analytics/log-volume?hours=1").json()
+        d_zeek = client.get("/api/v1/analytics/log-volume?hours=1&source_type=zeek").json()
+        d_sys  = client.get("/api/v1/analytics/log-volume?hours=1&source_type=syslog").json()
+        total_all  = sum(p["v"] for sev in d_all["series"].values() for p in sev)
+        total_zeek = sum(p["v"] for sev in d_zeek["series"].values() for p in sev)
+        total_sys  = sum(p["v"] for sev in d_sys["series"].values() for p in sev)
+        assert total_zeek <= total_all
+        assert total_sys == 0
+
+    def test_bucket_minutes_24h(self, client):
+        assert client.get("/api/v1/analytics/log-volume?hours=24").json()["bucket_minutes"] == 60
+
+    def test_bucket_minutes_168h(self, client):
+        assert client.get("/api/v1/analytics/log-volume?hours=168").json()["bucket_minutes"] == 240
+
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_vol_log(tmp_db, severity="critical", tenant_id="default", minutes_ago=10)
+        _insert_vol_log(tmp_db, severity="critical", tenant_id="other-tenant", minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-volume?hours=1").json()
+        total = sum(p["v"] for p in d["series"]["critical"])
+        assert total == 1
+
+    def test_superadmin_sees_all(self, superadmin_client, tmp_db):
+        _insert_vol_log(tmp_db, severity="critical", tenant_id="default", minutes_ago=10)
+        _insert_vol_log(tmp_db, severity="critical", tenant_id="other-tenant", minutes_ago=10)
+        d = superadmin_client.get("/api/v1/analytics/log-volume?hours=1").json()
+        total = sum(p["v"] for p in d["series"]["critical"])
+        assert total == 2
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Log Facets
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestLogFacetsBasic:
+    def test_returns_200(self, client):
+        assert client.get("/api/v1/analytics/log-facets").status_code == 200
+
+    def test_response_schema(self, client):
+        d = client.get("/api/v1/analytics/log-facets").json()
+        assert "hours" in d
+        assert "total" in d
+        assert "sources" in d
+        assert "categories" in d
+        assert "severities" in d
+
+    def test_empty_db_zero_total(self, client):
+        d = client.get("/api/v1/analytics/log-facets").json()
+        assert d["total"] == 0
+        assert d["sources"] == []
+        assert d["categories"] == []
+
+    def test_requires_auth(self):
+        assert _client.get("/api/v1/analytics/log-facets").status_code == 401
+
+
+class TestLogFacetsData:
+    def test_source_appears_in_facets(self, client, tmp_db):
+        _insert_vol_log(tmp_db, source_type="suricata", minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-facets?hours=1").json()
+        keys = [s["key"] for s in d["sources"]]
+        assert "suricata" in keys
+
+    def test_category_appears_in_facets(self, client, tmp_db):
+        _insert_vol_log(tmp_db, event_category="intrusion", minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-facets?hours=1").json()
+        keys = [c["key"] for c in d["categories"]]
+        assert "intrusion" in keys
+
+    def test_severity_appears_in_facets(self, client, tmp_db):
+        _insert_vol_log(tmp_db, severity="critical", minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-facets?hours=1").json()
+        keys = [s["key"] for s in d["severities"]]
+        assert "critical" in keys
+
+    def test_total_matches_inserted(self, client, tmp_db):
+        for _ in range(3):
+            _insert_vol_log(tmp_db, minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-facets?hours=1").json()
+        assert d["total"] >= 3
+
+    def test_tenant_isolation(self, client, tmp_db):
+        _insert_vol_log(tmp_db, source_type="zeek", tenant_id="default", minutes_ago=10)
+        _insert_vol_log(tmp_db, source_type="zeek", tenant_id="other-tenant", minutes_ago=10)
+        d = client.get("/api/v1/analytics/log-facets?hours=1").json()
+        assert d["total"] == 1
+
+    def test_superadmin_sees_all(self, superadmin_client, tmp_db):
+        _insert_vol_log(tmp_db, tenant_id="default", minutes_ago=10)
+        _insert_vol_log(tmp_db, tenant_id="other-tenant", minutes_ago=10)
+        d = superadmin_client.get("/api/v1/analytics/log-facets?hours=1").json()
+        assert d["total"] == 2

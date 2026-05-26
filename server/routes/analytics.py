@@ -11,6 +11,7 @@ GET /api/v1/analytics/tls-fingerprints      TLS bağlantı parmak izi analizi
 GET /api/v1/analytics/beaconing-summary     C2 beaconing tespiti özeti
 GET /api/v1/analytics/threat-summary        Kritik tehdit özeti
 GET /api/v1/analytics/kill-chain-timeline   Kill chain swimlane — IP başına aşama olayları zaman çizelgesi
+GET /api/v1/analytics/source-health         Veri kaynağı sağlık durumu (son log zamanı × source_type)
 """
 
 import logging
@@ -438,11 +439,19 @@ _FAILED_AUTH_ACTIONS = (
 _NORM_HOUR_EXPR = "to_char(date_trunc('hour', received_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
 
 
+class _TargetUser(BaseModel):
+    user: str
+    count: int
+
+
 class FailedAuthResponse(BaseModel):
     hours: int
     total: int
     top_sources: list[_IPCount]
     hourly: list[_AlertPoint]
+    unique_source_count: int
+    external_source_count: int
+    top_target_users: list[_TargetUser]
 
 
 @router.get("/analytics/failed-auth", response_model=FailedAuthResponse)
@@ -465,6 +474,18 @@ def failed_auth(
     else:
         tenant_clause = "AND tenant_id = %s"
         base_params = [since_trunc, tid, *_FAILED_AUTH_ACTIONS]
+
+    _rfc1918_not_clause = """NOT (
+        source_ip LIKE '10.%' OR source_ip LIKE '192.168.%' OR
+        source_ip LIKE '172.16.%' OR source_ip LIKE '172.17.%' OR
+        source_ip LIKE '172.18.%' OR source_ip LIKE '172.19.%' OR
+        source_ip LIKE '172.20.%' OR source_ip LIKE '172.21.%' OR
+        source_ip LIKE '172.22.%' OR source_ip LIKE '172.23.%' OR
+        source_ip LIKE '172.24.%' OR source_ip LIKE '172.25.%' OR
+        source_ip LIKE '172.26.%' OR source_ip LIKE '172.27.%' OR
+        source_ip LIKE '172.28.%' OR source_ip LIKE '172.29.%' OR
+        source_ip LIKE '172.30.%' OR source_ip LIKE '172.31.%'
+    )"""
 
     with db._connect() as conn:
         hourly_rows = conn.execute(
@@ -497,6 +518,22 @@ def failed_auth(
             base_params,
         ).fetchall()
 
+        count_row = conn.execute(
+            f"""
+            SELECT
+                COUNT(DISTINCT source_ip) AS unique_src,
+                COUNT(DISTINCT CASE WHEN {_rfc1918_not_clause} THEN source_ip END) AS external_src
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action IN ({action_ph})
+              AND source_ip IS NOT NULL
+            """,
+            base_params,
+        ).fetchone()
+
+        user_rows: list = []
+
     now_trunc = now.replace(minute=0, second=0, microsecond=0)
     n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
     all_hours = [
@@ -507,11 +544,104 @@ def failed_auth(
     hourly = [_AlertPoint(t=h, v=hour_map.get(h, 0)) for h in all_hours]
     total = sum(r["cnt"] for r in hourly_rows)
     top_sources = [_IPCount(ip=r["source_ip"], count=r["cnt"]) for r in src_rows]
+    unique_source_count = count_row["unique_src"] or 0 if count_row else 0
+    external_source_count = count_row["external_src"] or 0 if count_row else 0
+    top_target_users: list[_TargetUser] = []
 
-    return FailedAuthResponse(hours=hours, total=total, top_sources=top_sources, hourly=hourly)
+    return FailedAuthResponse(
+        hours=hours,
+        total=total,
+        top_sources=top_sources,
+        hourly=hourly,
+        unique_source_count=unique_source_count,
+        external_source_count=external_source_count,
+        top_target_users=top_target_users,
+    )
+
+
+# ─── Source Health ────────────────────────────────────────────────────────────
+
+class _SourceHealth(BaseModel):
+    source_type: str
+    last_seen: str | None
+    age_minutes: float | None
+    stale: bool
+
+
+class SourceHealthResponse(BaseModel):
+    sources: list[_SourceHealth]
+    checked_at: str
+
+
+@router.get("/analytics/source-health", response_model=SourceHealthResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def source_health(
+    request: Request,
+    response: Response,
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=24)
+
+    if tid is None:
+        tenant_clause = ""
+        params: list = [since]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        params = [since, tid]
+
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT source_type, MAX(received_at) AS last_seen
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND source_type IS NOT NULL
+            GROUP BY source_type
+            ORDER BY last_seen DESC
+            """,
+            params,
+        ).fetchall()
+
+    sources = []
+    for r in rows:
+        ls = r["last_seen"]
+        if ls is None:
+            sources.append(_SourceHealth(source_type=r["source_type"], last_seen=None, age_minutes=None, stale=True))
+            continue
+        if isinstance(ls, str):
+            try:
+                from dateutil.parser import parse as _parse_dt
+                ls_dt = _parse_dt(ls)
+                if ls_dt.tzinfo is None:
+                    ls_dt = ls_dt.replace(tzinfo=timezone.utc)
+            except Exception:
+                sources.append(_SourceHealth(source_type=r["source_type"], last_seen=ls, age_minutes=None, stale=True))
+                continue
+        else:
+            ls_dt = ls
+            if ls_dt.tzinfo is None:
+                ls_dt = ls_dt.replace(tzinfo=timezone.utc)
+        age_min = (now - ls_dt).total_seconds() / 60
+        sources.append(_SourceHealth(
+            source_type=r["source_type"],
+            last_seen=ls_dt.isoformat(),
+            age_minutes=round(age_min, 1),
+            stale=age_min > 15,
+        ))
+
+    return SourceHealthResponse(sources=sources, checked_at=now.isoformat())
 
 
 # ─── DNS Analysis ─────────────────────────────────────────────────────────────
+
+class _DnsEvent(BaseModel):
+    source_ip: str | None
+    message: str
+    timestamp: str
+
 
 class DnsAnalysisResponse(BaseModel):
     hours: int
@@ -523,6 +653,9 @@ class DnsAnalysisResponse(BaseModel):
     high_entropy_count: int
     long_query_count: int
     anomaly_count: int
+    high_entropy_domains: list[_DnsEvent]
+    long_query_domains: list[_DnsEvent]
+    nxdomain_top_sources: list[_IPCount]
 
 
 @router.get("/analytics/dns-analysis", response_model=DnsAnalysisResponse)
@@ -637,6 +770,50 @@ def dns_analysis(
             [*base_params, "dns_query_burst"],
         ).fetchone()
 
+        high_entropy_rows = conn.execute(
+            f"""
+            SELECT source_ip, message, timestamp
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message LIKE %s
+            ORDER BY received_at DESC
+            LIMIT 20
+            """,
+            [*base_params, "dns_query", "%[HIGH_ENTROPY:%"],
+        ).fetchall()
+
+        long_query_rows = conn.execute(
+            f"""
+            SELECT source_ip, message, timestamp
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message LIKE %s
+            ORDER BY received_at DESC
+            LIMIT 20
+            """,
+            [*base_params, "dns_query", "%[LONG_QUERY:%"],
+        ).fetchall()
+
+        nxdomain_source_rows = conn.execute(
+            f"""
+            SELECT source_ip, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE received_at >= %s
+              {tenant_clause}
+              AND event_action = %s
+              AND message LIKE %s
+              AND source_ip IS NOT NULL
+            GROUP BY source_ip
+            ORDER BY cnt DESC
+            LIMIT 10
+            """,
+            [*base_params, "dns_query", "% → NXDOMAIN%"],
+        ).fetchall()
+
     now_trunc = now.replace(minute=0, second=0, microsecond=0)
     n_buckets = int((now_trunc - since_trunc).total_seconds() // 3600) + 1
     all_hours = [
@@ -661,6 +838,18 @@ def dns_analysis(
         high_entropy_count=high_entropy_row["cnt"] if high_entropy_row else 0,
         long_query_count=long_query_row["cnt"] if long_query_row else 0,
         anomaly_count=anomaly_row["cnt"] if anomaly_row else 0,
+        high_entropy_domains=[
+            _DnsEvent(source_ip=r["source_ip"], message=r["message"], timestamp=str(r["timestamp"]))
+            for r in high_entropy_rows
+        ],
+        long_query_domains=[
+            _DnsEvent(source_ip=r["source_ip"], message=r["message"], timestamp=str(r["timestamp"]))
+            for r in long_query_rows
+        ],
+        nxdomain_top_sources=[
+            _IPCount(ip=r["source_ip"], count=r["cnt"])
+            for r in nxdomain_source_rows
+        ],
     )
 
 
@@ -941,6 +1130,12 @@ class _ThreatSource(BaseModel):
     composite_score: int
     country_code: str
     isp: str
+    feodo_listed: bool
+    feodo_malware: str
+    threatfox_score: int
+    threatfox_malware: str
+    greynoise_noise: bool
+    greynoise_classification: str
 
 
 class _CountryCount(BaseModel):
@@ -1008,14 +1203,22 @@ def threat_summary(
                 MAX(n.received_at) AS last_seen,
                 COALESCE(t.composite_score, 0) AS composite_score,
                 COALESCE(t.country_code, '') AS country_code,
-                COALESCE(t.isp, '') AS isp
+                COALESCE(t.isp, '') AS isp,
+                COALESCE(t.feodo_listed, false) AS feodo_listed,
+                COALESCE(t.feodo_malware, '') AS feodo_malware,
+                COALESCE(t.threatfox_score, 0) AS threatfox_score,
+                COALESCE(t.threatfox_malware, '') AS threatfox_malware,
+                COALESCE(t.greynoise_noise, false) AS greynoise_noise,
+                COALESCE(t.greynoise_classification, '') AS greynoise_classification
             FROM normalized_logs n
             LEFT JOIN threat_intel_cache t ON t.ip = n.source_ip
             WHERE n.received_at >= %s
               {tenant_clause}
               AND n.tags LIKE %s
               AND n.source_ip IS NOT NULL
-            GROUP BY n.source_ip, t.composite_score, t.country_code, t.isp
+            GROUP BY n.source_ip, t.composite_score, t.country_code, t.isp,
+                     t.feodo_listed, t.feodo_malware, t.threatfox_score, t.threatfox_malware,
+                     t.greynoise_noise, t.greynoise_classification
             ORDER BY composite_score DESC, cnt DESC
             LIMIT %s
             """,
@@ -1066,6 +1269,12 @@ def threat_summary(
             composite_score=r["composite_score"],
             country_code=r["country_code"],
             isp=r["isp"],
+            feodo_listed=bool(r["feodo_listed"]),
+            feodo_malware=r["feodo_malware"] or "",
+            threatfox_score=r["threatfox_score"] or 0,
+            threatfox_malware=r["threatfox_malware"] or "",
+            greynoise_noise=bool(r["greynoise_noise"]),
+            greynoise_classification=r["greynoise_classification"] or "",
         )
         for r in src_rows
     ]
@@ -1588,4 +1797,187 @@ def mttd_mttr(
         overall_mttr_minutes=overall_mttr,
         trend=trend,
         by_severity=by_severity,
+    )
+
+
+# ─── Log Volume ───────────────────────────────────────────────────────────────
+
+class _LogPoint(BaseModel):
+    t: str
+    v: int
+
+
+class LogVolumeResponse(BaseModel):
+    hours: int
+    bucket_minutes: int
+    series: dict[str, list[_LogPoint]]
+
+
+@router.get("/analytics/log-volume", response_model=LogVolumeResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def log_volume(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    source_type: str = Query(default=None),
+    event_category: str = Query(default=None),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+    bm = _bucket_minutes(hours)
+    since_hour = since.replace(minute=0, second=0, microsecond=0)
+    now_hour = now.replace(minute=0, second=0, microsecond=0)
+
+    filters = ["timestamp >= %s", "timestamp <= %s"]
+    params: list = [since_hour, now]
+    if tid is not None:
+        filters.append("tenant_id = %s")
+        params.append(tid)
+    if source_type:
+        filters.append("source_type = %s")
+        params.append(source_type)
+    if event_category:
+        filters.append("event_category = %s")
+        params.append(event_category)
+
+    where = " AND ".join(filters)
+    _sev_ph = ", ".join(["%s"] * len(_SEVERITY_LEVELS))
+    params.extend(_SEVERITY_LEVELS)
+
+    _log_hour_expr = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+    with db._connect() as conn:
+        rows = conn.execute(
+            f"""
+            SELECT
+                {_log_hour_expr} AS hour,
+                COALESCE(severity, 'info') AS severity,
+                COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE {where}
+              AND COALESCE(severity, 'info') IN ({_sev_ph})
+            GROUP BY hour, severity
+            ORDER BY hour
+            """,
+            params,
+        ).fetchall()
+
+    n_hours = int((now_hour - since_hour).total_seconds() // 3600) + 1
+    all_hours = [
+        (since_hour + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00:00Z")
+        for i in range(n_hours)
+    ]
+
+    hour_sev: dict[str, dict[str, int]] = {h: {s: 0 for s in _SEVERITY_LEVELS} for h in all_hours}
+    for r in rows:
+        h = r["hour"]
+        if h in hour_sev:
+            hour_sev[h][r["severity"]] = r["cnt"]
+
+    if bm <= 60:
+        all_buckets = all_hours
+        bucket: dict[str, dict[str, int]] = hour_sev
+    else:
+        step_hours = bm // 60
+        merged: dict[str, dict[str, int]] = {}
+        for i, h in enumerate(all_hours):
+            group_key = all_hours[(i // step_hours) * step_hours]
+            if group_key not in merged:
+                merged[group_key] = {s: 0 for s in _SEVERITY_LEVELS}
+            for sev in _SEVERITY_LEVELS:
+                merged[group_key][sev] += hour_sev[h][sev]
+        all_buckets = list(merged.keys())
+        bucket = merged
+
+    series: dict[str, list[_LogPoint]] = {
+        sev: [_LogPoint(t=b, v=bucket[b][sev]) for b in all_buckets]
+        for sev in _SEVERITY_LEVELS
+    }
+    return LogVolumeResponse(hours=hours, bucket_minutes=bm, series=series)
+
+
+# ─── Log Facets ───────────────────────────────────────────────────────────────
+
+class _FacetItem(BaseModel):
+    key: str
+    count: int
+
+
+class LogFacetsResponse(BaseModel):
+    hours: int
+    total: int
+    sources: list[_FacetItem]
+    categories: list[_FacetItem]
+    severities: list[_FacetItem]
+
+
+@router.get("/analytics/log-facets", response_model=LogFacetsResponse)
+@limiter.limit("30/minute", key_func=_auth_key)
+def log_facets(
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    tid = tenant_scope(current_user)
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(hours=hours)
+
+    if tid is None:
+        tenant_clause = ""
+        base_params: list = [since, now]
+    else:
+        tenant_clause = "AND tenant_id = %s"
+        base_params = [since, now, tid]
+
+    with db._connect() as conn:
+        src_rows = conn.execute(
+            f"""
+            SELECT source_type AS k, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE timestamp >= %s AND timestamp <= %s {tenant_clause}
+              AND source_type IS NOT NULL AND source_type != ''
+            GROUP BY source_type ORDER BY cnt DESC LIMIT 20
+            """,
+            base_params,
+        ).fetchall()
+
+        cat_rows = conn.execute(
+            f"""
+            SELECT event_category AS k, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE timestamp >= %s AND timestamp <= %s {tenant_clause}
+              AND event_category IS NOT NULL AND event_category != ''
+            GROUP BY event_category ORDER BY cnt DESC LIMIT 20
+            """,
+            base_params,
+        ).fetchall()
+
+        sev_rows = conn.execute(
+            f"""
+            SELECT COALESCE(severity, 'info') AS k, COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE timestamp >= %s AND timestamp <= %s {tenant_clause}
+            GROUP BY k ORDER BY cnt DESC
+            """,
+            base_params,
+        ).fetchall()
+
+        total_row = conn.execute(
+            f"""
+            SELECT COUNT(*) AS cnt
+            FROM normalized_logs
+            WHERE timestamp >= %s AND timestamp <= %s {tenant_clause}
+            """,
+            base_params,
+        ).fetchone()
+
+    total = total_row["cnt"] if total_row else 0
+    return LogFacetsResponse(
+        hours=hours,
+        total=total,
+        sources=[_FacetItem(key=r["k"], count=r["cnt"]) for r in src_rows],
+        categories=[_FacetItem(key=r["k"], count=r["cnt"]) for r in cat_rows],
+        severities=[_FacetItem(key=r["k"], count=r["cnt"]) for r in sev_rows],
     )
