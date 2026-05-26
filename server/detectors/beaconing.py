@@ -142,16 +142,16 @@ class BeaconingDetector(BaseDetector):
             if jitter_ratio >= self._jitter:
                 continue
 
+            from server.fp_manager import fp_manager
+            if fp_manager.is_suppressed("c2_beaconing", source_ip=src_ip, tenant_id="default"):
+                continue
+
             key = (src_ip, dst_ip, dst_port)
             with self._lock:
                 last_alert = self._alerted.get(key)
                 if last_alert and (now - last_alert) < cooldown:
                     continue
                 self._alerted[key] = now
-
-            from server.fp_manager import fp_manager
-            if fp_manager.is_suppressed("c2_beaconing", source_ip=src_ip, tenant_id="default"):
-                continue
 
             log = self._make_log(
                 event_action="c2_beaconing",

@@ -214,23 +214,17 @@ def alert_volume(
         all_buckets = all_hours
         bucket: dict[str, dict[str, int]] = hour_sev
     else:
-        step_hours = bm // 60  # 240min → 4h steps; 15min → treat as 1h in SQLite
-        if bm < 60:
-            # 15-minute granularity: keep hourly buckets (SQLite-compatible)
-            all_buckets = all_hours
-            bucket = hour_sev
-        else:
-            # 4-hour granularity: merge groups of 4 hours
-            merged: dict[str, dict[str, int]] = {}
-            for i, h in enumerate(all_hours):
-                group_idx = i // step_hours
-                group_key = all_hours[group_idx * step_hours]
-                if group_key not in merged:
-                    merged[group_key] = {s: 0 for s in _SEVERITY_LEVELS}
-                for sev in _SEVERITY_LEVELS:
-                    merged[group_key][sev] += hour_sev[h][sev]
-            all_buckets = list(merged.keys())
-            bucket = merged
+        step_hours = bm // 60
+        merged: dict[str, dict[str, int]] = {}
+        for i, h in enumerate(all_hours):
+            group_idx = i // step_hours
+            group_key = all_hours[group_idx * step_hours]
+            if group_key not in merged:
+                merged[group_key] = {s: 0 for s in _SEVERITY_LEVELS}
+            for sev in _SEVERITY_LEVELS:
+                merged[group_key][sev] += hour_sev[h][sev]
+        all_buckets = list(merged.keys())
+        bucket = merged
 
     series: dict[str, list[_AlertPoint]] = {
         sev: [_AlertPoint(t=b, v=bucket[b][sev]) for b in all_buckets]
@@ -321,7 +315,7 @@ _RFC1918_LIKE = """(
     OR source_ip LIKE '100.64.%%'
     OR source_ip LIKE '127.%%'
     OR source_ip LIKE '169.254.%%'
-    OR source_ip LIKE 'fc%%'
+    OR source_ip LIKE 'fc%%' OR source_ip LIKE 'fd%%'
     OR source_ip LIKE 'fe80:%%'
     OR source_ip = '::1'
 )"""
@@ -340,7 +334,7 @@ _RFC1918_DST_LIKE = """(
     OR destination_ip LIKE '100.64.%%'
     OR destination_ip LIKE '127.%%'
     OR destination_ip LIKE '169.254.%%'
-    OR destination_ip LIKE 'fc%%'
+    OR destination_ip LIKE 'fc%%' OR destination_ip LIKE 'fd%%'
     OR destination_ip LIKE 'fe80:%%'
     OR destination_ip = '::1'
 )"""
@@ -617,7 +611,8 @@ def source_health(
                 ls_dt = _parse_dt(ls)
                 if ls_dt.tzinfo is None:
                     ls_dt = ls_dt.replace(tzinfo=timezone.utc)
-            except Exception:
+            except Exception as exc:
+                logger.debug("source_health timestamp parse hatası [%s]: %s", r["source_type"], exc)
                 sources.append(_SourceHealth(source_type=r["source_type"], last_seen=ls, age_minutes=None, stale=True))
                 continue
         else:
@@ -1362,9 +1357,14 @@ def kill_chain_timeline(
 
     ip_events: dict[str, list[dict]] = defaultdict(list)
     for row in raw_rows:
-        occ = row["occurred_at"]
-        if not isinstance(occ, str):
-            occ = occ.isoformat()
+        occ_raw = row["occurred_at"]
+        try:
+            occ_dt = _to_dt(occ_raw)
+            if occ_dt.tzinfo is None:
+                occ_dt = occ_dt.replace(tzinfo=timezone.utc)
+            occ = occ_dt.strftime("%Y-%m-%dT%H:%M:%S.%f+00:00")
+        except (ValueError, TypeError):
+            occ = str(occ_raw)
         ip_events[row["source_ip"]].append({"stage": row["stage"], "occurred_at": occ})
 
     chain_rows: list[_ChainRow] = []
