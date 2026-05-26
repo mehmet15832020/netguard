@@ -122,7 +122,7 @@ class AnomalyEngine:
                     message=r.message,
                     tags=["anomaly", r.metric],
                 )
-                self._db.save_normalized_log(log)
+                self._db.save_normalized_log(log, tenant_id="default")
                 if r.entity_id:
                     try:
                         ipaddress.ip_address(r.entity_id)

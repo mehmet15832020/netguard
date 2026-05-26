@@ -97,7 +97,7 @@ async def upload_evtx(
         norm = to_normalized_log(rec)
         if norm:
             try:
-                log_store.save(norm)
+                log_store.save(norm, tenant_id=tenant_id)
                 saved_norm += 1
             except Exception as exc:
                 logger.warning("EVTX normalized log kaydedilemedi: %s", exc)

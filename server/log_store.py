@@ -22,11 +22,11 @@ from shared.models import NormalizedLog
 class LogStore(Protocol):
     """normalized_logs tablosu için depolama protokolü."""
 
-    def save(self, log: NormalizedLog) -> None:
+    def save(self, log: NormalizedLog, tenant_id: str = "default") -> None:
         """Tek bir normalize log kaydını sakla."""
         ...
 
-    def save_batch(self, logs: list[NormalizedLog]) -> None:
+    def save_batch(self, logs: list[NormalizedLog], tenant_id: str = "default") -> None:
         """Birden fazla log kaydını toplu sakla."""
         ...
 
@@ -71,12 +71,12 @@ from server.database import db as _db
 class PostgreSQLLogStore:
     """LogStore'un PostgreSQL + TimescaleDB implementasyonu."""
 
-    def save(self, log: NormalizedLog) -> None:
-        _db.save_normalized_log(log)
+    def save(self, log: NormalizedLog, tenant_id: str = "default") -> None:
+        _db.save_normalized_log(log, tenant_id=tenant_id)
 
-    def save_batch(self, logs: list[NormalizedLog]) -> None:
+    def save_batch(self, logs: list[NormalizedLog], tenant_id: str = "default") -> None:
         for log in logs:
-            _db.save_normalized_log(log)
+            _db.save_normalized_log(log, tenant_id=tenant_id)
 
     def search(
         self,
