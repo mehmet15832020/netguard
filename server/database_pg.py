@@ -1432,7 +1432,7 @@ class DatabaseManager:
                     "message": "Önceki hash uyuşmuyor — bir kayıt bozulmuş veya silinmiş",
                 }
             ts = row["timestamp"]
-            ts_str = ts.isoformat() if hasattr(ts, "isoformat") else str(ts)
+            ts_str = ts.astimezone(timezone.utc).isoformat() if hasattr(ts, "astimezone") else str(ts)
             content = _audit_content(
                 row["event_id"], row["actor"], row["action"], row["resource"],
                 row["detail"] or "", row["ip_address"] or "", ts_str, previous_hash,
