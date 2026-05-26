@@ -287,7 +287,7 @@ function EditorContent() {
   }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-80px)] space-y-4">
+    <div className="p-6 flex flex-col h-[calc(100vh-80px)] space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3 flex-shrink-0">
         <div className="flex items-center gap-3">

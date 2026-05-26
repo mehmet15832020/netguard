@@ -74,7 +74,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const netOutData = influxAvailable ? (influx!.net_out ?? []) : []
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Başlık */}
       <div>
         <button

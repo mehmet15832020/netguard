@@ -151,7 +151,7 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
   const logs   = logsData?.logs ?? []
 
   return (
-    <div className="space-y-5 p-1">
+    <div className="p-6 space-y-5">
       {/* Başlık */}
       <div>
         <Link
