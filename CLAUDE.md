@@ -179,7 +179,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [ ] **U6** — Multi-tenant PostgreSQL RLS — Bağımlılık: F2 + U3 + T1
 - [ ] **U1** — East-West görünürlük (L3 switch NetFlow) — NetFlow altyapısı VAR ✓, GNS3 L3 konfig gerekli
 - [ ] **T1** — Hukuki altyapı (şirket, KVKK DPA, Tech E&O sigortası)
-- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting)
+- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme ✓T2-2, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting ✓T2-5)
 - [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — Bağımlılık: T2
 - [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
 - [x] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler) — G5 point fix'ini genelleştirir
@@ -203,7 +203,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1834 test, 0 hata (26 Mayıs 2026) — T2-5 sistematik rate limiting (27 yeni test)
+**Test durumu:** 1849 test, 0 hata (26 Mayıs 2026) — T2-2 at-rest şifreleme (15 yeni test)
 
 ---
 

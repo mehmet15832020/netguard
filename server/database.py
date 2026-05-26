@@ -2244,6 +2244,7 @@ class DatabaseManager:
                 return cur.rowcount > 0
 
     def get_user_totp(self, username: str) -> dict:
+        from server.crypto import decrypt
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT totp_secret, totp_enabled FROM db_users WHERE username=%s",
@@ -2252,7 +2253,7 @@ class DatabaseManager:
         if not row:
             return {"totp_secret": None, "totp_enabled": False}
         return {
-            "totp_secret": row["totp_secret"],
+            "totp_secret": decrypt(row["totp_secret"]),
             "totp_enabled": bool(row["totp_enabled"]),
         }
 
@@ -2260,6 +2261,7 @@ class DatabaseManager:
         self, username: str, secret: str,
         role: str = "viewer", tenant_id: str = "default",
     ) -> None:
+        from server.crypto import encrypt
         with self._lock:
             with self._connect() as conn:
                 conn.execute(
@@ -2269,7 +2271,7 @@ class DatabaseManager:
                 )
                 conn.execute(
                     "UPDATE db_users SET totp_secret=%s, totp_enabled=0 WHERE username=%s",
-                    (secret, username),
+                    (encrypt(secret), username),
                 )
 
     def enable_user_totp(self, username: str) -> None:
