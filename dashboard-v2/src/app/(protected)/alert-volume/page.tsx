@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Activity, RefreshCw } from 'lucide-react'
+import { Activity, RefreshCw, ShieldAlert, AlertTriangle, Bell, Info } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { AlertVolumeChart } from '@/components/charts/AlertVolumeChart'
 import { cn } from '@/lib/utils'
@@ -26,10 +26,16 @@ export default function AlertVolumePage() {
     staleTime: 30_000,
   })
 
-  const totalAlerts = useMemo(() => {
-    if (!data) return 0
-    return [...data.series.critical, ...data.series.high, ...data.series.warning, ...data.series.info]
-      .reduce((sum, p) => sum + p.v, 0)
+  const { totalAlerts, criticalCount, highCount, warningCount, infoCount } = useMemo(() => {
+    if (!data) return { totalAlerts: 0, criticalCount: 0, highCount: 0, warningCount: 0, infoCount: 0 }
+    const sum = (arr: { v: number }[]) => arr.reduce((s, p) => s + p.v, 0)
+    return {
+      totalAlerts:   sum(data.series.critical) + sum(data.series.high) + sum(data.series.warning) + sum(data.series.info),
+      criticalCount: sum(data.series.critical),
+      highCount:     sum(data.series.high),
+      warningCount:  sum(data.series.warning),
+      infoCount:     sum(data.series.info),
+    }
   }, [data])
 
   const isEmpty = !data || totalAlerts === 0
@@ -86,6 +92,56 @@ export default function AlertVolumePage() {
           </button>
         </div>
       )}
+
+      {/* KPI Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        <div className={cn(
+          'rounded-xl border p-4',
+          criticalCount > 0 ? 'bg-red-950/20 border-red-800/60' : 'bg-zinc-900 border-zinc-800'
+        )}>
+          <div className="flex items-center gap-2 mb-1">
+            <ShieldAlert className={cn('w-4 h-4 flex-shrink-0', criticalCount > 0 ? 'text-red-400' : 'text-zinc-500')} />
+            <p className="text-xs text-zinc-500">Critical</p>
+          </div>
+          <p className={cn('text-2xl font-bold tabular-nums', criticalCount > 0 ? 'text-red-400' : 'text-zinc-100')}>
+            {isLoading ? '—' : criticalCount.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">acil müdahale gerektirir</p>
+        </div>
+        <div className={cn(
+          'rounded-xl border p-4',
+          highCount > 0 ? 'bg-orange-950/20 border-orange-800/60' : 'bg-zinc-900 border-zinc-800'
+        )}>
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className={cn('w-4 h-4 flex-shrink-0', highCount > 0 ? 'text-orange-400' : 'text-zinc-500')} />
+            <p className="text-xs text-zinc-500">High</p>
+          </div>
+          <p className={cn('text-2xl font-bold tabular-nums', highCount > 0 ? 'text-orange-400' : 'text-zinc-100')}>
+            {isLoading ? '—' : highCount.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">öncelikli inceleme</p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Bell className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">Warning</p>
+          </div>
+          <p className="text-2xl font-bold text-yellow-400 tabular-nums">
+            {isLoading ? '—' : warningCount.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">izleme gerektirir</p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Info className="w-4 h-4 text-blue-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">Info</p>
+          </div>
+          <p className="text-2xl font-bold text-blue-400 tabular-nums">
+            {isLoading ? '—' : infoCount.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">bilgi amaçlı</p>
+        </div>
+      </div>
 
       {/* Chart */}
       {isLoading ? (

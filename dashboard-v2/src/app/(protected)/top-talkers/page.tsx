@@ -1,11 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { BarChart2, RefreshCw } from 'lucide-react'
+import { BarChart2, RefreshCw, Radio, Target, Zap } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { TopTalkersChart } from '@/components/charts/TopTalkersChart'
 import { cn } from '@/lib/utils'
+
+const WELL_KNOWN_PORTS: Record<number, string> = {
+  20: 'FTP-data', 21: 'FTP', 22: 'SSH', 23: 'Telnet', 25: 'SMTP',
+  53: 'DNS', 80: 'HTTP', 110: 'POP3', 143: 'IMAP', 443: 'HTTPS',
+  445: 'SMB', 465: 'SMTPS', 514: 'Syslog', 587: 'SMTP', 636: 'LDAPS',
+  993: 'IMAPS', 995: 'POP3S', 1433: 'MSSQL', 1521: 'Oracle',
+  3306: 'MySQL', 3389: 'RDP', 5432: 'PostgreSQL', 5900: 'VNC',
+  6379: 'Redis', 8080: 'HTTP-alt', 8443: 'HTTPS-alt', 9200: 'Elasticsearch',
+  27017: 'MongoDB',
+}
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -32,6 +42,10 @@ export default function TopTalkersPage() {
   const sources = (data?.top_sources      ?? []).map((d) => ({ label: d.ip,           count: d.count }))
   const dests   = (data?.top_destinations ?? []).map((d) => ({ label: d.ip,           count: d.count }))
   const ports   = (data?.top_dst_ports    ?? []).map((d) => ({ label: String(d.port), count: d.count }))
+
+  const topSource = useMemo(() => data?.top_sources[0]      ?? null, [data])
+  const topDest   = useMemo(() => data?.top_destinations[0] ?? null, [data])
+  const topPort   = useMemo(() => data?.top_dst_ports[0]    ?? null, [data])
 
   return (
     <div className="p-6 space-y-6">
@@ -109,6 +123,48 @@ export default function TopTalkersPage() {
         </div>
       )}
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Radio className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">En Aktif Kaynak</p>
+          </div>
+          <p className="text-xl font-bold text-zinc-100 font-mono truncate">
+            {isLoading ? '—' : (topSource?.ip ?? '—')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {topSource ? `${topSource.count.toLocaleString('tr-TR')} bağlantı · tarama/sızdırma riski` : 'veri yok'}
+          </p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Target className="w-4 h-4 text-sky-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">En Meşgul Hedef</p>
+          </div>
+          <p className="text-xl font-bold text-zinc-100 font-mono truncate">
+            {isLoading ? '—' : (topDest?.ip ?? '—')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {topDest ? `${topDest.count.toLocaleString('tr-TR')} bağlantı · C2/exfil hedefi olabilir` : 'veri yok'}
+          </p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Zap className="w-4 h-4 text-emerald-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">En Yaygın Port</p>
+          </div>
+          <p className="text-xl font-bold text-zinc-100 font-mono">
+            {isLoading ? '—' : topPort
+              ? `${topPort.port}${WELL_KNOWN_PORTS[topPort.port] ? ` · ${WELL_KNOWN_PORTS[topPort.port]}` : ''}`
+              : '—'}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {topPort ? `${topPort.count.toLocaleString('tr-TR')} bağlantı` : 'veri yok'}
+          </p>
+        </div>
+      </div>
+
       {/* Charts grid */}
       {isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -159,10 +215,9 @@ export default function TopTalkersPage() {
         </div>
       )}
 
-      {/* Summary row */}
       {data && (
-        <p className="text-xs text-zinc-600 text-right">
-          Son {hours} saatte {data.top_sources.length} kaynak · {data.top_destinations.length} hedef · {data.top_dst_ports.length} port
+        <p className="text-xs text-zinc-600">
+          Son {hours} saatte en aktif {data.top_sources.length} kaynak IP, {data.top_destinations.length} hedef IP ve {data.top_dst_ports.length} hedef port · Yüksek hacimli kaynaklar tarama veya veri sızdırma belirtisi olabilir
         </p>
       )}
     </div>

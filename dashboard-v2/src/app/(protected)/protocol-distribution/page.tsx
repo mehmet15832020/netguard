@@ -1,11 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { PieChart, RefreshCw } from 'lucide-react'
+import { PieChart, RefreshCw, Layers, TrendingUp, AlertTriangle } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { ProtocolDonutChart } from '@/components/charts/ProtocolDonutChart'
 import { cn } from '@/lib/utils'
+
+const RISKY_PROTOCOLS = new Set(['telnet', 'ftp', 'tftp', 'rlogin', 'rsh', 'rexec', 'snmp', 'smb', 'netbios'])
+const RISKY_LABEL: Record<string, string> = {
+  telnet: 'plaintext', ftp: 'plaintext', tftp: 'no-auth',
+  rlogin: 'plaintext', rsh: 'plaintext', rexec: 'plaintext',
+  snmp: 'v1/v2c risk', smb: 'lateral risk', netbios: 'lateral risk',
+}
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -33,6 +40,15 @@ export default function ProtocolDistributionPage() {
 
   const isEmpty = !data || data.protocols.length === 0
   const topRows = data ? data.protocols.slice(0, 10) : []
+
+  const { uniqueCount, topProtocol, riskyCount } = useMemo(() => {
+    if (!data) return { uniqueCount: 0, topProtocol: null, riskyCount: 0 }
+    return {
+      uniqueCount:  data.protocols.length,
+      topProtocol:  data.protocols[0] ?? null,
+      riskyCount:   data.protocols.filter(p => RISKY_PROTOCOLS.has(p.protocol.toLowerCase())).length,
+    }
+  }, [data])
 
   return (
     <div className="p-6 space-y-6">
@@ -87,6 +103,45 @@ export default function ProtocolDistributionPage() {
         </div>
       )}
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Layers className="w-4 h-4 text-indigo-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">Benzersiz Protokol</p>
+          </div>
+          <p className="text-2xl font-bold text-zinc-100">
+            {isLoading ? '—' : uniqueCount.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">farklı protokol türü</p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <TrendingUp className="w-4 h-4 text-sky-400 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">Dominant Protokol</p>
+          </div>
+          <p className="text-xl font-bold text-zinc-100 font-mono uppercase">
+            {isLoading ? '—' : (topProtocol?.protocol.toUpperCase() ?? '—')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">
+            {topProtocol ? `toplam trafiğin %${topProtocol.pct.toFixed(1)}'i` : 'veri yok'}
+          </p>
+        </div>
+        <div className={cn(
+          'rounded-xl border p-4',
+          riskyCount > 0 ? 'bg-amber-950/20 border-amber-800/60' : 'bg-zinc-900 border-zinc-800'
+        )}>
+          <div className="flex items-center gap-2 mb-1">
+            <AlertTriangle className={cn('w-4 h-4 flex-shrink-0', riskyCount > 0 ? 'text-amber-400' : 'text-zinc-500')} />
+            <p className="text-xs text-zinc-500">Riskli Protokol</p>
+          </div>
+          <p className={cn('text-2xl font-bold', riskyCount > 0 ? 'text-amber-400' : 'text-zinc-100')}>
+            {isLoading ? '—' : riskyCount}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">plaintext / zayıf auth protokolü</p>
+        </div>
+      </div>
+
       {/* Chart card */}
       {isLoading ? (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-80 animate-pulse" />
@@ -122,10 +177,16 @@ export default function ProtocolDistributionPage() {
               </tr>
             </thead>
             <tbody>
-              {topRows.map((item, i) => (
+              {topRows.map((item, i) => {
+                const isRisky = RISKY_PROTOCOLS.has(item.protocol.toLowerCase())
+                const riskyLabel = RISKY_LABEL[item.protocol.toLowerCase()]
+                return (
                 <tr
                   key={item.protocol}
-                  className="border-b border-zinc-800/50 hover:bg-zinc-800/50 transition-colors"
+                  className={cn(
+                    'border-b border-zinc-800/50 hover:bg-zinc-800/50 transition-colors',
+                    isRisky && 'bg-amber-950/10',
+                  )}
                 >
                   <td className="px-4 py-2.5">
                     <div className="flex items-center gap-2">
@@ -136,6 +197,11 @@ export default function ProtocolDistributionPage() {
                       <span className="font-mono text-zinc-300 text-xs">
                         {item.protocol.toUpperCase()}
                       </span>
+                      {isRisky && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-900/60 text-amber-400 border border-amber-800/50">
+                          {riskyLabel}
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-4 py-2.5 text-right text-zinc-400 tabular-nums">
@@ -158,7 +224,7 @@ export default function ProtocolDistributionPage() {
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

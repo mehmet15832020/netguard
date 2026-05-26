@@ -162,7 +162,7 @@ export default function TimelinePage() {
   const stats = statsData
 
   return (
-    <div className="p-5 space-y-5 max-w-[1400px]">
+    <div className="p-6 space-y-5 max-w-[1400px]">
 
       {/* Başlık */}
       <div className="flex items-center justify-between">

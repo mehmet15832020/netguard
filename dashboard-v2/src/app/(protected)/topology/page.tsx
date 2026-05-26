@@ -277,7 +277,7 @@ export default function TopologyPage() {
   }, [])
 
   return (
-    <div className="space-y-4">
+    <div className="p-6 space-y-4">
       {/* Başlık */}
       <div className="flex items-center justify-between">
         <div>

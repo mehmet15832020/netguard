@@ -94,6 +94,40 @@ export default function TrafficVolumePage() {
         </div>
       )}
 
+      {/* KPI Cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">İç ↔ İç (East-West)</p>
+          </div>
+          <p className="text-2xl font-bold text-zinc-100">
+            {isLoading ? '—' : totalEastWest.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">lateral hareket riski</p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">İç → Dış (Egress)</p>
+          </div>
+          <p className="text-2xl font-bold text-orange-400">
+            {isLoading ? '—' : totalNsEgress.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">veri sızdırma riski</p>
+        </div>
+        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+            <p className="text-xs text-zinc-500">Dış → İç (Ingress)</p>
+          </div>
+          <p className="text-2xl font-bold text-red-400">
+            {isLoading ? '—' : totalNsIngress.toLocaleString('tr-TR')}
+          </p>
+          <p className="text-xs text-zinc-600 mt-0.5">dış kaynaklı trafik</p>
+        </div>
+      </div>
+
       {/* Chart */}
       {isLoading ? (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-80 animate-pulse" />
@@ -104,34 +138,6 @@ export default function TrafficVolumePage() {
       ) : (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
           <TrafficVolumeChart series={data!.series} hours={hours} height={320} />
-        </div>
-      )}
-
-      {/* Summary row — 3 istatistik */}
-      {data && !isEmpty && (
-        <div className="flex items-center gap-6 text-xs text-zinc-500">
-          <span>Son {hours} saat —</span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-indigo-500" />
-            İç ↔ İç:{' '}
-            <span className="text-zinc-300 font-medium">
-              {totalEastWest.toLocaleString('tr-TR')}
-            </span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-orange-500" />
-            İç → Dış:{' '}
-            <span className="text-zinc-300 font-medium">
-              {totalNsEgress.toLocaleString('tr-TR')}
-            </span>
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="inline-block w-2 h-2 rounded-full bg-red-500" />
-            Dış → İç:{' '}
-            <span className="text-zinc-300 font-medium">
-              {totalNsIngress.toLocaleString('tr-TR')}
-            </span>
-          </span>
         </div>
       )}
     </div>

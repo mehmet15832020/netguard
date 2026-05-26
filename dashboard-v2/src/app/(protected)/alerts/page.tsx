@@ -1,11 +1,12 @@
 'use client'
 
 import { useState } from 'react'
-import { Bell, RefreshCw, CheckCheck } from 'lucide-react'
+import { Bell, RefreshCw, CheckCheck, Activity, Monitor } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { alertsApi } from '@/lib/api'
+import { alertsApi, analyticsApi } from '@/lib/api'
 import { useAlertStore } from '@/store/alertStore'
 import { SeverityBadge } from '@/components/ui/severity-badge'
+import { AlertVolumeChart } from '@/components/charts/AlertVolumeChart'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import type { Alert, Severity } from '@/types/models'
+import { cn } from '@/lib/utils'
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleString('tr-TR', {
@@ -28,6 +30,20 @@ function StatusBadge({ status }: { status: Alert['status'] }) {
   return status === 'active'
     ? <Badge className="bg-red-900/40 text-red-300 border border-red-800 text-xs">Aktif</Badge>
     : <Badge className="bg-zinc-800 text-zinc-400 border border-zinc-700 text-xs">Çözüldü</Badge>
+}
+
+// SLA sınırları: kritik=60dk, high=120dk, warning=240dk
+const SEV_SLA: Record<string, number> = { critical: 60, high: 120, warning: 240, info: 480 }
+
+function AlertAge({ triggeredAt, severity, status }: { triggeredAt: string; severity: string; status: string }) {
+  const mins = Math.floor((Date.now() - new Date(triggeredAt).getTime()) / 60000)
+  const sla = SEV_SLA[severity] ?? 240
+  const text = mins < 60 ? `${mins}dk` : mins < 1440 ? `${Math.floor(mins / 60)}s` : `${Math.floor(mins / 1440)}g`
+  const color = status !== 'active' ? 'text-zinc-700'
+    : mins > sla       ? 'text-red-400'
+    : mins > sla * 0.5 ? 'text-yellow-400'
+    : 'text-zinc-500'
+  return <span className={cn('text-xs font-mono', color)}>{text}</span>
 }
 
 export default function AlertsPage() {
@@ -60,6 +76,26 @@ export default function AlertsPage() {
   const activeCount   = all.filter((a) => a.status === 'active').length
   const criticalCount = all.filter((a) => a.severity === 'critical' && a.status === 'active').length
 
+  // Alert volume trend
+  const { data: volumeData } = useQuery({
+    queryKey: ['alert-volume-alerts-page'],
+    queryFn:  () => analyticsApi.alertVolume(24),
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  })
+
+  // Top sources (client-side computed from loaded alerts)
+  const topSources = Object.entries(
+    all
+      .filter(a => a.status === 'active')
+      .reduce((acc: Record<string, number>, a) => {
+        const key = a.hostname || 'unknown'
+        acc[key] = (acc[key] || 0) + 1
+        return acc
+      }, {})
+  ).sort((a, b) => b[1] - a[1]).slice(0, 6)
+  const maxSourceCount = topSources[0]?.[1] ?? 1
+
   const resolveAllMutation = useMutation({
     mutationFn: () => alertsApi.resolveAll(),
     onSuccess: () => {
@@ -74,7 +110,7 @@ export default function AlertsPage() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="p-6 space-y-5">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
@@ -106,14 +142,20 @@ export default function AlertsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        {(['critical', 'warning', 'info'] as Severity[]).map((sev) => {
+      {/* 4 Severity Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {(['critical', 'high', 'warning', 'info'] as Severity[]).map((sev) => {
           const count = all.filter((a) => a.severity === sev && a.status === 'active').length
-          const labels: Record<string, string> = { critical: 'Kritik', warning: 'Uyarı', high: 'Yüksek', info: 'Bilgi' }
+          const total = all.filter((a) => a.severity === sev).length
+          const labels: Record<string, string> = { critical: 'Kritik', high: 'Yüksek', warning: 'Uyarı', info: 'Bilgi' }
+          const active = severityFilter === sev
           return (
             <Card
               key={sev}
-              className="bg-zinc-900 border-zinc-800 cursor-pointer hover:border-zinc-600 transition-colors"
+              className={cn(
+                'cursor-pointer transition-colors',
+                active ? 'bg-zinc-800 border-zinc-600' : 'bg-zinc-900 border-zinc-800 hover:border-zinc-600',
+              )}
               onClick={() => setSeverityFilter(sev === severityFilter ? 'all' : sev)}
             >
               <CardContent className="p-4 flex items-center justify-between">
@@ -122,10 +164,62 @@ export default function AlertsPage() {
               </CardContent>
               <div className="px-4 pb-4">
                 <span className="text-2xl font-bold text-zinc-100">{count}</span>
+                <span className="text-xs text-zinc-600 ml-1.5">/ {total} toplam</span>
               </div>
             </Card>
           )
         })}
+      </div>
+
+      {/* Alert Trend + Top Sources */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+        {/* Alert Volume Trend */}
+        <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+            <Activity size={13} className="text-zinc-500" />
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">Alert Trendi — 24 Saat</span>
+            <span className="text-[11px] text-zinc-600 ml-auto">Severity bazında dağılım</span>
+          </div>
+          {volumeData ? (
+            <div className="px-2 py-2">
+              <AlertVolumeChart
+                series={volumeData.series}
+                hours={volumeData.hours}
+                bucketMinutes={volumeData.bucket_minutes}
+                height={180}
+              />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12 text-zinc-600 text-sm">Yükleniyor...</div>
+          )}
+        </div>
+
+        {/* Top Alert Sources */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-800">
+            <Monitor size={13} className="text-zinc-500" />
+            <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">En Aktif Kaynaklar</span>
+            <span className="text-[11px] text-zinc-600 ml-auto">Aktif alertler</span>
+          </div>
+          {topSources.length === 0 ? (
+            <div className="flex items-center justify-center py-12 text-zinc-600 text-sm">Aktif alert yok</div>
+          ) : (
+            <div className="p-4 space-y-3">
+              {topSources.map(([host, count]) => (
+                <div key={host} className="flex items-center gap-2">
+                  <span className="text-xs text-zinc-400 w-28 truncate flex-shrink-0" title={host}>{host}</span>
+                  <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-500 rounded-full"
+                      style={{ width: `${(count / maxSourceCount) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-xs font-mono text-zinc-500 w-6 text-right flex-shrink-0">{count}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       <Card className="bg-zinc-900 border-zinc-800">
@@ -149,6 +243,7 @@ export default function AlertsPage() {
               <SelectContent className="bg-zinc-800 border-zinc-700">
                 <SelectItem value="all" className="text-zinc-300">Tüm seviyeler</SelectItem>
                 <SelectItem value="critical" className="text-zinc-300">Kritik</SelectItem>
+                <SelectItem value="high" className="text-zinc-300">Yüksek</SelectItem>
                 <SelectItem value="warning" className="text-zinc-300">Uyarı</SelectItem>
                 <SelectItem value="info" className="text-zinc-300">Bilgi</SelectItem>
               </SelectContent>
@@ -171,6 +266,7 @@ export default function AlertsPage() {
                   <TableHead className="text-zinc-500 text-xs w-24">Metrik</TableHead>
                   <TableHead className="text-zinc-500 text-xs w-28">Değer / Eşik</TableHead>
                   <TableHead className="text-zinc-500 text-xs w-40">Zaman</TableHead>
+                  <TableHead className="text-zinc-500 text-xs w-16">Süre</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -185,6 +281,9 @@ export default function AlertsPage() {
                       {alert.value.toFixed(1)} / {alert.threshold.toFixed(1)}
                     </TableCell>
                     <TableCell className="text-xs text-zinc-500">{formatDate(alert.triggered_at)}</TableCell>
+                    <TableCell>
+                      <AlertAge triggeredAt={alert.triggered_at} severity={alert.severity} status={alert.status} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

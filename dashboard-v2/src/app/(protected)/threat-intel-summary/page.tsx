@@ -4,8 +4,7 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ShieldAlert, RefreshCw, Globe, AlertTriangle, TrendingUp } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
-import { analyticsApi } from '@/lib/api'
-import type { ThreatSource } from '@/lib/api'
+import { analyticsApi, type ThreatSource } from '@/lib/api'
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -78,6 +77,27 @@ function countryFlag(code: string): string {
     .split('')
     .map((c) => String.fromCodePoint(0x1f1e0 + c.charCodeAt(0) - 65))
     .join('')
+}
+
+function FeedBadges({ src }: { src: ThreatSource }) {
+  const badges: { label: string; cls: string; title: string }[] = []
+  if (src.feodo_listed)
+    badges.push({ label: 'Feodo', cls: 'bg-red-900/50 text-red-300 border-red-700/50', title: src.feodo_malware || 'Feodo Tracker' })
+  if (src.threatfox_score > 0)
+    badges.push({ label: 'ThreatFox', cls: 'bg-orange-900/50 text-orange-300 border-orange-700/50', title: src.threatfox_malware || `score ${src.threatfox_score}` })
+  if (src.greynoise_noise && !src.greynoise_classification.toLowerCase().includes('benign'))
+    badges.push({ label: 'GreyNoise', cls: 'bg-yellow-900/50 text-yellow-300 border-yellow-700/50', title: src.greynoise_classification || 'Noise' })
+  if (badges.length === 0) return <span className="text-zinc-700 text-[10px]">—</span>
+  return (
+    <div className="flex flex-wrap gap-1">
+      {badges.map(b => (
+        <span key={b.label} title={b.title}
+          className={`text-[9px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wide ${b.cls}`}>
+          {b.label}
+        </span>
+      ))}
+    </div>
+  )
 }
 
 export default function ThreatIntelSummaryPage() {
@@ -296,6 +316,7 @@ export default function ThreatIntelSummaryPage() {
                   <th className="text-left px-4 py-2.5 font-medium">IP</th>
                   <th className="text-left px-4 py-2.5 font-medium">Ülke</th>
                   <th className="text-left px-4 py-2.5 font-medium w-40">Composite Score</th>
+                  <th className="text-left px-4 py-2.5 font-medium">Feed</th>
                   <th className="text-left px-4 py-2.5 font-medium">ISP</th>
                   <th className="text-right px-4 py-2.5 font-medium">Olay</th>
                   <th className="text-right px-4 py-2.5 font-medium">Son Görülme</th>
@@ -312,6 +333,9 @@ export default function ThreatIntelSummaryPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <ScoreBar score={src.composite_score} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <FeedBadges src={src} />
                     </td>
                     <td className="px-4 py-2.5 text-zinc-500 text-xs truncate max-w-[160px]">
                       {src.isp || '—'}

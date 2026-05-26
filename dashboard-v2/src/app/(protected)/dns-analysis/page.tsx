@@ -2,9 +2,9 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Globe, RefreshCw, AlertTriangle, Activity, Search, Zap } from 'lucide-react'
+import { Globe, RefreshCw, AlertTriangle, Activity, Search, Zap, Shield } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
-import { analyticsApi } from '@/lib/api'
+import { analyticsApi, type DnsEvent } from '@/lib/api'
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -278,6 +278,101 @@ export default function DnsAnalysisPage() {
             <p className="text-sm">Veri yok</p>
           </div>
         )}
+      </div>
+
+      {/* ─ Drill-down: şüpheli DNS olayları ── */}
+      {data && (data.high_entropy_domains.length > 0 || data.long_query_domains.length > 0 || data.nxdomain_top_sources.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+
+          {/* Yüksek entropi domainler */}
+          <div className="bg-zinc-900 rounded-xl border border-zinc-800 lg:col-span-1">
+            <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
+              <Search className="w-3.5 h-3.5 text-red-400" />
+              <h2 className="text-sm font-semibold text-zinc-200">Yüksek Entropi Domain</h2>
+              <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
+                {data.high_entropy_count}
+              </span>
+            </div>
+            {data.high_entropy_domains.length === 0 ? (
+              <p className="text-xs text-zinc-600 text-center py-6">Tespit yok</p>
+            ) : (
+              <div className="divide-y divide-zinc-800">
+                {data.high_entropy_domains.map((ev, i) => (
+                  <DnsEventRow key={i} ev={ev} accent="text-red-300" />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Uzun subdomain sorguları */}
+          <div className="bg-zinc-900 rounded-xl border border-zinc-800 lg:col-span-1">
+            <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
+              <Zap className="w-3.5 h-3.5 text-amber-400" />
+              <h2 className="text-sm font-semibold text-zinc-200">Uzun Subdomain Sorgusu</h2>
+              <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
+                {data.long_query_count}
+              </span>
+            </div>
+            {data.long_query_domains.length === 0 ? (
+              <p className="text-xs text-zinc-600 text-center py-6">Tespit yok</p>
+            ) : (
+              <div className="divide-y divide-zinc-800">
+                {data.long_query_domains.map((ev, i) => (
+                  <DnsEventRow key={i} ev={ev} accent="text-amber-300" />
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* NXDOMAIN üreten IP'ler */}
+          <div className="bg-zinc-900 rounded-xl border border-zinc-800 lg:col-span-1">
+            <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
+              <Shield className="w-3.5 h-3.5 text-orange-400" />
+              <h2 className="text-sm font-semibold text-zinc-200">NXDOMAIN Kaynakları</h2>
+              <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">
+                {data.nxdomain_count}
+              </span>
+            </div>
+            {data.nxdomain_top_sources.length === 0 ? (
+              <p className="text-xs text-zinc-600 text-center py-6">Tespit yok</p>
+            ) : (() => {
+              const max = Math.max(...data.nxdomain_top_sources.map(s => s.count), 1)
+              return (
+                <div className="divide-y divide-zinc-800">
+                  {data.nxdomain_top_sources.map((src, i) => (
+                    <div key={i} className="px-4 py-2.5">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-mono text-zinc-300">{src.ip}</span>
+                        <span className="text-xs font-mono text-orange-400">{src.count}</span>
+                      </div>
+                      <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-orange-500/60 rounded-full"
+                          style={{ width: `${(src.count / max) * 100}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function DnsEventRow({ ev, accent }: { ev: DnsEvent; accent: string }) {
+  const ts = ev.timestamp
+    ? new Date(ev.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : '—'
+  return (
+    <div className="px-4 py-2.5 hover:bg-zinc-800/40 transition-colors">
+      <p className={`text-xs font-mono truncate ${accent}`} title={ev.message}>{ev.message}</p>
+      <div className="flex items-center justify-between mt-0.5">
+        <span className="text-[10px] text-zinc-600 font-mono">{ev.source_ip ?? '—'}</span>
+        <span className="text-[10px] text-zinc-700 font-mono">{ts}</span>
       </div>
     </div>
   )

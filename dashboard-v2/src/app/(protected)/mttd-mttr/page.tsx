@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Clock } from 'lucide-react'
+import { Clock, RefreshCw } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { MttdMttrChart } from '@/components/charts/MttdMttrChart'
 import type { MttdMttrSeverityBreakdown } from '@/lib/api'
@@ -92,24 +92,25 @@ function SeverityTable({ rows }: { rows: MttdMttrSeverityBreakdown[] }) {
 export default function MttdMttrPage() {
   const [days, setDays] = useState(30)
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, isFetching, refetch } = useQuery({
     queryKey: ['analytics', 'mttd-mttr', days],
     queryFn:  () => analyticsApi.mttdMttr(days),
     staleTime: 60_000,
   })
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-3">
-          <Clock className="h-6 w-6 text-violet-400" />
+          <Clock className="h-5 w-5 text-violet-400" />
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">MTTD / MTTR</h1>
+            <h1 className="text-lg font-semibold text-zinc-100">MTTD / MTTR</h1>
             <p className="text-sm text-zinc-400">Ortalama tespit ve yanıt süreleri — SOC KPI</p>
           </div>
+          {isFetching && <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />}
         </div>
-        <div className="flex gap-1">
+        <div className="flex items-center gap-2">
           {DAY_OPTIONS.map(o => (
             <button
               key={o.value}
@@ -123,6 +124,13 @@ export default function MttdMttrPage() {
               {o.label}
             </button>
           ))}
+          <button
+            onClick={() => refetch()}
+            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            title="Yenile"
+          >
+            <RefreshCw className="w-4 h-4" />
+          </button>
         </div>
       </div>
 
