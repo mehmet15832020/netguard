@@ -69,7 +69,8 @@ def _parse_v2_rule(path: Path) -> dict | None:
                 "enabled":        enabled,
                 "filename":       path.name,
             }
-    except Exception:
+    except Exception as exc:
+        logger.warning("Sigma kural parse hatası [%s]: %s", path.name if hasattr(path, 'name') else str(path), exc)
         return None
     return None
 

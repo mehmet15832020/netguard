@@ -108,6 +108,14 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 30)
 }
 
+function yamlStr(val: string): string {
+  if (!val) return '""'
+  if (/[:#{}\[\],&*?|<>=!%@`\n\r]/.test(val) || val.includes('"')) {
+    return '"' + val.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"'
+  }
+  return val
+}
+
 function generateUUID(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -127,11 +135,11 @@ function generateSigmaYaml(form: WizardForm, ruleId: string): string {
     ? 'event_action'
     : `event_action|${form.match_modifier}`
 
-  const selFields: string[] = [`        ${actionKey}: ${form.event_action || 'event'}`]
+  const selFields: string[] = [`        ${actionKey}: ${yamlStr(form.event_action || 'event')}`]
   for (const f of form.extra_filters) {
     if (f.field && f.value) {
       const fk = f.modifier === 'exact' ? f.field : `${f.field}|${f.modifier}`
-      selFields.push(`        ${fk}: ${f.value}`)
+      selFields.push(`        ${fk}: ${yamlStr(f.value)}`)
     }
   }
 
@@ -139,7 +147,7 @@ function generateSigmaYaml(form: WizardForm, ruleId: string): string {
   const tags = form.mitre_tags
 
   const lines: string[] = [
-    `title: ${form.event_action || 'Custom Event'} Base`,
+    `title: ${yamlStr((form.event_action || 'Custom Event') + ' Base')}`,
     `name: ${baseName}`,
     `status: ${form.status}`,
     `logsource:`,
@@ -150,9 +158,9 @@ function generateSigmaYaml(form: WizardForm, ruleId: string): string {
     `    condition: selection`,
     `level: low`,
     `---`,
-    `title: ${form.title || 'Custom Rule'}`,
+    `title: ${yamlStr(form.title || 'Custom Rule')}`,
     `id: ${ruleId}`,
-    ...(form.description ? [`description: ${form.description}`] : []),
+    ...(form.description ? [`description: ${yamlStr(form.description)}`] : []),
     `correlation:`,
     `    type: event_count`,
     `    rules: ${baseName}`,
@@ -163,7 +171,7 @@ function generateSigmaYaml(form: WizardForm, ruleId: string): string {
     `        gte: ${form.threshold}`,
     `level: ${form.level}`,
     ...(tags.length > 0 ? [`tags:`, ...tags.map(t => `    - ${t}`)] : []),
-    ...(fps.length > 0 ? [`falsepositives:`, ...fps.map(f => `    - ${f}`)] : []),
+    ...(fps.length > 0 ? [`falsepositives:`, ...fps.map(f => `    - ${yamlStr(f)}`)] : []),
   ]
 
   return lines.join('\n')
