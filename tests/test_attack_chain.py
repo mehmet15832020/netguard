@@ -1,5 +1,6 @@
 """Attack chain (kill chain) dedektörü testleri."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 import pytest
@@ -9,6 +10,8 @@ from server.attack_chain import (
     chain_trigger_to_correlated_event,
     _auto_block_full_chain,
 )
+from server.correlator import Correlator
+from shared.models import CorrelatedEvent
 
 
 def _now():
@@ -325,3 +328,73 @@ class TestAutoBlockIntegration:
         with patch("server.active_response.active_response_manager", mock_manager):
             chain_trigger_to_correlated_event(trigger, db_save=False)
         mock_manager.block_ip.assert_not_called()
+
+
+def _make_corr_event(group_value: str, group_by_field: str = "source_ip") -> CorrelatedEvent:
+    now = datetime.now(timezone.utc)
+    return CorrelatedEvent(
+        corr_id="test-corr-id",
+        rule_id="test-rule",
+        rule_name="Test Rule",
+        event_action="port_scan_burst",
+        severity="high",
+        group_by_field=group_by_field,
+        group_value=group_value,
+        matched_count=5,
+        window_seconds=300,
+        first_seen=now,
+        last_seen=now,
+        message="Test event",
+    )
+
+
+class TestKillChainNamespaceGuard:
+    def test_hostname_group_by_skips_kill_chain(self, caplog):
+        c = Correlator()
+        event = _make_corr_event("WIN-WS", group_by_field="observer_hostname")
+        mock_tracker = MagicMock()
+        with caplog.at_level(logging.DEBUG, logger="server.correlator"):
+            with patch("server.attack_chain.attack_chain_tracker", mock_tracker):
+                c._check_attack_chain(event)
+        mock_tracker.record.assert_not_called()
+        assert any("kill chain skipped" in r.message for r in caplog.records)
+
+    def test_source_ip_group_by_proceeds(self):
+        c = Correlator()
+        event = _make_corr_event("5.6.7.8", group_by_field="source_ip")
+        mock_tracker = MagicMock()
+        mock_tracker.record.return_value = None
+        with patch("server.attack_chain.attack_chain_tracker", mock_tracker):
+            c._check_attack_chain(event)
+        mock_tracker.record.assert_called_once_with(
+            source_ip="5.6.7.8",
+            event_action="port_scan_burst",
+        )
+
+    def test_non_ip_value_skips_kill_chain(self, caplog):
+        c = Correlator()
+        event = _make_corr_event("not-an-ip", group_by_field="source_ip")
+        mock_tracker = MagicMock()
+        with caplog.at_level(logging.DEBUG, logger="server.correlator"):
+            with patch("server.attack_chain.attack_chain_tracker", mock_tracker):
+                c._check_attack_chain(event)
+        mock_tracker.record.assert_not_called()
+        assert any("kill chain skipped" in r.message for r in caplog.records)
+
+    def test_ipv6_address_proceeds(self):
+        c = Correlator()
+        event = _make_corr_event("2001:db8::1", group_by_field="source_ip")
+        mock_tracker = MagicMock()
+        mock_tracker.record.return_value = None
+        with patch("server.attack_chain.attack_chain_tracker", mock_tracker):
+            c._check_attack_chain(event)
+        mock_tracker.record.assert_called_once()
+
+    def test_destination_ip_group_by_skips_kill_chain(self, caplog):
+        c = Correlator()
+        event = _make_corr_event("10.0.0.1", group_by_field="destination_ip")
+        mock_tracker = MagicMock()
+        with caplog.at_level(logging.DEBUG, logger="server.correlator"):
+            with patch("server.attack_chain.attack_chain_tracker", mock_tracker):
+                c._check_attack_chain(event)
+        mock_tracker.record.assert_not_called()

@@ -456,6 +456,21 @@ class Correlator:
             logger.error(f"Otomatik incident oluşturulamadı [{event.rule_id}]: {exc}")
 
     def _check_attack_chain(self, event: CorrelatedEvent) -> None:
+        import ipaddress
+        if event.group_by_field != "source_ip":
+            logger.debug(
+                "kill chain skipped — group_by=%s value=%s",
+                event.group_by_field, event.group_value,
+            )
+            return
+        try:
+            ipaddress.ip_address(event.group_value)
+        except (ValueError, TypeError):
+            logger.debug(
+                "kill chain skipped — group_by=%s value=%s IP değil",
+                event.group_by_field, event.group_value,
+            )
+            return
         try:
             from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
             trigger = attack_chain_tracker.record(

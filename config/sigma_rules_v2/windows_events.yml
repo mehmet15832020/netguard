@@ -256,3 +256,63 @@ level: high
 tags:
     - attack.persistence
     - attack.t1136.001
+---
+title: Sysmon Process Create Base
+name: ng_sysmon_proc_create_base
+status: stable
+logsource:
+    category: process_creation
+detection:
+    selection:
+        event_action: windows_sysmon_process
+        severity: warning
+    condition: selection
+level: low
+---
+title: Sysmon Process Create Anomaly Burst
+id: d6e7f8a9-b0c1-2345-def5-456789012345
+correlation:
+    type: event_count
+    rules: ng_sysmon_proc_create_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.execution
+    - attack.t1059
+falsepositives:
+    - Legitimate admin activity
+    - Software deployment tools
+---
+title: Sysmon DNS Query Base
+name: ng_sysmon_dns_base
+status: stable
+logsource:
+    category: dns
+detection:
+    selection:
+        event_action: windows_sysmon_dns
+        severity: warning
+    condition: selection
+level: low
+---
+title: Sysmon DNS C2 Burst
+id: e7f8a9b0-c1d2-3456-ef01-567890123456
+correlation:
+    type: event_count
+    rules: ng_sysmon_dns_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071.004
+falsepositives:
+    - Legitimate DNS-heavy applications
+    - Automated software update checks
