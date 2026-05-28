@@ -16,7 +16,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from server.database import DatabaseManager
 from shared.models import NormalizedLog, LogSourceType, LogCategory
 
 
@@ -25,13 +24,10 @@ from shared.models import NormalizedLog, LogSourceType, LogCategory
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def fp_db(tmp_path, monkeypatch):
-    db_file = str(tmp_path / "fp_test.db")
-    test_db = DatabaseManager(db_path=db_file)
-    monkeypatch.setattr("server.database.db",        test_db)
-    monkeypatch.setattr("server.correlator.db",      test_db)
-    monkeypatch.setattr("server.routes.fp_rules.db", test_db)
-    return test_db
+def fp_db(tmp_db, monkeypatch):
+    monkeypatch.setattr("server.correlator.db",      tmp_db)
+    monkeypatch.setattr("server.routes.fp_rules.db", tmp_db)
+    return tmp_db
 
 
 def _make_fp_rule(fp_db, event_action=None, source_ip=None, destination_ip=None,

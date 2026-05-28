@@ -202,7 +202,7 @@ class TestCountCorrelatedEvents:
 
     def test_old_events_excluded(self, tmp_db):
         from datetime import datetime, timezone, timedelta
-        import uuid, sqlite3
+        import uuid
         old_iso = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
         uid = str(uuid.uuid4())
         with tmp_db._connect() as conn:
@@ -212,7 +212,7 @@ class TestCountCorrelatedEvents:
                     group_value, matched_count, window_seconds,
                     first_seen, last_seen, message, created_at,
                     mitre_techniques, mitre_tactics)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (uid, uid, "old_rule", "test", "high", "10.0.0.1",
                  1, 300, old_iso, old_iso, "old", old_iso, "[]", "[]"),
             )

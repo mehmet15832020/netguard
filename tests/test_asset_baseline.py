@@ -15,7 +15,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from server.database import DatabaseManager
 from shared.models import NormalizedLog, LogSourceType, LogCategory
 
 
@@ -24,12 +23,9 @@ from shared.models import NormalizedLog, LogSourceType, LogCategory
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def baseline_db(tmp_path, monkeypatch):
-    db_file = str(tmp_path / "baseline.db")
-    test_db = DatabaseManager(db_path=db_file)
-    monkeypatch.setattr("server.database.db",            test_db)
-    monkeypatch.setattr("server.asset_baseline.db",      test_db)
-    return test_db
+def baseline_db(tmp_db, monkeypatch):
+    monkeypatch.setattr("server.asset_baseline.db", tmp_db)
+    return tmp_db
 
 
 def _norm(source_ip: str, event_action: str = "ssh_failure",

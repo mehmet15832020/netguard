@@ -142,21 +142,15 @@ class TestRuleLoading:
 
 class TestCorrelatorRun:
     @pytest.fixture
-    def setup(self, tmp_path, monkeypatch):
+    def setup(self, tmp_db, tmp_path, monkeypatch):
         """Geçici DB ve boş kural listesiyle Correlator oluştur."""
-        import server.database as db_module
-        import server.log_store as log_store_module
-        test_db = DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(log_store_module, "_db", test_db)
-
         import server.correlator as corr_module
-        monkeypatch.setattr(corr_module, "db", test_db)
+        monkeypatch.setattr(corr_module, "db", tmp_db)
 
         empty_v2_dir = str(tmp_path / "no_sigma_v2")
         c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=empty_v2_dir)
-        c._rules = []   # başlangıçta kural yok
-        return c, test_db
+        c._rules = []
+        return c, tmp_db
 
     def test_no_events_when_below_threshold(self, setup):
         correlator, test_db = setup
@@ -287,17 +281,12 @@ class TestCorrelatorRun:
 
 class TestThreatIntelEscalation:
     @pytest.fixture
-    def setup(self, tmp_path, monkeypatch):
-        import server.database as db_module
-        import server.log_store as log_store_module
-        test_db = DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(log_store_module, "_db", test_db)
+    def setup(self, tmp_db, tmp_path, monkeypatch):
         import server.correlator as corr_module
-        monkeypatch.setattr(corr_module, "db", test_db)
+        monkeypatch.setattr(corr_module, "db", tmp_db)
         c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
         c._rules = []
-        return c, test_db
+        return c, tmp_db
 
     def test_high_ti_score_escalates_to_critical(self, setup, monkeypatch):
         correlator, test_db = setup
@@ -357,15 +346,12 @@ class TestThreatIntelEscalation:
 
 class TestCrossSourceCorrelation:
     @pytest.fixture
-    def setup(self, tmp_path, monkeypatch):
-        import server.database as db_module
-        test_db = DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
+    def setup(self, tmp_db, tmp_path, monkeypatch):
         import server.correlator as corr_module
-        monkeypatch.setattr(corr_module, "db", test_db)
+        monkeypatch.setattr(corr_module, "db", tmp_db)
         c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
         c._rules = []
-        return c, test_db
+        return c, tmp_db
 
     def _cross_source_rule(self):
         from server.correlator import CorrelationRule

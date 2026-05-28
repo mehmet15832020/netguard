@@ -190,7 +190,7 @@ _PG_TRUNCATE_TABLES = [
     "token_blacklist", "threat_intel_cache", "audit_log", "api_keys",
     "service_checks", "snmp_poll_history", "snmp_devices", "devices",
     "correlated_events", "normalized_logs", "raw_logs",
-    "security_events", "alerts", "db_users", "sites",
+    "security_events", "alerts", "db_users", "sites", "tenants",
 ]
 
 
@@ -310,6 +310,11 @@ def pg_db(pg_container, monkeypatch):
     monkeypatch.setattr("server.routes.incidents.db", test_db)
     monkeypatch.setattr("server.routes.tenants.db", test_db)
     monkeypatch.setattr("server.incident_enricher.db", test_db)
+    monkeypatch.setattr("server.routes.network_intel.db", test_db)
+    monkeypatch.setattr("server.routes.active_response.db", test_db)
+    monkeypatch.setattr("server.routes.mitre.db", test_db)
+    monkeypatch.setattr("server.routes.analytics.db", test_db)
+    monkeypatch.setattr("server.log_store._db", test_db)
 
     tables = ", ".join(_PG_TRUNCATE_TABLES)
     with test_db._connect() as conn:

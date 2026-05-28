@@ -456,12 +456,11 @@ class TestTTLExpiry:
         from server.database import db
         from datetime import datetime, timezone, timedelta
         past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        import sqlite3
-        with sqlite3.connect(tmp_db._path) as conn:
+        with tmp_db._connect() as conn:
             conn.execute(
                 """INSERT INTO blocked_ips
                    (block_id, ip, reason, blocked_by, blocked_at, is_active, provider, tenant_id, expires_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s)""",
                 ("expired-001", "3.4.5.6", "test", "admin",
                  datetime.now(timezone.utc).isoformat(),
                  "opnsense", "default", past),
@@ -481,15 +480,14 @@ class TestTTLExpiry:
     def test_expire_blocks_calls_unblock(self, tmp_db, monkeypatch):
         from server.database import db
         from server.active_response import ActiveResponseManager
-        import sqlite3
         from datetime import datetime, timezone, timedelta
 
         past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-        with sqlite3.connect(tmp_db._path) as conn:
+        with tmp_db._connect() as conn:
             conn.execute(
                 """INSERT INTO blocked_ips
                    (block_id, ip, reason, blocked_by, blocked_at, is_active, provider, tenant_id, expires_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?)""",
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s)""",
                 ("exp-mgr-001", "5.6.7.8", "test", "admin",
                  datetime.now(timezone.utc).isoformat(),
                  "opnsense", "default", past),

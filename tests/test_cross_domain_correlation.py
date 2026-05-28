@@ -11,7 +11,6 @@ import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
-from server.database import DatabaseManager
 from server.correlator import Correlator, CorrelationRule
 from shared.models import NormalizedLog, LogSourceType, LogCategory
 
@@ -60,17 +59,13 @@ def _norm_log(event_action, source_ip="1.2.3.4", observer_hostname="host1", minu
 
 
 @pytest.fixture
-def corr_setup(tmp_path, monkeypatch):
-    import server.database as db_module
+def corr_setup(tmp_db, tmp_path, monkeypatch):
     import server.correlator as corr_module
-
-    test_db = DatabaseManager(str(tmp_path / "test.db"))
-    monkeypatch.setattr(db_module, "db", test_db)
-    monkeypatch.setattr(corr_module, "db", test_db)
+    monkeypatch.setattr(corr_module, "db", tmp_db)
 
     c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
     c._rules = []
-    return c, test_db
+    return c, tmp_db
 
 
 # ------------------------------------------------------------------ #
@@ -288,13 +283,10 @@ class TestMultiDomainCorrelation:
 # ------------------------------------------------------------------ #
 
 class TestSecurityLogParserNormalization:
-    def test_ssh_failure_writes_to_normalized_logs(self, tmp_path, monkeypatch):
-        import server.database as db_module
+    def test_ssh_failure_writes_to_normalized_logs(self, tmp_db, tmp_path, monkeypatch):
         import server.security_log_parser as slp_module
-
-        test_db = DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(slp_module, "db", test_db)
+        monkeypatch.setattr(slp_module, "db", tmp_db)
+        test_db = tmp_db
 
         log_file = tmp_path / "auth.log"
         log_file.write_text(
@@ -308,13 +300,10 @@ class TestSecurityLogParserNormalization:
         assert norm_logs[0].source_ip == "1.2.3.4"
         assert norm_logs[0].event_action == "ssh_failure"
 
-    def test_ssh_success_writes_to_normalized_logs(self, tmp_path, monkeypatch):
-        import server.database as db_module
+    def test_ssh_success_writes_to_normalized_logs(self, tmp_db, tmp_path, monkeypatch):
         import server.security_log_parser as slp_module
-
-        test_db = DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(slp_module, "db", test_db)
+        monkeypatch.setattr(slp_module, "db", tmp_db)
+        test_db = tmp_db
 
         log_file = tmp_path / "auth.log"
         log_file.write_text(
@@ -327,15 +316,12 @@ class TestSecurityLogParserNormalization:
         assert len(norm_logs) >= 1
         assert norm_logs[0].source_ip == "192.168.1.5"
 
-    def test_multiple_ssh_failures_enable_brute_force_rule(self, tmp_path, monkeypatch):
-        import server.database as db_module
+    def test_multiple_ssh_failures_enable_brute_force_rule(self, tmp_db, tmp_path, monkeypatch):
         import server.correlator as corr_module
         import server.security_log_parser as slp_module
-
-        test_db = DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(corr_module, "db", test_db)
-        monkeypatch.setattr(slp_module, "db", test_db)
+        monkeypatch.setattr(corr_module, "db", tmp_db)
+        monkeypatch.setattr(slp_module, "db", tmp_db)
+        test_db = tmp_db
 
         now = datetime.now(timezone.utc)
         lines = "\n".join(

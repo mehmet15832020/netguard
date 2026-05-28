@@ -206,19 +206,11 @@ class TestWazuhParse:
 # ------------------------------------------------------------------ #
 
 class TestProcessAndStore:
-    def test_auth_log_stored_in_db(self, tmp_path, monkeypatch):
+    def test_auth_log_stored_in_db(self, tmp_db, monkeypatch):
         """Ham ve normalize log DB'ye yazılır."""
-        import server.database as db_module
         import server.log_normalizer as norm_module
-        import server.log_store as ls_module
-
-        # Geçici DB kullan
-        test_db_path = str(tmp_path / "test.db")
-        monkeypatch.setattr(db_module, "DB_PATH", test_db_path)
-        test_db = db_module.DatabaseManager(test_db_path)
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(norm_module, "db", test_db)
-        monkeypatch.setattr(ls_module, "_db", test_db)
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+        test_db = tmp_db
 
         raw = "Apr 12 10:23:45 myhost sshd[1234]: Failed password for root from 192.168.1.5 port 22 ssh2"
         norm = process_and_store(raw, observer_hostname="myhost")
@@ -233,15 +225,11 @@ class TestProcessAndStore:
         assert len(norm_logs) == 1
         assert norm_logs[0].source_ip == "192.168.1.5"
 
-    def test_unparseable_log_stored_as_raw_only(self, tmp_path, monkeypatch):
+    def test_unparseable_log_stored_as_raw_only(self, tmp_db, monkeypatch):
         """Parse edilemeyen log ham DB'ye yazılır, normalize DB'ye gitmez."""
-        import server.database as db_module
         import server.log_normalizer as norm_module
-
-        test_db_path = str(tmp_path / "test2.db")
-        test_db = db_module.DatabaseManager(test_db_path)
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(norm_module, "db", test_db)
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+        test_db = tmp_db
 
         # Zeek gibi görünüyor ama çok kısa — parse edilemez
         raw = "1712915025.123456\tConn1"
@@ -251,15 +239,11 @@ class TestProcessAndStore:
         norm_logs = test_db.get_normalized_logs(limit=10)
         assert len(norm_logs) == 0
 
-    def test_parse_fail_sets_normalized_minus_one(self, tmp_path, monkeypatch):
+    def test_parse_fail_sets_normalized_minus_one(self, tmp_db, monkeypatch):
         """Parse başarısız olunca raw_logs.parse_status='failed' yazılmalı."""
-        import server.database as db_module
         import server.log_normalizer as norm_module
-
-        test_db_path = str(tmp_path / "test3.db")
-        test_db = db_module.DatabaseManager(test_db_path)
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(norm_module, "db", test_db)
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+        test_db = tmp_db
 
         raw = "1712915025.123456\tConn1"  # Zeek formatı ama kısa — parse fail
         process_and_store(raw, observer_hostname="host1")
@@ -269,17 +253,11 @@ class TestProcessAndStore:
         assert row is not None
         assert row["parse_status"] == "failed", "Parse başarısız olunca parse_status='failed' olmalı"
 
-    def test_successful_parse_sets_normalized_one(self, tmp_path, monkeypatch):
+    def test_successful_parse_sets_normalized_one(self, tmp_db, monkeypatch):
         """Başarılı parse sonrası raw_logs.parse_status='success' yazılmalı."""
-        import server.database as db_module
         import server.log_normalizer as norm_module
-        import server.log_store as log_store_module
-
-        test_db_path = str(tmp_path / "test4.db")
-        test_db = db_module.DatabaseManager(test_db_path)
-        monkeypatch.setattr(db_module, "db", test_db)
-        monkeypatch.setattr(norm_module, "db", test_db)
-        monkeypatch.setattr(log_store_module, "_db", test_db)
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+        test_db = tmp_db
 
         raw = "Apr 12 10:23:45 myhost sshd[1234]: Failed password for root from 1.2.3.4 port 22 ssh2"
         process_and_store(raw, observer_hostname="myhost")

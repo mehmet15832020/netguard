@@ -3,18 +3,11 @@ Tests — SQLite database katmanı ve güvenlik modülleri
 """
 
 import os
-import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
 
 import pytest
 
-# Test için geçici DB dosyası kullan
-_tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-os.environ["NETGUARD_DB_PATH"] = _tmp.name
-_tmp.close()
-
-from server.database import DatabaseManager
 from server.security_log_parser import _parse_log_date, _RE_FAILED, _RE_ACCEPTED, _RE_SUDO
 from server.port_monitor import PortMonitor
 from server.config_monitor import ConfigMonitor
@@ -25,13 +18,9 @@ from shared.models import (
 
 
 @pytest.fixture
-def db_manager():
-    """Her test için taze bir geçici veritabanı."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
-        path = f.name
-    manager = DatabaseManager(db_path=path)
-    yield manager
-    os.unlink(path)
+def db_manager(tmp_db):
+    """Her test için taze bir veritabanı."""
+    return tmp_db
 
 
 def _make_alert(**kwargs) -> Alert:

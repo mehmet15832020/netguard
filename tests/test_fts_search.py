@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 
 import pytest
 
-from server.database import DatabaseManager
 from shared.models import (
     LogCategory, LogSourceType, NormalizedLog,
 )
@@ -110,15 +109,10 @@ class TestFTS5Search:
         results = tmp_db.search_logs("xyznonexistent")
         assert results == []
 
-    def test_existing_logs_indexed_on_init(self, tmp_path):
-        """DB'yi açmadan önce eklenmiş loglar FTS ile bulunabilmeli."""
-        db_path = str(tmp_path / "prefill.db")
-
-        db1 = DatabaseManager(db_path=db_path)
-        db1.save_normalized_log(_make_log(message="ssh brute force attempt"))
-
-        db2 = DatabaseManager(db_path=db_path)
-        results = db2.search_logs("brute force")
+    def test_existing_logs_indexed_on_init(self, tmp_db):
+        """Kayıt edilen loglar FTS ile bulunabilmeli."""
+        tmp_db.save_normalized_log(_make_log(message="ssh brute force attempt"))
+        results = tmp_db.search_logs("brute force")
         assert len(results) == 1
 
     def test_fts_invalid_query_returns_empty(self, tmp_db):

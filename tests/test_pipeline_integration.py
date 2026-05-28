@@ -20,7 +20,6 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-from server.database import DatabaseManager
 from server.log_normalizer import process_and_store
 from server.alert_engine import AlertEngine
 from server.attack_chain import AttackChainTracker
@@ -35,28 +34,20 @@ from shared.models import (
 # ─────────────────────────────────────────────────────────────────────────────
 
 @pytest.fixture
-def pipeline_db(tmp_path, monkeypatch):
+def pipeline_db(tmp_db, monkeypatch):
     """
     Entegrasyon testleri için izole DB.
     correlator, log_normalizer, attack_chain, incident route hepsi
     aynı test DB'yi görür.
     """
-    db_file = str(tmp_path / "pipeline.db")
-    test_db = DatabaseManager(db_path=db_file)
+    monkeypatch.setattr("server.correlator.db",     tmp_db)
+    monkeypatch.setattr("server.log_normalizer.db", tmp_db)
 
-    monkeypatch.setattr("server.database.db",          test_db)
-    monkeypatch.setattr("server.correlator.db",        test_db)
-    monkeypatch.setattr("server.log_normalizer.db",    test_db)
-    monkeypatch.setattr("server.log_store._db",        test_db)
-    monkeypatch.setattr("server.routes.incidents.db",  test_db)
-    monkeypatch.setattr("server.incident_enricher.db", test_db)
-
-    # ws_manager lazy import içinden çağrılır — gerçek singleton'ı mock'la
     import server.ws_manager as _ws_mod
     monkeypatch.setattr(_ws_mod, "ws_manager",
                         MagicMock(broadcast_from_thread=MagicMock()))
 
-    return test_db
+    return tmp_db
 
 
 @pytest.fixture

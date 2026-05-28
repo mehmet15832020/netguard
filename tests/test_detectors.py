@@ -319,14 +319,10 @@ class TestDNSAnomalyDetector:
 # ------------------------------------------------------------------ #
 
 class TestDetectorManager:
-    def test_run_all_collects_from_all_detectors(self, tmp_path, monkeypatch):
+    def test_run_all_collects_from_all_detectors(self, tmp_db, monkeypatch):
         """Manager tüm dedektörleri çalıştırır ve logları DB'ye yazar."""
-        import server.database as db_module
-        test_db = db_module.DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-
         import server.detectors.manager as mgr_module
-        monkeypatch.setattr(mgr_module, "db", test_db)
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
 
         from server.detectors.manager import DetectorManager
         from shared.models import NormalizedLog, LogSourceType, LogCategory
@@ -351,14 +347,10 @@ class TestDetectorManager:
         logs = manager.run_all()
         assert len(logs) == len(manager._detectors)
 
-    def test_detector_error_does_not_crash_others(self, tmp_path, monkeypatch):
+    def test_detector_error_does_not_crash_others(self, tmp_db, monkeypatch):
         """Bir dedektör hata verse bile diğerleri çalışmaya devam eder."""
-        import server.database as db_module
-        test_db = db_module.DatabaseManager(str(tmp_path / "test.db"))
-        monkeypatch.setattr(db_module, "db", test_db)
-
         import server.detectors.manager as mgr_module
-        monkeypatch.setattr(mgr_module, "db", test_db)
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
 
         from server.detectors.manager import DetectorManager
         manager = DetectorManager()
