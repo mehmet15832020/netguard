@@ -160,7 +160,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 ### AŞAMA 4 — Mimari Temizlik
 
-- [ ] **F2-3** — 9 test dosyasını PG uyumlu hale getir (`tmp_db` fixture; Docker yoksa skip)
+- [x] **F2-3** — 9 test dosyasını PG uyumlu hale getir (`tmp_db` fixture; Docker yoksa skip)
+  - **Teslim:** 12 test dosyası; `DatabaseManager(db_path=...)` kaldırıldı; `sqlite3.connect(tmp_db._path)` → `tmp_db._connect()` + `%s` placeholder; `pg_db` fixture'ına 5 eksik patch + tenants tablosu eklendi; 1914 test ✓
 - [ ] **F2-1** — `database.py` → sadece PostgreSQL (SQLite sınıfını sil, `database_pg.py` merge)
 - [ ] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
 - [ ] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
@@ -208,7 +209,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1922+ test, 0 hata (28 Mayıs 2026) — G7 + quality audit düzeltmeleri
+**Test durumu:** 1914 test, 0 hata (28 Mayıs 2026) — F2-3 fixture migrasyonu
 
 ---
 
