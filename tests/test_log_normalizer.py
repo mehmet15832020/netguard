@@ -353,6 +353,7 @@ class TestSuricataDelegation:
                 "url": "/index.html",
                 "http_method": "GET",
                 "status": 200,
+                "http_user_agent": "Mozilla/5.0 Firefox/120.0",
             },
         })
         norm = normalize(raw, observer_hostname="sensor1")

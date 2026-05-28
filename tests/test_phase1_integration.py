@@ -119,7 +119,7 @@ class TestJA3Pipeline:
         """3+ self-signed SSL aynı IP'den 10 dk içinde → SSL burst kuralı tetiklenir."""
         ssl_burst_rule = next(
             (r for r in sigma_ex.rules
-             if "self-signed" in r.title.lower() or "self signed burst" in r.title.lower()),
+             if r.title.lower() == "ssl self-signed certificate burst"),
             None,
         )
         if ssl_burst_rule is None:

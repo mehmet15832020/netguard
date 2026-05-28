@@ -85,3 +85,72 @@ level: medium
 tags:
     - attack.defense_evasion
     - attack.t1562
+---
+title: Suricata HTTP Suspicious User-Agent
+id: 3e7f9a2b-4c5d-6e7f-8a9b-0c1d2e3f4a5b
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: suricata_http_anomaly
+    condition: selection
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
+---
+title: Suricata TLS Anomaly — Self-Signed or Old Version
+id: 2d6e8b1a-3b4c-5d6e-7f8a-9b0c1d2e3f4a
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: suricata_tls_anomaly
+    condition: selection
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071
+    - attack.t1587.003
+---
+title: Suricata SSH Suspicious Client
+id: 1c5d7a0f-2a3b-4c5d-6e7f-8a9b0c1d2e3f
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: suricata_ssh_anomaly
+    condition: selection
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110
+---
+title: Suricata HTTP Anomaly (Base)
+name: ng_suricata_http_anomaly_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: suricata_http_anomaly
+    condition: selection
+level: low
+---
+title: Suricata HTTP Anomaly Burst
+id: 4f8a2c1d-5e6f-7a8b-9c0d-1e2f3a4b5c6d
+correlation:
+    type: event_count
+    rules: ng_suricata_http_anomaly_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071.001

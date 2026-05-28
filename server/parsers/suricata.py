@@ -20,6 +20,43 @@ logger = logging.getLogger(__name__)
 
 _OBSERVER = "suricata"
 
+_SUSPICIOUS_UA_PATTERNS: frozenset[str] = frozenset({
+    "sqlmap", "nikto", "masscan", "metasploit", "hydra",
+    "dirbuster", "gobuster", "feroxbuster", "havij",
+    "acunetix", "nuclei", "ffuf", "wfuzz", "burpsuite",
+    "nessus", "openvas", "appscan",
+})
+
+_OLD_TLS_VERSIONS: frozenset[str] = frozenset({
+    "tlsv1", "tls 1.0", "tls1.0",
+    "tlsv1.1", "tls 1.1", "tls1.1",
+    "sslv3", "ssl 3.0", "ssl3",
+    "sslv2", "ssl 2.0", "ssl2",
+})
+
+_SUSPICIOUS_SSH_CLIENTS: frozenset[str] = frozenset({
+    "libssh", "paramiko", "python-paramiko",
+    "nmap", "masscan", "ruby/net::ssh", "go ssh",
+})
+
+
+def _is_suspicious_ua(ua: str) -> bool:
+    if not ua or not ua.strip():
+        return True
+    ua_lower = ua.lower()
+    return any(pat in ua_lower for pat in _SUSPICIOUS_UA_PATTERNS)
+
+
+def _is_old_tls_version(version: str) -> bool:
+    return bool(version) and version.lower().strip() in _OLD_TLS_VERSIONS
+
+
+def _is_suspicious_ssh_client(sw: str) -> bool:
+    if not sw:
+        return False
+    sw_lower = sw.lower()
+    return any(pat in sw_lower for pat in _SUSPICIOUS_SSH_CLIENTS)
+
 
 def _ts(val: str) -> datetime:
     try:
@@ -148,13 +185,15 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
     length     = http.get("length", 0)
     user_agent = http.get("http_user_agent", "")
 
-    severity = "info"
-    if isinstance(status, int) and status >= 400:
-        severity = "warning"
+    suspicious = _is_suspicious_ua(user_agent)
+    event_action = "suricata_http_anomaly" if suspicious else "http_request"
+    severity = "warning" if suspicious else ("warning" if isinstance(status, int) and status >= 400 else "info")
 
     msg = f"HTTP {method} {hostname}{url} → {status}"
     if user_agent:
         msg += f" [{user_agent[:80]}]"
+    if suspicious:
+        msg += " [SUSPICIOUS-UA]"
 
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
@@ -164,15 +203,16 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
         timestamp=ts,
         severity=severity,
         event_category=LogCategory.NETWORK,
-        event_action="http_request",
+        event_action=event_action,
         source_ip=src_ip,
         source_port=src_port,
         destination_ip=dst_ip,
         destination_port=dst_port,
         network_protocol=proto or "tcp",
         message=msg,
-        tags=["suricata", "http"],
-        extra={"method": method, "status": status, "length": length, "hostname": hostname},
+        tags=["suricata", "http"] + (["suspicious_ua"] if suspicious else []),
+        extra={"method": method, "status": status, "length": length,
+               "hostname": hostname, "user_agent": user_agent[:200]},
     )
 
 
@@ -208,9 +248,22 @@ def parse_tls(row: dict) -> Optional[NormalizedLog]:
     if bad_ja3:
         indicators.append("KNOWN_MALWARE_JA3")
 
+    is_old_version = _is_old_tls_version(version)
+    if is_old_version:
+        indicators.append("OLD-TLS-VERSION")
+
+    is_self_signed = "SELF-SIGNED" in indicators
+
+    # Priority: bad fingerprint > TLS anomaly > normal
+    if bad_ja3 or bad_ja4:
+        event_action = "tls_suspicious_fingerprint"
+    elif is_self_signed or is_old_version:
+        event_action = "suricata_tls_anomaly"
+    else:
+        event_action = "ssl_connection"
+
     # JA4 primary (per project G6 policy): bad JA4 → critical; bad JA3 only → warning
     severity = "critical" if bad_ja4 else ("warning" if (bad_ja3 or indicators) else "info")
-    event_action = "tls_suspicious_fingerprint" if (bad_ja3 or bad_ja4) else "ssl_connection"
 
     msg_parts = [f"SSL/TLS {sni or dst_ip or '?'}"]
     if version:
@@ -238,7 +291,9 @@ def parse_tls(row: dict) -> Optional[NormalizedLog]:
         destination_port=dst_port,
         network_protocol=proto or "tcp",
         message=msg,
-        tags=["suricata", "tls"] + (["suspicious_fingerprint"] if event_action == "tls_suspicious_fingerprint" else []),
+        tags=(["suricata", "tls"]
+              + (["suspicious_fingerprint"] if event_action == "tls_suspicious_fingerprint" else [])
+              + (["tls_anomaly"] if event_action == "suricata_tls_anomaly" else [])),
         extra={"sni": sni, "ja3": ja3_hash, "ja4": ja4_hash, "version": version},
     )
 
@@ -370,11 +425,17 @@ def parse_ssh(row: dict) -> Optional[NormalizedLog]:
     c_proto = client.get("proto_version", "")
     s_sw    = server.get("software_version", "")
 
+    suspicious = _is_suspicious_ssh_client(c_sw)
+    event_action = "suricata_ssh_anomaly" if suspicious else "ssh_attempt"
+    severity = "warning" if suspicious else "info"
+
     msg = f"SSH client={c_sw or '?'}"
     if c_proto:
         msg += f" proto={c_proto}"
     if s_sw:
         msg += f" server={s_sw}"
+    if suspicious:
+        msg += " [SUSPICIOUS-CLIENT]"
 
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
@@ -382,16 +443,16 @@ def parse_ssh(row: dict) -> Optional[NormalizedLog]:
         source_type=LogSourceType.SURICATA,
         observer_hostname=_OBSERVER,
         timestamp=ts,
-        severity="info",
+        severity=severity,
         event_category=LogCategory.AUTHENTICATION,
-        event_action="ssh_attempt",
+        event_action=event_action,
         source_ip=src_ip,
         source_port=src_port,
         destination_ip=dst_ip,
         destination_port=dst_port,
         network_protocol=proto or "tcp",
         message=msg,
-        tags=["suricata", "ssh"],
+        tags=["suricata", "ssh"] + (["suspicious_client"] if suspicious else []),
         extra={"client_sw": c_sw, "proto_version": c_proto, "server_sw": s_sw},
     )
 
