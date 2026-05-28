@@ -834,14 +834,105 @@ class TestSshAnomalyDetection:
 
 
 class TestG7Stagemap:
-    def test_http_anomaly_maps_to_access(self):
+    def test_http_anomaly_maps_to_recon(self):
         from server.attack_chain import STAGE_MAP
-        assert STAGE_MAP.get("suricata_http_anomaly") == "access"
+        assert STAGE_MAP.get("suricata_http_anomaly") == "recon"
 
     def test_tls_anomaly_maps_to_lateral(self):
         from server.attack_chain import STAGE_MAP
         assert STAGE_MAP.get("suricata_tls_anomaly") == "lateral"
 
-    def test_ssh_anomaly_maps_to_access(self):
+    def test_ssh_anomaly_maps_to_weaponize(self):
         from server.attack_chain import STAGE_MAP
-        assert STAGE_MAP.get("suricata_ssh_anomaly") == "access"
+        assert STAGE_MAP.get("suricata_ssh_anomaly") == "weaponize"
+
+
+class TestFalsePositiveRegression:
+    """Substring FP'lerinin token-bazlı eşleme ile önlendiğini doğrular."""
+
+    def _http_row(self, ua):
+        return _base(event_type="http", http={
+            "hostname": "x.com", "url": "/", "http_method": "GET",
+            "status": 200, "length": 100, "http_user_agent": ua,
+        })
+
+    def test_hydraulic_not_flagged_as_hydra(self):
+        log = parse_http(self._http_row("hydraulic-monitor/1.0"))
+        assert log.event_action == "http_request"
+
+    def test_nucleirenderer_not_flagged_as_nuclei(self):
+        log = parse_http(self._http_row("NucleiRenderer/2.0"))
+        assert log.event_action == "http_request"
+
+    def test_masscanner_legit_not_flagged(self):
+        log = parse_http(self._http_row("masscanner-legit/1.0"))
+        assert log.event_action == "http_request"
+
+    def test_somenmaptool_not_flagged(self):
+        log = parse_http(self._http_row("somenmaptool"))
+        assert log.event_action == "http_request"
+
+    def test_actual_sqlmap_still_flagged(self):
+        log = parse_http(self._http_row("sqlmap/1.7"))
+        assert log.event_action == "suricata_http_anomaly"
+
+    def test_actual_nuclei_still_flagged(self):
+        log = parse_http(self._http_row("Nuclei - github.com/projectdiscovery/nuclei"))
+        assert log.event_action == "suricata_http_anomaly"
+
+    def test_actual_masscan_still_flagged(self):
+        log = parse_http(self._http_row("masscan/1.3"))
+        assert log.event_action == "suricata_http_anomaly"
+
+    def _ssh_row(self, sw):
+        return _base(event_type="ssh", dest_port=22, ssh={
+            "client": {"software_version": sw, "proto_version": "2.0"},
+            "server": {},
+        })
+
+    def test_python_paramiko_flagged_via_token(self):
+        log = parse_ssh(self._ssh_row("python-paramiko_3.1"))
+        assert log.event_action == "suricata_ssh_anomaly"
+
+    def test_nmapscannertool_not_flagged(self):
+        log = parse_ssh(self._ssh_row("nmapscannertool"))
+        assert log.event_action == "ssh_attempt"
+
+
+class TestRobustness:
+    """Non-string / None / aşırı uzun girdi güvenli işlenmeli."""
+
+    def _http_row_raw_ua(self, ua_value):
+        row = _base(event_type="http", http={
+            "hostname": "x.com", "url": "/", "http_method": "GET",
+            "status": 200, "length": 0,
+        })
+        if ua_value is not None:
+            row["http"]["http_user_agent"] = ua_value
+        return row
+
+    def test_none_ua_treated_as_suspicious(self):
+        log = parse_http(self._http_row_raw_ua(None))
+        assert log is not None
+        assert log.event_action == "suricata_http_anomaly"
+
+    def test_int_ua_does_not_crash(self):
+        log = parse_http(self._http_row_raw_ua(12345))
+        assert log is not None
+
+    def test_very_long_ua_truncated_in_extra(self):
+        long_ua = "A" * 5000
+        log = parse_http(self._http_row_raw_ua(long_ua))
+        assert log is not None
+        assert len(log.extra["user_agent"]) <= 200
+
+    def test_non_string_tls_version_does_not_crash(self):
+        from server.parsers.suricata import _is_old_tls_version
+        assert _is_old_tls_version(None) is False
+        assert _is_old_tls_version(10) is False
+        assert _is_old_tls_version([]) is False
+
+    def test_non_string_ssh_client_does_not_crash(self):
+        from server.parsers.suricata import _is_suspicious_ssh_client
+        assert _is_suspicious_ssh_client(None) is False
+        assert _is_suspicious_ssh_client(42) is False

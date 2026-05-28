@@ -8,6 +8,7 @@ Desteklenen event_type değerleri:
   alert, dns, http, tls, flow, smtp, fileinfo, ssh, anomaly
 """
 
+import re
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 
 _OBSERVER = "suricata"
 
+# Token separator: splits on any run of non-alphanumeric chars.
+# Compiled once at module level — zero per-call allocation.
+_ALNUM_SEP = re.compile(r"[^a-z0-9]+")
+
+# Single-word attack-tool tokens only.  Multi-word patterns are intentionally
+# excluded because token splitting cannot match them reliably, and they cause
+# substring FPs (e.g. "nucleirenderer" would hit "nuclei" with plain `in`).
+# "python-paramiko" is covered by the "paramiko" token after splitting.
 _SUSPICIOUS_UA_PATTERNS: frozenset[str] = frozenset({
     "sqlmap", "nikto", "masscan", "metasploit", "hydra",
     "dirbuster", "gobuster", "feroxbuster", "havij",
@@ -34,28 +43,37 @@ _OLD_TLS_VERSIONS: frozenset[str] = frozenset({
     "sslv2", "ssl 2.0", "ssl2",
 })
 
+# Same single-word constraint: "paramiko" covers "python-paramiko" after split.
 _SUSPICIOUS_SSH_CLIENTS: frozenset[str] = frozenset({
-    "libssh", "paramiko", "python-paramiko",
-    "nmap", "masscan", "ruby/net::ssh", "go ssh",
+    "libssh", "paramiko", "nmap", "masscan",
 })
 
 
-def _is_suspicious_ua(ua: str) -> bool:
-    if not ua or not ua.strip():
+def _is_suspicious_ua(ua) -> bool:
+    """Return True for empty UA or UA whose tokens intersect known attack tools."""
+    if not isinstance(ua, str):
+        ua = str(ua) if ua is not None else ""
+    ua = ua.strip()
+    if not ua:
         return True
-    ua_lower = ua.lower()
-    return any(pat in ua_lower for pat in _SUSPICIOUS_UA_PATTERNS)
+    tokens = set(_ALNUM_SEP.split(ua.lower()))
+    return bool(tokens & _SUSPICIOUS_UA_PATTERNS)
 
 
-def _is_old_tls_version(version: str) -> bool:
-    return bool(version) and version.lower().strip() in _OLD_TLS_VERSIONS
+def _is_old_tls_version(version) -> bool:
+    if not isinstance(version, str):
+        return False
+    return version.lower().strip() in _OLD_TLS_VERSIONS
 
 
-def _is_suspicious_ssh_client(sw: str) -> bool:
+def _is_suspicious_ssh_client(sw) -> bool:
+    if not isinstance(sw, str):
+        return False
+    sw = sw.strip()
     if not sw:
         return False
-    sw_lower = sw.lower()
-    return any(pat in sw_lower for pat in _SUSPICIOUS_SSH_CLIENTS)
+    tokens = set(_ALNUM_SEP.split(sw.lower()))
+    return bool(tokens & _SUSPICIOUS_SSH_CLIENTS)
 
 
 def _ts(val: str) -> datetime:
@@ -183,11 +201,12 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
     method     = http.get("http_method", "GET")
     status     = http.get("status", 0)
     length     = http.get("length", 0)
-    user_agent = http.get("http_user_agent", "")
+    _raw_ua   = http.get("http_user_agent")
+    user_agent = _raw_ua if isinstance(_raw_ua, str) else (str(_raw_ua) if _raw_ua is not None else "")
 
     suspicious = _is_suspicious_ua(user_agent)
     event_action = "suricata_http_anomaly" if suspicious else "http_request"
-    severity = "warning" if suspicious else ("warning" if isinstance(status, int) and status >= 400 else "info")
+    severity = "warning" if (suspicious or (isinstance(status, int) and status >= 400)) else "info"
 
     msg = f"HTTP {method} {hostname}{url} → {status}"
     if user_agent:

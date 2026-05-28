@@ -127,9 +127,9 @@ STAGE_MAP: dict[str, str] = {
     "suricata_alert_burst":  "lateral",   # Suricata Alert Burst (sigma korelasyon çıktısı)
     "suricata_lateral":      "lateral",   # Lateral movement burst (dst_ip gruplama)
     # Suricata G7 — HTTP/TLS/SSH anomaly (MITRE T1071 / T1587.003 / T1110)
-    "suricata_http_anomaly": "access",    # T1071.001 — C2 over HTTP / scanning tool UA
+    "suricata_http_anomaly": "recon",     # T1595 — scanner UA = active scanning / recon
     "suricata_tls_anomaly":  "lateral",   # T1071 — C2 over TLS / self-signed / old version
-    "suricata_ssh_anomaly":  "access",    # T1110 — SSH scanning/brute force tool
+    "suricata_ssh_anomaly":  "weaponize", # T1110 — SSH brute-force tool (erisim denemesi)
     # Windows / Sysmon (U2)
     "windows_explicit_logon":      "weaponize",  # 4648 — pass-the-hash göstergesi
     "windows_user_created":        "execute",    # 4720 — persistence (yeni hesap)

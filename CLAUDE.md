@@ -101,7 +101,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] **G7** — Suricata Tespit Katmanı Genişletme — Bağımlılık: G2 ✓
   - *G2 ile collector tamamlandı (9 event_type parser). Ancak yalnızca `alert` + `anomaly` event_type'ları Sigma kuralı ve kill chain mapping'e sahip. 7 event_type (dns/http/tls/flow/ssh/smtp/fileinfo) normalize edilip yazılıyor ama tespit yok — bu Suricata'nın %78'ini blind spot bırakıyor.*
   - *MITRE ATT&CK v17: T1071 (HTTP/TLS C2), T1046 (network service scanning), T1048 (exfiltration over alt protocol), T1071.004 (DNS C2). Suricata HTTP/TLS/SSH logları bu teknikleri coverage'a alır.*
-  - **Teslim:** `parsers/suricata.py` HTTP/TLS/SSH anomaly tespiti (suspicious UA, self-signed/old TLS, scanning SSH client); `suricata_ids.yml` 4 yeni Sigma kuralı (HTTP anomaly, TLS anomaly, SSH suspicious client, HTTP burst korelasyon); STAGE_MAP `suricata_http_anomaly: "access"`, `suricata_tls_anomaly: "lateral"`, `suricata_ssh_anomaly: "access"`; 29 yeni test — toplam test ✓
+  - **Teslim:** `parsers/suricata.py` HTTP/TLS/SSH anomaly tespiti (token-bazlı UA, self-signed/old TLS, scanning SSH client); `suricata_ids.yml` 4 yeni Sigma kuralı (HTTP anomaly, TLS anomaly, SSH suspicious client, HTTP burst korelasyon); STAGE_MAP `suricata_http_anomaly: "recon"`, `suricata_tls_anomaly: "lateral"`, `suricata_ssh_anomaly: "weaponize"`; quality audit düzeltmeleri (token FP, STAGE_MAP semantik, tip güvenliği); 51 yeni test — toplam test ✓
 
 ---
 
@@ -208,7 +208,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1900+ test, 0 hata (27 Mayıs 2026) — G7 Suricata tespit katmanı genişletme
+**Test durumu:** 1922+ test, 0 hata (28 Mayıs 2026) — G7 + quality audit düzeltmeleri
 
 ---
 
