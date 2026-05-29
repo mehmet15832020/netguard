@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Radio, RefreshCw } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi } from '@/lib/api'
+import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import type { BeaconingDetection } from '@/lib/api'
 import { cn } from '@/lib/utils'
 
@@ -73,10 +74,8 @@ function IATHistogram({ detections }: { detections: BeaconingDetection[] }) {
   const option = {
     backgroundColor: 'transparent',
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#1c1917',
-      borderColor: '#44403c',
-      textStyle: { color: '#e7e5e4', fontSize: 12 },
       formatter: (params: { name: string; value: number; dataIndex: number }[]) => {
         const p = params[0]
         const sig = IAT_BINS[p.dataIndex]?.[3]
@@ -87,14 +86,14 @@ function IATHistogram({ detections }: { detections: BeaconingDetection[] }) {
     xAxis: {
       type: 'category',
       data: IAT_BINS.map(b => b[0]),
-      axisLabel: { color: '#78716c', fontSize: 11, rotate: 30 },
-      axisLine: { lineStyle: { color: '#44403c' } },
+      axisLabel: { color: '#475569', fontSize: 11, rotate: 30 },
+      axisLine: { show: false }, axisTick: { show: false },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: { color: '#78716c', fontSize: 11 },
-      splitLine: { lineStyle: { color: '#292524' } },
+      axisLabel: { color: '#475569', fontSize: 11 },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     series: [{
       type: 'bar',
@@ -125,10 +124,8 @@ function JitterScatter({ detections }: { detections: BeaconingDetection[] }) {
   const option = {
     backgroundColor: 'transparent',
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'item',
-      backgroundColor: '#1c1917',
-      borderColor: '#44403c',
-      textStyle: { color: '#e7e5e4', fontSize: 12 },
       formatter: (p: { value: (string | number)[] }) => {
         const [iat, jitter, src, dst, conn] = p.value
         const sig = c2Signature(Number(iat))
@@ -144,17 +141,17 @@ function JitterScatter({ detections }: { detections: BeaconingDetection[] }) {
     xAxis: {
       type: 'value',
       name: 'IAT (sn)',
-      nameTextStyle: { color: '#78716c', fontSize: 11 },
-      axisLabel: { color: '#78716c', fontSize: 11, formatter: (v: number) => `${v}s` },
-      axisLine: { lineStyle: { color: '#44403c' } },
-      splitLine: { lineStyle: { color: '#292524' } },
+      nameTextStyle: { color: '#475569', fontSize: 11 },
+      axisLabel: { color: '#475569', fontSize: 11, formatter: (v: number) => `${v}s` },
+      axisLine: { show: false }, axisTick: { show: false },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     yAxis: {
       type: 'value',
       name: 'Jitter %',
-      nameTextStyle: { color: '#78716c', fontSize: 11 },
-      axisLabel: { color: '#78716c', fontSize: 11, formatter: (v: number) => `${v}%` },
-      splitLine: { lineStyle: { color: '#292524' } },
+      nameTextStyle: { color: '#475569', fontSize: 11 },
+      axisLabel: { color: '#475569', fontSize: 11, formatter: (v: number) => `${v}%` },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     series: [{
       type: 'scatter',

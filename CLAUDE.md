@@ -195,6 +195,12 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - Zone D (3×4): Failed Auth + DNS Anomali + Anomali Detection
   - Zone E (4+5+3): Agents + Alerts + Protocol Donut
   - Zone F (12): Traffic Volume full-width alt
+- [x] **Sprint 4** — ECharts Tema Merkezileştirme
+  - **`src/lib/echarts-theme.ts`:** CHART_COLORS, SEVERITY_COLORS, SERIES_PALETTE, TOOLTIP_BASE, AXIS_BASE, CATEGORY_AXIS, VALUE_AXIS, LEGEND_TEXT, GRID_DEFAULT, GRID_SPARKLINE, `lineSeries()` helper
+  - **10 chart bileşeni güncellendi:** AlertVolumeChart, AssetRiskHeatmapChart, CPUChart, EastWestHeatmapChart, MemoryGauge, MttdMttrChart, ProtocolDonutChart, TimeSeriesChart, TopTalkersChart, TrafficVolumeChart
+  - **10 sayfa güncellendi:** anomaly, failed-auth, dns-analysis, correlation, mitre, logs, threat-intel-summary, topology, kill-chain-timeline, beaconing
+  - **Bug fix:** CPUChart + TimeSeriesChart xAxis `type: 'event_category'` → `'category'`
+  - Zinc/neutral palette tamamen kaldırıldı (0 kalan); TypeScript: 0 hata
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 

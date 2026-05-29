@@ -13,7 +13,7 @@ const NODE_COLOR: Record<string, string> = {
   agent:      '#8b5cf6',
   snmp:       '#06b6d4',
   discovered: '#f59e0b',
-  unknown:    '#71717a',
+  unknown:    '#64748b',
 }
 
 function nodeColor(type: string) {
@@ -52,7 +52,7 @@ export function MiniTopology() {
           const p = params as { data?: { name?: string; type?: string } }
           const d = p.data
           if (!d?.name) return ''
-          return `<span style="font-size:12px">${d.name}<br/><span style="color:#71717a">${d.type ?? ''}</span></span>`
+          return `<span style="font-size:12px">${d.name}<br/><span style="color:#64748b">${d.type ?? ''}</span></span>`
         },
       },
       series: [{
@@ -65,7 +65,7 @@ export function MiniTopology() {
           show: nodes.length <= 20,
           position: 'bottom',
           fontSize: 10,
-          color: '#a1a1aa',
+          color: '#64748b',
           formatter: (params: unknown) => {
             const p = params as { data?: { name?: string } }
             const name = p.data?.name ?? ''
@@ -81,7 +81,7 @@ export function MiniTopology() {
         edges: edges.map((e) => ({
           source: e.src_id,
           target: e.dst_id,
-          lineStyle: { color: '#3f3f46', width: 1 },
+          lineStyle: { color: 'rgba(56,189,248,0.15)', width: 1 },
         })),
       }],
     }

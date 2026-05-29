@@ -2,6 +2,7 @@
 
 import ReactECharts from 'echarts-for-react'
 import type { TimeSeries } from '@/lib/api'
+import { TOOLTIP_BASE, CATEGORY_AXIS, VALUE_AXIS, CHART_COLORS } from '@/lib/echarts-theme'
 
 interface TimeSeriesChartProps {
   data: TimeSeries[]
@@ -14,7 +15,7 @@ interface TimeSeriesChartProps {
 export function TimeSeriesChart({
   data,
   label,
-  color = '#6366f1',
+  color = CHART_COLORS.cyber,
   unit = '',
   height = 160,
 }: TimeSeriesChartProps) {
@@ -27,17 +28,14 @@ export function TimeSeriesChart({
     backgroundColor: 'transparent',
     grid: { top: 12, right: 12, bottom: 28, left: 44, containLabel: false },
     xAxis: {
-      type: 'event_category',
+      type: 'category',
       data: times,
-      axisLabel: { color: '#71717a', fontSize: 10 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
-      splitLine: { show: false },
+      ...CATEGORY_AXIS,
     },
     yAxis: {
       type: 'value',
-      axisLabel: { color: '#71717a', fontSize: 10, formatter: `{value}${unit}` },
-      axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      ...VALUE_AXIS,
+      axisLabel: { ...VALUE_AXIS.axisLabel, formatter: `{value}${unit}` },
     },
     series: [
       {
@@ -60,9 +58,7 @@ export function TimeSeriesChart({
     ],
     tooltip: {
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#e4e4e7', fontSize: 12 },
+      ...TOOLTIP_BASE,
       formatter: (params: { name: string; value: number }[]) =>
         `${params[0].name}<br/>${label}: <b>${params[0].value}${unit}</b>`,
     },

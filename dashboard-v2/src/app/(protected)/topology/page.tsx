@@ -21,7 +21,7 @@ const NODE_COLOR: Record<string, string> = {
   agent:      '#8b5cf6',
   snmp:       '#06b6d4',
   discovered: '#f59e0b',
-  unknown:    '#71717a',
+  unknown:    '#64748b',
 }
 
 const NODE_SYMBOL: Record<string, string> = {
@@ -164,16 +164,17 @@ export default function TopologyPage() {
           const n = params.data as TopologyNode & { value?: unknown }
           return `
             <div style="font-size:12px;line-height:1.6">
-              <b style="color:#e4e4e7">${n.name}</b><br/>
-              IP: <span style="color:#a1a1aa">${n.ip || '—'}</span><br/>
-              Tür: <span style="color:#a1a1aa">${n.type}</span><br/>
-              ${n.vendor ? `Vendor: <span style="color:#a1a1aa">${n.vendor}</span><br/>` : ''}
+              <b style="color:#cbd5e1">${n.name}</b><br/>
+              IP: <span style="color:#64748b">${n.ip || '—'}</span><br/>
+              Tür: <span style="color:#64748b">${n.type}</span><br/>
+              ${n.vendor ? `Vendor: <span style="color:#64748b">${n.vendor}</span><br/>` : ''}
             </div>
           `
         },
-        backgroundColor: '#18181b',
-        borderColor: '#3f3f46',
-        textStyle: { color: '#e4e4e7' },
+        backgroundColor: '#0a1120',
+        borderColor: 'rgba(56,189,248,0.18)',
+        textStyle: { color: '#cbd5e1' },
+        extraCssText: 'box-shadow: 0 8px 24px rgba(0,0,0,0.5);',
       },
       series: [
         {
@@ -193,7 +194,7 @@ export default function TopologyPage() {
             show: true,
             position: 'bottom',
             fontSize: 10,
-            color: '#a1a1aa',
+            color: '#64748b',
             formatter: (params: any) => {
               const name = (params.data as TopologyNode).name
               return name.length > 14 ? name.slice(0, 12) + '…' : name
@@ -203,14 +204,14 @@ export default function TopologyPage() {
             show: false,
           },
           lineStyle: {
-            color: '#3f3f46',
+            color: 'rgba(56,189,248,0.15)',
             width: 1.5,
             curveness: 0.1,
           },
           emphasis: {
             focus: 'adjacency',
             lineStyle: { width: 2.5, color: '#6366f1' },
-            label: { color: '#e4e4e7', fontSize: 11 },
+            label: { color: '#cbd5e1', fontSize: 11 },
           },
           nodes: nodes.map((n) => ({
             id: n.device_id,
@@ -235,7 +236,7 @@ export default function TopologyPage() {
             source: e.src_id,
             target: e.dst_id,
             lineStyle: {
-              color: e.link_type === 'lldp' ? '#6366f1' : '#3f3f46',
+              color: e.link_type === 'lldp' ? '#6366f1' : 'rgba(56,189,248,0.15)',
               width: e.link_type === 'lldp' ? 2 : 1.5,
             },
           })),

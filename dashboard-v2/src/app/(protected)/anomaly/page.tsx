@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Activity, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Shield, X, ExternalLink } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { anomalyApi, fpRulesApi } from '@/lib/api'
+import { TOOLTIP_BASE, CHART_COLORS } from '@/lib/echarts-theme'
 import type { AnomalyResult } from '@/lib/api'
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -97,23 +98,22 @@ function ZScoreHistogram({ results }: { results: AnomalyResult[] }) {
     backgroundColor: 'transparent',
     grid: { top: 8, right: 8, bottom: 28, left: 36 },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b', borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 11 },
       formatter: (params: { name: string; value: number }[]) =>
         `${params[0].name}: ${params[0].value} anomali`,
     },
     xAxis: {
       type: 'category', data: bins.labels,
-      axisLabel: { color: '#71717a', fontSize: 9 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLabel: { color: '#475569', fontSize: 9 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value', minInterval: 1,
-      axisLabel: { color: '#71717a', fontSize: 9 },
+      axisLabel: { color: '#475569', fontSize: 9 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     series: [{
       type: 'bar', barMaxWidth: 32,
@@ -144,9 +144,8 @@ function AnomalyTimeline({ results }: { results: AnomalyResult[] }) {
     backgroundColor: 'transparent',
     grid: { top: 8, right: 8, bottom: 32, left: 52 },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'item',
-      backgroundColor: '#18181b', borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 11 },
       formatter: (p: { value: [number, number, string, string] }) => {
         const [ts, z, ip, metric] = p.value
         return `${ip}<br/>${METRIC_LABELS[metric] ?? metric}<br/>Z-Score: ${z.toFixed(1)}σ<br/>${new Date(ts).toLocaleString('tr-TR')}`
@@ -154,17 +153,17 @@ function AnomalyTimeline({ results }: { results: AnomalyResult[] }) {
     },
     xAxis: {
       type: 'time',
-      axisLabel: { color: '#71717a', fontSize: 9, formatter: (v: number) =>
+      axisLabel: { color: '#475569', fontSize: 9, formatter: (v: number) =>
         new Date(v).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' }) },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
-      splitLine: { lineStyle: { color: '#27272a', type: 'dashed' } },
+      axisLine: { show: false }, axisTick: { show: false },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)', type: 'dashed' } },
     },
     yAxis: {
       type: 'value', name: 'Z-Score',
-      nameTextStyle: { color: '#71717a', fontSize: 9 },
-      axisLabel: { color: '#71717a', fontSize: 9, formatter: (v: number) => `${v}σ` },
+      nameTextStyle: { color: '#475569', fontSize: 9 },
+      axisLabel: { color: '#475569', fontSize: 9, formatter: (v: number) => `${v}σ` },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     series: [{
       type: 'scatter', symbolSize: 7,
@@ -191,28 +190,27 @@ function MetricBreakdownChart({ results }: { results: AnomalyResult[] }) {
     backgroundColor: 'transparent',
     grid: { top: 4, right: 40, bottom: 4, left: 8, containLabel: true },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis', axisPointer: { type: 'shadow' },
-      backgroundColor: '#18181b', borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 11 },
     },
     xAxis: {
       type: 'value', minInterval: 1,
-      axisLabel: { color: '#71717a', fontSize: 9 },
+      axisLabel: { color: '#475569', fontSize: 9 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     yAxis: {
       type: 'category',
       data: data.map((d) => d.label),
-      axisLabel: { color: '#a1a1aa', fontSize: 10 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLabel: { color: '#64748b', fontSize: 10 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     series: [{
       type: 'bar', barMaxWidth: 18,
       data: data.map((d) => d.value),
-      itemStyle: { color: '#6366f1' },
-      label: { show: true, position: 'right', color: '#71717a', fontSize: 10 },
+      itemStyle: { color: CHART_COLORS.cyber },
+      label: { show: true, position: 'right', color: '#64748b', fontSize: 10 },
     }],
   }
 

@@ -153,7 +153,7 @@ function IpDetailList({ rows, selectedIp, onSelect }: {
                       const m = STAGE_META[ev.stage as Stage]
                       return (
                         <div key={i} className="flex items-center gap-2 text-[10px]">
-                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: m?.dot ?? '#71717a' }} />
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: m?.dot ?? '#475569' }} />
                           <span className={m?.color ?? 'text-zinc-500'}>{m?.label ?? ev.stage}</span>
                           <span className="text-zinc-600">{ev.label}</span>
                           <span className="text-zinc-700 ml-auto">{fmtDateTime(ev.occurred_at)}</span>
@@ -239,14 +239,14 @@ function SwimlaneChart({
       <svg width={width} height={svgH} className="overflow-visible">
         {/* Axis */}
         <g transform={`translate(0, ${rows.length * ROW_H + 4})`}>
-          <line x1={IP_COL} y1={0} x2={IP_COL + TIMELINE_W} y2={0} stroke="#3f3f46" strokeWidth={1} />
+          <line x1={IP_COL} y1={0} x2={IP_COL + TIMELINE_W} y2={0} stroke="rgba(56,189,248,0.15)" strokeWidth={1} />
           {ticks.map((t, i) => {
             const tx = IP_COL + (i / tickCount) * TIMELINE_W
             const label = t.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
             return (
               <g key={i}>
-                <line x1={tx} y1={0} x2={tx} y2={4} stroke="#52525b" strokeWidth={1} />
-                <text x={tx} y={16} textAnchor="middle" fill="#71717a" fontSize={10}>{label}</text>
+                <line x1={tx} y1={0} x2={tx} y2={4} stroke="#475569" strokeWidth={1} />
+                <text x={tx} y={16} textAnchor="middle" fill="#475569" fontSize={10}>{label}</text>
               </g>
             )
           })}
@@ -263,7 +263,7 @@ function SwimlaneChart({
             <g key={row.source_ip}>
               {/* Zebra background */}
               {ri % 2 === 0 && (
-                <rect x={0} y={ri * ROW_H} width={width} height={ROW_H} fill="#18181b" />
+                <rect x={0} y={ri * ROW_H} width={width} height={ROW_H} fill="#0d1526" />
               )}
 
               {/* IP label */}
@@ -271,7 +271,7 @@ function SwimlaneChart({
                 x={IP_COL - 8}
                 y={cy + 4}
                 textAnchor="end"
-                fill="#a1a1aa"
+                fill="#64748b"
                 fontSize={11}
                 fontFamily="monospace"
               >
@@ -289,14 +289,14 @@ function SwimlaneChart({
               {/* Baseline */}
               <line
                 x1={x1} y1={cy} x2={x2} y2={cy}
-                stroke="#3f3f46" strokeWidth={1.5}
+                stroke="rgba(56,189,248,0.15)" strokeWidth={1.5}
                 strokeDasharray={row.chain_type === 'FULL_ATTACK_CHAIN' ? undefined : '4 3'}
               />
 
               {/* Events */}
               {row.events.map((ev, ei) => {
                 const stage = ev.stage as Stage
-                const meta = STAGE_META[stage] ?? { dot: '#a1a1aa', label: ev.stage }
+                const meta = STAGE_META[stage] ?? { dot: '#64748b', label: ev.stage }
                 const cx = xOf(ev.occurred_at)
                 return (
                   <circle
@@ -305,7 +305,7 @@ function SwimlaneChart({
                     cy={cy}
                     r={DOT_R}
                     fill={meta.dot}
-                    stroke="#09090b"
+                    stroke="#040911"
                     strokeWidth={1.5}
                     className="cursor-pointer transition-opacity hover:opacity-80"
                     onMouseEnter={(e) => {
@@ -331,7 +331,7 @@ function SwimlaneChart({
           return (
             <line
               x1={nowX} y1={0} x2={nowX} y2={rows.length * ROW_H}
-              stroke="#27272a" strokeWidth={1}
+              stroke="rgba(56,189,248,0.08)" strokeWidth={1}
             />
           )
         })()}

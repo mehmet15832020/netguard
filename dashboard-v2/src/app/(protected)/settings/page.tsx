@@ -243,8 +243,8 @@ function MfaSection() {
               <QRCodeSVG
                 value={setupData.otpauth_uri}
                 size={160}
-                bgColor="#18181b"
-                fgColor="#f4f4f5"
+                bgColor="#0d1526"
+                fgColor="#cbd5e1"
               />
             </div>
             <div className="space-y-1">

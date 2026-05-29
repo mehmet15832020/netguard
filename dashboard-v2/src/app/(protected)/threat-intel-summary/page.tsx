@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ShieldAlert, RefreshCw, Globe, AlertTriangle, TrendingUp } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi, type ThreatSource } from '@/lib/api'
+import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -117,22 +118,20 @@ export default function ThreatIntelSummaryPage() {
     grid: { top: 8, right: 80, bottom: 8, left: 8, containLabel: true },
     xAxis: {
       type: 'value', min: 0, max: 100,
-      axisLabel: { color: '#71717a', fontSize: 10 },
+      axisLabel: { color: '#475569', fontSize: 10 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     yAxis: {
       type: 'category',
       data: [...top10Sources].reverse().map((s: ThreatSource) => s.ip),
-      axisLabel: { color: '#a1a1aa', fontSize: 10, width: 120, overflow: 'truncate' },
-      axisLine: { show: false },
+      axisLabel: { color: '#64748b', fontSize: 10, width: 120, overflow: 'truncate' },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 12 },
       formatter: (p: { name: string; value: number }[]) =>
         `${p[0].name}<br/>Composite Score: <b>${p[0].value}</b>`,
     },
@@ -151,7 +150,7 @@ export default function ThreatIntelSummaryPage() {
       })),
       label: {
         show: true, position: 'right',
-        color: '#a1a1aa', fontSize: 10,
+        color: '#64748b', fontSize: 10,
       },
     }],
   } : null
@@ -162,22 +161,20 @@ export default function ThreatIntelSummaryPage() {
     grid: { top: 8, right: 48, bottom: 8, left: 8, containLabel: true },
     xAxis: {
       type: 'value',
-      axisLabel: { color: '#71717a', fontSize: 10 },
+      axisLabel: { color: '#475569', fontSize: 10 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     yAxis: {
       type: 'category',
       data: [...countryDist].reverse().map((c) => c.country_code || 'XX'),
-      axisLabel: { color: '#a1a1aa', fontSize: 11 },
-      axisLine: { show: false },
+      axisLabel: { color: '#64748b', fontSize: 11 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 12 },
     },
     series: [{
       name: 'Benzersiz IP',
@@ -185,7 +182,7 @@ export default function ThreatIntelSummaryPage() {
       barMaxWidth: 16,
       color: '#818cf8',
       data: [...countryDist].reverse().map((c) => c.ip_count),
-      label: { show: true, position: 'right', color: '#a1a1aa', fontSize: 10 },
+      label: { show: true, position: 'right', color: '#64748b', fontSize: 10 },
     }],
   } : null
 

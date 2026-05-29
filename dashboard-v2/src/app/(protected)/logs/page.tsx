@@ -8,6 +8,7 @@ import {
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
 import { logsApi, analyticsApi, type LogFacetItem } from '@/lib/api'
+import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import { SeverityBadge } from '@/components/ui/severity-badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -82,24 +83,22 @@ function LogVolumeChart({
     backgroundColor: 'transparent',
     grid: { top: 8, right: 8, bottom: 28, left: 36, containLabel: false },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 11 },
     },
     xAxis: {
       type: 'category',
       data: labels,
-      axisLabel: { color: '#71717a', fontSize: 9 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLabel: { color: '#475569', fontSize: 9 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: { color: '#71717a', fontSize: 9 },
+      axisLabel: { color: '#475569', fontSize: 9 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     series: (['critical', 'high', 'warning', 'info'] as const).map((sev) => ({
       name: sev,

@@ -1,6 +1,7 @@
 'use client'
 
 import ReactECharts from 'echarts-for-react'
+import { CHART_COLORS, SEVERITY_COLORS } from '@/lib/echarts-theme'
 
 interface MemoryGaugeProps {
   usagePercent: number
@@ -9,9 +10,9 @@ interface MemoryGaugeProps {
 }
 
 function gaugeColor(pct: number): string {
-  if (pct >= 90) return '#ef4444'
-  if (pct >= 70) return '#eab308'
-  return '#6366f1'
+  if (pct >= 90) return SEVERITY_COLORS.critical
+  if (pct >= 70) return SEVERITY_COLORS.warning
+  return CHART_COLORS.cyber
 }
 
 export function MemoryGauge({ usagePercent, usedGB, totalGB }: MemoryGaugeProps) {
@@ -36,7 +37,7 @@ export function MemoryGauge({ usagePercent, usedGB, totalGB }: MemoryGaugeProps)
           clip: false,
           itemStyle: { color },
         },
-        axisLine: { lineStyle: { width: 14, color: [[1, '#27272a']] } },
+        axisLine: { lineStyle: { width: 14, color: [[1, 'rgba(56,189,248,0.08)']] } },
         splitLine: { show: false },
         axisTick: { show: false },
         axisLabel: { show: false },
@@ -44,14 +45,14 @@ export function MemoryGauge({ usagePercent, usedGB, totalGB }: MemoryGaugeProps)
           valueAnimation: true,
           fontSize: 22,
           fontWeight: 'bold',
-          color: '#e4e4e7',
+          color: '#cbd5e1',
           formatter: '{value}%',
           offsetCenter: [0, '0%'],
         },
         title: {
           offsetCenter: [0, '30%'],
           fontSize: 11,
-          color: '#71717a',
+          color: '#475569',
         },
         data: [{ value: usagePercent.toFixed(1), name: `${usedGB.toFixed(1)} / ${totalGB.toFixed(1)} GB` }],
       },

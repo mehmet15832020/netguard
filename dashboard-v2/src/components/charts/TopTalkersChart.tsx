@@ -1,6 +1,7 @@
 'use client'
 
 import ReactECharts from 'echarts-for-react'
+import { TOOLTIP_BASE, CHART_COLORS } from '@/lib/echarts-theme'
 
 interface RankedItem {
   label: string
@@ -17,7 +18,7 @@ interface TopTalkersChartProps {
 export function TopTalkersChart({
   title,
   items,
-  color = '#6366f1',
+  color = CHART_COLORS.cyber,
   height = 220,
 }: TopTalkersChartProps) {
   const sorted = [...items].sort((a, b) => a.count - b.count)
@@ -30,22 +31,24 @@ export function TopTalkersChart({
     grid: { top: 8, right: 16, bottom: 8, left: 8, containLabel: true },
     xAxis: {
       type: 'value',
-      axisLabel: { color: '#71717a', fontSize: 10 },
+      axisLabel: { color: '#475569', fontSize: 10 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      axisTick: { show: false },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
       max,
     },
     yAxis: {
       type: 'category',
       data: labels,
       axisLabel: {
-        color: '#a1a1aa',
+        color: '#64748b',
         fontSize: 11,
         overflow: 'truncate',
         width: 120,
         formatter: (v: string) => (v.length > 18 ? v.slice(0, 16) + '…' : v),
       },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLine: { show: false },
+      axisTick: { show: false },
       splitLine: { show: false },
     },
     series: [
@@ -57,7 +60,7 @@ export function TopTalkersChart({
         label: {
           show: true,
           position: 'right',
-          color: '#a1a1aa',
+          color: '#64748b',
           fontSize: 10,
           formatter: '{c}',
         },
@@ -66,22 +69,20 @@ export function TopTalkersChart({
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 12 },
+      ...TOOLTIP_BASE,
       formatter: (params: { name: string; value: number }[]) => {
         const p = params[0]
         const safeName = p.name.replace(/[<>&"']/g, (c) =>
           ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] ?? c)
         )
-        return `<span style="color:#a1a1aa">${safeName}</span><br/><b>${p.value.toLocaleString()}</b> paket`
+        return `<span style="color:#64748b">${safeName}</span><br/><b>${p.value.toLocaleString()}</b> paket`
       },
     },
   }
 
   return (
     <div>
-      <p className="text-xs font-medium text-zinc-400 mb-2 px-1">{title}</p>
+      <p className="text-xs font-medium text-slate-400 mb-2 px-1">{title}</p>
       <ReactECharts option={option} style={{ height }} notMerge />
     </div>
   )

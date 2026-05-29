@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { EastWestMatrixRow } from '@/lib/api'
+import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 
 interface Props {
   rows:      EastWestMatrixRow[]
@@ -24,6 +25,7 @@ export function EastWestHeatmapChart({ rows, max_count, height = 380 }: Props) {
       backgroundColor: 'transparent',
       grid: { top: 20, right: 130, bottom: 60, left: 8, containLabel: true },
       tooltip: {
+        ...TOOLTIP_BASE,
         formatter: (params: unknown) => {
           const p = params as { data: [number, number, number] }
           const [xi, yi, v] = p.data
@@ -36,9 +38,10 @@ export function EastWestHeatmapChart({ rows, max_count, height = 380 }: Props) {
         name: 'Hedef IP',
         nameLocation: 'middle',
         nameGap: 40,
-        axisLabel: { color: '#a1a1aa', fontSize: 9, rotate: 35, interval: 0 },
-        axisLine:  { lineStyle: { color: '#3f3f46' } },
-        splitLine: { lineStyle: { color: '#27272a' } },
+        axisLabel: { color: '#475569', fontSize: 9, rotate: 35, interval: 0 },
+        axisLine:  { show: false },
+        axisTick:  { show: false },
+        splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
       },
       yAxis: {
         type: 'category',
@@ -46,9 +49,10 @@ export function EastWestHeatmapChart({ rows, max_count, height = 380 }: Props) {
         name: 'Kaynak IP',
         nameLocation: 'middle',
         nameGap: 95,
-        axisLabel: { color: '#a1a1aa', fontSize: 9 },
-        axisLine:  { lineStyle: { color: '#3f3f46' } },
-        splitLine: { lineStyle: { color: '#27272a' } },
+        axisLabel: { color: '#475569', fontSize: 9 },
+        axisLine:  { show: false },
+        axisTick:  { show: false },
+        splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
       },
       visualMap: {
         min: 0,
@@ -57,20 +61,20 @@ export function EastWestHeatmapChart({ rows, max_count, height = 380 }: Props) {
         orient: 'vertical',
         right: 0,
         top: 'center',
-        inRange: { color: ['#1c1917', '#7f1d1d', '#dc2626'] },
-        textStyle: { color: '#a1a1aa', fontSize: 10 },
+        inRange: { color: ['#0d1526', '#7f1d1d', '#dc2626'] },
+        textStyle: { color: '#64748b', fontSize: 10 },
         itemHeight: 120,
       },
       series: [{
         type: 'heatmap',
         data,
-        itemStyle: { borderColor: '#09090b', borderWidth: 1 },
+        itemStyle: { borderColor: '#040911', borderWidth: 1 },
         emphasis: {
           itemStyle: { shadowBlur: 8, shadowColor: 'rgba(220,38,38,0.5)' },
         },
         label: {
           show: dsts.length <= 8 && srcs.length <= 8,
-          color: '#e4e4e7',
+          color: '#cbd5e1',
           fontSize: 9,
         },
       }],

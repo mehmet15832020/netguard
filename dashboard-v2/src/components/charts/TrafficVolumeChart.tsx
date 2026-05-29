@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
+import { TOOLTIP_BASE, CATEGORY_AXIS, VALUE_AXIS, LEGEND_TEXT, CHART_COLORS } from '@/lib/echarts-theme'
 
 interface TrafficPoint {
   t: string
@@ -19,9 +20,9 @@ interface TrafficVolumeChartProps {
 }
 
 const TRAFFIC_COLORS: Record<string, string> = {
-  east_west:  '#6366f1',
-  ns_egress:  '#f97316',
-  ns_ingress: '#ef4444',
+  east_west:  CHART_COLORS.cyber,
+  ns_egress:  CHART_COLORS.orange,
+  ns_ingress: CHART_COLORS.rose,
 }
 
 const TRAFFIC_LABELS: Record<string, string> = {
@@ -58,7 +59,7 @@ export function TrafficVolumeChart({ series, hours = 24, height = 320 }: Traffic
       legend: {
         data: stackOrder.map((k) => TRAFFIC_LABELS[k]),
         top: 0,
-        textStyle: { color: '#a1a1aa', fontSize: 11 },
+        textStyle: { ...LEGEND_TEXT },
         itemWidth: 12,
         itemHeight: 8,
       },
@@ -66,23 +67,18 @@ export function TrafficVolumeChart({ series, hours = 24, height = 320 }: Traffic
       xAxis: {
         type: 'category',
         data: times,
-        axisLabel: { color: '#71717a', fontSize: 10, rotate: multiDay ? 30 : 0 },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-        splitLine: { show: false },
+        ...CATEGORY_AXIS,
+        axisLabel: { ...CATEGORY_AXIS.axisLabel, rotate: multiDay ? 30 : 0 },
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
-        axisLabel: { color: '#71717a', fontSize: 10 },
-        axisLine: { show: false },
-        splitLine: { lineStyle: { color: '#27272a' } },
+        ...VALUE_AXIS,
       },
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross', label: { backgroundColor: '#27272a' } },
-        backgroundColor: '#18181b',
-        borderColor: '#3f3f46',
-        textStyle: { color: '#f4f4f5', fontSize: 12 },
+        axisPointer: { type: 'cross', label: { backgroundColor: '#0a1120' } },
+        ...TOOLTIP_BASE,
         formatter: (params: unknown) => {
           if (!Array.isArray(params)) return ''
           return (params as Array<{ seriesName: string; value: number; marker: string }>)

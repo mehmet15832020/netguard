@@ -1,6 +1,7 @@
 'use client'
 
 import ReactECharts from 'echarts-for-react'
+import { TOOLTIP_BASE, SERIES_PALETTE, LEGEND_TEXT } from '@/lib/echarts-theme'
 
 interface ProtoItem {
   protocol: string
@@ -14,18 +15,13 @@ interface ProtocolDonutChartProps {
   height?: number
 }
 
-const COLOR_PALETTE = [
-  '#6366f1', '#0ea5e9', '#10b981', '#f97316',
-  '#eab308', '#ef4444', '#8b5cf6', '#ec4899',
-]
-
 export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolDonutChartProps) {
   if (protocols.length === 0) return null
 
   const seriesData = protocols.map((p, i) => ({
     name: p.protocol.toUpperCase(),
     value: p.count,
-    itemStyle: { color: COLOR_PALETTE[i % COLOR_PALETTE.length] },
+    itemStyle: { color: SERIES_PALETTE[i % SERIES_PALETTE.length] },
   }))
 
   const option = {
@@ -34,7 +30,7 @@ export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolD
       orient: 'vertical' as const,
       right: '5%',
       top: 'center',
-      textStyle: { color: '#a1a1aa', fontSize: 12 },
+      textStyle: { ...LEGEND_TEXT, fontSize: 12 },
       itemWidth: 10,
       itemHeight: 10,
       formatter: (name: string) => {
@@ -50,7 +46,7 @@ export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolD
         style: {
           text: total.toLocaleString('tr-TR'),
           textAlign: 'center',
-          fill: '#f4f4f5',
+          fill: '#cbd5e1',
           fontSize: 20,
           fontWeight: 'bold',
         },
@@ -62,7 +58,7 @@ export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolD
         style: {
           text: 'toplam',
           textAlign: 'center',
-          fill: '#71717a',
+          fill: '#475569',
           fontSize: 11,
         },
       },
@@ -74,13 +70,13 @@ export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolD
         center: ['40%', '50%'],
         data: seriesData,
         label: {
-          color: '#a1a1aa',
+          color: '#64748b',
           fontSize: 11,
           formatter: '{b}\n{d}%',
         },
         itemStyle: {
           borderRadius: 4,
-          borderColor: '#18181b',
+          borderColor: '#0a1120',
           borderWidth: 2,
         },
         emphasis: {
@@ -91,14 +87,12 @@ export function ProtocolDonutChart({ protocols, total, height = 320 }: ProtocolD
     ],
     tooltip: {
       trigger: 'item',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 12 },
+      ...TOOLTIP_BASE,
       formatter: (params: { name: string; value: number; percent: number }) => {
         const safe = params.name.replace(/[<>&"']/g, (c) =>
           ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' }[c] ?? c)
         )
-        return `<span style="color:#a1a1aa">${safe}</span><br/><b>${params.value.toLocaleString()}</b> (${params.percent.toFixed(1)}%)`
+        return `<span style="color:#64748b">${safe}</span><br/><b>${params.value.toLocaleString()}</b> (${params.percent.toFixed(1)}%)`
       },
     },
   }

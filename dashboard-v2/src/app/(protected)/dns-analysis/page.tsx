@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Globe, RefreshCw, AlertTriangle, Activity, Search, Zap, Shield } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi, type DnsEvent } from '@/lib/api'
+import { TOOLTIP_BASE, CHART_COLORS } from '@/lib/echarts-theme'
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -59,22 +60,20 @@ export default function DnsAnalysisPage() {
     xAxis: {
       type: 'category',
       data: data.hourly_volume.map((p) => fmtHour(p.t)),
-      axisLabel: { color: '#71717a', fontSize: 10 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLabel: { color: '#475569', fontSize: 10 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: { color: '#71717a', fontSize: 10 },
+      axisLabel: { color: '#475569', fontSize: 10 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 12 },
       formatter: (p: { name: string; value: number }[]) =>
         `${p[0].name}<br/><b>${p[0].value}</b> DNS sorgusu`,
     },
@@ -82,9 +81,9 @@ export default function DnsAnalysisPage() {
       name: 'DNS Sorgu',
       type: 'line',
       smooth: true,
-      areaStyle: { color: '#6366f1', opacity: 0.15 },
-      lineStyle: { color: '#6366f1', width: 2 },
-      itemStyle: { color: '#6366f1' },
+      areaStyle: { color: CHART_COLORS.cyber, opacity: 0.15 },
+      lineStyle: { color: CHART_COLORS.cyber, width: 2 },
+      itemStyle: { color: CHART_COLORS.cyber },
       symbol: 'none',
       data: data.hourly_volume.map((p) => p.v),
     }],
@@ -97,36 +96,34 @@ export default function DnsAnalysisPage() {
     grid: { top: 8, right: 64, bottom: 8, left: 8, containLabel: true },
     xAxis: {
       type: 'value',
-      axisLabel: { color: '#71717a', fontSize: 10 },
+      axisLabel: { color: '#475569', fontSize: 10 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     yAxis: {
       type: 'category',
       data: [...top10].reverse().map((d) => d.ip),
       axisLabel: {
-        color: '#a1a1aa', fontSize: 10,
+        color: '#64748b', fontSize: 10,
         width: 130, overflow: 'truncate',
       },
-      axisLine: { show: false },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 12 },
     },
     series: [{
       name: 'Sorgu',
       type: 'bar',
       barMaxWidth: 18,
-      color: '#6366f1',
+      color: CHART_COLORS.cyber,
       data: [...top10].reverse().map((d) => d.count),
       label: {
         show: true,
         position: 'right',
-        color: '#a1a1aa',
+        color: '#64748b',
         fontSize: 10,
       },
     }],

@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
+import { TOOLTIP_BASE, CATEGORY_AXIS, VALUE_AXIS, LEGEND_TEXT, SEVERITY_COLORS } from '@/lib/echarts-theme'
 
 interface AlertPoint {
   t: string
@@ -18,13 +19,6 @@ interface AlertVolumeChartProps {
   hours?:         number
   bucketMinutes?: number
   height?:        number
-}
-
-const SEVERITY_COLORS: Record<string, string> = {
-  critical: '#ef4444',
-  high:     '#f97316',
-  warning:  '#eab308',
-  info:     '#3b82f6',
 }
 
 const SEVERITY_LABELS: Record<string, string> = {
@@ -67,7 +61,7 @@ export function AlertVolumeChart({ series, hours = 24, bucketMinutes = 60, heigh
       legend: {
         data: stackOrder.map((k) => SEVERITY_LABELS[k]),
         top: 0,
-        textStyle: { color: '#a1a1aa', fontSize: 11 },
+        textStyle: { ...LEGEND_TEXT },
         itemWidth: 12,
         itemHeight: 8,
       },
@@ -75,23 +69,18 @@ export function AlertVolumeChart({ series, hours = 24, bucketMinutes = 60, heigh
       xAxis: {
         type: 'category',
         data: times,
-        axisLabel: { color: '#71717a', fontSize: 10, rotate: multiDay ? 30 : 0 },
-        axisLine: { lineStyle: { color: '#3f3f46' } },
-        splitLine: { show: false },
+        ...CATEGORY_AXIS,
+        axisLabel: { ...CATEGORY_AXIS.axisLabel, rotate: multiDay ? 30 : 0 },
       },
       yAxis: {
         type: 'value',
         minInterval: 1,
-        axisLabel: { color: '#71717a', fontSize: 10 },
-        axisLine: { show: false },
-        splitLine: { lineStyle: { color: '#27272a' } },
+        ...VALUE_AXIS,
       },
       tooltip: {
         trigger: 'axis',
-        axisPointer: { type: 'cross', label: { backgroundColor: '#27272a' } },
-        backgroundColor: '#18181b',
-        borderColor: '#3f3f46',
-        textStyle: { color: '#f4f4f5', fontSize: 12 },
+        axisPointer: { type: 'cross', label: { backgroundColor: '#0a1120' } },
+        ...TOOLTIP_BASE,
       },
       series: stackOrder.map((key) => ({
         name: SEVERITY_LABELS[key],

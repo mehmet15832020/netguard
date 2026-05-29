@@ -3,6 +3,7 @@
 import { useMemo } from 'react'
 import ReactECharts from 'echarts-for-react'
 import type { MttdMttrDayPoint } from '@/lib/api'
+import { TOOLTIP_BASE, CATEGORY_AXIS, VALUE_AXIS, LEGEND_TEXT } from '@/lib/echarts-theme'
 
 function fmtMin(m: number): string {
   if (m === 0) return '—'
@@ -24,10 +25,11 @@ export function MttdMttrChart({ trend, height = 280 }: Props) {
     legend: {
       data: ['MTTD', 'MTTR'],
       bottom: 0,
-      textStyle: { color: '#a1a1aa', fontSize: 11 },
+      textStyle: { ...LEGEND_TEXT },
     },
     tooltip: {
       trigger: 'axis',
+      ...TOOLTIP_BASE,
       formatter: (params: unknown) => {
         const items = params as { seriesName: string; value: number; axisValue: string }[]
         return [
@@ -39,21 +41,19 @@ export function MttdMttrChart({ trend, height = 280 }: Props) {
     xAxis: {
       type: 'category',
       data: trend.map(p => p.date.slice(5)),
-      axisLabel: { color: '#71717a', fontSize: 9, rotate: 30, interval: Math.floor(trend.length / 10) },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
-      splitLine: { show: false },
+      ...CATEGORY_AXIS,
+      axisLabel: { ...CATEGORY_AXIS.axisLabel, fontSize: 9, rotate: 30, interval: Math.floor(trend.length / 10) },
     },
     yAxis: {
       type: 'value',
       name: 'Dakika',
-      nameTextStyle: { color: '#71717a', fontSize: 10 },
+      nameTextStyle: { color: '#475569', fontSize: 10 },
+      ...VALUE_AXIS,
       axisLabel: {
-        color: '#71717a',
+        ...VALUE_AXIS.axisLabel,
         fontSize: 9,
         formatter: (v: number) => (v >= 60 ? `${(v / 60).toFixed(0)}s` : `${v}dk`),
       },
-      axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
     },
     series: [
       {

@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Crosshair, Download, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { mitreApi } from '@/lib/api'
+import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -166,26 +167,24 @@ function TacticActivityChart({
     backgroundColor: 'transparent',
     grid: { top: 4, right: 40, bottom: 4, left: 110, containLabel: false },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 11 },
       formatter: (params: { name: string; value: number }[]) =>
         `${params[0].name}: <b>${params[0].value}</b> tetiklenme`,
     },
     xAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: { color: '#71717a', fontSize: 9 },
+      axisLabel: { color: '#475569', fontSize: 9 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     yAxis: {
       type: 'category',
       data: items.map((i) => i.label),
-      axisLabel: { color: '#a1a1aa', fontSize: 10 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLabel: { color: '#64748b', fontSize: 10 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     series: [{
@@ -193,7 +192,7 @@ function TacticActivityChart({
       data: items.map((i) => ({
         value: i.value,
         itemStyle: {
-          color: i.value === 0 ? '#27272a'
+          color: i.value === 0 ? 'rgba(56,189,248,0.08)'
             : i.value >= 10 ? '#ef4444'
             : i.value >= 5  ? '#f97316'
             : '#6366f1',
@@ -203,7 +202,7 @@ function TacticActivityChart({
       label: {
         show: true,
         position: 'right',
-        color: '#71717a',
+        color: '#475569',
         fontSize: 10,
         formatter: (p: { value: number }) => p.value > 0 ? String(p.value) : '',
       },

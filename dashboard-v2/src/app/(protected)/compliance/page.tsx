@@ -39,7 +39,7 @@ function ScoreRing({ score, size = 80 }: { score: number; size?: number }) {
   const color = score >= 70 ? '#10b981' : score >= 40 ? '#f59e0b' : '#ef4444'
   return (
     <svg width={size} height={size} className="rotate-[-90deg]">
-      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#27272a" strokeWidth={8} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(56,189,248,0.08)" strokeWidth={8} />
       <circle
         cx={size/2} cy={size/2} r={r}
         fill="none" stroke={color} strokeWidth={8}

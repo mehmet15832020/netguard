@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Lock, RefreshCw, TrendingUp, TrendingDown, Minus, Clock, Globe, Users, ShieldAlert } from 'lucide-react'
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi } from '@/lib/api'
+import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import { cn } from '@/lib/utils'
 
 const HOURS_OPTIONS = [
@@ -74,26 +75,24 @@ export default function FailedAuthPage() {
     backgroundColor: 'transparent',
     grid: { top: 12, right: 8, bottom: 28, left: 36, containLabel: false },
     tooltip: {
+      ...TOOLTIP_BASE,
       trigger: 'axis',
-      backgroundColor: '#18181b',
-      borderColor: '#3f3f46',
-      textStyle: { color: '#f4f4f5', fontSize: 11 },
       formatter: (params: { name: string; value: number }[]) =>
         `${params[0].name}:00 — ${params[0].value} deneme`,
     },
     xAxis: {
       type: 'category',
       data: Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')),
-      axisLabel: { color: '#71717a', fontSize: 9 },
-      axisLine: { lineStyle: { color: '#3f3f46' } },
+      axisLabel: { color: '#475569', fontSize: 9 },
+      axisLine: { show: false }, axisTick: { show: false },
       splitLine: { show: false },
     },
     yAxis: {
       type: 'value',
       minInterval: 1,
-      axisLabel: { color: '#71717a', fontSize: 9 },
+      axisLabel: { color: '#475569', fontSize: 9 },
       axisLine: { show: false },
-      splitLine: { lineStyle: { color: '#27272a' } },
+      splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
     },
     series: [{
       type: 'bar',
@@ -112,22 +111,20 @@ export default function FailedAuthPage() {
         xAxis: {
           type: 'category',
           data: data.hourly.map((p) => fmtHour(p.t)),
-          axisLabel: { color: '#71717a', fontSize: 10 },
-          axisLine: { lineStyle: { color: '#3f3f46' } },
+          axisLabel: { color: '#475569', fontSize: 10 },
+          axisLine: { show: false }, axisTick: { show: false },
           splitLine: { show: false },
         },
         yAxis: {
           type: 'value',
           minInterval: 1,
-          axisLabel: { color: '#71717a', fontSize: 10 },
+          axisLabel: { color: '#475569', fontSize: 10 },
           axisLine: { show: false },
-          splitLine: { lineStyle: { color: '#27272a' } },
+          splitLine: { lineStyle: { color: 'rgba(56,189,248,0.07)' } },
         },
         tooltip: {
+          ...TOOLTIP_BASE,
           trigger: 'axis',
-          backgroundColor: '#18181b',
-          borderColor: '#3f3f46',
-          textStyle: { color: '#f4f4f5', fontSize: 12 },
         },
         series: [
           {
