@@ -795,116 +795,177 @@ export default function OverviewPage() {
   const criticalAlerts = alerts.filter(a => a.severity === 'critical').length
 
   return (
-    <div className="p-5 space-y-4 max-w-[1600px]">
+    <div className="p-5 max-w-[1600px]">
 
-      {/* Banner */}
-      <SecurityStatusBanner />
-
-      {/* Data Freshness */}
-      <DataFreshnessBar />
-
-      {/* Row 1 — Primary Stats */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        <StatCard label="Aktif Alert"    value={alerts.length}   sub={criticalAlerts > 0 ? `${criticalAlerts} kritik` : 'Kritik yok'} accent={criticalAlerts > 0 ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'} icon={Bell}     href="/alerts" />
-        <StatCard label="Güvenlik Olayı" value={totalSecurity}   sub="Toplam kayıtlı"                                                  accent={totalSecurity > 50 ? 'bg-orange-500/20 text-orange-400' : 'bg-purple-500/20 text-purple-400'}  icon={Shield}   href="/security" />
-        <StatCard label="Korelasyon"     value={(corrData?.events ?? []).length} sub="Son tetiklenen"                                   accent="bg-indigo-500/20 text-indigo-400"                                                              icon={GitMerge} href="/correlation" />
-        <StatCard label="Bağlı Agent"    value={`${onlineAgents}/${agents.length}`} sub="Online / Toplam"                              accent={onlineAgents < agents.length && agents.length > 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'} icon={Server} href="/agents" />
+      {/* ── Always-top: status + data freshness ─────────────────────── */}
+      <div className="space-y-3 mb-3">
+        <SecurityStatusBanner />
+        <DataFreshnessBar />
       </div>
 
-      {/* Row 2 — Attack Chain + Incident KPIs */}
-      <div className="grid grid-cols-3 lg:grid-cols-6 gap-3">
-        <AttackChainKpis />
-        <IncidentKpis />
-      </div>
+      {/* ═══════════════════════════════════════════════════════════════
+          BENTO GRID — 12-column asymmetric mosaic layout
+          ═══════════════════════════════════════════════════════════════ */}
+      <div className="grid grid-cols-12 gap-3">
 
-      {/* Row 3 — MTTD / MTTR */}
-      <MttdRow />
+        {/* ┌── Zone A: StatCards (8 cols) + KPI sidebar (4 cols) ───────┐ */}
+        {/* └────────────────────────────────────────────────────────────┘ */}
 
-      {/* Row 4 — Topology + Kill Chain */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-3">
-        <div className="xl:col-span-2">
-          <Panel title="Ağ Topolojisi" icon={Share2} href="/topology">
-            <div className="h-56"><MiniTopology /></div>
+        {/* A-left: 4 primary stat cards */}
+        <div className="col-span-12 lg:col-span-8 grid grid-cols-2 xl:grid-cols-4 gap-3 content-start">
+          <StatCard
+            label="Aktif Alert" value={alerts.length}
+            sub={criticalAlerts > 0 ? `${criticalAlerts} kritik` : 'Kritik yok'}
+            accent={criticalAlerts > 0 ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}
+            icon={Bell} href="/alerts"
+          />
+          <StatCard
+            label="Güvenlik Olayı" value={totalSecurity}
+            sub="Toplam kayıtlı"
+            accent={totalSecurity > 50 ? 'bg-orange-500/20 text-orange-400' : 'bg-purple-500/20 text-purple-400'}
+            icon={Shield} href="/security"
+          />
+          <StatCard
+            label="Korelasyon" value={(corrData?.events ?? []).length}
+            sub="Son tetiklenen"
+            accent="bg-sky-500/15 text-sky-400"
+            icon={GitMerge} href="/correlation"
+          />
+          <StatCard
+            label="Bağlı Agent" value={`${onlineAgents}/${agents.length}`}
+            sub="Online / Toplam"
+            accent={onlineAgents < agents.length && agents.length > 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'}
+            icon={Server} href="/agents"
+          />
+        </div>
+
+        {/* A-right: compact KPI panel — attack chain + incident metrics */}
+        <div className="col-span-12 lg:col-span-4">
+          <div className="bg-[#0d1526] border border-sky-900/25 rounded-lg h-full overflow-hidden hover:border-sky-800/40 transition-colors">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/20">
+              <Swords size={13} className="text-sky-700" />
+              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Zincir & Incident</span>
+            </div>
+            <div className="p-3 grid grid-cols-3 gap-2">
+              <AttackChainKpis />
+              <IncidentKpis />
+            </div>
+          </div>
+        </div>
+
+        {/* ┌── Zone B: Alert Trend HERO (8 cols) + right stack (4 cols) ─┐ */}
+        {/* └─────────────────────────────────────────────────────────────┘ */}
+
+        {/* B-left: alert trend — the most time-critical view, hero-sized */}
+        <div className="col-span-12 xl:col-span-8">
+          <AlertTrendPanel data={alertVolumeData} />
+        </div>
+
+        {/* B-right: threat intel + live kill chain events */}
+        <div className="col-span-12 xl:col-span-4 flex flex-col gap-3">
+          <ThreatIntelPanel data={threatData} />
+
+          <Panel title="Kill Chain" icon={Swords} href="/timeline">
+            {(corrData?.events ?? []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-8 gap-2">
+                <Zap size={18} className="text-emerald-500/40" />
+                <p className="text-slate-600 text-sm">Aktif saldırı zinciri yok</p>
+              </div>
+            ) : (
+              <div className="divide-y divide-sky-900/20">
+                {(corrData?.events ?? []).slice(0, 5).map((ev) => (
+                  <div key={ev.corr_id} className="flex items-start gap-3 px-4 py-2.5">
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5 ${SEV_DOT[ev.severity] ?? 'bg-slate-600'}`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-slate-300 truncate font-medium">{ev.rule_name}</p>
+                      <p className="text-[11px] text-slate-600 font-mono">{ev.group_value}</p>
+                      {ev.mitre_tactics.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {ev.mitre_tactics.slice(0, 2).map(t => (
+                            <span key={t} className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', TACTIC_COLORS[t] ?? 'bg-[#0f1c30] text-slate-400')}>
+                              {t.replace(/-/g, ' ')}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <SeverityBadge severity={ev.severity as Severity} />
+                  </div>
+                ))}
+              </div>
+            )}
           </Panel>
         </div>
 
-        <Panel title="Kill Chain" icon={Swords} href="/timeline">
-          {(corrData?.events ?? []).length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-56 gap-2">
-              <Zap size={20} className="text-emerald-500/40" />
-              <p className="text-slate-600 text-sm">Aktif saldırı zinciri yok</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-sky-900/20">
-              {(corrData?.events ?? []).slice(0, 6).map((ev) => (
-                <div key={ev.corr_id} className="flex items-start gap-3 px-4 py-2.5">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1.5 ${SEV_DOT[ev.severity] ?? 'bg-slate-600'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-slate-300 truncate font-medium">{ev.rule_name}</p>
-                    <p className="text-[11px] text-slate-600 font-mono">{ev.group_value}</p>
-                    {ev.mitre_tactics.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {ev.mitre_tactics.slice(0, 2).map(t => (
-                          <span key={t} className={cn('text-[10px] px-1.5 py-0.5 rounded font-medium', TACTIC_COLORS[t] ?? 'bg-[#0f1c30] text-slate-400')}>
-                            {t.replace(/-/g, ' ')}
-                          </span>
-                        ))}
+        {/* ┌── Zone C: Topology 7/12 + Risk & MTTD 5/12 (asymmetric) ───┐ */}
+        {/* └─────────────────────────────────────────────────────────────┘ */}
+
+        {/* C-left: network topology map */}
+        <div className="col-span-12 xl:col-span-7">
+          <Panel title="Ağ Topolojisi" icon={Share2} href="/topology">
+            <div className="h-64"><MiniTopology /></div>
+          </Panel>
+        </div>
+
+        {/* C-right: risk assets + MTTD/MTTR metrics */}
+        <div className="col-span-12 xl:col-span-5 flex flex-col gap-3">
+          <TopRiskPanel data={assetRiskData?.assets ?? []} />
+          <MttdRow />
+        </div>
+
+        {/* ┌── Zone D: Operational trifecta — 3 equal panels ────────────┐ */}
+        {/* └─────────────────────────────────────────────────────────────┘ */}
+        <div className="col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3">
+          <FailedAuthPanel data={failedAuthData} />
+          <DnsAnomalyPanel data={dnsData} />
+          <AnomalyPanel />
+        </div>
+
+        {/* ┌── Zone E: Agents (4) + Alerts (5) + Protocol (3) ──────────┐ */}
+        {/* └─────────────────────────────────────────────────────────────┘ */}
+        <div className="col-span-12 grid grid-cols-12 gap-3">
+          <div className="col-span-12 lg:col-span-4">
+            <Panel title="Agents" icon={Server} href="/agents">
+              {agentsLoading
+                ? <Empty text="Yükleniyor..." />
+                : agents.length === 0
+                  ? <Empty text="Agent bağlı değil" />
+                  : <div>{agents.slice(0, 6).map(a => <AgentRow key={a.agent_id} agent={a} />)}</div>
+              }
+            </Panel>
+          </div>
+
+          <div className="col-span-12 lg:col-span-5">
+            <Panel title="Son Alertler" icon={AlertTriangle} href="/alerts">
+              {alerts.length === 0 ? <Empty text="Alert yok" /> : (
+                <div className="divide-y divide-sky-900/20">
+                  {alerts.slice(0, 6).map((alert) => (
+                    <div key={alert.alert_id} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${SEV_DOT[alert.severity] ?? 'bg-slate-600'}`} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-slate-300 truncate font-medium">{alert.message}</p>
+                        <p className="text-[11px] text-slate-600">{alert.hostname}</p>
                       </div>
-                    )}
-                  </div>
-                  <SeverityBadge severity={ev.severity as Severity} />
+                      <SeverityBadge severity={alert.severity} />
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          )}
-        </Panel>
+              )}
+            </Panel>
+          </div>
+
+          <div className="col-span-12 lg:col-span-3">
+            <ProtocolPanel data={protoData} />
+          </div>
+        </div>
+
+        {/* ┌── Zone F: Traffic Volume — full-width bottom ───────────────┐ */}
+        {/* └─────────────────────────────────────────────────────────────┘ */}
+        <div className="col-span-12">
+          <TrafficVolumePanel data={trafficData} />
+        </div>
+
       </div>
-
-      {/* Row 5 — Agents + Alerts + Risk */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <Panel title="Agents" icon={Server} href="/agents">
-          {agentsLoading ? <Empty text="Yükleniyor..." /> : agents.length === 0 ? <Empty text="Agent bağlı değil" /> : (
-            <div>{agents.slice(0, 6).map(a => <AgentRow key={a.agent_id} agent={a} />)}</div>
-          )}
-        </Panel>
-
-        <Panel title="Son Alertler" icon={AlertTriangle} href="/alerts">
-          {alerts.length === 0 ? <Empty text="Alert yok" /> : (
-            <div className="divide-y divide-sky-900/20">
-              {alerts.slice(0, 6).map((alert) => (
-                <div key={alert.alert_id} className="flex items-center gap-3 px-4 py-2.5">
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${SEV_DOT[alert.severity] ?? 'bg-slate-600'}`} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-slate-300 truncate font-medium">{alert.message}</p>
-                    <p className="text-[11px] text-slate-600">{alert.hostname}</p>
-                  </div>
-                  <SeverityBadge severity={alert.severity} />
-                </div>
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <TopRiskPanel data={assetRiskData?.assets ?? []} />
-      </div>
-
-      {/* Row 6 — Failed Auth | DNS | Anomaly */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <FailedAuthPanel data={failedAuthData} />
-        <DnsAnomalyPanel data={dnsData} />
-        <AnomalyPanel />
-      </div>
-
-      {/* Row 7 — Protocol | Traffic | Threat Intel */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-        <ProtocolPanel data={protoData} />
-        <TrafficVolumePanel data={trafficData} />
-        <ThreatIntelPanel data={threatData} />
-      </div>
-
-      {/* Row 8 — Alert Trend */}
-      <AlertTrendPanel data={alertVolumeData} />
-
     </div>
   )
 }

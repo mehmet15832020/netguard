@@ -187,6 +187,14 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **Topbar:** `DataLiveIndicator` (sourceHealth query + Wifi icon + glow lamp), section breadcrumb, dual-line clock, cy-tinted border + bottom glow
   - **Overview:** Panel/StatCard/KpiCard → navy bg + cyan borders, all `zinc-*`→`slate-*`, ECharts tooltips/axes/splitlines updated to cyber palette
   - **`src/lib/echarts-theme.ts`:** centralized CHART_COLORS, SEVERITY_COLORS, TOOLTIP_BASE, AXIS_BASE, GRID_DEFAULT, `lineSeries()` helper — Sprint 4 foundation
+- [x] **Sprint 3** — Overview Bento Grid Layout
+  - 8 lineer satır → 6 asimetrik zona dönüşümü (12-col CSS grid)
+  - Zone A (8+4): StatCards sol + KPI compact panel sağ
+  - Zone B (8+4): Alert Trend hero sol + [Threat Intel + Kill Chain] sağ stack
+  - Zone C (7+5): Topology sol + [Risk Assets + MTTD] sağ stack
+  - Zone D (3×4): Failed Auth + DNS Anomali + Anomali Detection
+  - Zone E (4+5+3): Agents + Alerts + Protocol Donut
+  - Zone F (12): Traffic Volume full-width alt
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
