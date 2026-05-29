@@ -716,7 +716,8 @@ class TestProgressiveTTL:
         record = db.get_block_by_ip("203.0.113.31", "default")
         assert record is not None
         from datetime import datetime, timezone, timedelta
-        expires = datetime.fromisoformat(record["expires_at"].replace("Z", "+00:00"))
+        raw = record["expires_at"]
+        expires = raw if isinstance(raw, datetime) else datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
         delta = expires - datetime.now(timezone.utc)
         assert 98 < delta.total_seconds() / 3600 < 100
 

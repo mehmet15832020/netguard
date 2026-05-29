@@ -344,12 +344,12 @@ class TestAnomalyEngine:
         monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
 
         saved_logs: list = []
+        from unittest.mock import MagicMock
         import server.anomaly.engine as eng_module
-        monkeypatch.setattr(
-            eng_module._netguard_db,
-            "save_normalized_log",
-            lambda log, tenant_id="default": saved_logs.append(log),
-        )
+        mock_db = MagicMock()
+        mock_db.save_normalized_log.side_effect = lambda log, tenant_id="default": saved_logs.append(log)
+        monkeypatch.setattr(eng_module, "_netguard_db", mock_db)
+        engine._db = mock_db
 
         engine._cycle()
 
@@ -383,11 +383,11 @@ class TestAnomalyEngine:
 
         import server.notifier as notifier_module
         monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
-        monkeypatch.setattr(
-            __import__("server.anomaly.engine", fromlist=["_netguard_db"])._netguard_db,
-            "save_normalized_log",
-            lambda log, tenant_id="default": None,
-        )
+        from unittest.mock import MagicMock
+        import server.anomaly.engine as _eng_mod
+        mock_db = MagicMock()
+        monkeypatch.setattr(_eng_mod, "_netguard_db", mock_db)
+        engine._db = mock_db
 
         recorded: list = []
         import server.attack_chain as ac_module

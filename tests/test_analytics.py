@@ -65,11 +65,11 @@ def _insert_log(
                severity, event_category, event_action,
                source_ip, destination_ip, destination_port,
                message, tags, tenant_id, network_protocol)
-            VALUES (?, ?, 'test', 'test',
-                    ?, ?, ?,
-                    'info', 'network', ?,
-                    ?, ?, ?,
-                    ?, ?, ?, ?)
+            VALUES (%s, %s, 'test', 'test',
+                    %s, %s, %s,
+                    'info', 'network', %s,
+                    %s, %s, %s,
+                    %s, %s, %s, %s)
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
@@ -315,8 +315,8 @@ def _insert_alert(
             INSERT INTO alerts
               (alert_id, agent_id, hostname, severity, status,
                metric, message, value, threshold, triggered_at, tenant_id)
-            VALUES (?, ?, 'test-host', ?, 'active',
-                    'cpu', 'test', 80.0, 70.0, ?, ?)
+            VALUES (%s, %s, 'test-host', %s, 'active',
+                    'cpu', 'test', 80.0, 70.0, %s, %s)
             """,
             (str(uuid.uuid4()), str(uuid.uuid4()), severity, ts, tenant_id),
         )
@@ -435,8 +435,8 @@ class TestAlertVolumeSeverity:
                 """INSERT INTO alerts
                      (alert_id, agent_id, hostname, severity, status,
                       metric, message, value, threshold, triggered_at, tenant_id)
-                   VALUES (?, ?, 'host', 'unknown', 'active',
-                           'cpu', 'test', 80, 70, ?, 'default')""",
+                   VALUES (%s, %s, 'host', 'unknown', 'active',
+                           'cpu', 'test', 80, 70, %s, 'default')""",
                 (str(uuid.uuid4()), str(uuid.uuid4()), ts),
             )
 
@@ -537,8 +537,8 @@ class TestAlertVolumeZeroFill:
                 """INSERT INTO alerts
                      (alert_id, agent_id, hostname, severity, status,
                       metric, message, value, threshold, triggered_at, tenant_id)
-                   VALUES (?, ?, 'host', 'critical', 'active',
-                           'cpu', 'test', 80, 70, ?, 'default')""",
+                   VALUES (%s, %s, 'host', 'critical', 'active',
+                           'cpu', 'test', 80, 70, %s, 'default')""",
                 (str(uuid.uuid4()), str(uuid.uuid4()), future_ts),
             )
 
@@ -1479,11 +1479,15 @@ def _insert_threat_intel_cache(tmp_db, ip, composite_score=0, country_code="", i
     with tmp_db._connect() as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO threat_intel_cache
+            INSERT INTO threat_intel_cache
               (ip, score, total_reports, country_code, isp,
                feodo_listed, threatfox_score, greynoise_noise, greynoise_riot,
                composite_score, queried_at)
-            VALUES (?, 0, 0, ?, ?, 0, 0, 0, 0, ?, datetime('now'))
+            VALUES (%s, 0, 0, %s, %s, false, 0, false, false, %s, NOW())
+            ON CONFLICT (ip) DO UPDATE SET
+              score=EXCLUDED.score, country_code=EXCLUDED.country_code,
+              isp=EXCLUDED.isp, composite_score=EXCLUDED.composite_score,
+              queried_at=EXCLUDED.queried_at
             """,
             (ip, country_code or None, isp or None, composite_score),
         )
@@ -1647,7 +1651,7 @@ def _insert_chain_stage(tmp_db, source_ip="1.2.3.4", stage="recon", minutes_ago=
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     with tmp_db._connect() as conn:
         conn.execute(
-            "INSERT INTO attack_chain_state (source_ip, stage, occurred_at, tenant_id) VALUES (?, ?, ?, ?)",
+            "INSERT INTO attack_chain_state (source_ip, stage, occurred_at, tenant_id) VALUES (%s, %s, %s, %s)",
             (source_ip, stage, ts, tenant_id),
         )
 
@@ -1943,11 +1947,11 @@ def _insert_risk_log(
                severity, event_category, event_action,
                source_ip, destination_ip,
                message, tags, tenant_id)
-            VALUES (?, ?, 'test', 'test',
-                    ?, ?, ?,
-                    ?, 'network', ?,
-                    ?, ?,
-                    'test', '[]', ?)
+            VALUES (%s, %s, 'test', 'test',
+                    %s, %s, %s,
+                    %s, 'network', %s,
+                    %s, %s,
+                    'test', '[]', %s)
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
@@ -1969,7 +1973,7 @@ def _insert_blocked(tmp_db, ip="10.0.0.1", tenant_id="default", expired=False):
             INSERT INTO blocked_ips
               (block_id, ip, reason, blocked_at, blocked_by,
                is_active, provider, tenant_id, expires_at, offense_count)
-            VALUES (?, ?, 'test', ?, 'test', 1, 'opnsense', ?, ?, 1)
+            VALUES (%s, %s, 'test', %s, 'test', 1, 'opnsense', %s, %s, 1)
             """,
             (str(uuid.uuid4()), ip, now.isoformat(), tenant_id, expires_at),
         )
@@ -2121,8 +2125,8 @@ def _insert_vol_log(tmp_db, severity="info", source_type="syslog",
                timestamp, received_at, processed_at,
                severity, event_category, event_action,
                source_ip, destination_ip, message, tags, tenant_id)
-            VALUES (?, ?, ?, 'test', ?, ?, ?, ?, ?, 'conn',
-                    '1.2.3.4', '5.6.7.8', 'msg', '[]', ?)
+            VALUES (%s, %s, %s, 'test', %s, %s, %s, %s, %s, 'conn',
+                    '1.2.3.4', '5.6.7.8', 'msg', '[]', %s)
             """,
             (str(uuid.uuid4()), str(uuid.uuid4()), source_type,
              ts, ts, ts, severity, event_category, tenant_id),

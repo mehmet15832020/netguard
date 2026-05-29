@@ -45,12 +45,12 @@ class TestRetentionCleanup:
         with db._connect() as conn:
             conn.execute(
                 "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
-                "VALUES (?, 'r1', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'old', '[]', ?)",
+                "VALUES (%s, 'r1', 'syslog', 'h', %s, %s, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'old', '[]', %s)",
                 ("old-1", old_ts, old_ts, old_ts),
             )
             conn.execute(
                 "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
-                "VALUES (?, 'r2', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'new', '[]', ?)",
+                "VALUES (%s, 'r2', 'syslog', 'h', %s, %s, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'new', '[]', %s)",
                 ("new-1", new_ts, new_ts, new_ts),
             )
 
@@ -72,7 +72,7 @@ class TestRetentionCleanup:
         with db._connect() as conn:
             conn.execute(
                 "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
-                "VALUES (?, 'r3', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'msg', '[]', ?)",
+                "VALUES (%s, 'r3', 'syslog', 'h', %s, %s, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'msg', '[]', %s)",
                 ("arch-1", old_ts, old_ts, old_ts),
             )
 
@@ -94,7 +94,7 @@ class TestRetentionCleanup:
         with db._connect() as conn:
             conn.execute(
                 "INSERT INTO normalized_logs (log_id, raw_id, source_type, observer_hostname, timestamp, received_at, severity, event_category, event_action, source_ip, destination_ip, source_port, destination_port, username, message, tags, processed_at) "
-                "VALUES (?, 'r4', 'syslog', 'h', ?, ?, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'keep', '[]', ?)",
+                "VALUES (%s, 'r4', 'syslog', 'h', %s, %s, 'info', 'system', 'test', NULL, NULL, NULL, NULL, NULL, 'keep', '[]', %s)",
                 ("keep-1", new_ts, new_ts, new_ts),
             )
 
@@ -109,12 +109,12 @@ class TestRetentionCleanup:
         with db._connect() as conn:
             conn.execute(
                 "INSERT INTO alerts (alert_id, agent_id, hostname, severity, status, metric, message, value, threshold, triggered_at) "
-                "VALUES (?, 'a', 'h', 'warning', 'resolved', 'm', 'msg', 1.0, 0.0, ?)",
+                "VALUES (%s, 'a', 'h', 'warning', 'resolved', 'm', 'msg', 1.0, 0.0, %s)",
                 ("old-resolved", old_ts),
             )
             conn.execute(
                 "INSERT INTO alerts (alert_id, agent_id, hostname, severity, status, metric, message, value, threshold, triggered_at) "
-                "VALUES (?, 'a', 'h', 'critical', 'active', 'm', 'msg', 1.0, 0.0, ?)",
+                "VALUES (%s, 'a', 'h', 'critical', 'active', 'm', 'msg', 1.0, 0.0, %s)",
                 ("old-active", old_ts),
             )
 
@@ -137,12 +137,12 @@ class TestRetentionCleanup:
         with db._connect() as conn:
             conn.execute(
                 "INSERT INTO raw_logs (raw_id, observer_hostname, received_at, raw_content) "
-                "VALUES (?, 'host', ?, 'old log')",
+                "VALUES (%s, 'host', %s, 'old log')",
                 ("raw-old", old_ts),
             )
             conn.execute(
                 "INSERT INTO raw_logs (raw_id, observer_hostname, received_at, raw_content) "
-                "VALUES (?, 'host', ?, 'new log')",
+                "VALUES (%s, 'host', %s, 'new log')",
                 ("raw-new", new_ts),
             )
 

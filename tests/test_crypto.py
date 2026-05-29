@@ -198,8 +198,9 @@ class TestEncryptedTotpFlow:
 
         with tmp_db._connect() as conn:
             conn.execute(
-                "INSERT OR IGNORE INTO db_users (username, password_hash, role, tenant_id)"
-                " VALUES (%s, '__TOTP_ONLY__', %s, %s)",
+                "INSERT INTO db_users (username, password_hash, role, tenant_id)"
+                " VALUES (%s, '__TOTP_ONLY__', %s, %s)"
+                " ON CONFLICT (username) DO NOTHING",
                 ("migrate_user", "viewer", "default"),
             )
             conn.execute(

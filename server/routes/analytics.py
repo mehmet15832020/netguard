@@ -470,15 +470,15 @@ def failed_auth(
         base_params = [since_trunc, tid, *_FAILED_AUTH_ACTIONS]
 
     _rfc1918_not_clause = """NOT (
-        source_ip LIKE '10.%' OR source_ip LIKE '192.168.%' OR
-        source_ip LIKE '172.16.%' OR source_ip LIKE '172.17.%' OR
-        source_ip LIKE '172.18.%' OR source_ip LIKE '172.19.%' OR
-        source_ip LIKE '172.20.%' OR source_ip LIKE '172.21.%' OR
-        source_ip LIKE '172.22.%' OR source_ip LIKE '172.23.%' OR
-        source_ip LIKE '172.24.%' OR source_ip LIKE '172.25.%' OR
-        source_ip LIKE '172.26.%' OR source_ip LIKE '172.27.%' OR
-        source_ip LIKE '172.28.%' OR source_ip LIKE '172.29.%' OR
-        source_ip LIKE '172.30.%' OR source_ip LIKE '172.31.%'
+        source_ip LIKE '10.%%' OR source_ip LIKE '192.168.%%' OR
+        source_ip LIKE '172.16.%%' OR source_ip LIKE '172.17.%%' OR
+        source_ip LIKE '172.18.%%' OR source_ip LIKE '172.19.%%' OR
+        source_ip LIKE '172.20.%%' OR source_ip LIKE '172.21.%%' OR
+        source_ip LIKE '172.22.%%' OR source_ip LIKE '172.23.%%' OR
+        source_ip LIKE '172.24.%%' OR source_ip LIKE '172.25.%%' OR
+        source_ip LIKE '172.26.%%' OR source_ip LIKE '172.27.%%' OR
+        source_ip LIKE '172.28.%%' OR source_ip LIKE '172.29.%%' OR
+        source_ip LIKE '172.30.%%' OR source_ip LIKE '172.31.%%'
     )"""
 
     with db._connect() as conn:

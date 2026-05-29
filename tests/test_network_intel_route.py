@@ -28,6 +28,8 @@ def client(tmp_db, admin_token):
 def _insert_log(tmp_db, event_action, source_ip="1.2.3.4",
                 severity="info", minutes_ago=5,
                 destination_ip=None, message="test"):
+    ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     with tmp_db._connect() as conn:
         conn.execute(
             """
@@ -36,15 +38,15 @@ def _insert_log(tmp_db, event_action, source_ip="1.2.3.4",
                timestamp, received_at, processed_at, severity, event_category,
                event_action, source_ip, destination_ip,
                message, tags, tenant_id)
-            VALUES (?, ?, 'zeek', 'zeek',
-                    datetime('now', ?), datetime('now', ?), datetime('now'),
-                    ?, 'network',
-                    ?, ?, ?,
-                    ?, '[]', 'default')
+            VALUES (%s, %s, 'zeek', 'zeek',
+                    %s, %s, %s,
+                    %s, 'network',
+                    %s, %s, %s,
+                    %s, '[]', 'default')
             """,
             (
                 str(uuid.uuid4()), str(uuid.uuid4()),
-                f"-{minutes_ago} minutes", f"-{minutes_ago} minutes",
+                ts, ts, now,
                 severity, event_action,
                 source_ip, destination_ip or source_ip,
                 message,

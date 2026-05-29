@@ -60,8 +60,8 @@ def _insert_incident(
             INSERT INTO incidents
               (incident_id, title, severity, status, created_by,
                created_at, updated_at, resolved_at, acknowledged_at, tenant_id)
-            VALUES (?, 'Test Incident', ?, ?, 'system',
-                    ?, ?, ?, ?, ?)
+            VALUES (%s, 'Test Incident', %s, %s, 'system',
+                    %s, %s, %s, %s, %s)
             """,
             (
                 str(uuid.uuid4()), severity, status,
@@ -192,8 +192,8 @@ class TestMttdMttrDataQuality:
                 INSERT INTO incidents
                   (incident_id, title, severity, status, created_by,
                    created_at, updated_at, acknowledged_at, tenant_id)
-                VALUES (?, 'Bad', 'high', 'acknowledged', 'system',
-                        ?, ?, ?, 'default')
+                VALUES (%s, 'Bad', 'high', 'acknowledged', 'system',
+                        %s, %s, %s, 'default')
                 """,
                 (str(uuid.uuid4()), created.isoformat(), created.isoformat(),
                  ack.isoformat()),
@@ -213,8 +213,8 @@ class TestMttdMttrDataQuality:
                 INSERT INTO incidents
                   (incident_id, title, severity, status, created_by,
                    created_at, updated_at, resolved_at, tenant_id)
-                VALUES (?, 'Old', 'high', 'resolved', 'system',
-                        ?, ?, ?, 'default')
+                VALUES (%s, 'Old', 'high', 'resolved', 'system',
+                        %s, %s, %s, 'default')
                 """,
                 (str(uuid.uuid4()), created.isoformat(), created.isoformat(),
                  resolved.isoformat()),
