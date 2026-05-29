@@ -283,37 +283,15 @@ class Correlator:
             return []
         count_expr = _COUNT_DISTINCT_EXPRS[rule.distinct_by] if rule.distinct_by else "COUNT(*)"
 
-        kw_clause  = ""
-        kw_params: list = []
-        if rule.keywords:
-            parts = " OR ".join("message LIKE %s" for _ in rule.keywords)
-            kw_clause = f"AND ({parts})"
-            for kw in rule.keywords:
-                kw_params += [f"%{kw}%"]
-
-        with db._connect() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT {group_col} as grp_val,
-                       {count_expr} as cnt,
-                       MIN(timestamp) as first_ts, MAX(timestamp) as last_ts
-                FROM normalized_logs
-                WHERE event_action LIKE %s
-                  AND timestamp >= %s
-                  {"AND severity = %s" if rule.match_severity else ""}
-                  AND {group_col} IS NOT NULL
-                  {kw_clause}
-                GROUP BY {group_col}
-                HAVING {count_expr} >= %s
-                """,
-                (
-                    f"{rule.match_event_action}%",
-                    since,
-                    *(([rule.match_severity]) if rule.match_severity else []),
-                    *kw_params,
-                    rule.threshold,
-                ),
-            ).fetchall()
+        rows = db.query_correlated_log_groups(
+            event_action_prefix=rule.match_event_action,
+            since=since,
+            group_col=group_col,
+            count_expr=count_expr,
+            threshold=rule.threshold,
+            match_severity=rule.match_severity,
+            keywords=rule.keywords or [],
+        )
 
         produced = []
         for row in rows:

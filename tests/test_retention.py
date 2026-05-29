@@ -61,7 +61,7 @@ class TestRetentionCleanup:
 
         # Yeni kayıt DB'de kalmış olmalı
         with db._connect() as conn:
-            remaining = conn.execute("SELECT COUNT(*) FROM normalized_logs").fetchone()[0]
+            remaining = conn.execute("SELECT COUNT(*) AS cnt FROM normalized_logs").fetchone()["cnt"]
         assert remaining == 1
 
     def test_archive_file_created(self, tmp_db, retention_env):
@@ -121,10 +121,8 @@ class TestRetentionCleanup:
         ret.run_retention()
 
         with db._connect() as conn:
-            remaining = conn.execute(
-                "SELECT alert_id FROM alerts"
-            ).fetchall()
-        ids = [r[0] for r in remaining]
+            remaining = conn.execute("SELECT alert_id FROM alerts").fetchall()
+        ids = [r["alert_id"] for r in remaining]
         assert "old-active" in ids
         assert "old-resolved" not in ids
 
@@ -150,7 +148,7 @@ class TestRetentionCleanup:
 
         assert report["tables"]["raw_logs"]["deleted"] == 1
         with db._connect() as conn:
-            remaining = conn.execute("SELECT COUNT(*) FROM raw_logs").fetchone()[0]
+            remaining = conn.execute("SELECT COUNT(*) AS cnt FROM raw_logs").fetchone()["cnt"]
         assert remaining == 1
 
     def test_report_structure(self, tmp_db, retention_env):

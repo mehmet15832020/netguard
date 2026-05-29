@@ -21,8 +21,6 @@ from server.database import db
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_HOUR_EXPR = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
-
 
 @router.get("/network/intelligence")
 def network_intelligence(
@@ -39,224 +37,83 @@ def network_intelligence(
     tenant_id = tenant_scope(current_user)
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
 
-    with db._connect() as conn:
+    data = db.get_network_intelligence(since, tenant_id)
 
-        # ── Zeek event_action dağılımı ────────────────────────────────────
-        zeek_distribution = {}
-        rows = conn.execute(
-            f"""
-            SELECT event_action, COUNT(*) AS cnt
-            FROM normalized_logs
-            WHERE source_type = 'zeek'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY event_action
-            ORDER BY cnt DESC
-            LIMIT 20
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            zeek_distribution[r["event_action"]] = r["cnt"]
+    ja3_suspicious = []
+    for r in data["ja3_rows"]:
+        msg = r["message"] or ""
+        if "KNOWN_MALWARE_JA4" in msg:
+            fp_type = "ja4"
+        elif "KNOWN_MALWARE_JA3" in msg:
+            fp_type = "ja3"
+        elif "JA4=" in msg:
+            fp_type = "ja4"
+        else:
+            fp_type = "ja3"
+        ja3_suspicious.append({
+            "source_ip":        r["source_ip"],
+            "destination_ip":   r["destination_ip"],
+            "message":          msg,
+            "timestamp":        r["timestamp"],
+            "fingerprint_type": fp_type,
+        })
 
-        # ── TLS şüpheli parmak izleri (JA4 birincil, JA3 legacy) ─────────────
-        ja3_suspicious = []
-        rows = conn.execute(
-            f"""
-            SELECT source_ip, destination_ip, message, timestamp
-            FROM normalized_logs
-            WHERE event_action = 'tls_suspicious_fingerprint'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            ORDER BY timestamp DESC
-            LIMIT 50
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            msg = r["message"] or ""
-            if "KNOWN_MALWARE_JA4" in msg:
-                fp_type = "ja4"
-            elif "KNOWN_MALWARE_JA3" in msg:
-                fp_type = "ja3"
-            elif "JA4=" in msg:
-                fp_type = "ja4"
-            else:
-                fp_type = "ja3"
-            ja3_suspicious.append({
-                "source_ip":        r["source_ip"],
-                "destination_ip":   r["destination_ip"],
-                "message":          msg,
-                "timestamp":        r["timestamp"],
-                "fingerprint_type": fp_type,
-            })
-
-        # ── SSL sertifika anomalileri (self-signed + invalid) ──────────────
-        ssl_anomalies = []
-        rows = conn.execute(
-            f"""
-            SELECT source_ip, destination_ip, message, severity, timestamp
-            FROM normalized_logs
-            WHERE event_action = 'ssl_connection'
-              AND severity = 'warning'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            ORDER BY timestamp DESC
-            LIMIT 50
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            ssl_anomalies.append({
-                "source_ip":      r["source_ip"],
-                "destination_ip": r["destination_ip"],
-                "message":        r["message"],
-                "severity":       r["severity"],
-                "timestamp":      r["timestamp"],
-            })
-
-        # ── x509 self-signed sertifikalar ─────────────────────────────────
-        self_signed_certs = []
-        rows = conn.execute(
-            f"""
-            SELECT source_ip, message, timestamp
-            FROM normalized_logs
-            WHERE event_action = 'x509_certificate'
-              AND severity = 'warning'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            ORDER BY timestamp DESC
-            LIMIT 30
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            self_signed_certs.append({
-                "source_ip": r["source_ip"],
-                "message":   r["message"],
-                "timestamp": r["timestamp"],
-            })
-
-        # ── FTP hassas komutlar (RETR/STOR/DELE) ──────────────────────────
-        ftp_sensitive = []
-        rows = conn.execute(
-            f"""
-            SELECT source_ip, destination_ip, message, timestamp
-            FROM normalized_logs
-            WHERE event_action = 'ftp_command'
-              AND severity = 'warning'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            ORDER BY timestamp DESC
-            LIMIT 30
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            ftp_sensitive.append({
-                "source_ip":      r["source_ip"],
-                "destination_ip": r["destination_ip"],
-                "message":        r["message"],
-                "timestamp":      r["timestamp"],
-            })
-
-        # ── SMTP oturumları ───────────────────────────────────────────────
-        smtp_sessions = []
-        rows = conn.execute(
-            f"""
-            SELECT source_ip, destination_ip, message, timestamp
-            FROM normalized_logs
-            WHERE event_action = 'smtp_session'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            ORDER BY timestamp DESC
-            LIMIT 30
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            smtp_sessions.append({
-                "source_ip":      r["source_ip"],
-                "destination_ip": r["destination_ip"],
-                "message":        r["message"],
-                "timestamp":      r["timestamp"],
-            })
-
-        # ── En aktif kaynak IP'ler (Zeek) ─────────────────────────────────
-        top_sources = []
-        rows = conn.execute(
-            f"""
-            SELECT source_ip, COUNT(*) AS cnt
-            FROM normalized_logs
-            WHERE source_type = 'zeek'
-              AND source_ip IS NOT NULL
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY source_ip
-            ORDER BY cnt DESC
-            LIMIT 10
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            top_sources.append({"ip": r["source_ip"], "count": r["cnt"]})
-
-        # ── DNS sorgu sayısı ve en çok sorgulanan domainler ───────────────
-        dns_top = []
-        rows = conn.execute(
-            f"""
-            SELECT message, COUNT(*) AS cnt
-            FROM normalized_logs
-            WHERE event_action = 'dns_query'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY message
-            ORDER BY cnt DESC
-            LIMIT 10
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            dns_top.append({"query": r["message"], "count": r["cnt"]})
-
-        # ── Zaman serisi: Zeek olayları saatlik ───────────────────────────
-        timeline = []
-        rows = conn.execute(
-            f"""
-            SELECT {_HOUR_EXPR} AS hour,
-                   COUNT(*) AS cnt
-            FROM normalized_logs
-            WHERE source_type = 'zeek'
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY hour
-            ORDER BY hour ASC
-            """,
-            [since, tenant_id],
-        ).fetchall()
-        for r in rows:
-            timeline.append({"t": r["hour"], "v": r["cnt"]})
-
-        # ── Özet sayaçlar ─────────────────────────────────────────────────
-        summary = {
-            "ja3_suspicious_count":    len(ja3_suspicious),
-            "ssl_anomaly_count":       len(ssl_anomalies),
-            "self_signed_cert_count":  len(self_signed_certs),
-            "ftp_sensitive_count":     len(ftp_sensitive),
-            "smtp_session_count":      len(smtp_sessions),
-            "zeek_total_24h":          sum(zeek_distribution.values()),
+    ssl_anomalies = [
+        {
+            "source_ip":      r["source_ip"],
+            "destination_ip": r["destination_ip"],
+            "message":        r["message"],
+            "severity":       r["severity"],
+            "timestamp":      r["timestamp"],
         }
+        for r in data["ssl_rows"]
+    ]
+    self_signed_certs = [
+        {"source_ip": r["source_ip"], "message": r["message"], "timestamp": r["timestamp"]}
+        for r in data["x509_rows"]
+    ]
+    ftp_sensitive = [
+        {
+            "source_ip":      r["source_ip"],
+            "destination_ip": r["destination_ip"],
+            "message":        r["message"],
+            "timestamp":      r["timestamp"],
+        }
+        for r in data["ftp_rows"]
+    ]
+    smtp_sessions = [
+        {
+            "source_ip":      r["source_ip"],
+            "destination_ip": r["destination_ip"],
+            "message":        r["message"],
+            "timestamp":      r["timestamp"],
+        }
+        for r in data["smtp_rows"]
+    ]
+    top_sources = [{"ip": r["source_ip"], "count": r["cnt"]} for r in data["top_src_rows"]]
+    dns_top     = [{"query": r["message"], "count": r["cnt"]} for r in data["dns_rows"]]
+    timeline    = [{"t": r["hour"], "v": r["cnt"]} for r in data["timeline_rows"]]
+
+    zeek_distribution = data["zeek_distribution"]
+    summary = {
+        "ja3_suspicious_count":   len(ja3_suspicious),
+        "ssl_anomaly_count":      len(ssl_anomalies),
+        "self_signed_cert_count": len(self_signed_certs),
+        "ftp_sensitive_count":    len(ftp_sensitive),
+        "smtp_session_count":     len(smtp_sessions),
+        "zeek_total_24h":         sum(zeek_distribution.values()),
+    }
 
     return {
-        "hours":              hours,
-        "summary":            summary,
-        "zeek_distribution":  zeek_distribution,
-        "ja3_suspicious":     ja3_suspicious,
-        "ssl_anomalies":      ssl_anomalies,
-        "self_signed_certs":  self_signed_certs,
-        "ftp_sensitive":      ftp_sensitive,
-        "smtp_sessions":      smtp_sessions,
-        "top_sources":        top_sources,
-        "dns_top":            dns_top,
-        "timeline":           timeline,
+        "hours":             hours,
+        "summary":           summary,
+        "zeek_distribution": zeek_distribution,
+        "ja3_suspicious":    ja3_suspicious,
+        "ssl_anomalies":     ssl_anomalies,
+        "self_signed_certs": self_signed_certs,
+        "ftp_sensitive":     ftp_sensitive,
+        "smtp_sessions":     smtp_sessions,
+        "top_sources":       top_sources,
+        "dns_top":           dns_top,
+        "timeline":          timeline,
     }

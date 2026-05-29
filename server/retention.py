@@ -16,7 +16,6 @@ Varsayılan süreler (env ile override edilebilir):
   NETGUARD_ARCHIVE_TOTAL_DAYS        = 365  (arşivden de sil, 1 yıl sonra)
 """
 
-import contextlib
 import gzip
 import json
 import logging
@@ -25,8 +24,6 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from server.database import db
-
-_LOCK = getattr(db, "_lock", contextlib.nullcontext())
 
 logger = logging.getLogger(__name__)
 
@@ -100,29 +97,14 @@ def _cleanup_table(
     """
     cutoff = datetime.now(timezone.utc) - timedelta(days=retain_days)
 
-    where = f"{timestamp_col} < %s"
-    if extra_where:
-        where += f" AND {extra_where}"
-
-    with db._connect() as conn:
-        rows = conn.execute(
-            f"SELECT * FROM {table} WHERE {where}", (cutoff,)
-        ).fetchall()
-
-    if not rows:
+    row_dicts = db.fetch_table_rows_before(table, timestamp_col, cutoff, extra_where)
+    if not row_dicts:
         return 0, 0
 
-    row_dicts = [dict(r) for r in rows]
     archive_file = _archive_rows(table, row_dicts, cutoff)
     logger.info(f"{table}: {len(row_dicts)} kayıt arşivlendi → {archive_file.name}")
 
-    with _LOCK:
-        with db._connect() as conn:
-            cur = conn.execute(
-                f"DELETE FROM {table} WHERE {where}", (cutoff,)
-            )
-            deleted = cur.rowcount
-
+    deleted = db.delete_table_rows_before(table, timestamp_col, cutoff, extra_where)
     return len(row_dicts), deleted
 
 

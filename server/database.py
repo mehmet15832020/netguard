@@ -523,6 +523,203 @@ class DatabaseManager:
             logger.warning("search_logs başarısız [query=%r]: %s", q, exc)
             return []
 
+    def get_log_aggregates_by_ip(
+        self,
+        since: datetime,
+        tenant_id: str,
+        min_events: int = 1,
+    ) -> list[dict]:
+        """source_ip başına olay istatistikleri — asset_baseline için."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT source_ip,
+                       COUNT(*) AS total_events,
+                       COUNT(DISTINCT date_trunc('hour', timestamp)) AS distinct_hours,
+                       MIN(timestamp) AS first_seen,
+                       MAX(timestamp) AS last_seen
+                FROM normalized_logs
+                WHERE source_ip IS NOT NULL
+                  AND timestamp >= %s
+                  AND tenant_id = %s
+                GROUP BY source_ip
+                HAVING COUNT(*) >= %s
+                """,
+                (since, tenant_id, min_events),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_top_values_by_ip(
+        self,
+        source_ip: str,
+        column: str,
+        since: datetime,
+        tenant_id: str,
+        limit: int = 5,
+    ) -> list[dict]:
+        """Bir kolondaki en sık N değer — asset_baseline _top_values için.
+        Çağıran whitelist doğrulaması yapmalıdır."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT {column} AS val, COUNT(*) AS cnt
+                FROM normalized_logs
+                WHERE source_ip = %s
+                  AND {column} IS NOT NULL
+                  AND timestamp >= %s
+                  AND tenant_id = %s
+                GROUP BY {column}
+                ORDER BY cnt DESC
+                LIMIT %s
+                """,
+                (source_ip, since, tenant_id, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_event_counts_by_ip(self, since: datetime, tenant_id: str) -> list[dict]:
+        """source_ip başına olay sayısı — asset_baseline sapma tespiti için."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT source_ip, COUNT(*) AS event_count
+                FROM normalized_logs
+                WHERE source_ip IS NOT NULL
+                  AND timestamp >= %s
+                  AND tenant_id = %s
+                GROUP BY source_ip
+                """,
+                (since, tenant_id),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def query_correlated_log_groups(
+        self,
+        event_action_prefix: str,
+        since: datetime,
+        group_col: str,
+        count_expr: str,
+        threshold: int,
+        match_severity: Optional[str],
+        keywords: list[str],
+    ) -> list[dict]:
+        """Korelasyon motoru GROUP BY sorgusu — correlator._apply_rule için.
+        group_col ve count_expr çağıran tarafından whitelist doğrulaması yapılmalıdır."""
+        kw_clause = ""
+        kw_params: list = []
+        if keywords:
+            parts = " OR ".join("message LIKE %s" for _ in keywords)
+            kw_clause = f"AND ({parts})"
+            kw_params = [f"%{kw}%" for kw in keywords]
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT {group_col} AS grp_val,
+                       {count_expr} AS cnt,
+                       MIN(timestamp) AS first_ts, MAX(timestamp) AS last_ts
+                FROM normalized_logs
+                WHERE event_action LIKE %s
+                  AND timestamp >= %s
+                  {"AND severity = %s" if match_severity else ""}
+                  AND {group_col} IS NOT NULL
+                  {kw_clause}
+                GROUP BY {group_col}
+                HAVING {count_expr} >= %s
+                """,
+                (
+                    f"{event_action_prefix}%",
+                    since,
+                    *([match_severity] if match_severity else []),
+                    *kw_params,
+                    threshold,
+                ),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_network_intelligence(self, since: str, tenant_id: str) -> dict:
+        """Zeek/TLS/SSL/FTP/SMTP/DNS istatistiklerini tek sorguda toplar — network_intel route için."""
+        _HOUR_EXPR = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+        params_ts = [since, tenant_id]
+        with self._connect() as conn:
+            zeek_dist: dict = {}
+            for r in conn.execute(
+                "SELECT event_action, COUNT(*) AS cnt FROM normalized_logs"
+                " WHERE source_type = 'zeek' AND timestamp >= %s AND tenant_id = %s"
+                " GROUP BY event_action ORDER BY cnt DESC LIMIT 20",
+                params_ts,
+            ).fetchall():
+                zeek_dist[r["event_action"]] = r["cnt"]
+
+            ja3_rows = conn.execute(
+                "SELECT source_ip, destination_ip, message, timestamp FROM normalized_logs"
+                " WHERE event_action = 'tls_suspicious_fingerprint'"
+                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 50",
+                params_ts,
+            ).fetchall()
+
+            ssl_rows = conn.execute(
+                "SELECT source_ip, destination_ip, message, severity, timestamp FROM normalized_logs"
+                " WHERE event_action = 'ssl_connection' AND severity = 'warning'"
+                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 50",
+                params_ts,
+            ).fetchall()
+
+            x509_rows = conn.execute(
+                "SELECT source_ip, message, timestamp FROM normalized_logs"
+                " WHERE event_action = 'x509_certificate' AND severity = 'warning'"
+                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
+                params_ts,
+            ).fetchall()
+
+            ftp_rows = conn.execute(
+                "SELECT source_ip, destination_ip, message, timestamp FROM normalized_logs"
+                " WHERE event_action = 'ftp_command' AND severity = 'warning'"
+                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
+                params_ts,
+            ).fetchall()
+
+            smtp_rows = conn.execute(
+                "SELECT source_ip, destination_ip, message, timestamp FROM normalized_logs"
+                " WHERE event_action = 'smtp_session'"
+                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
+                params_ts,
+            ).fetchall()
+
+            top_src_rows = conn.execute(
+                "SELECT source_ip, COUNT(*) AS cnt FROM normalized_logs"
+                " WHERE source_type = 'zeek' AND source_ip IS NOT NULL"
+                "   AND timestamp >= %s AND tenant_id = %s"
+                " GROUP BY source_ip ORDER BY cnt DESC LIMIT 10",
+                params_ts,
+            ).fetchall()
+
+            dns_rows = conn.execute(
+                "SELECT message, COUNT(*) AS cnt FROM normalized_logs"
+                " WHERE event_action = 'dns_query'"
+                "   AND timestamp >= %s AND tenant_id = %s"
+                " GROUP BY message ORDER BY cnt DESC LIMIT 10",
+                params_ts,
+            ).fetchall()
+
+            timeline_rows = conn.execute(
+                f"SELECT {_HOUR_EXPR} AS hour, COUNT(*) AS cnt FROM normalized_logs"
+                " WHERE source_type = 'zeek' AND timestamp >= %s AND tenant_id = %s"
+                " GROUP BY hour ORDER BY hour ASC",
+                params_ts,
+            ).fetchall()
+
+        return {
+            "zeek_distribution": zeek_dist,
+            "ja3_rows":          [dict(r) for r in ja3_rows],
+            "ssl_rows":          [dict(r) for r in ssl_rows],
+            "x509_rows":         [dict(r) for r in x509_rows],
+            "ftp_rows":          [dict(r) for r in ftp_rows],
+            "smtp_rows":         [dict(r) for r in smtp_rows],
+            "top_src_rows":      [dict(r) for r in top_src_rows],
+            "dns_rows":          [dict(r) for r in dns_rows],
+            "timeline_rows":     [dict(r) for r in timeline_rows],
+        }
+
     def _row_to_normalized_log(self, row: dict) -> NormalizedLog:
         return NormalizedLog(
             log_id               = row["log_id"],
@@ -675,6 +872,15 @@ class DatabaseManager:
                 params,
             ).fetchone()
         return {"total": row["total"] or 0, "high_plus": row["high_plus"] or 0}
+
+    def get_rule_alert_counts(self, since: datetime) -> list[dict]:
+        """rule_id başına correlated_events sayısı — MITRE activity/heatmap için."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT rule_id, COUNT(*) AS cnt FROM correlated_events WHERE created_at >= %s GROUP BY rule_id",
+                (since,),
+            ).fetchall()
+        return [{"rule_id": r["rule_id"], "cnt": r["cnt"]} for r in rows]
 
     # ------------------------------------------------------------------ #
     #  ATTACK CHAIN STATE
@@ -1731,6 +1937,44 @@ class DatabaseManager:
         with self._connect() as conn:
             row = conn.execute(f"SELECT COUNT(*) FROM incidents {where}", params).fetchone()
         return list(row.values())[0] if row else 0
+
+    # ------------------------------------------------------------------ #
+    #  RETENTION — dinamik tablo temizliği
+    # ------------------------------------------------------------------ #
+
+    def fetch_table_rows_before(
+        self,
+        table: str,
+        ts_col: str,
+        cutoff: datetime,
+        extra_where: str = "",
+    ) -> list[dict]:
+        """cutoff öncesi satırları döner (arşivleme için). Yalnızca iç retention kodu çağırır."""
+        where = f"{ts_col} < %s"
+        if extra_where:
+            where += f" AND {extra_where}"
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM {table} WHERE {where}", (cutoff,)
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def delete_table_rows_before(
+        self,
+        table: str,
+        ts_col: str,
+        cutoff: datetime,
+        extra_where: str = "",
+    ) -> int:
+        """cutoff öncesi satırları siler, silinen satır sayısını döner. Yalnızca iç retention kodu çağırır."""
+        where = f"{ts_col} < %s"
+        if extra_where:
+            where += f" AND {extra_where}"
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"DELETE FROM {table} WHERE {where}", (cutoff,)
+            )
+            return cur.rowcount
 
     # ------------------------------------------------------------------ #
     #  NO-OP COMPATIBILITY (SQLite-only methods not needed in PostgreSQL)

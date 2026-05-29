@@ -17,8 +17,6 @@ from server.database import db
 
 logger = logging.getLogger(__name__)
 
-_DISTINCT_HOUR_EXPR = "COUNT(DISTINCT date_trunc('hour', timestamp))"
-
 BASELINE_WINDOW_DAYS    = 7     # Kaç günlük geçmişten profil hesaplanır
 DEVIATION_WINDOW_HOURS  = 1     # Kaç saatlik mevcut pencere (sapma tespiti)
 TOP_N                   = 5     # Kaç tipik değer saklanır
@@ -35,25 +33,7 @@ def update_baselines(tenant_id: str = "default") -> int:
     Döner: güncellenen asset sayısı.
     """
     since_dt = datetime.now(timezone.utc) - timedelta(days=BASELINE_WINDOW_DAYS)
-
-    with db._connect() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT
-                source_ip,
-                COUNT(*) AS total_events,
-                {_DISTINCT_HOUR_EXPR} AS distinct_hours,
-                MIN(timestamp) AS first_seen,
-                MAX(timestamp) AS last_seen
-            FROM normalized_logs
-            WHERE source_ip IS NOT NULL
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY source_ip
-            HAVING COUNT(*) >= %s
-            """,
-            (since_dt, tenant_id, MIN_EVENTS_FOR_BASELINE),
-        ).fetchall()
+    rows = db.get_log_aggregates_by_ip(since_dt, tenant_id, MIN_EVENTS_FOR_BASELINE)
 
     updated = 0
     for row in rows:
@@ -87,21 +67,7 @@ def _top_values(source_ip: str, column: str, since_dt: datetime, tenant_id: str)
     """Bir kolondaki en sık TOP_N değeri döner. Whitelist ile SQL injection yok."""
     if column not in _VALID_COLUMNS:
         return []
-    with db._connect() as conn:
-        rows = conn.execute(
-            f"""
-            SELECT {column} AS val, COUNT(*) AS cnt
-            FROM normalized_logs
-            WHERE source_ip = %s
-              AND {column} IS NOT NULL
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY {column}
-            ORDER BY cnt DESC
-            LIMIT {TOP_N}
-            """,
-            (source_ip, since_dt, tenant_id),
-        ).fetchall()
+    rows = db.get_top_values_by_ip(source_ip, column, since_dt, tenant_id, TOP_N)
     return [str(r["val"]) for r in rows]
 
 
@@ -117,18 +83,7 @@ def check_deviations(tenant_id: str = "default") -> int:
         return 0
 
     since_dt = datetime.now(timezone.utc) - timedelta(hours=DEVIATION_WINDOW_HOURS)
-    with db._connect() as conn:
-        current_rows = conn.execute(
-            """
-            SELECT source_ip, COUNT(*) AS event_count
-            FROM normalized_logs
-            WHERE source_ip IS NOT NULL
-              AND timestamp >= %s
-              AND tenant_id = %s
-            GROUP BY source_ip
-            """,
-            (since_dt, tenant_id),
-        ).fetchall()
+    current_rows = db.get_event_counts_by_ip(since_dt, tenant_id)
 
     detected = 0
     for row in current_rows:

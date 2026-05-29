@@ -39,19 +39,11 @@ def mitre_heatmap(days: int = 30, _: User = Depends(get_current_user)):
 
     rules = correlator._rules
 
-    # Son N gündeki kural bazlı alert sayıları
     cutoff_n = datetime.now(timezone.utc) - timedelta(days=days)
-    with db._connect() as conn:
-        rows = conn.execute(
-            """
-            SELECT rule_id, COUNT(*) as cnt
-            FROM correlated_events
-            WHERE created_at >= %s
-            GROUP BY rule_id
-            """,
-            (cutoff_n,),
-        ).fetchall()
-    recent_alerts = [{"rule_id": r["rule_id"], "count": r["cnt"]} for r in rows]
+    recent_alerts = [
+        {"rule_id": r["rule_id"], "count": r["cnt"]}
+        for r in db.get_rule_alert_counts(cutoff_n)
+    ]
 
     return get_heatmap(rules, recent_alerts)
 
@@ -102,30 +94,8 @@ def mitre_activity(_: User = Depends(get_current_user)):
             rule_tactic_map[rule.rule_id] = parsed["mitre_tactics"]
 
     now = datetime.now(timezone.utc)
-    cutoff_24h = now - timedelta(days=1)
-    cutoff_7d  = now - timedelta(days=7)
-    with db._connect() as conn:
-        rows_24h = conn.execute(
-            """
-            SELECT rule_id, COUNT(*) as cnt
-            FROM correlated_events
-            WHERE created_at >= %s
-            GROUP BY rule_id
-            """,
-            (cutoff_24h,),
-        ).fetchall()
-        rows_7d = conn.execute(
-            """
-            SELECT rule_id, COUNT(*) as cnt
-            FROM correlated_events
-            WHERE created_at >= %s
-            GROUP BY rule_id
-            """,
-            (cutoff_7d,),
-        ).fetchall()
-
-    counts_24h = {r["rule_id"]: r["cnt"] for r in rows_24h}
-    counts_7d  = {r["rule_id"]: r["cnt"] for r in rows_7d}
+    counts_24h = {r["rule_id"]: r["cnt"] for r in db.get_rule_alert_counts(now - timedelta(days=1))}
+    counts_7d  = {r["rule_id"]: r["cnt"] for r in db.get_rule_alert_counts(now - timedelta(days=7))}
 
     tactic_activity: dict[str, dict] = {}
     for rule_id, tactics in rule_tactic_map.items():
