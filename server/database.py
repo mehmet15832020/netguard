@@ -35,6 +35,24 @@ DATABASE_URL = os.getenv(
 
 _IP_RE = re.compile(r'^\d{1,3}(\.\d{1,3}){1,3}$')
 
+# f-string SQL içeren metodlar için module-level whitelist'ler (OWASP SQLi Prevention)
+_VALID_GROUP_COLS: frozenset[str] = frozenset({
+    "source_ip", "destination_ip", "observer_hostname", "username", "hostname",
+    "event_action", "event_category", "tenant_id", "source_type",
+    "network_protocol", "source_port", "destination_port", "device_id",
+})
+_VALID_COUNT_EXPRS: frozenset[str] = frozenset(
+    {"COUNT(*)"} | {f"COUNT(DISTINCT {col})" for col in _VALID_GROUP_COLS}
+)
+_VALID_TOP_VALUE_COLS: frozenset[str] = frozenset({"destination_port", "destination_ip", "event_action"})
+_RETENTION_ALLOWED: dict[str, str] = {
+    "normalized_logs":   "timestamp",
+    "raw_logs":          "received_at",
+    "security_events":   "occurred_at",
+    "correlated_events": "created_at",
+    "alerts":            "triggered_at",
+}
+
 _AUDIT_CHAIN_GENESIS = "0" * 64
 _AUDIT_CHAIN_LOCK_ID = 0x41554443  # "AUDC" — audit chain serialization lock
 
@@ -557,8 +575,9 @@ class DatabaseManager:
         tenant_id: str,
         limit: int = 5,
     ) -> list[dict]:
-        """Bir kolondaki en sık N değer — asset_baseline _top_values için.
-        Çağıran whitelist doğrulaması yapmalıdır."""
+        """Bir kolondaki en sık N değer — asset_baseline _top_values için."""
+        if column not in _VALID_TOP_VALUE_COLS:
+            raise ValueError(f"get_top_values_by_ip: geçersiz column '{column}'")
         with self._connect() as conn:
             rows = conn.execute(
                 f"""
@@ -602,8 +621,11 @@ class DatabaseManager:
         match_severity: Optional[str],
         keywords: list[str],
     ) -> list[dict]:
-        """Korelasyon motoru GROUP BY sorgusu — correlator._apply_rule için.
-        group_col ve count_expr çağıran tarafından whitelist doğrulaması yapılmalıdır."""
+        """Korelasyon motoru GROUP BY sorgusu — correlator._apply_rule için."""
+        if group_col not in _VALID_GROUP_COLS:
+            raise ValueError(f"query_correlated_log_groups: geçersiz group_col '{group_col}'")
+        if count_expr not in _VALID_COUNT_EXPRS:
+            raise ValueError(f"query_correlated_log_groups: geçersiz count_expr '{count_expr}'")
         kw_clause = ""
         kw_params: list = []
         if keywords:
@@ -1950,6 +1972,8 @@ class DatabaseManager:
         extra_where: str = "",
     ) -> list[dict]:
         """cutoff öncesi satırları döner (arşivleme için). Yalnızca iç retention kodu çağırır."""
+        if table not in _RETENTION_ALLOWED or _RETENTION_ALLOWED[table] != ts_col:
+            raise ValueError(f"fetch_table_rows_before: izin verilmeyen tablo/kolon '{table}.{ts_col}'")
         where = f"{ts_col} < %s"
         if extra_where:
             where += f" AND {extra_where}"
@@ -1967,6 +1991,8 @@ class DatabaseManager:
         extra_where: str = "",
     ) -> int:
         """cutoff öncesi satırları siler, silinen satır sayısını döner. Yalnızca iç retention kodu çağırır."""
+        if table not in _RETENTION_ALLOWED or _RETENTION_ALLOWED[table] != ts_col:
+            raise ValueError(f"delete_table_rows_before: izin verilmeyen tablo/kolon '{table}.{ts_col}'")
         where = f"{ts_col} < %s"
         if extra_where:
             where += f" AND {extra_where}"

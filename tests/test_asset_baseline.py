@@ -355,3 +355,71 @@ class TestAssetBaselineKillChainIntegration:
         data = resp.json()
         assert isinstance(data, list)
         assert any(b["source_ip"] == "192.168.1.1" for b in data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  DB Metod Güvenlik — whitelist guard (OWASP SQLi Prevention)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestDbMethodWhitelist:
+    def test_get_top_values_invalid_column_raises(self, baseline_db):
+        from datetime import datetime, timezone
+        with pytest.raises(ValueError, match="geçersiz column"):
+            baseline_db.get_top_values_by_ip(
+                "1.2.3.4", "destination_ip; DROP TABLE normalized_logs",
+                datetime.now(timezone.utc), "default", 5,
+            )
+
+    def test_get_top_values_valid_columns_accepted(self, baseline_db):
+        from datetime import datetime, timezone
+        for col in ("destination_port", "destination_ip", "event_action"):
+            result = baseline_db.get_top_values_by_ip("1.2.3.4", col, datetime.now(timezone.utc), "default", 5)
+            assert isinstance(result, list)
+
+    def test_query_correlated_log_groups_invalid_group_col_raises(self, baseline_db):
+        from datetime import datetime, timezone
+        with pytest.raises(ValueError, match="geçersiz group_col"):
+            baseline_db.query_correlated_log_groups(
+                event_action_prefix="ssh_failure",
+                since=datetime.now(timezone.utc),
+                group_col="source_ip; DROP TABLE normalized_logs",
+                count_expr="COUNT(*)",
+                threshold=5,
+                match_severity=None,
+                keywords=[],
+            )
+
+    def test_query_correlated_log_groups_invalid_count_expr_raises(self, baseline_db):
+        from datetime import datetime, timezone
+        with pytest.raises(ValueError, match="geçersiz count_expr"):
+            baseline_db.query_correlated_log_groups(
+                event_action_prefix="ssh_failure",
+                since=datetime.now(timezone.utc),
+                group_col="source_ip",
+                count_expr="1; DROP TABLE normalized_logs; --",
+                threshold=5,
+                match_severity=None,
+                keywords=[],
+            )
+
+    def test_fetch_table_rows_before_invalid_table_raises(self, baseline_db):
+        from datetime import datetime, timezone
+        with pytest.raises(ValueError, match="izin verilmeyen tablo"):
+            baseline_db.fetch_table_rows_before(
+                "admin_secrets", "created_at", datetime.now(timezone.utc)
+            )
+
+    def test_fetch_table_rows_before_wrong_ts_col_raises(self, baseline_db):
+        from datetime import datetime, timezone
+        with pytest.raises(ValueError, match="izin verilmeyen tablo"):
+            baseline_db.fetch_table_rows_before(
+                "normalized_logs", "created_at",  # yanlış kolon
+                datetime.now(timezone.utc)
+            )
+
+    def test_delete_table_rows_before_invalid_table_raises(self, baseline_db):
+        from datetime import datetime, timezone
+        with pytest.raises(ValueError, match="izin verilmeyen tablo"):
+            baseline_db.delete_table_rows_before(
+                "db_users", "created_at", datetime.now(timezone.utc)
+            )
