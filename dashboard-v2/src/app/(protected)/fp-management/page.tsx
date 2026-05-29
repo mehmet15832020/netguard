@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Shield, Plus, Trash2, AlertTriangle, RefreshCw, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { fpRulesApi, type FPRule, type FPRuleCreate } from '@/lib/api'
+import { SkeletonTable } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 
 type SortKey = 'hit_count' | 'created_at' | 'expires_at'
 
@@ -13,13 +15,13 @@ function daysRemaining(expiresAt: string | null): number | null {
 }
 
 function ExpiryBadge({ expiresAt }: { expiresAt: string | null }) {
-  if (!expiresAt) return <span className="text-zinc-500 text-xs">Süresiz</span>
+  if (!expiresAt) return <span className="text-slate-600 text-xs">Süresiz</span>
   const days = daysRemaining(expiresAt)
   if (days === null) return null
-  if (days < 0)  return <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-950/60 text-red-400">Süresi Doldu</span>
-  if (days < 3)  return <span className="px-2 py-0.5 rounded text-xs font-medium bg-red-950/40 text-red-400">{days} gün</span>
-  if (days < 7)  return <span className="px-2 py-0.5 rounded text-xs font-medium bg-yellow-950/40 text-yellow-400">{days} gün</span>
-  return <span className="px-2 py-0.5 rounded text-xs font-medium bg-zinc-800 text-zinc-300">{days} gün</span>
+  if (days < 0)  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 border border-red-500/30 text-red-400 backdrop-blur-sm">Süresi Doldu</span>
+  if (days < 3)  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-500/10 border border-red-500/25 text-red-400 backdrop-blur-sm">{days} gün</span>
+  if (days < 7)  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-500/10 border border-yellow-500/25 text-yellow-400 backdrop-blur-sm">{days} gün</span>
+  return <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-sky-950/30 border border-sky-900/20 text-slate-400">{days} gün</span>
 }
 
 function FieldCombination({ rule }: { rule: FPRule }) {
@@ -29,11 +31,11 @@ function FieldCombination({ rule }: { rule: FPRule }) {
   if (rule.destination_ip)   parts.push(`dst=${rule.destination_ip}`)
   if (rule.destination_port) parts.push(`port=${rule.destination_port}`)
   if (rule.observer_hostname) parts.push(`host=${rule.observer_hostname}`)
-  if (parts.length === 0) return <span className="text-zinc-500 italic text-xs">Genel kural</span>
+  if (parts.length === 0) return <span className="text-slate-600 italic text-xs">Genel kural</span>
   return (
     <div className="flex flex-wrap gap-1">
       {parts.map(p => (
-        <span key={p} className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 text-xs font-mono">{p}</span>
+        <span key={p} className="px-1.5 py-0.5 rounded bg-sky-950/30 border border-sky-900/20 text-sky-300 text-xs font-mono">{p}</span>
       ))}
     </div>
   )
@@ -45,7 +47,7 @@ function SortHeader({
   const active = sort === col
   return (
     <button
-      className={`flex items-center gap-1 text-xs font-medium uppercase hover:text-zinc-200 transition-colors ${active ? 'text-zinc-200' : 'text-zinc-500'}`}
+      className={cn('flex items-center gap-1 text-xs font-medium uppercase tracking-wide transition-colors', active ? 'text-sky-400' : 'text-slate-600 hover:text-slate-300')}
       onClick={() => onSort(col)}
     >
       {label}
@@ -55,6 +57,8 @@ function SortHeader({
     </button>
   )
 }
+
+const INPUT_CLS = "w-full bg-sky-950/20 border border-sky-900/25 rounded px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors"
 
 function NewRuleModal({ onClose, onCreate }: { onClose: () => void; onCreate: (d: FPRuleCreate) => void }) {
   const [form, setForm] = useState<FPRuleCreate>({ reason: '' })
@@ -68,66 +72,65 @@ function NewRuleModal({ onClose, onCreate }: { onClose: () => void; onCreate: (d
     onCreate(form)
   }
 
-  const inp = "w-full bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
-
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md p-6 shadow-xl">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-base font-semibold text-zinc-100">Yeni FP Kuralı</h2>
-          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-200"><X size={16} /></button>
+    <div className="fixed inset-0 bg-[#040911]/80 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-[#0a1120] border border-sky-900/30 rounded-xl w-full max-w-md p-6 shadow-[0_24px_64px_rgba(0,0,0,0.7),0_0_0_1px_rgba(56,189,248,0.04)]">
+        <div className="flex justify-between items-center mb-5">
+          <div className="flex items-center gap-2">
+            <Shield size={16} className="text-sky-400" />
+            <h2 className="text-sm font-semibold text-slate-100">Yeni FP Kuralı</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors"><X size={16} /></button>
         </div>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Event Action</label>
-            <input className={inp} placeholder="ssh_failure, port_scan, ..." value={form.event_action ?? ''}
+            <label className="block text-xs text-slate-500 mb-1">Event Action</label>
+            <input className={INPUT_CLS} placeholder="ssh_failure, port_scan, ..." value={form.event_action ?? ''}
               onChange={e => setForm(f => ({ ...f, event_action: e.target.value || undefined }))} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Kaynak IP / CIDR</label>
-              <input className={inp} placeholder="10.0.0.5 veya 10.0.0.0/24" value={form.source_ip ?? ''}
+              <label className="block text-xs text-slate-500 mb-1">Kaynak IP / CIDR</label>
+              <input className={INPUT_CLS} placeholder="10.0.0.5 veya 10.0.0.0/24" value={form.source_ip ?? ''}
                 onChange={e => setForm(f => ({ ...f, source_ip: e.target.value || undefined }))} />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Hedef IP / CIDR</label>
-              <input className={inp} placeholder="192.168.1.0/24" value={form.destination_ip ?? ''}
+              <label className="block text-xs text-slate-500 mb-1">Hedef IP / CIDR</label>
+              <input className={INPUT_CLS} placeholder="192.168.1.0/24" value={form.destination_ip ?? ''}
                 onChange={e => setForm(f => ({ ...f, destination_ip: e.target.value || undefined }))} />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Hedef Port</label>
-              <input className={inp} placeholder="443" value={form.destination_port ?? ''}
+              <label className="block text-xs text-slate-500 mb-1">Hedef Port</label>
+              <input className={INPUT_CLS} placeholder="443" value={form.destination_port ?? ''}
                 onChange={e => setForm(f => ({ ...f, destination_port: e.target.value || undefined }))} />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 mb-1">Observer Hostname</label>
-              <input className={inp} placeholder="firewall-01" value={form.observer_hostname ?? ''}
+              <label className="block text-xs text-slate-500 mb-1">Observer Hostname</label>
+              <input className={INPUT_CLS} placeholder="firewall-01" value={form.observer_hostname ?? ''}
                 onChange={e => setForm(f => ({ ...f, observer_hostname: e.target.value || undefined }))} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-zinc-400 mb-1">Geçerlilik (gün)</label>
-              <input className={inp} type="number" min={1} max={365} placeholder="30"
-                value={form.expires_in_days ?? ''}
-                onChange={e => setForm(f => ({ ...f, expires_in_days: e.target.value ? Number(e.target.value) : undefined }))} />
-            </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1">Geçerlilik (gün)</label>
+            <input className={INPUT_CLS} type="number" min={1} max={365} placeholder="30"
+              value={form.expires_in_days ?? ''}
+              onChange={e => setForm(f => ({ ...f, expires_in_days: e.target.value ? Number(e.target.value) : undefined }))} />
           </div>
           <div>
-            <label className="block text-xs text-zinc-400 mb-1">Neden <span className="text-red-400">*</span></label>
-            <input className={inp} placeholder="Dahili tarama aracı, planlı bakım, vb." value={form.reason}
+            <label className="block text-xs text-slate-500 mb-1">Neden <span className="text-red-400">*</span></label>
+            <input className={INPUT_CLS} placeholder="Dahili tarama aracı, planlı bakım, vb." value={form.reason}
               onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} />
           </div>
           {error && <p className="text-xs text-red-400">{error}</p>}
-          <div className="flex justify-end gap-2 pt-1">
+          <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose}
-              className="px-4 py-1.5 rounded text-sm text-zinc-300 hover:text-zinc-100 bg-zinc-800 hover:bg-zinc-700">
+              className="px-4 py-1.5 rounded text-sm text-slate-300 hover:text-slate-100 bg-sky-950/30 hover:bg-sky-950/50 border border-sky-900/20 transition-colors">
               İptal
             </button>
             <button type="submit"
-              className="px-4 py-1.5 rounded text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-medium">
+              className="px-4 py-1.5 rounded text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium transition-colors">
               Oluştur
             </button>
           </div>
@@ -196,21 +199,33 @@ export default function FPManagementPage() {
   }, [rules, activeRules, expiredRules, statusFilter, actionFilter, sort, dir])
 
   const topHitter = activeRules.reduce<FPRule | null>((best, r) => (!best || r.hit_count > best.hit_count) ? r : best, null)
+  const expiringSoon = activeRules.filter(r => { const d = daysRemaining(r.expires_at); return d !== null && d >= 0 && d < 7 }).length
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Shield size={20} className="text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">False Positive Yönetimi</h1>
+          <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+            <Shield size={15} className="text-sky-400" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-slate-100 leading-tight">False Positive Yönetimi</h1>
+            <p className="text-xs text-slate-600">CIDR destekli olay bastırma kuralları</p>
+          </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => refetch()} className="p-1.5 rounded text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800">
+          <button
+            onClick={() => refetch()}
+            className="p-1.5 rounded-md text-slate-500 hover:text-slate-300 hover:bg-sky-950/40 transition-colors"
+            title="Yenile"
+          >
             <RefreshCw size={14} />
           </button>
-          <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium">
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition-colors shadow-[0_0_12px_rgba(56,189,248,0.15)]"
+          >
             <Plus size={14} /> Yeni Kural
           </button>
         </div>
@@ -218,58 +233,61 @@ export default function FPManagementPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500 mb-1">Aktif Kural</div>
-          <div className="text-2xl font-bold text-zinc-100">{activeRules.length}</div>
-          <div className="text-xs text-zinc-600 mt-0.5">{expiredRules.length} süresi dolmuş</div>
+        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div className="text-xs text-slate-500 mb-1">Aktif Kural</div>
+          <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : activeRules.length}</div>
+          <div className="text-xs text-slate-700 mt-0.5">{expiredRules.length} süresi dolmuş</div>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500 mb-1">Toplam Bastırılan</div>
-          <div className="text-2xl font-bold text-emerald-400">{totalHits.toLocaleString()}</div>
-          <div className="text-xs text-zinc-600 mt-0.5">lifetime hit count</div>
+        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div className="text-xs text-slate-500 mb-1">Toplam Bastırılan</div>
+          <div className="text-2xl font-bold text-emerald-400">{isLoading ? '—' : totalHits.toLocaleString()}</div>
+          <div className="text-xs text-slate-700 mt-0.5">lifetime hit count</div>
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500 mb-1">En Çok Hit</div>
-          <div className="text-2xl font-bold text-zinc-100">
-            {topHitter ? topHitter.hit_count.toLocaleString() : '—'}
-          </div>
+        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div className="text-xs text-slate-500 mb-1">En Çok Hit</div>
+          <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : topHitter ? topHitter.hit_count.toLocaleString() : '—'}</div>
           {topHitter && (
-            <div className="text-xs text-zinc-600 mt-0.5 font-mono truncate">
+            <div className="text-xs text-slate-600 mt-0.5 font-mono truncate">
               {topHitter.event_action ?? topHitter.source_ip ?? 'genel'}
             </div>
           )}
         </div>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-4">
-          <div className="text-xs text-zinc-500 mb-1">Süresi Dolmak Üzere</div>
-          <div className={`text-2xl font-bold ${activeRules.filter(r => { const d = daysRemaining(r.expires_at); return d !== null && d >= 0 && d < 7 }).length > 0 ? 'text-yellow-400' : 'text-zinc-100'}`}>
-            {activeRules.filter(r => { const d = daysRemaining(r.expires_at); return d !== null && d >= 0 && d < 7 }).length}
+        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div className="text-xs text-slate-500 mb-1">Süresi Dolmak Üzere</div>
+          <div className={cn('text-2xl font-bold', expiringSoon > 0 ? 'text-yellow-400' : 'text-slate-100')}>
+            {isLoading ? '—' : expiringSoon}
           </div>
-          <div className="text-xs text-zinc-600 mt-0.5">7 gün içinde</div>
+          <div className="text-xs text-slate-700 mt-0.5">7 gün içinde</div>
         </div>
       </div>
 
-      {/* Expiring soon alert */}
+      {/* Expiring alert */}
       {expiredRules.length > 0 && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-yellow-700/40 bg-yellow-900/20 text-yellow-300 text-sm">
-          <AlertTriangle size={14} className="flex-shrink-0" />
-          <span><strong>{expiredRules.length}</strong> kural süresi dolmuş — uyarılar yeniden üretiliyor olabilir</span>
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-yellow-500/20 bg-yellow-500/5 text-yellow-300 text-sm">
+          <AlertTriangle size={14} className="flex-shrink-0 text-yellow-400" />
+          <span><strong>{expiredRules.length}</strong> kural süresi dolmuş — eşleşen olaylar yeniden uyarı üretiyor olabilir</span>
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-3 flex-wrap">
         <select
           value={actionFilter}
           onChange={e => setActionFilter(e.target.value)}
-          className="bg-zinc-800 border border-zinc-700 rounded px-3 py-1.5 text-sm text-zinc-200 focus:outline-none focus:border-indigo-500"
+          className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
         >
           <option value="">Tüm Event Action'lar</option>
           {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
-        <div className="flex rounded overflow-hidden border border-zinc-700">
+        <div className="flex rounded-lg overflow-hidden border border-sky-900/20">
           {(['all', 'active', 'expired'] as const).map(s => (
             <button key={s} onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 text-sm ${statusFilter === s ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'}`}>
+              className={cn(
+                'px-3 py-1.5 text-xs transition-colors',
+                statusFilter === s
+                  ? 'bg-sky-500/15 text-sky-400 border-x border-sky-500/30'
+                  : 'bg-[#0a1120] text-slate-500 hover:text-slate-300',
+              )}>
               {s === 'all' ? `Tümü (${rules.length})` : s === 'active' ? `Aktif (${activeRules.length})` : `Dolmuş (${expiredRules.length})`}
             </button>
           ))}
@@ -277,62 +295,64 @@ export default function FPManagementPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-zinc-500 text-sm">Yükleniyor...</div>
+          <div className="p-4">
+            <SkeletonTable rows={6} height={40} />
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="p-12 text-center text-zinc-500">
-            <Shield size={32} className="mx-auto mb-2 opacity-20" />
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-600">
+            <Shield size={32} className="opacity-20" />
             <p className="text-sm">Kural bulunamadı</p>
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800">
-                <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase">Alan Kombinasyonu</th>
-                <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase">Neden</th>
+              <tr className="border-b border-sky-900/15">
+                <th className="text-left px-4 py-3 text-xs text-slate-600 font-medium uppercase tracking-wide">Alan Kombinasyonu</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-600 font-medium uppercase tracking-wide">Neden</th>
                 <th className="text-right px-4 py-3">
                   <SortHeader label="Hit" col="hit_count" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
                 <th className="text-left px-4 py-3">
                   <SortHeader label="Kalan Süre" col="expires_at" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="text-left px-4 py-3 text-xs text-zinc-500 font-medium uppercase">Oluşturan</th>
+                <th className="text-left px-4 py-3 text-xs text-slate-600 font-medium uppercase tracking-wide">Oluşturan</th>
                 <th className="text-left px-4 py-3">
                   <SortHeader label="Oluşturulma" col="created_at" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-sky-900/10">
               {filtered.map(rule => (
-                <tr key={rule.fp_rule_id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                <tr key={rule.fp_rule_id} className={cn('transition-colors hover:bg-sky-950/20', !rule.is_active && 'opacity-50')}>
                   <td className="px-4 py-3">
                     <FieldCombination rule={rule} />
                   </td>
-                  <td className="px-4 py-3 text-zinc-400 max-w-xs truncate text-xs" title={rule.reason}>
+                  <td className="px-4 py-3 text-slate-500 max-w-xs truncate text-xs" title={rule.reason}>
                     {rule.reason}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-zinc-300 text-xs">
+                  <td className="px-4 py-3 text-right font-mono text-xs">
                     {rule.hit_count > 0
                       ? <span className="text-emerald-400 font-semibold">{rule.hit_count.toLocaleString()}</span>
-                      : <span className="text-zinc-600">0</span>}
+                      : <span className="text-slate-700">0</span>}
                   </td>
                   <td className="px-4 py-3">
                     <ExpiryBadge expiresAt={rule.expires_at} />
                   </td>
-                  <td className="px-4 py-3 text-zinc-500 text-xs">{rule.created_by}</td>
-                  <td className="px-4 py-3 text-zinc-600 text-xs whitespace-nowrap">
+                  <td className="px-4 py-3 text-slate-600 text-xs">{rule.created_by}</td>
+                  <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">
                     {new Date(rule.created_at).toLocaleDateString('tr-TR')}
                   </td>
                   <td className="px-4 py-3 text-right">
                     {rule.is_active && (
                       <button
                         onClick={() => setConfirmDelete(rule.fp_rule_id)}
-                        className="p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-red-950/30"
+                        className="p-1 rounded text-slate-700 hover:text-red-400 hover:bg-red-950/30 transition-colors"
                         title="Devre dışı bırak"
                       >
-                        <Trash2 size={14} />
+                        <Trash2 size={13} />
                       </button>
                     )}
                   </td>
@@ -343,7 +363,6 @@ export default function FPManagementPage() {
         )}
       </div>
 
-      {/* New Rule Modal */}
       {showModal && (
         <NewRuleModal
           onClose={() => setShowModal(false)}
@@ -351,25 +370,24 @@ export default function FPManagementPage() {
         />
       )}
 
-      {/* Delete Confirm */}
       {confirmDelete && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-lg p-6 w-80 shadow-xl">
+        <div className="fixed inset-0 bg-[#040911]/80 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-[#0a1120] border border-sky-900/30 rounded-xl p-6 w-80 shadow-[0_24px_64px_rgba(0,0,0,0.7)]">
             <div className="flex items-center gap-2 mb-3">
-              <AlertTriangle size={16} className="text-yellow-400" />
-              <h3 className="text-sm font-semibold text-zinc-100">Kuralı Devre Dışı Bırak</h3>
+              <AlertTriangle size={15} className="text-yellow-400" />
+              <h3 className="text-sm font-semibold text-slate-100">Kuralı Devre Dışı Bırak</h3>
             </div>
-            <p className="text-sm text-zinc-400 mb-4">
+            <p className="text-xs text-slate-400 mb-5">
               Bu FP kuralı devre dışı bırakılacak. Eşleşen olaylar tekrar uyarı üretecek.
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmDelete(null)}
-                className="px-4 py-1.5 rounded text-sm text-zinc-300 bg-zinc-800 hover:bg-zinc-700">
+                className="px-4 py-1.5 rounded text-sm text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors">
                 İptal
               </button>
               <button onClick={() => deleteMut.mutate(confirmDelete)}
                 disabled={deleteMut.isPending}
-                className="px-4 py-1.5 rounded text-sm bg-red-700 hover:bg-red-600 text-white">
+                className="px-4 py-1.5 rounded text-sm bg-red-700 hover:bg-red-600 text-white transition-colors disabled:opacity-60">
                 {deleteMut.isPending ? 'Siliniyor...' : 'Devre Dışı Bırak'}
               </button>
             </div>
