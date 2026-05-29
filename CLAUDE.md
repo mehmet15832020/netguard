@@ -166,7 +166,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
 - [x] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
   - **Teslim:** 8 yeni DatabaseManager metodu (get_rule_alert_counts, get_log_aggregates_by_ip, get_top_values_by_ip, get_event_counts_by_ip, query_correlated_log_groups, get_network_intelligence, fetch_table_rows_before, delete_table_rows_before); 5 modülden 28 raw SQL kaldırıldı; test_retention.py dict_row fix ✓
-- [ ] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
+- [x] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
+  - **Teslim:** `alembic/env.py` DATABASE_URL yoksa sys.exit(1) + hata mesajı; README.md `database_pg.py` referansı kaldırıldı, `database.py` açıklaması güncellendi, test/alembic komutları PG bağımlılığını açıkça belirtiyor
 
 ### AŞAMA 4.5 — Kural Yönetimi UI (Aşama 3/4 sonrası)
 
