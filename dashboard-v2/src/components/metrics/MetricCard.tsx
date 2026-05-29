@@ -1,5 +1,4 @@
 import { cn } from '@/lib/utils'
-import { Card, CardContent } from '@/components/ui/card'
 import type { LucideIcon } from 'lucide-react'
 
 interface MetricCardProps {
@@ -12,16 +11,16 @@ interface MetricCardProps {
   status?: 'ok' | 'warning' | 'critical'
 }
 
-const statusRing: Record<string, string> = {
-  ok:       'border-zinc-800',
-  warning:  'border-yellow-700',
-  critical: 'border-red-700',
+const statusBorder: Record<string, string> = {
+  ok:       'border-sky-900/20',
+  warning:  'border-yellow-500/40',
+  critical: 'border-red-500/40',
 }
 
 const iconBg: Record<string, string> = {
-  ok:       'bg-indigo-600/20 text-indigo-400',
-  warning:  'bg-yellow-600/20 text-yellow-400',
-  critical: 'bg-red-600/20 text-red-400',
+  ok:       'bg-sky-500/10 text-sky-400',
+  warning:  'bg-yellow-500/10 text-yellow-400',
+  critical: 'bg-red-500/10 text-red-400',
 }
 
 export function MetricCard({
@@ -33,22 +32,20 @@ export function MetricCard({
   status = 'ok',
 }: MetricCardProps) {
   return (
-    <Card className={cn('bg-zinc-900 border', statusRing[status])}>
-      <CardContent className="p-5">
-        <div className="flex items-start justify-between">
-          <div className="space-y-1">
-            <p className="text-xs text-zinc-500 uppercase tracking-wider">{title}</p>
-            <div className="flex items-baseline gap-1">
-              <span className="text-2xl font-bold text-zinc-100">{value}</span>
-              {unit && <span className="text-sm text-zinc-400">{unit}</span>}
-            </div>
-            {subtitle && <p className="text-xs text-zinc-500">{subtitle}</p>}
+    <div className={cn('bg-[#0a1120] border rounded-xl p-5', statusBorder[status])}>
+      <div className="flex items-start justify-between">
+        <div className="space-y-1">
+          <p className="text-xs text-slate-500 uppercase tracking-wider">{title}</p>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-bold text-slate-100">{value}</span>
+            {unit && <span className="text-sm text-slate-400">{unit}</span>}
           </div>
-          <div className={cn('p-2.5 rounded-lg', iconBg[status])}>
-            <Icon size={18} />
-          </div>
+          {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
         </div>
-      </CardContent>
-    </Card>
+        <div className={cn('p-2.5 rounded-lg', iconBg[status])}>
+          <Icon size={18} />
+        </div>
+      </div>
+    </div>
   )
 }
