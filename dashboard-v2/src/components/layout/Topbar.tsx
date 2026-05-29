@@ -2,11 +2,12 @@
 
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Bell, User, ChevronRight, Wifi, WifiOff } from 'lucide-react'
+import { Bell, User, ChevronRight, Wifi, WifiOff, Search } from 'lucide-react'
 import { useAlertStore } from '@/store/alertStore'
 import { useQuery } from '@tanstack/react-query'
 import { analyticsApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { useCommandPaletteStore } from '@/store/commandPaletteStore'
 
 const PAGE_META: Record<string, { title: string; section: string }> = {
   '/overview':              { title: 'Genel Bakış',       section: 'Operasyon' },
@@ -108,6 +109,8 @@ export function Topbar() {
     return () => clearInterval(t)
   }, [])
 
+  const openPalette = useCommandPaletteStore((s) => s.open)
+
   const meta    = PAGE_META[pathname]
   const title   = meta?.title   ?? 'NetGuard'
   const section = meta?.section ?? ''
@@ -130,6 +133,16 @@ export function Topbar() {
 
       {/* Right: live tools */}
       <div className="flex items-center gap-4 flex-shrink-0">
+        {/* Search hint */}
+        <button
+          onClick={openPalette}
+          className="hidden lg:flex items-center gap-2 px-2.5 py-1 rounded-md border border-sky-900/25 bg-sky-950/20 text-slate-500 hover:text-slate-300 hover:border-sky-700/35 transition-colors"
+        >
+          <Search size={11} />
+          <span className="text-[11px]">Ara...</span>
+          <kbd className="px-1 py-0.5 rounded border border-sky-900/25 font-mono text-[9px] bg-sky-950/30 text-slate-600">Ctrl K</kbd>
+        </button>
+
         {/* Clock */}
         <div className="hidden md:flex flex-col items-end leading-none">
           <span className="text-[12px] text-slate-300 font-mono tabular-nums">{timeStr}</span>
