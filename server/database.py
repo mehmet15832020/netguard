@@ -109,7 +109,8 @@ class DatabaseManager:
                     "SELECT COUNT(*) AS cnt FROM alembic_version"
                 ).fetchone()
                 return int(row["cnt"]) if row else 0
-        except Exception:
+        except Exception as exc:
+            logger.debug("get_schema_version başarısız: %s", exc)
             return 0
 
     # ------------------------------------------------------------------ #
@@ -518,7 +519,8 @@ class DatabaseManager:
                     params,
                 ).fetchall()
             return [self._row_to_normalized_log(r) for r in rows]
-        except Exception:
+        except Exception as exc:
+            logger.warning("search_logs başarısız [query=%r]: %s", q, exc)
             return []
 
     def _row_to_normalized_log(self, row: dict) -> NormalizedLog:

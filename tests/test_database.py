@@ -262,7 +262,7 @@ class TestConfigMonitor:
         events = cm.check("agent-1")
         assert events == []  # Baseline
 
-    def test_change_detected(self, tmp_path):
+    def test_change_detected(self, tmp_path, monkeypatch_db):
         watched = tmp_path / "test.conf"
         watched.write_text("initial content")
         os.environ["WATCHED_FILES"] = str(watched)

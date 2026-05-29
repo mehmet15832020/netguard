@@ -22,23 +22,23 @@ from server.anomaly.store import AnomalyResultStore
 
 
 @pytest.fixture
-def tmp_db(tmp_path):
+def anomaly_db_path(tmp_path):
     return str(tmp_path / "test_anomaly.db")
 
 
 @pytest.fixture
-def baseline_store(tmp_db):
-    return BaselineStore(tmp_db)
+def baseline_store(anomaly_db_path):
+    return BaselineStore(anomaly_db_path)
 
 
 @pytest.fixture
-def result_store(tmp_db):
-    return AnomalyResultStore(tmp_db)
+def result_store(anomaly_db_path):
+    return AnomalyResultStore(anomaly_db_path)
 
 
 @pytest.fixture
-def engine(tmp_db):
-    return AnomalyEngine(tmp_db)
+def engine(anomaly_db_path):
+    return AnomalyEngine(anomaly_db_path)
 
 
 # ── BaselinePoint: Welford algoritması ────────────────────────────────────────
@@ -319,8 +319,8 @@ class TestAnomalyEngine:
         engine._cycle()   # boş DB'de çalışmalı, hata vermemeli
         assert engine._cycle_count == 1
 
-    def test_cycle_writes_normalized_log_on_anomaly(self, tmp_db, monkeypatch):
-        engine = AnomalyEngine(tmp_db)
+    def test_cycle_writes_normalized_log_on_anomaly(self, anomaly_db_path, monkeypatch):
+        engine = AnomalyEngine(anomaly_db_path)
 
         snap = MetricSnapshot(
             entity_id="1.2.3.4",
@@ -360,9 +360,9 @@ class TestAnomalyEngine:
         assert anomaly_log is not None
         assert anomaly_log.source_ip == "1.2.3.4"
 
-    def test_cycle_records_kill_chain_on_anomaly(self, tmp_db, monkeypatch):
+    def test_cycle_records_kill_chain_on_anomaly(self, anomaly_db_path, monkeypatch):
         """F4: anomaly tespiti → attack_chain_tracker.record() çağrılmalı."""
-        engine = AnomalyEngine(tmp_db)
+        engine = AnomalyEngine(anomaly_db_path)
 
         snap = MetricSnapshot(
             entity_id="10.0.0.99",
