@@ -1,30 +1,42 @@
 'use client'
 
 import { useState } from 'react'
-import { Shield, RefreshCw, ScanLine } from 'lucide-react'
+import { Shield, RefreshCw, ScanLine, X } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import { securityApi } from '@/lib/api'
 import { SeverityBadge } from '@/components/ui/severity-badge'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
-import type { Severity } from '@/types/models'
 import { ThreatBadge } from '@/components/ui/threat-badge'
+import { SkeletonTable, SkeletonStatGrid } from '@/components/ui/skeleton'
+import type { SecurityEvent, Severity } from '@/types/models'
+import { cn } from '@/lib/utils'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  brute_force:     'Brute Force',
-  ssh_failure:     'SSH Başarısız',
-  ssh_success:     'SSH Başarılı',
-  sudo_usage:      'Sudo Kullanımı',
-  port_opened:     'Port Açıldı',
-  port_closed:     'Port Kapandı',
-  checksum_changed:'Dosya Değişti',
+  brute_force:      'Brute Force',
+  ssh_failure:      'SSH Başarısız',
+  ssh_success:      'SSH Başarılı',
+  sudo_usage:       'Sudo Kullanımı',
+  port_opened:      'Port Açıldı',
+  port_closed:      'Port Kapandı',
+  checksum_changed: 'Dosya Değişti',
+}
+
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  brute_force:      'text-red-400 bg-red-500/10 border-red-500/25',
+  ssh_failure:      'text-orange-400 bg-orange-500/10 border-orange-500/25',
+  ssh_success:      'text-emerald-400 bg-emerald-500/10 border-emerald-500/25',
+  sudo_usage:       'text-yellow-400 bg-yellow-500/10 border-yellow-500/25',
+  port_opened:      'text-sky-400 bg-sky-500/10 border-sky-500/25',
+  port_closed:      'text-slate-400 bg-slate-500/10 border-slate-500/25',
+  checksum_changed: 'text-violet-400 bg-violet-500/10 border-violet-500/25',
+}
+
+function EventTypeBadge({ type }: { type: string }) {
+  const cls = EVENT_TYPE_COLORS[type] ?? 'text-slate-400 bg-sky-950/20 border-sky-900/20'
+  return (
+    <span className={cn('inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium border backdrop-blur-sm', cls)}>
+      {EVENT_TYPE_LABELS[type] ?? type}
+    </span>
+  )
 }
 
 function formatDate(iso: string) {
@@ -32,6 +44,25 @@ function formatDate(iso: string) {
     day: '2-digit', month: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   })
+}
+
+function SummaryCard({
+  type, count, active, onClick,
+}: { type: string; count: number; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'text-left p-4 rounded-xl border transition-colors',
+        active
+          ? 'bg-sky-500/10 border-sky-500/30 shadow-[0_0_12px_rgba(56,189,248,0.08)]'
+          : 'bg-[#0a1120] border-sky-900/20 hover:border-sky-700/30',
+      )}
+    >
+      <p className="text-[11px] text-slate-500 mb-1 truncate">{EVENT_TYPE_LABELS[type] ?? type}</p>
+      <p className={cn('text-2xl font-bold', active ? 'text-sky-400' : 'text-slate-100')}>{count}</p>
+    </button>
+  )
 }
 
 export default function SecurityPage() {
@@ -44,15 +75,15 @@ export default function SecurityPage() {
     queryFn: () =>
       securityApi.listEvents({
         event_action: eventTypeFilter !== 'all' ? eventTypeFilter : undefined,
-        source_ip: ipFilter || undefined,
-        limit: 200,
+        source_ip:    ipFilter || undefined,
+        limit:        200,
       }),
     refetchInterval: 30_000,
   })
 
-  const { data: summary } = useQuery({
+  const { data: summary, isLoading: summaryLoading } = useQuery({
     queryKey: ['security-summary'],
-    queryFn: () => securityApi.summary(),
+    queryFn:  () => securityApi.summary(),
     refetchInterval: 60_000,
   })
 
@@ -65,124 +96,158 @@ export default function SecurityPage() {
   })
 
   const events = data?.events ?? []
+  const summaryEntries = Object.entries(summary?.summary ?? {}).filter(([, v]) => v > 0)
+  const hasFilters = eventTypeFilter !== 'all' || ipFilter !== ''
 
   return (
     <div className="p-6 space-y-5">
-      {/* Başlık */}
+      {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
-            <Shield size={18} /> Güvenlik Olayları
-          </h1>
-          <p className="text-sm text-zinc-500 mt-0.5">{data?.count ?? 0} olay</p>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+            <Shield size={15} className="text-sky-400" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-slate-100 leading-tight">Güvenlik Olayları</h1>
+            <p className="text-xs text-slate-600">
+              {isLoading ? '—' : `${data?.count ?? 0} olay · auth log + port monitor + checksum`}
+            </p>
+          </div>
+          {isFetching && <RefreshCw size={13} className="text-slate-500 animate-spin ml-1" />}
         </div>
-        <div className="flex gap-2">
-          <Button
-            variant="outline" size="sm"
+        <div className="flex items-center gap-2">
+          <button
             onClick={() => queryClient.invalidateQueries({ queryKey: ['security-events'] })}
             disabled={isFetching}
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-            <span className="ml-1.5">Yenile</span>
-          </Button>
-          <Button
-            size="sm"
+            <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
+            Yenile
+          </button>
+          <button
             onClick={() => scanMutation.mutate()}
             disabled={scanMutation.isPending}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium transition-colors shadow-[0_0_12px_rgba(56,189,248,0.15)] disabled:opacity-60"
           >
-            <ScanLine size={14} />
-            <span className="ml-1.5">
-              {scanMutation.isPending ? 'Taranıyor...' : 'Manuel Tara'}
-            </span>
-          </Button>
+            <ScanLine size={13} />
+            {scanMutation.isPending ? 'Taranıyor...' : 'Manuel Tara'}
+          </button>
         </div>
       </div>
 
-      {/* Özet satırı — tıklayınca filtreler */}
-      {summary && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3">
-          {Object.entries(summary.summary)
-            .filter(([, v]) => v > 0)
-            .slice(0, 8)
-            .map(([type, count]) => (
-              <Card
-                key={type}
-                onClick={() => setEventTypeFilter(eventTypeFilter === type ? 'all' : type)}
-                className={`bg-zinc-900 border-zinc-800 cursor-pointer transition-colors hover:border-indigo-600 ${eventTypeFilter === type ? 'border-indigo-500 bg-indigo-950/30' : ''}`}
-              >
-                <CardContent className="p-4">
-                  <p className="text-xs text-zinc-500">{EVENT_TYPE_LABELS[type] ?? type}</p>
-                  <p className="text-2xl font-bold text-zinc-100 mt-1">{count}</p>
-                </CardContent>
-              </Card>
-            ))}
+      {/* Summary cards */}
+      {summaryLoading ? (
+        <SkeletonStatGrid cols={4} height={72} />
+      ) : summaryEntries.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-3">
+          {summaryEntries.slice(0, 7).map(([type, count]) => (
+            <SummaryCard
+              key={type}
+              type={type}
+              count={count}
+              active={eventTypeFilter === type}
+              onClick={() => setEventTypeFilter(eventTypeFilter === type ? 'all' : type)}
+            />
+          ))}
         </div>
       )}
 
-      {/* Filtreler + tablo */}
-      <Card className="bg-zinc-900 border-zinc-800">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <CardTitle className="text-sm text-zinc-300 flex-1">Olay Listesi</CardTitle>
-            <Input
-              placeholder="IP filtrele..."
-              value={ipFilter}
-              onChange={(e) => setIpFilter(e.target.value)}
-              className="w-36 h-8 text-xs bg-zinc-800 border-zinc-700 text-zinc-300 placeholder:text-zinc-600"
-            />
-            <Select value={eventTypeFilter} onValueChange={(v) => setEventTypeFilter(v ?? 'all')}>
-              <SelectTrigger className="w-40 h-8 text-xs bg-zinc-800 border-zinc-700 text-zinc-300">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-zinc-800 border-zinc-700">
-                <SelectItem value="all" className="text-zinc-300">Tüm tipler</SelectItem>
-                {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
-                  <SelectItem key={val} value={val} className="text-zinc-300">{label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent className="p-0">
-          {isLoading ? (
-            <p className="text-zinc-500 text-sm text-center py-10">Yükleniyor...</p>
-          ) : events.length === 0 ? (
-            <p className="text-zinc-600 text-sm text-center py-10">Olay bulunamadı</p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-zinc-800 hover:bg-transparent">
-                  <TableHead className="text-zinc-500 text-xs w-24">Seviye</TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-36">Tip</TableHead>
-                  <TableHead className="text-zinc-500 text-xs">Mesaj</TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-32">Kaynak IP</TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-28">Kullanıcı</TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-36">Zaman</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {events.map((ev) => (
-                  <TableRow key={ev.event_id} className="border-zinc-800 hover:bg-zinc-800/50">
-                    <TableCell><SeverityBadge severity={ev.severity as Severity} /></TableCell>
-                    <TableCell className="text-xs text-zinc-300">
-                      {EVENT_TYPE_LABELS[ev.event_action] ?? ev.event_action}
-                    </TableCell>
-                    <TableCell className="text-sm text-zinc-200 max-w-xs truncate">{ev.message}</TableCell>
-                    <TableCell className="text-xs text-zinc-400 font-mono">
-                      {ev.source_ip ?? '—'}
-                      {ev.source_ip && <ThreatBadge ip={ev.source_ip} />}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-400">{ev.username ?? '—'}</TableCell>
-                    <TableCell className="text-xs text-zinc-500">{formatDate(ev.occurred_at)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+      {/* Filters */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={eventTypeFilter}
+          onChange={e => setEventTypeFilter(e.target.value)}
+          className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+        >
+          <option value="all">Tüm Tipler</option>
+          {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
+            <option key={val} value={val}>{label}</option>
+          ))}
+        </select>
+        <div className="relative">
+          <input
+            placeholder="IP filtrele..."
+            value={ipFilter}
+            onChange={e => setIpFilter(e.target.value)}
+            className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors w-36 pr-6"
+          />
+          {ipFilter && (
+            <button onClick={() => setIpFilter('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600 hover:text-slate-400">
+              <X size={11} />
+            </button>
           )}
-        </CardContent>
-      </Card>
+        </div>
+        {hasFilters && (
+          <button
+            onClick={() => { setEventTypeFilter('all'); setIpFilter('') }}
+            className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
+          >
+            Temizle
+          </button>
+        )}
+        <span className="text-xs text-slate-600 ml-auto">{events.length} sonuç</span>
+      </div>
+
+      {/* Table */}
+      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+        {isLoading ? (
+          <div className="p-4">
+            <SkeletonTable rows={8} height={40} />
+          </div>
+        ) : events.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-600">
+            <Shield size={28} className="opacity-20" />
+            <p className="text-sm">
+              {hasFilters ? 'Filtre kriterlerine uyan olay bulunamadı' : 'Güvenlik olayı bulunamadı'}
+            </p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
+                <th className="text-left px-4 py-3 w-24">Seviye</th>
+                <th className="text-left px-4 py-3 w-36">Tip</th>
+                <th className="text-left px-4 py-3">Mesaj</th>
+                <th className="text-left px-4 py-3 w-40">Kaynak IP</th>
+                <th className="text-left px-4 py-3 w-28">Hostname</th>
+                <th className="text-left px-4 py-3 w-24">Kullanıcı</th>
+                <th className="text-left px-4 py-3 w-36">Zaman</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-sky-900/10">
+              {events.map((ev: SecurityEvent) => (
+                <tr key={ev.event_id} className="hover:bg-sky-950/20 transition-colors">
+                  <td className="px-4 py-3">
+                    <SeverityBadge severity={ev.severity as Severity} />
+                  </td>
+                  <td className="px-4 py-3">
+                    <EventTypeBadge type={ev.event_action} />
+                  </td>
+                  <td className="px-4 py-3 text-slate-200 max-w-xs truncate text-xs" title={ev.message}>
+                    {ev.message}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-400 font-mono">
+                    {ev.source_ip ? (
+                      <div className="flex items-center gap-1.5">
+                        <span>{ev.source_ip}</span>
+                        <ThreatBadge ip={ev.source_ip} />
+                      </div>
+                    ) : (
+                      <span className="text-slate-700">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{ev.hostname ?? '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{ev.username ?? '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+                    {formatDate(ev.occurred_at)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
