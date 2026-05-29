@@ -201,6 +201,12 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **10 sayfa güncellendi:** anomaly, failed-auth, dns-analysis, correlation, mitre, logs, threat-intel-summary, topology, kill-chain-timeline, beaconing
   - **Bug fix:** CPUChart + TimeSeriesChart xAxis `type: 'event_category'` → `'category'`
   - Zinc/neutral palette tamamen kaldırıldı (0 kalan); TypeScript: 0 hata
+- [x] **Sprint 5** — Badge Glassmorphism + Skeleton Loading
+  - **SeverityBadge:** backdrop-blur-sm + tinted bg (*/10) + glowing border (*/30) + inset highlight + dot indicator (critical/high glow)
+  - **ThreatBadge:** aynı glassmorphism + navy tooltip (#0a1120, sky-900/30 border, slate tokens)
+  - **`src/components/ui/skeleton.tsx`:** Skeleton, SkeletonChart, SkeletonStatGrid, SkeletonTable
+  - **`globals.css`:** `@keyframes shimmer` + `.animate-shimmer` (left-to-right highlight, 1.8s)
+  - **20 sayfa güncellendi** — crude `bg-zinc-800 animate-pulse` kalıpları kaldırıldı; TypeScript: 0 hata
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
