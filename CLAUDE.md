@@ -207,6 +207,11 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **`src/components/ui/skeleton.tsx`:** Skeleton, SkeletonChart, SkeletonStatGrid, SkeletonTable
   - **`globals.css`:** `@keyframes shimmer` + `.animate-shimmer` (left-to-right highlight, 1.8s)
   - **20 sayfa güncellendi** — crude `bg-zinc-800 animate-pulse` kalıpları kaldırıldı; TypeScript: 0 hata
+- [x] **Sprint 6** — Ctrl+K Command Palette (keyboard navigation)
+  - **`src/store/commandPaletteStore.ts`:** Zustand store (isOpen/open/close)
+  - **`src/components/layout/CommandPalette.tsx`:** 39 komut (6 bölüm), grouped view (query yok) + filtered flat view (section badge), ArrowUp/Down/Enter/Esc, flatIndex DOM ref eşlemesi, `max-h-[55vh] overflow-y-auto`, footer kbd hints
+  - **`layout-client.tsx`:** Ctrl+K / Cmd+K global dinleyici, `<CommandPalette />` portal
+  - **`Topbar.tsx`:** "Ara... Ctrl K" search pill (`hidden lg:flex`); TypeScript: 0 hata
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
