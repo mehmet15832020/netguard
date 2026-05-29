@@ -164,7 +164,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **Teslim:** 12 test dosyası; `DatabaseManager(db_path=...)` kaldırıldı; `sqlite3.connect(tmp_db._path)` → `tmp_db._connect()` + `%s` placeholder; `pg_db` fixture'ına 5 eksik patch + tenants tablosu eklendi; 1914 test ✓
 - [x] **F2-1** — `database.py` → sadece PostgreSQL (SQLite sınıfını sil, `database_pg.py` merge)
 - [x] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
-- [ ] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
+- [x] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
+  - **Teslim:** 8 yeni DatabaseManager metodu (get_rule_alert_counts, get_log_aggregates_by_ip, get_top_values_by_ip, get_event_counts_by_ip, query_correlated_log_groups, get_network_intelligence, fetch_table_rows_before, delete_table_rows_before); 5 modülden 28 raw SQL kaldırıldı; test_retention.py dict_row fix ✓
 - [ ] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
 
 ### AŞAMA 4.5 — Kural Yönetimi UI (Aşama 3/4 sonrası)
