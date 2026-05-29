@@ -7,6 +7,7 @@ import ReactECharts from 'echarts-for-react'
 import { analyticsApi } from '@/lib/api'
 import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import type { BeaconingDetection } from '@/lib/api'
+import { SkeletonTable } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const HOURS_OPTIONS = [
@@ -332,8 +333,8 @@ export default function BeaconingPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-4 space-y-2">
-            {[0, 1, 2].map(i => <div key={i} className="h-9 rounded bg-zinc-800 animate-pulse" />)}
+          <div className="p-4">
+            <SkeletonTable rows={3} height={36} />
           </div>
         ) : !detections.length ? (
           <div className="flex flex-col items-center justify-center py-16 rounded-b-xl bg-emerald-950/20 border-t border-emerald-900/40">

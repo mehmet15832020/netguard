@@ -5,6 +5,7 @@ import {
   FileText, RefreshCw, Search, X, ChevronDown, ChevronRight,
   Radio, Wifi, WifiOff,
 } from 'lucide-react'
+import { SkeletonTable, SkeletonChart } from '@/components/ui/skeleton'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
 import { logsApi, analyticsApi, type LogFacetItem } from '@/lib/api'
@@ -350,9 +351,7 @@ export default function LogsPage() {
               />
             </>
           ) : (
-            <div className="space-y-1.5">
-              {[0,1,2,3,4].map(i => <div key={i} className="h-5 bg-zinc-800 rounded animate-pulse" />)}
-            </div>
+            <SkeletonTable rows={5} height={20} />
           )}
         </div>
       </aside>
@@ -464,7 +463,7 @@ export default function LogsPage() {
               <LogVolumeChart series={volumeData.series} hours={hours} />
             </div>
           ) : (
-            <div className="h-28 animate-pulse bg-zinc-800/30 m-3 rounded" />
+            <SkeletonChart height={112} className="m-3" />
           )}
         </div>
 

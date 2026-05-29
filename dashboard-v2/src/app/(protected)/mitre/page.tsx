@@ -8,6 +8,7 @@ import { mitreApi } from '@/lib/api'
 import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
+import { SkeletonChart } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 // ─── Sabitler ────────────────────────────────────────────────────────────────
@@ -341,7 +342,7 @@ export default function MitrePage() {
       {/* Coverage meter + Top Techniques */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {isLoading ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl h-36 animate-pulse" />
+          <SkeletonChart height={144} className="rounded-xl" />
         ) : (
           <CoverageMeter
             coveredTactics={coveredTactics.length}

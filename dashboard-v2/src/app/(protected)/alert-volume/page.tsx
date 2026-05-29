@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Activity, RefreshCw, ShieldAlert, AlertTriangle, Bell, Info } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { AlertVolumeChart } from '@/components/charts/AlertVolumeChart'
+import { SkeletonChart } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const HOURS_OPTIONS = [
@@ -145,7 +146,7 @@ export default function AlertVolumePage() {
 
       {/* Chart */}
       {isLoading ? (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-64 animate-pulse" />
+        <SkeletonChart height={256} className="rounded-xl" />
       ) : isEmpty ? (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
           <EmptyState />

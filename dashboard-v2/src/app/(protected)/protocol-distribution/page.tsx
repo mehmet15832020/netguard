@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { PieChart, RefreshCw, Layers, TrendingUp, AlertTriangle } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { ProtocolDonutChart } from '@/components/charts/ProtocolDonutChart'
+import { SkeletonChart } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const RISKY_PROTOCOLS = new Set(['telnet', 'ftp', 'tftp', 'rlogin', 'rsh', 'rexec', 'snmp', 'smb', 'netbios'])
@@ -144,7 +145,7 @@ export default function ProtocolDistributionPage() {
 
       {/* Chart card */}
       {isLoading ? (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-80 animate-pulse" />
+        <SkeletonChart height={320} className="rounded-xl" />
       ) : isEmpty ? (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
           <EmptyState />

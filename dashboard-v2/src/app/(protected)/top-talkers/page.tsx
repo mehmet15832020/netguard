@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { BarChart2, RefreshCw, Radio, Target, Zap } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { TopTalkersChart } from '@/components/charts/TopTalkersChart'
+import { SkeletonChart } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const WELL_KNOWN_PORTS: Record<number, string> = {
@@ -169,7 +170,7 @@ export default function TopTalkersPage() {
       {isLoading ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {[...Array(3)].map((_, i) => (
-            <div key={i} className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 h-64 animate-pulse" />
+            <SkeletonChart key={i} height={256} className="rounded-xl" />
           ))}
         </div>
       ) : (

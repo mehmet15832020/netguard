@@ -6,6 +6,7 @@ import { GitMerge, Plus, Pencil, Trash2, Power } from 'lucide-react'
 import { correlationApi } from '@/lib/api'
 import type { CorrelationRule } from '@/types/models'
 import { RuleFormModal } from './RuleFormModal'
+import { SkeletonTable } from '@/components/ui/skeleton'
 
 const SEV_COLORS: Record<string, string> = {
   critical: 'text-red-400 bg-red-950/40',
@@ -99,7 +100,7 @@ export default function CorrelationRulesPage() {
 
       {/* Table */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
-        {isLoading && <div className="h-32 animate-pulse bg-zinc-800 m-4 rounded" />}
+        {isLoading && <div className="m-4"><SkeletonTable rows={4} height={36} /></div>}
         {isError && (
           <div className="h-24 flex items-center justify-center text-red-400 text-sm">
             Kurallar yüklenemedi

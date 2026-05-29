@@ -6,6 +6,7 @@ import { ShieldAlert, RefreshCw, Globe, AlertTriangle, TrendingUp } from 'lucide
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi, type ThreatSource } from '@/lib/api'
 import { TOOLTIP_BASE } from '@/lib/echarts-theme'
+import { SkeletonStatGrid, SkeletonChart, SkeletonTable } from '@/components/ui/skeleton'
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -233,11 +234,7 @@ export default function ThreatIntelSummaryPage() {
 
       {/* Stat kartlar */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-4">
-          {[0, 1, 2].map((i) => (
-            <div key={i} className="bg-zinc-900 rounded-xl border border-zinc-800 h-20 animate-pulse" />
-          ))}
-        </div>
+        <SkeletonStatGrid cols={3} height={80} />
       ) : data ? (
         <div className="grid grid-cols-3 gap-4">
           <StatCard
@@ -271,7 +268,7 @@ export default function ThreatIntelSummaryPage() {
           <h2 className="text-sm font-semibold text-zinc-200">Top 10 — Composite Threat Score</h2>
         </div>
         {isLoading ? (
-          <div className="h-56 m-4 rounded animate-pulse bg-zinc-800/40" />
+          <SkeletonChart height={224} className="m-4" />
         ) : scoreBarOption ? (
           <div className="p-4">
             <ReactECharts
@@ -294,10 +291,8 @@ export default function ThreatIntelSummaryPage() {
           <h2 className="text-sm font-semibold text-zinc-200">Tehdit Kaynakları</h2>
         </div>
         {isLoading ? (
-          <div className="p-4 space-y-2">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-10 rounded bg-zinc-800 animate-pulse" />
-            ))}
+          <div className="p-4">
+            <SkeletonTable rows={4} height={40} />
           </div>
         ) : top10Sources.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
@@ -364,7 +359,7 @@ export default function ThreatIntelSummaryPage() {
             )}
           </div>
           {isLoading ? (
-            <div className="h-40 m-4 rounded animate-pulse bg-zinc-800/40" />
+            <SkeletonChart height={160} className="m-4" />
           ) : countryOption ? (
             <div className="p-4">
               <ReactECharts

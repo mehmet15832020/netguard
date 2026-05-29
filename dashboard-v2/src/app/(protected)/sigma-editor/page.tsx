@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils'
 
 const MonacoEditor = dynamic(
   () => import('@monaco-editor/react').then(m => m.default),
-  { ssr: false, loading: () => <div className="flex-1 bg-zinc-950 animate-pulse rounded" /> },
+  { ssr: false, loading: () => <div className="flex-1 bg-sky-950/20 border border-sky-900/15 animate-pulse rounded" /> },
 )
 
 // ─── Şablonlar ────────────────────────────────────────────────────────────────

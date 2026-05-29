@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ShieldCheck, Plus, Trash2, Power, Wand2, Pencil } from 'lucide-react'
 import { sigmaApi } from '@/lib/api'
 import { useState } from 'react'
+import { SkeletonTable } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const LEVEL_COLORS: Record<string, string> = {
@@ -87,7 +88,7 @@ export default function SigmaRulesPage() {
 
       {/* Table */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
-        {isLoading && <div className="h-32 animate-pulse bg-zinc-800 m-4 rounded" />}
+        {isLoading && <div className="m-4"><SkeletonTable rows={4} height={36} /></div>}
         {isError && (
           <div className="h-24 flex items-center justify-center text-red-400 text-sm">
             Kurallar yüklenemedi

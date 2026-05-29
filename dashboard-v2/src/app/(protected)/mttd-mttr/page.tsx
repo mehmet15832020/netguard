@@ -6,6 +6,7 @@ import { Clock, RefreshCw } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { MttdMttrChart } from '@/components/charts/MttdMttrChart'
 import type { MttdMttrSeverityBreakdown } from '@/lib/api'
+import { SkeletonChart } from '@/components/ui/skeleton'
 
 const DAY_OPTIONS = [
   { label: '7g',  value: 7  },
@@ -164,7 +165,7 @@ export default function MttdMttrPage() {
       {/* Trend Chart */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
         <h2 className="text-sm font-medium text-zinc-400 mb-3">Günlük Trend</h2>
-        {isLoading && <div className="h-64 animate-pulse bg-zinc-800 rounded" />}
+        {isLoading && <SkeletonChart height={256} />}
         {isError && (
           <div className="h-32 flex items-center justify-center text-red-400 text-sm">
             Veri yüklenemedi
@@ -176,7 +177,7 @@ export default function MttdMttrPage() {
       {/* Severity Breakdown */}
       <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-4">
         <h2 className="text-sm font-medium text-zinc-400 mb-3">Önem Düzeyine Göre SLA Uyumu</h2>
-        {isLoading && <div className="h-24 animate-pulse bg-zinc-800 rounded" />}
+        {isLoading && <SkeletonChart height={96} />}
         {data && <SeverityTable rows={data.by_severity} />}
       </div>
 

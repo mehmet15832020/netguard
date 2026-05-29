@@ -6,6 +6,7 @@ import { Lock, RefreshCw, TrendingUp, TrendingDown, Minus, Clock, Globe, Users, 
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi } from '@/lib/api'
 import { TOOLTIP_BASE } from '@/lib/echarts-theme'
+import { SkeletonStatGrid, SkeletonChart, SkeletonTable } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const HOURS_OPTIONS = [
@@ -203,9 +204,7 @@ export default function FailedAuthPage() {
 
       {/* KPI kartları */}
       {isLoading ? (
-        <div className="grid grid-cols-3 lg:grid-cols-5 gap-4">
-          {[0,1,2,3,4].map(i => <div key={i} className="bg-zinc-900 rounded-xl border border-zinc-800 h-20 animate-pulse" />)}
-        </div>
+        <SkeletonStatGrid cols={5} height={80} />
       ) : data && kpis ? (
         <div className="grid grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Toplam */}
@@ -271,7 +270,7 @@ export default function FailedAuthPage() {
           <h2 className="text-sm font-semibold text-zinc-200">Saatlik Trend</h2>
         </div>
         {isLoading ? (
-          <div className="h-52 animate-pulse bg-zinc-800/40 m-4 rounded" />
+          <SkeletonChart height={208} className="m-4" />
         ) : chartOption ? (
           <div className="p-4">
             <ReactECharts option={chartOption} style={{ height: 200 }} notMerge />
@@ -303,10 +302,8 @@ export default function FailedAuthPage() {
           <h2 className="text-sm font-semibold text-zinc-200">Top Kaynak IP'ler</h2>
         </div>
         {isLoading ? (
-          <div className="p-4 space-y-2">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="h-9 rounded bg-zinc-800 animate-pulse" />
-            ))}
+          <div className="p-4">
+            <SkeletonTable rows={3} height={36} />
           </div>
         ) : !data || data.top_sources.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-zinc-600">

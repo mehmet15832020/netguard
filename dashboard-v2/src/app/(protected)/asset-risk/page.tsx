@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { analyticsApi, type AssetRiskEntry } from '@/lib/api'
 import { AssetRiskHeatmapChart } from '@/components/charts/AssetRiskHeatmapChart'
+import { SkeletonStatGrid, SkeletonChart } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 // ─── Risk tier ────────────────────────────────────────────────────────────────
@@ -295,9 +296,7 @@ export default function AssetRiskPage() {
 
       {/* Tier KPI cards */}
       {isLoading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[0,1,2,3].map(i => <div key={i} className="bg-zinc-900 border border-zinc-800 rounded-xl h-20 animate-pulse" />)}
-        </div>
+        <SkeletonStatGrid cols={4} height={80} />
       ) : data && data.assets.length > 0 ? (
         <TierCards assets={data.assets} />
       ) : null}
@@ -305,7 +304,7 @@ export default function AssetRiskPage() {
       {/* Heatmap */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
         <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Isı Haritası</p>
-        {isLoading && <div className="h-96 animate-pulse bg-zinc-800 rounded" />}
+        {isLoading && <SkeletonChart height={384} />}
         {isError && (
           <div className="h-32 flex items-center justify-center text-red-400 text-sm">
             Veri yüklenemedi
