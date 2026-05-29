@@ -2,14 +2,14 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import {
   LayoutDashboard, Bell, Shield, FileText, GitMerge, Settings, LogOut,
   Server, Network, Monitor, Radar, Share2, FileDown, Wrench,
-  ClipboardList, ShieldAlert, Crosshair, Swords, ChevronLeft,
-  ChevronRight, Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart, TrendingUp,
+  ClipboardList, ShieldAlert, Crosshair, Swords,
+  Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart, TrendingUp,
   GitBranch, AlertTriangle, Lock, Globe, Radio, Grid2X2, Gauge, Clock,
-  ShieldCheck, Wand2, FileCode2, ChevronDown, ChevronUp,
+  ShieldCheck, Wand2, FileCode2, ChevronDown, ChevronUp, Pin, PinOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -47,10 +47,10 @@ const SECTIONS: Section[] = [
   {
     label: 'Operasyon',
     entries: [
-      { href: '/alerts',   label: 'Alertler',       icon: Bell },
-      { href: '/incidents', label: 'Incidents',      icon: ShieldAlert },
-      { href: '/timeline', label: 'Aktif Zincirler', icon: Swords },
-      { href: '/blocks',   label: 'Aktif Bloklar',   icon: ShieldOff },
+      { href: '/alerts',    label: 'Alertler',        icon: Bell },
+      { href: '/incidents', label: 'Incidents',        icon: ShieldAlert },
+      { href: '/timeline',  label: 'Aktif Zincirler',  icon: Swords },
+      { href: '/blocks',    label: 'Aktif Bloklar',    icon: ShieldOff },
     ],
   },
   {
@@ -84,19 +84,19 @@ const SECTIONS: Section[] = [
         icon: BarChart2,
         storeKey: 'sidebar-dashboards',
         items: [
-          { href: '/top-talkers',           label: 'Top Talkers',        icon: BarChart2 },
-          { href: '/alert-volume',          label: 'Alert Hacmi',        icon: Activity },
-          { href: '/protocol-distribution', label: 'Protokol Dağılımı',  icon: PieChart },
-          { href: '/traffic-volume',        label: 'Trafik Hacmi',       icon: TrendingUp },
-          { href: '/kill-chain-timeline',   label: 'Kill Chain Timeline', icon: GitBranch },
-          { href: '/threat-intel-summary',  label: 'Threat Intel',       icon: AlertTriangle },
-          { href: '/failed-auth',           label: 'Başarısız Auth',     icon: Lock },
-          { href: '/dns-analysis',          label: 'DNS Analiz',         icon: Globe },
-          { href: '/tls-fingerprints',      label: 'TLS / JA4',          icon: Fingerprint },
-          { href: '/beaconing',             label: 'Beaconing',          icon: Radio },
-          { href: '/east-west-matrix',      label: 'E-W Matrix',         icon: Grid2X2 },
-          { href: '/asset-risk',            label: 'Asset Risk',         icon: Gauge },
-          { href: '/mttd-mttr',             label: 'MTTD / MTTR',        icon: Clock },
+          { href: '/top-talkers',           label: 'Top Talkers',         icon: BarChart2 },
+          { href: '/alert-volume',          label: 'Alert Hacmi',         icon: Activity },
+          { href: '/protocol-distribution', label: 'Protokol Dağılımı',   icon: PieChart },
+          { href: '/traffic-volume',        label: 'Trafik Hacmi',        icon: TrendingUp },
+          { href: '/kill-chain-timeline',   label: 'Kill Chain Timeline',  icon: GitBranch },
+          { href: '/threat-intel-summary',  label: 'Threat Intel',         icon: AlertTriangle },
+          { href: '/failed-auth',           label: 'Başarısız Auth',      icon: Lock },
+          { href: '/dns-analysis',          label: 'DNS Analiz',           icon: Globe },
+          { href: '/tls-fingerprints',      label: 'TLS / JA4',            icon: Fingerprint },
+          { href: '/beaconing',             label: 'Beaconing',            icon: Radio },
+          { href: '/east-west-matrix',      label: 'E-W Matrix',           icon: Grid2X2 },
+          { href: '/asset-risk',            label: 'Asset Risk',           icon: Gauge },
+          { href: '/mttd-mttr',             label: 'MTTD / MTTR',          icon: Clock },
         ],
       },
     ],
@@ -121,11 +121,11 @@ const SECTIONS: Section[] = [
   {
     label: 'Yönetim',
     entries: [
-      { href: '/reports',     label: 'Raporlar',        icon: FileDown },
-      { href: '/compliance',  label: 'Uyumluluk',        icon: CheckSquare },
-      { href: '/audit',       label: 'Denetim Günlüğü', icon: ClipboardList },
-      { href: '/maintenance', label: 'Bakım',            icon: Wrench },
-      { href: '/settings',    label: 'Ayarlar',          icon: Settings },
+      { href: '/reports',     label: 'Raporlar',         icon: FileDown },
+      { href: '/compliance',  label: 'Uyumluluk',         icon: CheckSquare },
+      { href: '/audit',       label: 'Denetim Günlüğü',  icon: ClipboardList },
+      { href: '/maintenance', label: 'Bakım',             icon: Wrench },
+      { href: '/settings',    label: 'Ayarlar',           icon: Settings },
     ],
   },
 ]
@@ -136,11 +136,21 @@ const ALL_GROUP_KEYS = SECTIONS.flatMap(s =>
 
 const INITIAL_GROUP_STATE = Object.fromEntries(ALL_GROUP_KEYS.map(k => [k, false]))
 
+const W_COLLAPSED = 48
+const W_EXPANDED  = 228
+
 export function Sidebar() {
-  const pathname = usePathname()
+  const pathname    = usePathname()
   const unreadCount = useAlertStore((s) => s.unreadCount)
   const markAllRead = useAlertStore((s) => s.markAllRead)
-  const [collapsed, setCollapsed] = useState(false)
+
+  // Pinned = stays expanded; unpinned = icon-only, hover-expands as overlay
+  const [pinned, setPinned] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    return localStorage.getItem('sidebar-pinned') === 'true'
+  })
+  const [hovered, setHovered]     = useState(false)
+  const hoverTimerRef             = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [groupExpanded, setGroupExpanded] = useState<Record<string, boolean>>(INITIAL_GROUP_STATE)
 
   useEffect(() => {
@@ -164,12 +174,35 @@ export function Sidebar() {
     })
   }, [pathname])
 
+  const isExpanded = pinned || hovered
+
+  const togglePin = () => {
+    setPinned(v => {
+      const next = !v
+      localStorage.setItem('sidebar-pinned', String(next))
+      if (next) setHovered(false)
+      return next
+    })
+  }
+
   const toggleGroup = (key: string) => {
     setGroupExpanded(prev => {
       const next = { ...prev, [key]: !prev[key] }
       localStorage.setItem(key, String(next[key]))
       return next
     })
+  }
+
+  const handleMouseEnter = () => {
+    if (pinned) return
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => setHovered(true), 80)
+  }
+
+  const handleMouseLeave = () => {
+    if (pinned) return
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current)
+    hoverTimerRef.current = setTimeout(() => setHovered(false), 150)
   }
 
   const handleLogout = async () => {
@@ -185,31 +218,39 @@ export function Sidebar() {
         key={item.href}
         href={item.href}
         onClick={item.href === '/alerts' ? markAllRead : undefined}
-        title={collapsed ? item.label : undefined}
+        title={!isExpanded ? item.label : undefined}
         className={cn(
-          'flex items-center gap-2.5 rounded-md text-[13px] transition-all duration-100 relative group',
-          collapsed ? 'px-2 py-2 justify-center' : 'px-2.5 py-1.5',
-          indented && !collapsed && 'text-[12px]',
+          'relative flex items-center gap-2.5 rounded-md text-[13px] font-medium transition-all duration-100 group/item',
+          !isExpanded ? 'px-0 py-2 justify-center' : 'px-2.5 py-1.5',
+          indented && isExpanded && 'text-[12px]',
           active
-            ? 'bg-indigo-500/15 text-indigo-400'
-            : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.05]',
+            ? 'bg-sky-500/10 text-sky-400'
+            : 'text-slate-500 hover:text-slate-200 hover:bg-sky-950/40',
         )}
       >
         {active && (
-          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-indigo-500 rounded-r-full" />
+          <span className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-4 rounded-r-full bg-sky-400 glow-cyber-sm" />
         )}
-        <item.icon size={indented ? 13 : 15} className="flex-shrink-0" />
-        {!collapsed && <span className="flex-1 font-medium">{item.label}</span>}
-        {!collapsed && item.href === '/alerts' && unreadCount > 0 && (
+        <item.icon
+          size={indented ? 13 : 15}
+          className={cn('flex-shrink-0', active ? 'text-sky-400' : '')}
+        />
+        {isExpanded && <span className="flex-1 truncate">{item.label}</span>}
+
+        {/* Alert badge — expanded */}
+        {isExpanded && item.href === '/alerts' && unreadCount > 0 && (
           <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold">
             {unreadCount > 99 ? '99+' : unreadCount}
           </span>
         )}
-        {collapsed && item.href === '/alerts' && unreadCount > 0 && (
-          <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-red-500" />
+        {/* Alert badge — icon-only */}
+        {!isExpanded && item.href === '/alerts' && unreadCount > 0 && (
+          <span className="absolute top-1 right-0.5 w-2 h-2 rounded-full bg-red-500 animate-lamp-critical" />
         )}
-        {collapsed && (
-          <div className="absolute left-full ml-2 px-2 py-1 rounded bg-zinc-800 text-zinc-200 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 border border-white/10">
+
+        {/* Hover tooltip for collapsed state */}
+        {!isExpanded && (
+          <div className="pointer-events-none absolute left-full ml-3 px-2.5 py-1 rounded-md bg-[#0a1120] text-slate-200 text-[12px] font-medium whitespace-nowrap opacity-0 group-hover/item:opacity-100 transition-opacity z-[60] border border-sky-900/40 shadow-xl">
             {item.label}
           </div>
         )}
@@ -218,22 +259,23 @@ export function Sidebar() {
   }
 
   const renderNavGroup = (group: NavGroup) => {
-    const isExpanded = groupExpanded[group.storeKey] ?? false
+    const isGroupExpanded = groupExpanded[group.storeKey] ?? false
     const hasActive = group.items.some(
       item => pathname === item.href || pathname.startsWith(item.href + '/')
     )
 
-    if (collapsed) {
+    if (!isExpanded) {
       return (
         <div key={group.storeKey} className="relative group/flyout">
           <div className={cn(
-            'flex items-center justify-center px-2 py-2 rounded-md cursor-default',
-            hasActive ? 'text-indigo-400 bg-indigo-500/15' : 'text-zinc-500',
+            'flex items-center justify-center py-2 rounded-md cursor-default',
+            hasActive ? 'text-sky-400 bg-sky-950/25' : 'text-slate-500',
           )}>
             <group.icon size={15} />
           </div>
-          <div className="absolute left-full ml-2 top-0 bg-zinc-900 border border-white/10 rounded-md py-1 opacity-0 group-hover/flyout:opacity-100 pointer-events-none group-hover/flyout:pointer-events-auto transition-opacity z-50 min-w-[180px]">
-            <p className="px-3 py-1.5 text-[10px] font-semibold tracking-widest text-zinc-500 uppercase border-b border-white/[0.06]">
+          {/* Flyout menu */}
+          <div className="pointer-events-none group-hover/flyout:pointer-events-auto absolute left-full ml-3 top-0 bg-[#0a1120] border border-sky-900/40 rounded-lg py-1 opacity-0 group-hover/flyout:opacity-100 transition-opacity z-[60] min-w-[196px] shadow-2xl">
+            <p className="px-3 pt-2 pb-1.5 text-[9px] font-bold tracking-[0.15em] text-sky-800 uppercase border-b border-sky-900/30">
               {group.label}
             </p>
             {group.items.map(item => {
@@ -243,11 +285,13 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    'flex items-center gap-2.5 px-3 py-1.5 text-[13px] transition-colors',
-                    active ? 'text-indigo-400' : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/[0.05]',
+                    'flex items-center gap-2.5 px-3 py-1.5 text-[12px] font-medium transition-colors',
+                    active
+                      ? 'text-sky-400 bg-sky-950/30'
+                      : 'text-slate-400 hover:text-slate-100 hover:bg-sky-950/30',
                   )}
                 >
-                  <item.icon size={13} className="flex-shrink-0" />
+                  <item.icon size={12} className="flex-shrink-0" />
                   <span>{item.label}</span>
                 </Link>
               )
@@ -262,20 +306,20 @@ export function Sidebar() {
         <button
           onClick={() => toggleGroup(group.storeKey)}
           className={cn(
-            'flex items-center gap-2.5 w-full rounded-md text-[13px] transition-all duration-100 px-2.5 py-1.5',
+            'flex items-center gap-2.5 w-full rounded-md text-[13px] font-medium transition-colors px-2.5 py-1.5',
             hasActive
-              ? 'text-zinc-200 hover:bg-white/[0.05]'
-              : 'text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.05]',
+              ? 'text-slate-200 hover:bg-sky-950/30'
+              : 'text-slate-500 hover:text-slate-200 hover:bg-sky-950/30',
           )}
         >
           <group.icon size={15} className="flex-shrink-0" />
-          <span className="flex-1 font-medium text-left">{group.label}</span>
-          {isExpanded
-            ? <ChevronUp size={12} className="text-zinc-600 flex-shrink-0" />
-            : <ChevronDown size={12} className="text-zinc-600 flex-shrink-0" />}
+          <span className="flex-1 text-left truncate">{group.label}</span>
+          {isGroupExpanded
+            ? <ChevronUp size={11} className="text-slate-600 flex-shrink-0" />
+            : <ChevronDown size={11} className="text-slate-600 flex-shrink-0" />}
         </button>
-        {isExpanded && (
-          <div className="ml-3 border-l border-white/[0.06] pl-1.5 space-y-0.5 mt-0.5 mb-0.5">
+        {isGroupExpanded && (
+          <div className="ml-3 border-l border-sky-900/30 pl-1.5 space-y-0.5 mt-0.5 mb-0.5">
             {group.items.map(item => renderNavItem(item, true))}
           </div>
         )}
@@ -284,73 +328,113 @@ export function Sidebar() {
   }
 
   return (
-    <aside className={cn(
-      'relative flex flex-col min-h-screen bg-[#0f1117] border-r border-white/[0.06] transition-all duration-200 flex-shrink-0',
-      collapsed ? 'w-[56px]' : 'w-[220px]',
-    )}>
-      {/* Logo */}
-      <div className={cn(
-        'flex items-center gap-2.5 border-b border-white/[0.06] flex-shrink-0',
-        collapsed ? 'px-3 py-4 justify-center' : 'px-4 py-4',
-      )}>
-        <div className="flex items-center justify-center w-7 h-7 rounded-md bg-indigo-500/20 flex-shrink-0">
-          <Zap size={14} className="text-indigo-400" />
-        </div>
-        {!collapsed && (
-          <div>
-            <span className="font-bold text-sm text-zinc-100 tracking-tight">NetGuard</span>
-            <span className="block text-[10px] text-zinc-500 leading-tight">Açık Kaynak NDR</span>
-          </div>
+    /*
+     * Outer aside: controls the space reserved in the flex layout.
+     * When not pinned → W_COLLAPSED (48px) always.
+     * When pinned → W_EXPANDED (228px).
+     *
+     * Inner div: the visible panel. On hover-expand it grows to W_EXPANDED
+     * as an overlay (position: absolute), so content area never shifts.
+     */
+    <aside
+      className="relative flex-shrink-0 transition-all duration-200 ease-out"
+      style={{ width: pinned ? W_EXPANDED : W_COLLAPSED }}
+    >
+      <div
+        className={cn(
+          'absolute inset-y-0 left-0 flex flex-col',
+          'bg-[#040911] border-r border-sky-900/25',
+          'transition-all duration-200 ease-out overflow-hidden z-40',
         )}
-      </div>
-
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto py-3 space-y-4 scrollbar-none">
-        {SECTIONS.map((section) => (
-          <div key={section.label || '__top'}>
-            {!collapsed && section.label && (
-              <p className="px-4 mb-1 text-[10px] font-semibold tracking-widest text-zinc-600 uppercase">
-                {section.label}
-              </p>
-            )}
-            <div className="space-y-0.5 px-2">
-              {section.entries.map((entry) =>
-                'kind' in entry && entry.kind === 'group'
-                  ? renderNavGroup(entry)
-                  : renderNavItem(entry as NavItem)
-              )}
-            </div>
-          </div>
-        ))}
-      </nav>
-
-      {/* Alt: Çıkış */}
-      <div className="border-t border-white/[0.06] p-2 space-y-0.5 flex-shrink-0">
-        <button
-          onClick={handleLogout}
-          title={collapsed ? 'Çıkış Yap' : undefined}
-          className={cn(
-            'flex items-center gap-2.5 w-full rounded-md text-[13px] text-zinc-500 hover:text-zinc-200 hover:bg-white/[0.05] transition-colors',
-            collapsed ? 'px-2 py-2 justify-center' : 'px-2.5 py-1.5',
-          )}
-        >
-          <LogOut size={15} className="flex-shrink-0" />
-          {!collapsed && <span className="font-medium">Çıkış Yap</span>}
-          {collapsed && (
-            <div className="absolute left-full ml-2 px-2 py-1 rounded bg-zinc-800 text-zinc-200 text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-50 border border-white/10">
-              Çıkış Yap
-            </div>
-          )}
-        </button>
-      </div>
-
-      {/* Collapse butonu */}
-      <button
-        onClick={() => setCollapsed(v => !v)}
-        className="absolute -right-3 top-[52px] w-6 h-6 rounded-full bg-zinc-800 border border-white/10 flex items-center justify-center text-zinc-400 hover:text-zinc-100 hover:bg-zinc-700 transition-colors z-10"
+        style={{ width: isExpanded ? W_EXPANDED : W_COLLAPSED }}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
-        {collapsed ? <ChevronRight size={12} /> : <ChevronLeft size={12} />}
-      </button>
+        {/* Top glow accent line */}
+        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-sky-500/25 to-transparent flex-shrink-0" />
+
+        {/* Logo */}
+        <div className={cn(
+          'flex items-center gap-2.5 border-b border-sky-900/25 flex-shrink-0 h-12',
+          !isExpanded ? 'justify-center px-0' : 'px-3.5',
+        )}>
+          <div className="flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-br from-sky-500/20 to-indigo-500/20 border border-sky-500/20 flex-shrink-0">
+            <Zap size={14} className="text-sky-400" />
+          </div>
+          {isExpanded && (
+            <div className="min-w-0 flex-1">
+              <span className="font-bold text-sm text-slate-100 tracking-tight">NetGuard</span>
+              <span className="block text-[9px] text-sky-800 leading-tight font-medium tracking-wider uppercase">NDR Platform</span>
+            </div>
+          )}
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 overflow-y-auto py-2 space-y-3 scrollbar-none">
+          {SECTIONS.map((section) => (
+            <div key={section.label || '__top'}>
+              {isExpanded && section.label && (
+                <p className="px-3.5 mb-1 text-[9px] font-bold tracking-[0.16em] text-sky-900 uppercase">
+                  {section.label}
+                </p>
+              )}
+              {!isExpanded && section.label && (
+                <div className="mx-auto my-1" style={{ width: 20, height: 1, background: 'oklch(0.74 0.18 215 / 15%)' }} />
+              )}
+              <div className={cn('space-y-0.5', isExpanded ? 'px-2' : 'px-1.5')}>
+                {section.entries.map((entry) =>
+                  'kind' in entry && entry.kind === 'group'
+                    ? renderNavGroup(entry)
+                    : renderNavItem(entry as NavItem)
+                )}
+              </div>
+            </div>
+          ))}
+        </nav>
+
+        {/* Bottom: pin toggle + logout */}
+        <div className="border-t border-sky-900/25 p-1.5 space-y-0.5 flex-shrink-0">
+          {isExpanded ? (
+            <button
+              onClick={togglePin}
+              className="flex items-center gap-2.5 w-full rounded-md text-[13px] font-medium transition-colors px-2.5 py-1.5 text-slate-600 hover:text-sky-400 hover:bg-sky-950/30"
+            >
+              {pinned ? <PinOff size={14} className="flex-shrink-0" /> : <Pin size={14} className="flex-shrink-0" />}
+              <span>{pinned ? 'Sabitlemeyi Kaldır' : 'Sabitle'}</span>
+            </button>
+          ) : (
+            <button
+              onClick={togglePin}
+              title={pinned ? 'Sabitlemeyi kaldır' : 'Sabitle'}
+              className="flex items-center justify-center w-full py-2 rounded-md text-slate-600 hover:text-sky-400 hover:bg-sky-950/30 transition-colors"
+            >
+              {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+            </button>
+          )}
+
+          {isExpanded ? (
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-2.5 w-full rounded-md text-[13px] font-medium transition-colors px-2.5 py-1.5 text-slate-600 hover:text-red-400 hover:bg-red-950/25"
+            >
+              <LogOut size={15} className="flex-shrink-0" />
+              <span>Çıkış Yap</span>
+            </button>
+          ) : (
+            <div className="relative group/logout">
+              <button
+                onClick={handleLogout}
+                className="flex items-center justify-center w-full py-2 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-950/25 transition-colors"
+              >
+                <LogOut size={15} />
+              </button>
+              <div className="pointer-events-none absolute left-full ml-3 bottom-0 px-2.5 py-1 rounded-md bg-[#0a1120] text-slate-200 text-[12px] font-medium whitespace-nowrap opacity-0 group-hover/logout:opacity-100 transition-opacity z-[60] border border-sky-900/40 shadow-xl">
+                Çıkış Yap
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </aside>
   )
 }

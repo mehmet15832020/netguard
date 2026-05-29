@@ -23,7 +23,7 @@ export default function ProtectedLayout({ children }: { children: React.ReactNod
   if (!ready) return null
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#080b10]">
+    <div className="flex h-screen overflow-hidden bg-[#060c17]">
       <Sidebar />
       <div className="flex flex-col flex-1 overflow-hidden">
         <Topbar />
