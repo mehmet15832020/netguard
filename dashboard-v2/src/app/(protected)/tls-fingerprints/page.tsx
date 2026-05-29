@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import type { TlsVersionItem, TlsFingerprintItem } from '@/lib/api'
+import { SkeletonStatGrid, SkeletonTable } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const HOURS_OPTIONS = [
@@ -351,10 +352,11 @@ export default function TlsFingerprintsPage() {
       )}
 
       {/* KPI Kartlar */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {isLoading ? Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="bg-zinc-900 rounded-xl border border-zinc-800 h-24 animate-pulse" />
-        )) : data ? (
+      {isLoading ? (
+        <SkeletonStatGrid cols={4} height={96} />
+      ) : null}
+      <div className={isLoading ? 'hidden' : 'grid grid-cols-2 md:grid-cols-4 gap-4'}>
+        {data ? (
           <>
             <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-indigo-500/15 text-indigo-400"><Shield className="w-5 h-5" /></div>
@@ -467,9 +469,7 @@ export default function TlsFingerprintsPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-4 space-y-2">
-            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-9 rounded bg-zinc-800 animate-pulse" />)}
-          </div>
+          <div className="p-4"><SkeletonTable rows={4} height={36} /></div>
         ) : !data || data.top_fingerprints.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
             <Fingerprint className="w-8 h-8 mb-2 opacity-30" />

@@ -7,6 +7,7 @@ import {
   AlertTriangle, ChevronDown, ChevronUp,
 } from 'lucide-react'
 import { maintenanceApi } from '@/lib/api'
+import { SkeletonTable } from '@/components/ui/skeleton'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -368,7 +369,7 @@ export default function AuditPage() {
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
-            <p className="text-zinc-500 text-sm text-center py-10">Yükleniyor...</p>
+            <div className="p-4"><SkeletonTable rows={8} /></div>
           ) : events.length === 0 ? (
             <p className="text-zinc-600 text-sm text-center py-10">Kayıt bulunamadı</p>
           ) : (

@@ -5,6 +5,7 @@ import { useRef, useState, useLayoutEffect } from 'react'
 import { GitBranch, RefreshCw, Shield, AlertTriangle, Activity, Clock } from 'lucide-react'
 import { attackChainsApi, analyticsApi, type KillChainRow, type KillChainEvent, type ChainStats } from '@/lib/api'
 import { cn } from '@/lib/utils'
+import { Skeleton, SkeletonChart } from '@/components/ui/skeleton'
 
 // ─── Sabit veriler ────────────────────────────────────────────────────────────
 
@@ -455,7 +456,7 @@ export default function KillChainTimelinePage() {
       {isLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           {[0, 1, 2, 3].map((i) => (
-            <div key={i} className="bg-zinc-900 rounded-xl border border-zinc-800 h-20 animate-pulse" />
+            <Skeleton key={i} style={{ height: 80 }} />
           ))}
         </div>
       ) : (
@@ -478,7 +479,7 @@ export default function KillChainTimelinePage() {
           {isLoading ? (
             <div className="space-y-3">
               {[0, 1, 2].map((i) => (
-                <div key={i} className="h-10 rounded bg-zinc-800 animate-pulse" />
+                <Skeleton key={i} style={{ height: 40 }} className="w-full" />
               ))}
             </div>
           ) : (

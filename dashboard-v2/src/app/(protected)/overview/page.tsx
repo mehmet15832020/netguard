@@ -23,6 +23,7 @@ import type {
   ProtocolDistributionResponse,
 } from '@/lib/api'
 import { MiniTopology } from '@/components/topology/MiniTopology'
+import { Skeleton } from '@/components/ui/skeleton'
 import type { Severity } from '@/types/models'
 import { cn } from '@/lib/utils'
 
@@ -663,7 +664,7 @@ function AlertTrendPanel({ data }: { data: AlertVolumeResponse | undefined }) {
   return (
     <Panel title="Alert Trendi (48 saat)" icon={Bell} href="/alert-volume">
       {!data ? (
-        <Empty text="Yükleniyor..." />
+        <div className="px-1 py-2"><Skeleton style={{ height: 160 }} className="w-full" /></div>
       ) : !hasData ? (
         <Empty text="Bu dönemde alert yok" />
       ) : (
@@ -927,7 +928,7 @@ export default function OverviewPage() {
           <div className="col-span-12 lg:col-span-4">
             <Panel title="Agents" icon={Server} href="/agents">
               {agentsLoading
-                ? <Empty text="Yükleniyor..." />
+                ? <div className="space-y-2 p-2">{[0,1,2].map(i => <Skeleton key={i} style={{ height: 36 }} className="w-full" />)}</div>
                 : agents.length === 0
                   ? <Empty text="Agent bağlı değil" />
                   : <div>{agents.slice(0, 6).map(a => <AgentRow key={a.agent_id} agent={a} />)}</div>

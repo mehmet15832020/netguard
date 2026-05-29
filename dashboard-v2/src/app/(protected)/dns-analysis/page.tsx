@@ -6,6 +6,7 @@ import { Globe, RefreshCw, AlertTriangle, Activity, Search, Zap, Shield } from '
 import ReactECharts from 'echarts-for-react'
 import { analyticsApi, type DnsEvent } from '@/lib/api'
 import { TOOLTIP_BASE, CHART_COLORS } from '@/lib/echarts-theme'
+import { SkeletonStatGrid, SkeletonChart } from '@/components/ui/skeleton'
 
 const HOURS_OPTIONS = [
   { label: '1s',  value: 1 },
@@ -178,11 +179,7 @@ export default function DnsAnalysisPage() {
 
       {/* ─ Stat kartlar: 3 + 3 ── */}
       {isLoading ? (
-        <div className="grid grid-cols-3 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-zinc-900 rounded-xl border border-zinc-800 h-20 animate-pulse" />
-          ))}
-        </div>
+        <SkeletonStatGrid cols={3} rows={2} height={80} />
       ) : data ? (
         <>
           {/* Satır 1: genel metrikler */}
@@ -241,7 +238,7 @@ export default function DnsAnalysisPage() {
           <h2 className="text-sm font-semibold text-zinc-200">Saatlik DNS Sorgu Hacmi</h2>
         </div>
         {isLoading ? (
-          <div className="h-52 m-4 rounded animate-pulse bg-zinc-800/40" />
+          <SkeletonChart height={208} className="m-4" />
         ) : volumeOption ? (
           <div className="p-4">
             <ReactECharts option={volumeOption} style={{ height: 200 }} notMerge />
@@ -261,7 +258,7 @@ export default function DnsAnalysisPage() {
           {data && <span className="text-xs text-zinc-500">{data.unique_destinations} benzersiz hedef</span>}
         </div>
         {isLoading ? (
-          <div className="h-52 m-4 rounded animate-pulse bg-zinc-800/40" />
+          <SkeletonChart height={208} className="m-4" />
         ) : barOption ? (
           <div className="p-4">
             <ReactECharts

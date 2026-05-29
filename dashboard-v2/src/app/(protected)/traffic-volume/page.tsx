@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query'
 import { TrendingUp, RefreshCw } from 'lucide-react'
 import { analyticsApi } from '@/lib/api'
 import { TrafficVolumeChart } from '@/components/charts/TrafficVolumeChart'
+import { SkeletonChart } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const HOURS_OPTIONS = [
@@ -130,7 +131,7 @@ export default function TrafficVolumePage() {
 
       {/* Chart */}
       {isLoading ? (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 h-80 animate-pulse" />
+        <SkeletonChart height={320} className="rounded-xl" />
       ) : isEmpty ? (
         <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
           <EmptyState />

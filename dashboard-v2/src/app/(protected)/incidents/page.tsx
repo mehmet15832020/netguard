@@ -15,6 +15,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
 import { MttdMttrChart } from '@/components/charts/MttdMttrChart'
+import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 
 const SEV_DOT: Record<string, string> = {
@@ -44,8 +45,8 @@ function EventTimeline({ incidentId }: { incidentId: string }) {
 
   const events: IncidentEvent[] = data?.events ?? []
 
-  if (isLoading) return <p className="text-xs text-zinc-500 py-2">Yükleniyor...</p>
-  if (events.length === 0) return <p className="text-xs text-zinc-500 py-2">Henüz event yok</p>
+  if (isLoading) return <div className="space-y-2 py-2">{[0,1,2].map(i => <Skeleton key={i} style={{ height: 28 }} className="w-full" />)}</div>
+  if (events.length === 0) return <p className="text-xs text-slate-500 py-2">Henüz event yok</p>
 
   return (
     <div className="relative ml-2 mt-2 space-y-0">
@@ -80,7 +81,7 @@ function EnrichmentPanel({ enrichment, incidentId }: { enrichment?: IncidentEnri
 
   const enr: IncidentEnrichment | undefined = data?.enrichment ?? enrichment
 
-  if (isLoading && !enr) return <p className="text-xs text-zinc-500 py-2">Yükleniyor...</p>
+  if (isLoading && !enr) return <div className="space-y-2 py-2">{[0,1,2,3].map(i => <Skeleton key={i} style={{ height: 24 }} className="w-full" />)}</div>
   if (!enr) return null
 
   const hasMitre = enr.mitre_techniques.length > 0 || enr.mitre_tactics.length > 0
@@ -561,7 +562,13 @@ export default function IncidentsPage() {
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow><TableCell colSpan={8} className="text-center text-zinc-500 py-8">Yükleniyor...</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={8} className="py-3 px-4">
+                    <div className="space-y-2">
+                      {[0,1,2,3,4].map(i => <Skeleton key={i} style={{ height: 36 }} className="w-full" />)}
+                    </div>
+                  </TableCell>
+                </TableRow>
               ) : incidents.length === 0 ? (
                 <TableRow><TableCell colSpan={8} className="text-center text-zinc-500 py-8">Incident bulunamadı</TableCell></TableRow>
               ) : incidents.map(inc => (
