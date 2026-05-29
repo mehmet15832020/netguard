@@ -4,14 +4,8 @@ import { useState, useEffect } from 'react'
 import { Radar, Play, RefreshCw, Circle, CheckCircle2, Loader2 } from 'lucide-react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { discoveryApi } from '@/lib/api'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import {
-  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
-} from '@/components/ui/table'
+import { SkeletonTable } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import type { Device } from '@/types/models'
 
 function formatDate(iso: string | null) {
@@ -23,60 +17,57 @@ function formatDate(iso: string | null) {
 }
 
 function ScanProgress({ running, found, total, cidr }: {
-  running: boolean
-  found: number
-  total: number
-  cidr: string | null
+  running: boolean; found: number; total: number; cidr: string | null
 }) {
-  const pct = total > 0 ? Math.min(100, Math.round((found / total) * 100)) : 0
   if (!cidr) return null
+  const pct = total > 0 ? Math.min(100, Math.round((found / total) * 100)) : 0
 
   return (
-    <Card className="bg-zinc-900 border-zinc-800">
-      <CardContent className="p-4">
-        <div className="flex items-center gap-3 mb-3">
-          {running
-            ? <Loader2 size={16} className="text-indigo-400 animate-spin" />
-            : <CheckCircle2 size={16} className="text-emerald-400" />
-          }
-          <span className="text-sm text-zinc-200 font-medium">
-            {running ? `Taranıyor: ${cidr}` : `Tamamlandı: ${cidr}`}
-          </span>
-          <Badge className="ml-auto bg-zinc-800 text-zinc-300 border-zinc-700">
-            {found} cihaz bulundu
-          </Badge>
-        </div>
+    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="flex items-center gap-3 mb-3">
+        {running
+          ? <Loader2 size={15} className="text-sky-400 animate-spin flex-shrink-0" />
+          : <CheckCircle2 size={15} className="text-emerald-400 flex-shrink-0" />
+        }
+        <span className="text-sm text-slate-200 font-medium">
+          {running ? `Taranıyor: ${cidr}` : `Tamamlandı: ${cidr}`}
+        </span>
+        <span className="ml-auto text-xs font-mono px-2 py-0.5 rounded bg-sky-950/30 border border-sky-900/20 text-slate-400">
+          {found} cihaz bulundu
+        </span>
+      </div>
 
-        <div className="w-full h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${running ? 'bg-indigo-500' : 'bg-emerald-500'}`}
-            style={{ width: running ? `${pct}%` : '100%' }}
-          />
-        </div>
-        {running && (
-          <p className="text-xs text-zinc-500 mt-1.5">
-            {found} / {total} host tarandı ({pct}%)
-          </p>
-        )}
-      </CardContent>
-    </Card>
+      <div className="w-full h-1.5 bg-sky-950/30 rounded-full overflow-hidden">
+        <div
+          className={cn('h-full rounded-full transition-all duration-500', running ? 'bg-sky-500' : 'bg-emerald-500')}
+          style={{ width: running ? `${pct}%` : '100%' }}
+        />
+      </div>
+      {running && (
+        <p className="text-xs text-slate-600 mt-1.5">
+          {found} / {total} host tarandı ({pct}%)
+        </p>
+      )}
+    </div>
   )
 }
 
+const INP = 'bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors disabled:opacity-50'
+
 export default function DiscoveryPage() {
   const queryClient = useQueryClient()
-  const [cidr, setCidr] = useState('192.168.1.0/24')
+  const [cidr,      setCidr]      = useState('192.168.1.0/24')
   const [community, setCommunity] = useState('public')
 
   const { data: status, refetch: refetchStatus } = useQuery({
     queryKey: ['discovery-status'],
-    queryFn: () => discoveryApi.status(),
+    queryFn:  () => discoveryApi.status(),
     refetchInterval: (query) => query.state.data?.running ? 2000 : 10_000,
   })
 
   const { data: resultsData, isLoading: resultsLoading, refetch: refetchResults } = useQuery({
     queryKey: ['discovery-results'],
-    queryFn: () => discoveryApi.results(200),
+    queryFn:  () => discoveryApi.results(200),
     refetchInterval: 10_000,
   })
 
@@ -99,65 +90,59 @@ export default function DiscoveryPage() {
 
   return (
     <div className="p-6 space-y-5">
-      {/* Başlık */}
-      <div>
-        <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
-          <Radar size={18} /> Ağ Keşfi
-        </h1>
-        <p className="text-sm text-zinc-500 mt-0.5">
-          Subnet tarama ile ağdaki cihazları otomatik keşfet
-        </p>
+      {/* Header */}
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+          <Radar size={15} className="text-sky-400" />
+        </div>
+        <div>
+          <h1 className="text-base font-semibold text-slate-100 leading-tight">Ağ Keşfi</h1>
+          <p className="text-xs text-slate-600">Subnet tarama ile ağdaki cihazları otomatik keşfet</p>
+        </div>
       </div>
 
-      {/* Tarama formu */}
-      <Card className="bg-zinc-900 border-zinc-800">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-sm text-zinc-300">Yeni Tarama</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-4 items-end">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-400">Subnet (CIDR)</Label>
-              <Input
-                value={cidr}
-                onChange={(e) => setCidr(e.target.value)}
-                placeholder="192.168.1.0/24"
-                className="h-8 text-sm bg-zinc-800 border-zinc-700 text-zinc-200 w-48"
-                disabled={isRunning}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-zinc-400">SNMP Community</Label>
-              <Input
-                value={community}
-                onChange={(e) => setCommunity(e.target.value)}
-                placeholder="public"
-                className="h-8 text-sm bg-zinc-800 border-zinc-700 text-zinc-200 w-32"
-                disabled={isRunning}
-              />
-            </div>
-            <Button
-              size="sm"
-              onClick={() => scanMutation.mutate()}
-              disabled={isRunning || scanMutation.isPending || !cidr.trim()}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white h-8"
-            >
-              {isRunning ? (
-                <><Loader2 size={14} className="animate-spin" /><span className="ml-1.5">Taranıyor...</span></>
-              ) : (
-                <><Play size={14} /><span className="ml-1.5">Tara</span></>
-              )}
-            </Button>
+      {/* Scan form */}
+      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Yeni Tarama</p>
+        <div className="flex flex-wrap gap-4 items-end">
+          <div className="space-y-1">
+            <span className="text-xs text-slate-500">Subnet (CIDR)</span>
+            <input
+              value={cidr}
+              onChange={e => setCidr(e.target.value)}
+              placeholder="192.168.1.0/24"
+              className={cn(INP, 'w-48')}
+              disabled={isRunning}
+            />
           </div>
-          {scanMutation.isError && (
-            <p className="text-xs text-red-400 mt-2">
-              {(scanMutation.error as Error).message}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          <div className="space-y-1">
+            <span className="text-xs text-slate-500">SNMP Community</span>
+            <input
+              value={community}
+              onChange={e => setCommunity(e.target.value)}
+              placeholder="public"
+              className={cn(INP, 'w-32')}
+              disabled={isRunning}
+            />
+          </div>
+          <button
+            onClick={() => scanMutation.mutate()}
+            disabled={isRunning || scanMutation.isPending || !cidr.trim()}
+            className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm text-white bg-sky-600 hover:bg-sky-500 transition-colors shadow-[0_0_12px_rgba(56,189,248,0.15)] disabled:opacity-60 disabled:shadow-none"
+          >
+            {isRunning ? (
+              <><Loader2 size={13} className="animate-spin" /><span>Taranıyor...</span></>
+            ) : (
+              <><Play size={13} /><span>Tara</span></>
+            )}
+          </button>
+        </div>
+        {scanMutation.isError && (
+          <p className="text-xs text-red-400 mt-2">{(scanMutation.error as Error).message}</p>
+        )}
+      </div>
 
-      {/* Tarama durumu */}
+      {/* Progress */}
       {status?.cidr && (
         <ScanProgress
           running={isRunning}
@@ -167,74 +152,73 @@ export default function DiscoveryPage() {
         />
       )}
 
-      {/* Sonuçlar */}
+      {/* Results header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium text-zinc-300">
-          Keşfedilen Cihazlar
-          <span className="ml-2 text-zinc-500 font-normal">({resultsData?.count ?? 0})</span>
-        </h2>
-        <Button
-          variant="outline" size="sm"
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-slate-300">Keşfedilen Cihazlar</span>
+          <span className="text-xs text-slate-600">({resultsData?.count ?? 0})</span>
+        </div>
+        <button
           onClick={() => refetchResults()}
-          className="border-zinc-700 text-zinc-300 hover:bg-zinc-800 h-7 text-xs"
+          className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs text-slate-400 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
         >
-          <RefreshCw size={12} className="mr-1" /> Yenile
-        </Button>
+          <RefreshCw size={11} /> Yenile
+        </button>
       </div>
 
-      <Card className="bg-zinc-900 border-zinc-800">
-        <CardContent className="p-0">
-          {resultsLoading ? (
-            <p className="text-zinc-500 text-sm text-center py-10">Yükleniyor...</p>
-          ) : devices.length === 0 ? (
-            <div className="text-center py-12">
-              <Radar size={32} className="text-zinc-700 mx-auto mb-3" />
-              <p className="text-zinc-500 text-sm">Henüz keşfedilmiş cihaz yok</p>
-              <p className="text-zinc-600 text-xs mt-1">Subnet taraması başlatın</p>
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-zinc-800 hover:bg-transparent">
-                  <TableHead className="text-zinc-500 text-xs w-6"></TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-36">IP</TableHead>
-                  <TableHead className="text-zinc-500 text-xs">Hostname / Adı</TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-36">Vendor</TableHead>
-                  <TableHead className="text-zinc-500 text-xs">OS / Bilgi</TableHead>
-                  <TableHead className="text-zinc-500 text-xs w-36">İlk Görülme</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {devices.map((d) => (
-                  <TableRow key={d.device_id} className="border-zinc-800 hover:bg-zinc-800/50">
-                    <TableCell>
-                      <Circle
-                        size={8}
-                        className={
-                          d.status === 'up'
-                            ? 'text-emerald-400 fill-emerald-400'
-                            : 'text-zinc-600 fill-zinc-600'
-                        }
-                      />
-                    </TableCell>
-                    <TableCell className="font-mono text-xs text-zinc-300">{d.ip}</TableCell>
-                    <TableCell className="text-sm text-zinc-200">
-                      {d.name !== d.ip ? d.name : <span className="text-zinc-500">—</span>}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-400">{d.vendor || '—'}</TableCell>
-                    <TableCell className="text-xs text-zinc-500 max-w-[200px] truncate">
-                      {d.os_info || d.notes || '—'}
-                    </TableCell>
-                    <TableCell className="text-xs text-zinc-500">
-                      {formatDate(d.first_seen)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+      {/* Results table */}
+      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+        {resultsLoading ? (
+          <div className="p-4">
+            <SkeletonTable rows={6} height={40} />
+          </div>
+        ) : devices.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-slate-700">
+            <Radar size={32} className="opacity-20" />
+            <p className="text-sm">Henüz keşfedilmiş cihaz yok</p>
+            <p className="text-xs">Subnet taraması başlatın</p>
+          </div>
+        ) : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
+                <th className="px-4 py-3 w-6" />
+                <th className="px-4 py-3 text-left w-36">IP</th>
+                <th className="px-4 py-3 text-left">Hostname / Adı</th>
+                <th className="px-4 py-3 text-left w-36">Vendor</th>
+                <th className="px-4 py-3 text-left">OS / Bilgi</th>
+                <th className="px-4 py-3 text-left w-40">İlk Görülme</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-sky-900/10">
+              {devices.map((d) => (
+                <tr key={d.device_id} className="hover:bg-sky-950/20 transition-colors">
+                  <td className="px-4 py-3">
+                    <Circle
+                      size={8}
+                      className={d.status === 'up'
+                        ? 'text-emerald-400 fill-emerald-400'
+                        : 'text-slate-700 fill-slate-700'
+                      }
+                    />
+                  </td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-300">{d.ip}</td>
+                  <td className="px-4 py-3 text-sm text-slate-200">
+                    {d.name !== d.ip ? d.name : <span className="text-slate-600">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-500">{d.vendor || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate">
+                    {d.os_info || d.notes || '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                    {formatDate(d.first_seen)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   )
 }
