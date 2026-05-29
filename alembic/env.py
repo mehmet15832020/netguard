@@ -1,4 +1,5 @@
 import os
+import sys
 from logging.config import fileConfig
 from alembic import context
 
@@ -7,10 +8,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://netguard:netguard_dev@localhost:5432/netguard",
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
+if not DATABASE_URL:
+    print(
+        "HATA: DATABASE_URL ortam değişkeni tanımlı değil.\n"
+        "Örnek: DATABASE_URL=postgresql://netguard:şifre@localhost:5432/netguard alembic upgrade head",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 
 def run_migrations_offline() -> None:

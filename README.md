@@ -185,8 +185,9 @@ pip install -r requirements.txt
 cp .env.example .env
 # .env dosyasını düzenle
 
-# Veritabanı şemasını oluştur
-DATABASE_URL="postgresql://netguard:şifre@localhost:5432/netguard" alembic upgrade head
+# Veritabanı şemasını oluştur (DATABASE_URL zorunludur)
+export DATABASE_URL="postgresql://netguard:şifre@localhost:5432/netguard"
+alembic upgrade head
 
 # Sunucuyu başlat
 uvicorn server.main:app --host 0.0.0.0 --port 8000
@@ -460,8 +461,7 @@ netguard/
 ├── agent/                     # İzlenen makinelerde çalışan agent (psutil)
 ├── server/
 │   ├── main.py                # FastAPI app, async döngüler, startup
-│   ├── database.py            # DB factory (PG prod / SQLite test)
-│   ├── database_pg.py         # PostgreSQL + TimescaleDB implementasyonu
+│   ├── database.py            # PostgreSQL + TimescaleDB yöneticisi (psycopg3 pool)
 │   ├── auth.py                # JWT + API key + tenant scope
 │   ├── correlator.py          # Korelasyon motoru (JSON + pySigma v2, 60s)
 │   ├── sigma_executor.py      # pySigma v2 çalıştırıcı
@@ -514,7 +514,7 @@ netguard/
 ## Testler
 
 ```bash
-# Tüm testler
+# Tüm testler (testcontainers otomatik Docker PostgreSQL başlatır)
 pytest tests/ -q
 
 # Belirli modül
@@ -523,11 +523,13 @@ pytest tests/test_attack_chain.py -v
 # Anahtar kelimeyle filtrele
 pytest tests/ -k "active_response"
 
-# PostgreSQL testleri (Docker gerekir)
+# Mevcut PostgreSQL ile test (Docker gerekmez)
 DATABASE_URL="postgresql://netguard:test@localhost:5432/netguard_test" pytest tests/ -q
 ```
 
-**1151 test · 56 test dosyası** — alert engine, anomaly, attack chain, auth, compliance, correlator, database, detectors, discovery, EVTX, incidents, log normalizer, MITRE, netflow, notifier, retention, sigma, SNMP, threat intel, topology ve daha fazlası.
+**1900+ test · 56+ test dosyası** — alert engine, anomaly, attack chain, auth, compliance, correlator, database, detectors, discovery, EVTX, incidents, log normalizer, MITRE, netflow, notifier, retention, sigma, SNMP, threat intel, topology ve daha fazlası.
+
+> **Not:** Testler PostgreSQL gerektirir. Docker yoksa testcontainers otomatik olarak Docker Container başlatır. `DATABASE_URL` ortam değişkeni tanımlıysa o PostgreSQL kullanılır.
 
 ---
 
