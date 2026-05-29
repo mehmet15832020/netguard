@@ -163,7 +163,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **F2-3** — 9 test dosyasını PG uyumlu hale getir (`tmp_db` fixture; Docker yoksa skip)
   - **Teslim:** 12 test dosyası; `DatabaseManager(db_path=...)` kaldırıldı; `sqlite3.connect(tmp_db._path)` → `tmp_db._connect()` + `%s` placeholder; `pg_db` fixture'ına 5 eksik patch + tenants tablosu eklendi; 1914 test ✓
 - [x] **F2-1** — `database.py` → sadece PostgreSQL (SQLite sınıfını sil, `database_pg.py` merge)
-- [ ] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
+- [x] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
 - [ ] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
 - [ ] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
 
