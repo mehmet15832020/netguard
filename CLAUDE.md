@@ -179,6 +179,15 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **R3** — Sigma YAML Monaco Editör (8-10 gün, yüksek risk, isteğe bağlı)
   - **Teslim:** `@monaco-editor/react` kurulumu; `/sigma-editor` sayfası (Monaco Editor ssr:false, YAML dili, vs-dark tema, 6 şablon); `?rule_id=` ile mevcut kural yükleme + üzerine yazma; Doğrula→Kaydet akışı (POST /sigma/rules/validate → POST /sigma/rules); `/sigma-rules` listesine Pencil edit butonu; sidebar "YAML Editör" (FileCode2); test_sigma_editor.py 16 test; test_correlation_routes.py RULES_PATH→correlator instance fix — 1766 toplam test ✓
 
+### AŞAMA 2.7 — Dashboard Modernizasyon (Tamamlandı)
+
+- [x] **Sprint 1+2** — Deep Navy Visual Identity + Hover-Expand Sidebar
+  - **globals.css:** oklch deep-navy palette (`#060c17` bg, `#0d1526` panel, `#040911` sidebar), cyber cyan primary (sky-400 `#38bdf8`), dot-grid body texture, glow utilities (lamp-online/critical, glow-cyber-sm, topbar-glow-bottom), pulse-glow animations
+  - **Sidebar:** VS Code inner-panel hover-expand (48px icon-only → 228px overlay, content area never shifts), pin/unpin persistence via localStorage, cyan active states + glow accent bar, navy flyout menus, gradient logo badge, slate section labels
+  - **Topbar:** `DataLiveIndicator` (sourceHealth query + Wifi icon + glow lamp), section breadcrumb, dual-line clock, cy-tinted border + bottom glow
+  - **Overview:** Panel/StatCard/KpiCard → navy bg + cyan borders, all `zinc-*`→`slate-*`, ECharts tooltips/axes/splitlines updated to cyber palette
+  - **`src/lib/echarts-theme.ts`:** centralized CHART_COLORS, SEVERITY_COLORS, TOOLTIP_BASE, AXIS_BASE, GRID_DEFAULT, `lineSeries()` helper — Sprint 4 foundation
+
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
 - [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle)
