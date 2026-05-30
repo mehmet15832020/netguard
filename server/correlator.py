@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -36,6 +37,9 @@ from server.mitre import parse_mitre_tags
 from shared.models import CorrelatedEvent
 
 logger = logging.getLogger(__name__)
+
+_NOTIFY_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix='ng-notify')
+_TI_EXECUTOR     = ThreadPoolExecutor(max_workers=2, thread_name_prefix='ng-ti')
 
 
 def _ti_lookup_bg(ip: str) -> None:
@@ -259,12 +263,9 @@ class Correlator:
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
                 self._check_attack_chain(event)
-                import threading
-                threading.Thread(target=_notify_bg, args=(event,), daemon=True).start()
+                _NOTIFY_EXECUTOR.submit(_notify_bg, event)
                 if group_val:
-                    threading.Thread(
-                        target=_ti_lookup_bg, args=(group_val,), daemon=True
-                    ).start()
+                    _TI_EXECUTOR.submit(_ti_lookup_bg, group_val)
 
         return produced
 

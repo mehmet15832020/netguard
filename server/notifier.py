@@ -8,14 +8,18 @@ Tasarım: Alert Engine'den bağımsız. Yeni kanal eklemek için
 yalnızca bu dosyaya yeni bir sender fonksiyonu eklemek yeterli.
 """
 
+import json
 import logging
 import os
 import smtplib
+import socket
+import threading
 import time
 import httpx
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from shared.models import Alert, AlertSeverity, CorrelatedEvent
@@ -26,6 +30,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _RETRY_DELAYS = (0, 1, 4)   # saniye — exponential backoff: hemen, 1s, 4s
+_SMTP_TIMEOUT  = 10          # saniye — bağlantı + komut zaman aşımı
+_HTTP_TIMEOUT  = httpx.Timeout(5.0, connect=3.0)
+
+_NOTIFIER_CFG_PATH = Path(__file__).parent.parent / "config" / "notifier.json"
+_cfg_cache: tuple[float, dict] = (0.0, {})
 
 
 class EmailNotifier:
@@ -52,16 +61,23 @@ class EmailNotifier:
             if delay:
                 time.sleep(delay)
             try:
-                with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                with smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=_SMTP_TIMEOUT) as server:
                     server.starttls()
                     server.login(self.smtp_user, self.smtp_password)
                     server.send_message(msg)
                 if context:
-                    logger.info(f"Email gönderildi: {context}")
+                    logger.info("Email gönderildi: %s", context)
                 return True
-            except Exception as e:
-                logger.warning(f"Email denemesi başarısız ({context}): {e}")
-        logger.error(f"Email gönderilemedi '{context}' ({len(_RETRY_DELAYS)} deneme)")
+            except smtplib.SMTPAuthenticationError as exc:
+                logger.error("SMTP kimlik doğrulama başarısız — email bildirimi devre dışı: %s", exc)
+                self.enabled = False
+                return False
+            except (smtplib.SMTPServerDisconnected, smtplib.SMTPConnectError,
+                    socket.timeout, OSError, ConnectionError) as exc:
+                logger.warning("Email denemesi başarısız (%s): %s", context, exc)
+            except Exception as exc:
+                logger.warning("Email gönderme hatası (%s): %s", context, exc)
+        logger.error("Email gönderilemedi '%s' (%d deneme)", context, len(_RETRY_DELAYS))
         return False
 
     def send(self, alert: Alert) -> bool:
@@ -123,14 +139,22 @@ class WebhookNotifier:
             if delay:
                 time.sleep(delay)
             try:
-                response = httpx.post(self.webhook_url, json=payload, timeout=5)
+                response = httpx.post(self.webhook_url, json=payload, timeout=_HTTP_TIMEOUT)
                 response.raise_for_status()
                 if context:
-                    logger.info(f"Webhook gönderildi: {context}")
+                    logger.info("Webhook gönderildi: %s", context)
                 return True
-            except Exception as e:
-                logger.warning(f"Webhook denemesi başarısız ({context}): {e}")
-        logger.error(f"Webhook gönderilemedi '{context}' ({len(_RETRY_DELAYS)} deneme)")
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in (401, 403, 404):
+                    logger.error("Webhook kalıcı hata %d — devre dışı: %s", exc.response.status_code, context)
+                    self.enabled = False
+                    return False
+                logger.warning("Webhook HTTP hatası (%s): %s", context, exc)
+            except (httpx.TimeoutException, httpx.ConnectError, OSError) as exc:
+                logger.warning("Webhook bağlantı hatası (%s): %s", context, exc)
+            except Exception as exc:
+                logger.warning("Webhook gönderme hatası (%s): %s", context, exc)
+        logger.error("Webhook gönderilemedi '%s' (%d deneme)", context, len(_RETRY_DELAYS))
         return False
 
     def send(self, alert: Alert) -> bool:
@@ -206,14 +230,21 @@ class Notifier:
         self.email = EmailNotifier()
         self.webhook = WebhookNotifier()
         self._anomaly_cooldown: dict[str, datetime] = {}
+        self._cooldown_lock = threading.Lock()
 
     def _get_min_severity(self) -> str:
+        global _cfg_cache
         try:
-            import json
-            from pathlib import Path
-            cfg_path = Path(__file__).parent.parent / "config" / "notifier.json"
-            return json.loads(cfg_path.read_text()).get("min_severity", "high")
-        except Exception:
+            mtime = _NOTIFIER_CFG_PATH.stat().st_mtime
+            cached_mtime, cached_data = _cfg_cache
+            if mtime != cached_mtime:
+                cached_data = json.loads(_NOTIFIER_CFG_PATH.read_text())
+                _cfg_cache = (mtime, cached_data)
+            return cached_data.get("min_severity", "high")
+        except FileNotFoundError:
+            return "high"
+        except Exception as exc:
+            logger.error("notifier.json okuma hatası: %s", exc)
             return "high"
 
     def notify(self, alert: Alert) -> None:
@@ -237,10 +268,11 @@ class Notifier:
             return
         cooldown_key = f"{result.entity_id}:{result.metric}"
         now = datetime.now(timezone.utc)
-        last = self._anomaly_cooldown.get(cooldown_key)
-        if last and (now - last).total_seconds() < _ANOMALY_COOLDOWN_SECS:
-            return
-        self._anomaly_cooldown[cooldown_key] = now
+        with self._cooldown_lock:
+            last = self._anomaly_cooldown.get(cooldown_key)
+            if last and (now - last).total_seconds() < _ANOMALY_COOLDOWN_SECS:
+                return
+            self._anomaly_cooldown[cooldown_key] = now
         self._send_anomaly_email(result)
         self._send_anomaly_webhook(result)
 
