@@ -463,6 +463,15 @@ class Correlator:
                     f"SALDIRI ZİNCİRİ tespit edildi: {event.group_value} "
                     f"— {trigger['chain_type']}"
                 )
+                try:
+                    from server.ws_manager import ws_manager
+                    ws_manager.broadcast_from_thread("attack_chain", {
+                        "source_ip":  event.group_value,
+                        "chain_type": trigger["chain_type"],
+                        "severity":   chain_event.severity,
+                    })
+                except Exception as ws_exc:
+                    logger.debug("attack_chain ws broadcast: %s", ws_exc)
         except Exception as exc:
             logger.error(f"Attack chain kontrol hatası: {exc}")
 
