@@ -223,7 +223,7 @@ function CipherRiskMatrix({ versions }: { versions: TlsVersionItem[] }) {
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="text-left px-3 py-2 text-slate-500 font-medium w-24">Versiyon</th>
+            <th className="ui-th w-24">Versiyon</th>
             {CIPHER_CLASSES.map(c => (
               <th key={c} className="text-center px-3 py-2 text-slate-500 font-medium">{c}</th>
             ))}
@@ -234,7 +234,7 @@ function CipherRiskMatrix({ versions }: { versions: TlsVersionItem[] }) {
             const item = versions.find(v => v.version === ver)
             return (
               <tr key={ver}>
-                <td className="px-3 py-2">
+                <td className="ui-td">
                   <div className="font-mono text-slate-300">{ver}</div>
                   {item && <div className="text-slate-600">{item.count.toLocaleString()} bağ.</div>}
                 </td>
@@ -401,8 +401,8 @@ export default function TlsFingerprintsPage() {
       {/* TLS Versiyon + Cipher Risk Matrix */}
       {data && (
         <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-            <div className="px-4 py-3 border-b border-sky-900/20">
+          <div className="ui-panel">
+            <div className="ui-panel-header">
               <h2 className="text-sm font-semibold text-slate-200">TLS Versiyon Dağılımı</h2>
             </div>
             <div className="p-4 space-y-3">
@@ -416,8 +416,8 @@ export default function TlsFingerprintsPage() {
             </div>
           </div>
 
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-            <div className="px-4 py-3 border-b border-sky-900/20">
+          <div className="ui-panel">
+            <div className="ui-panel-header">
               <h2 className="text-sm font-semibold text-slate-200">Cipher Suite Risk Matrisi</h2>
               <p className="text-xs text-slate-600 mt-0.5">TLS versiyon × cipher gücü (NIST SP 800-52r2)</p>
             </div>
@@ -434,25 +434,25 @@ export default function TlsFingerprintsPage() {
 
       {/* SNI Tablosu */}
       {data && data.top_sni.length > 0 && (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-          <div className="px-4 py-3 border-b border-sky-900/20">
+        <div className="ui-panel">
+          <div className="ui-panel-header">
             <h2 className="text-sm font-semibold text-slate-200">Bağlanılan Top Domainler (SNI)</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-sky-900/20 text-xs text-slate-500">
-                  <th className="text-left px-4 py-2.5">#</th>
-                  <th className="text-left px-4 py-2.5">Domain</th>
-                  <th className="text-right px-4 py-2.5">Bağlantı</th>
+                <tr >
+                  <th className="ui-th">#</th>
+                  <th className="ui-th">Domain</th>
+                  <th className="ui-th text-right">Bağlantı</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-sky-900/10">
                 {data.top_sni.map((item, i) => (
                   <tr key={item.sni} className="hover:bg-sky-950/20">
-                    <td className="px-4 py-2.5 text-slate-600 text-xs">{i + 1}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-slate-300 max-w-xs truncate" title={item.sni}>{item.sni}</td>
-                    <td className="px-4 py-2.5 text-right text-slate-300 font-semibold text-xs">{item.count.toLocaleString('tr-TR')}</td>
+                    <td className="ui-td text-slate-600 text-xs">{i + 1}</td>
+                    <td className="ui-td font-mono text-xs text-slate-300 max-w-xs truncate" title={item.sni}>{item.sni}</td>
+                    <td className="ui-td text-right text-slate-300 font-semibold text-xs">{item.count.toLocaleString('tr-TR')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -462,8 +462,8 @@ export default function TlsFingerprintsPage() {
       )}
 
       {/* Fingerprint Tablosu */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/20">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <h2 className="text-sm font-semibold text-slate-200">Top Fingerprint'ler</h2>
           <p className="text-xs text-slate-600 mt-0.5">Satıra tıkla → JA4 detay modalı</p>
         </div>
@@ -479,12 +479,12 @@ export default function TlsFingerprintsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-sky-900/20 text-xs text-slate-500">
-                  <th className="text-left px-4 py-2.5">#</th>
-                  <th className="text-left px-4 py-2.5">Parmak İzi (JA4)</th>
-                  <th className="text-left px-4 py-2.5">TLS Ver.</th>
-                  <th className="text-right px-4 py-2.5">Bağlantı</th>
-                  <th className="text-left px-4 py-2.5">Durum</th>
+                <tr >
+                  <th className="ui-th">#</th>
+                  <th className="ui-th">Parmak İzi (JA4)</th>
+                  <th className="ui-th">TLS Ver.</th>
+                  <th className="ui-th text-right">Bağlantı</th>
+                  <th className="ui-th">Durum</th>
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
@@ -496,30 +496,30 @@ export default function TlsFingerprintsPage() {
                       onClick={() => setSelectedFp(fp)}
                       className={cn('cursor-pointer transition-colors',
                         fp.is_malicious ? 'bg-red-950/20 hover:bg-red-950/30' : 'hover:bg-sky-950/20')}>
-                      <td className="px-4 py-2.5 text-slate-600 text-xs">{idx + 1}</td>
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td text-slate-600 text-xs">{idx + 1}</td>
+                      <td className="ui-td">
                         <span className="font-mono text-xs text-sky-300" title={fp.fingerprint}>
                           {fp.fingerprint.length > 36 ? `${fp.fingerprint.slice(0, 36)}…` : fp.fingerprint}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td">
                         <span className={cn('text-xs font-mono',
                           parsed.tls_version.includes('1.3') ? 'text-emerald-400' :
                           parsed.tls_version.includes('1.2') ? 'text-yellow-400' : 'text-red-400')}>
                           {parsed.tls_version}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-slate-300 font-semibold text-sm">
+                      <td className="ui-td text-right text-slate-300 font-semibold text-sm">
                         {fp.count.toLocaleString('tr-TR')}
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td">
                         {fp.is_malicious ? (
                           <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900/60 text-red-400 border border-red-800">ZARARLI</span>
                         ) : (
                           <span className="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-900/40 text-emerald-400 border border-emerald-800">Temiz</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-slate-600 text-xs">Detay →</td>
+                      <td className="ui-td text-slate-600 text-xs">Detay →</td>
                     </tr>
                   )
                 })}

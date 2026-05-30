@@ -100,7 +100,7 @@ function Panel({ title, children, className }: {
     <div className={cn('bg-[#13161e] border border-white/[0.06] rounded-lg overflow-hidden', className)}>
       {title && (
         <div className="px-4 py-3 border-b border-white/[0.06]">
-          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{title}</span>
+          <span className="ui-section-label">{title}</span>
         </div>
       )}
       {children}

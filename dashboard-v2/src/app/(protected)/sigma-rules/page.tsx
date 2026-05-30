@@ -64,7 +64,7 @@ export default function SigmaRulesPage() {
         </div>
         <Link
           href="/sigma-wizard"
-          className="flex items-center gap-2 px-4 py-2 rounded bg-violet-600 hover:bg-violet-500 text-white text-sm font-medium transition-colors"
+          className="ui-btn ui-btn-primary bg-violet-600 hover:bg-violet-500 text-base py-2 px-4"
         >
           <Wand2 className="h-4 w-4" />
           Sihirbazla Oluştur
@@ -106,13 +106,13 @@ export default function SigmaRulesPage() {
         {rules.length > 0 && (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/20 text-slate-500 text-xs">
-                <th className="text-left py-3 px-4 font-medium w-8">Aktif</th>
-                <th className="text-left py-3 px-4 font-medium">Başlık</th>
-                <th className="text-center py-3 px-4 font-medium">Önem</th>
-                <th className="text-left py-3 px-4 font-medium">Etiketler</th>
-                <th className="text-left py-3 px-4 font-medium hidden lg:table-cell">Dosya</th>
-                <th className="text-right py-3 px-4 font-medium">İşlem</th>
+              <tr >
+                <th className="ui-th">Aktif</th>
+                <th className="ui-th">Başlık</th>
+                <th className="ui-th text-center">Önem</th>
+                <th className="ui-th">Etiketler</th>
+                <th className="ui-th">Dosya</th>
+                <th className="ui-th text-right">İşlem</th>
               </tr>
             </thead>
             <tbody>
@@ -124,7 +124,7 @@ export default function SigmaRulesPage() {
                     !rule.enabled && 'opacity-50',
                   )}
                 >
-                  <td className="py-3 px-4">
+                  <td className="ui-td">
                     <button
                       onClick={() => toggleMut.mutate(rule.rule_id)}
                       disabled={toggleMut.isPending}
@@ -139,13 +139,13 @@ export default function SigmaRulesPage() {
                       <Power className="h-4 w-4" />
                     </button>
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="ui-td">
                     <div className="font-medium text-slate-200">{rule.title}</div>
                     {rule.description && (
                       <div className="text-xs text-slate-500 mt-0.5 line-clamp-1">{rule.description}</div>
                     )}
                   </td>
-                  <td className="py-3 px-4 text-center">
+                  <td className="ui-td text-center">
                     <span className={cn(
                       'px-2 py-0.5 rounded text-xs font-medium',
                       LEVEL_COLORS[rule.level] ?? 'text-slate-400',
@@ -153,7 +153,7 @@ export default function SigmaRulesPage() {
                       {rule.level}
                     </span>
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="ui-td">
                     <div className="flex flex-wrap gap-1">
                       {rule.tags.slice(0, 3).map(tag => (
                         <span key={tag} className="px-1.5 py-0.5 rounded text-[10px] bg-sky-950/20 text-slate-400 font-mono">
@@ -165,10 +165,10 @@ export default function SigmaRulesPage() {
                       )}
                     </div>
                   </td>
-                  <td className="py-3 px-4 hidden lg:table-cell">
+                  <td className="ui-td hidden lg:table-cell">
                     <span className="text-xs font-mono text-slate-500">{rule.filename}</span>
                   </td>
-                  <td className="py-3 px-4">
+                  <td className="ui-td">
                     <div className="flex items-center gap-1 justify-end">
                       <Link
                         href={`/sigma-editor?rule_id=${rule.rule_id}`}
@@ -213,14 +213,14 @@ export default function SigmaRulesPage() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors"
+                className="ui-btn ui-btn-secondary"
               >
                 İptal
               </button>
               <button
                 onClick={() => deleteMut.mutate(confirmDelete)}
                 disabled={deleteMut.isPending}
-                className="px-4 py-2 rounded text-sm bg-red-700 hover:bg-red-600 text-white transition-colors disabled:opacity-50"
+                className="ui-btn ui-btn-danger"
               >
                 {deleteMut.isPending ? 'Siliniyor…' : 'Sil'}
               </button>

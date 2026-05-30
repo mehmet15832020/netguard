@@ -109,24 +109,24 @@ function EventRow({ ev }: { ev: CorrelatedEvent }) {
         className={`cursor-pointer transition-colors ${open ? 'bg-sky-950/20' : 'hover:bg-sky-950/20'}`}
         onClick={() => setOpen((o) => !o)}
       >
-        <td className="px-3 py-2.5 w-6">
+        <td className="ui-td w-6">
           {open
             ? <ChevronDown size={12} className="text-slate-500" />
             : <ChevronRight size={12} className="text-slate-500" />}
         </td>
-        <td className="px-3 py-2.5 w-24"><SeverityBadge severity={ev.severity as Severity} /></td>
-        <td className="px-3 py-2.5">
+        <td className="ui-td w-24"><SeverityBadge severity={ev.severity as Severity} /></td>
+        <td className="ui-td">
           <p className="text-sm text-slate-200">{ev.rule_name}</p>
           <p className="text-xs text-slate-500 font-mono">{ev.event_action}</p>
         </td>
-        <td className="px-3 py-2.5 text-xs text-slate-300 font-mono w-40">{ev.group_value}</td>
-        <td className="px-3 py-2.5 w-24">
+        <td className="ui-td text-xs text-slate-300 font-mono w-40">{ev.group_value}</td>
+        <td className="ui-td w-24">
           <span className="px-2 py-0.5 rounded border border-sky-900/20 bg-sky-950/30 text-xs text-slate-300">
             {ev.matched_count} olay
           </span>
         </td>
-        <td className="px-3 py-2.5 text-xs text-slate-500 w-20">{ev.window_seconds}s</td>
-        <td className="px-3 py-2.5 text-xs text-slate-500 w-36">{formatDate(ev.created_at)}</td>
+        <td className="ui-td text-xs text-slate-500 w-20">{ev.window_seconds}s</td>
+        <td className="ui-td text-xs text-slate-500 w-36">{formatDate(ev.created_at)}</td>
       </tr>
       {open && (
         <tr className="bg-sky-950/10">
@@ -235,7 +235,7 @@ export default function CorrelationPage() {
           <button
             onClick={() => queryClient.invalidateQueries({ queryKey: ['correlated-events'] })}
             disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
             Yenile
@@ -243,7 +243,7 @@ export default function CorrelationPage() {
           <button
             onClick={() => runMutation.mutate()}
             disabled={runMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-primary"
           >
             <Play size={12} />
             {runMutation.isPending ? 'Çalışıyor…' : 'Şimdi Çalıştır'}
@@ -259,7 +259,7 @@ export default function CorrelationPage() {
           { label: 'Aktif Kural',  value: enabledRules,            color: 'text-emerald-400' },
           { label: 'Pasif Kural',  value: rules.length - enabledRules, color: 'text-slate-500' },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div key={label} className="ui-panel p-4">
             <p className="text-xs text-slate-500 mb-1">{label}</p>
             <p className={`text-2xl font-bold ${color}`}>{isLoading ? '—' : value}</p>
           </div>
@@ -269,9 +269,9 @@ export default function CorrelationPage() {
       {/* Charts row */}
       {events.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="lg:col-span-2 bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+          <div className="lg:col-span-2 ui-panel">
+            <div className="ui-panel-header">
+              <p className="ui-section-label">
                 Kural Tetiklenme Sıklığı
               </p>
               {mostTriggered && (
@@ -285,9 +285,9 @@ export default function CorrelationPage() {
             </div>
           </div>
 
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Severity Dağılımı</p>
+          <div className="ui-panel">
+            <div className="ui-panel-header">
+              <p className="ui-section-label">Severity Dağılımı</p>
             </div>
             <div className="p-4">
               <SeverityDistBar events={events} />
@@ -323,7 +323,7 @@ export default function CorrelationPage() {
 
         {/* Events tab */}
         {tab === 'events' && (
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+          <div className="ui-panel">
             {isLoading ? (
               <div className="p-4">
                 <SkeletonTable rows={6} height={44} />
@@ -337,13 +337,13 @@ export default function CorrelationPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-sky-900/20">
-                    <th className="px-3 py-2.5 w-6" />
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500 w-24">Seviye</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500">Kural</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500 w-40">Grup Değeri</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500 w-24">Eşleşme</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500 w-20">Pencere</th>
-                    <th className="px-3 py-2.5 text-left text-xs font-medium text-slate-500 w-36">Zaman</th>
+                    <th className="ui-th w-6" />
+                    <th className="ui-th w-24">Seviye</th>
+                    <th className="ui-th">Kural</th>
+                    <th className="ui-th w-40">Grup Değeri</th>
+                    <th className="ui-th w-24">Eşleşme</th>
+                    <th className="ui-th w-20">Pencere</th>
+                    <th className="ui-th w-36">Zaman</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sky-900/10">
@@ -356,13 +356,13 @@ export default function CorrelationPage() {
 
         {/* Rules tab */}
         {tab === 'rules' && (
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-sky-900/15">
+          <div className="ui-panel">
+            <div className="ui-panel-header justify-between">
               <span className="text-xs font-medium text-slate-400">Aktif Kurallar</span>
               <button
                 onClick={() => reloadMutation.mutate()}
                 disabled={reloadMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+                className="ui-btn ui-btn-secondary"
               >
                 {reloadMutation.isPending
                   ? <><RefreshCw size={11} className="animate-spin" />Yükleniyor…</>
@@ -379,34 +379,34 @@ export default function CorrelationPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-sky-900/20">
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 w-16">Durum</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Kural Adı</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 w-32">Eşleşen Tip</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 w-24">Grup</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 w-20">Pencere</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 w-16">Eşik</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 w-24">Seviye</th>
+                    <th className="ui-th w-16">Durum</th>
+                    <th className="ui-th">Kural Adı</th>
+                    <th className="ui-th w-32">Eşleşen Tip</th>
+                    <th className="ui-th w-24">Grup</th>
+                    <th className="ui-th w-20">Pencere</th>
+                    <th className="ui-th w-16">Eşik</th>
+                    <th className="ui-th w-24">Seviye</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sky-900/10">
                   {rules.map((rule) => (
                     <tr key={rule.rule_id} className="hover:bg-sky-950/20 transition-colors">
-                      <td className="px-4 py-3">
+                      <td className="ui-td">
                         {rule.enabled
                           ? <CheckCircle2 size={14} className="text-emerald-500" />
                           : <Circle size={14} className="text-slate-600" />}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="ui-td">
                         <p className="text-sm text-slate-200">{rule.name}</p>
                         {rule.description && (
                           <p className="text-xs text-slate-500 mt-0.5">{rule.description}</p>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-400 font-mono">{rule.match_event_action}</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{rule.group_by}</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{rule.window_seconds}s</td>
-                      <td className="px-4 py-3 text-xs text-slate-400">{rule.threshold}</td>
-                      <td className="px-4 py-3"><SeverityBadge severity={rule.severity} /></td>
+                      <td className="ui-td text-xs text-slate-400 font-mono">{rule.match_event_action}</td>
+                      <td className="ui-td text-xs text-slate-400">{rule.group_by}</td>
+                      <td className="ui-td text-xs text-slate-400">{rule.window_seconds}s</td>
+                      <td className="ui-td text-xs text-slate-400">{rule.threshold}</td>
+                      <td className="ui-td"><SeverityBadge severity={rule.severity} /></td>
                     </tr>
                   ))}
                 </tbody>

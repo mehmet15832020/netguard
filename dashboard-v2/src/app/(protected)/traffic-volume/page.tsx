@@ -97,7 +97,7 @@ export default function TrafficVolumePage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-sky-500 flex-shrink-0" />
             <p className="text-xs text-slate-500">İç ↔ İç (East-West)</p>
@@ -107,7 +107,7 @@ export default function TrafficVolumePage() {
           </p>
           <p className="text-xs text-slate-600 mt-0.5">lateral hareket riski</p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
             <p className="text-xs text-slate-500">İç → Dış (Egress)</p>
@@ -117,7 +117,7 @@ export default function TrafficVolumePage() {
           </p>
           <p className="text-xs text-slate-600 mt-0.5">veri sızdırma riski</p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
             <p className="text-xs text-slate-500">Dış → İç (Ingress)</p>
@@ -133,11 +133,11 @@ export default function TrafficVolumePage() {
       {isLoading ? (
         <SkeletonChart height={320} className="rounded-xl" />
       ) : isEmpty ? (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <EmptyState />
         </div>
       ) : (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <TrafficVolumeChart series={data!.series} hours={hours} height={320} />
         </div>
       )}

@@ -233,8 +233,8 @@ export default function DnsAnalysisPage() {
       ) : null}
 
       {/* ─ Saatlik hacim ── */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/15">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <h2 className="text-sm font-semibold text-slate-200">Saatlik DNS Sorgu Hacmi</h2>
         </div>
         {isLoading ? (
@@ -252,8 +252,8 @@ export default function DnsAnalysisPage() {
       </div>
 
       {/* ─ Top hedefler ── */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/15 flex items-center justify-between">
+      <div className="ui-panel">
+        <div className="ui-panel-header justify-between">
           <h2 className="text-sm font-semibold text-slate-200">En Çok Sorgulanan Hedefler (İlk 10)</h2>
           {data && <span className="text-xs text-slate-500">{data.unique_destinations} benzersiz hedef</span>}
         </div>
@@ -280,7 +280,7 @@ export default function DnsAnalysisPage() {
 
           {/* Yüksek entropi domainler */}
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 lg:col-span-1">
-            <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2">
+            <div className="ui-panel-header">
               <Search className="w-3.5 h-3.5 text-red-400" />
               <h2 className="text-sm font-semibold text-slate-200">Yüksek Entropi Domain</h2>
               <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-red-500/20 text-red-400">
@@ -300,7 +300,7 @@ export default function DnsAnalysisPage() {
 
           {/* Uzun subdomain sorguları */}
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 lg:col-span-1">
-            <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2">
+            <div className="ui-panel-header">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <h2 className="text-sm font-semibold text-slate-200">Uzun Subdomain Sorgusu</h2>
               <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">
@@ -320,7 +320,7 @@ export default function DnsAnalysisPage() {
 
           {/* NXDOMAIN üreten IP'ler */}
           <div className="bg-zinc-900 rounded-xl border border-zinc-800 lg:col-span-1">
-            <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2">
+            <div className="ui-panel-header">
               <Shield className="w-3.5 h-3.5 text-orange-400" />
               <h2 className="text-sm font-semibold text-slate-200">NXDOMAIN Kaynakları</h2>
               <span className="ml-auto text-xs font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400">

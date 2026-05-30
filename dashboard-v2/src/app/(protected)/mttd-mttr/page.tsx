@@ -44,16 +44,16 @@ function SeverityTable({ rows }: { rows: MttdMttrSeverityBreakdown[] }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-sky-900/20 text-slate-500 text-xs">
-            <th className="text-left py-2 pr-4 font-medium">Önem</th>
-            <th className="text-right py-2 px-4 font-medium">Adet</th>
-            <th className="text-right py-2 px-4 font-medium">MTTD Ort.</th>
-            <th className="text-right py-2 px-4 font-medium">
+          <tr >
+            <th className="ui-th">Önem</th>
+            <th className="ui-th text-right">Adet</th>
+            <th className="ui-th text-right">MTTD Ort.</th>
+            <th className="ui-th text-right">
               MTTD SLA
               <span className="block text-slate-600 font-normal">(hedef)</span>
             </th>
-            <th className="text-right py-2 px-4 font-medium">MTTR Ort.</th>
-            <th className="text-right py-2 px-4 font-medium">
+            <th className="ui-th text-right">MTTR Ort.</th>
+            <th className="ui-th text-right">
               MTTR SLA
               <span className="block text-slate-600 font-normal">(hedef)</span>
             </th>
@@ -62,23 +62,23 @@ function SeverityTable({ rows }: { rows: MttdMttrSeverityBreakdown[] }) {
         <tbody>
           {rows.map(r => (
             <tr key={r.severity} className="border-b border-sky-900/10 hover:bg-sky-950/20">
-              <td className="py-2 pr-4">
+              <td className="ui-td pr-4">
                 <span className={`font-medium capitalize ${SEV_COLORS[r.severity] ?? 'text-slate-400'}`}>
                   {r.severity}
                 </span>
               </td>
-              <td className="text-right py-2 px-4 text-slate-300">{r.count}</td>
-              <td className="text-right py-2 px-4 font-mono text-slate-300">
+              <td className="ui-td text-right text-slate-300">{r.count}</td>
+              <td className="ui-td text-right font-mono text-slate-300">
                 {fmtMin(r.avg_mttd_minutes)}
               </td>
-              <td className="text-right py-2 px-4">
+              <td className="ui-td text-right">
                 <SlaPct pct={r.mttd_sla_pct} hasData={r.avg_mttd_minutes !== null} />
                 <span className="block text-slate-600 text-xs">&lt;{fmtMin(r.mttd_target_minutes)}</span>
               </td>
-              <td className="text-right py-2 px-4 font-mono text-slate-300">
+              <td className="ui-td text-right font-mono text-slate-300">
                 {fmtMin(r.avg_mttr_minutes)}
               </td>
-              <td className="text-right py-2 px-4">
+              <td className="ui-td text-right">
                 <SlaPct pct={r.mttr_sla_pct} hasData={r.avg_mttr_minutes !== null} />
                 <span className="block text-slate-600 text-xs">&lt;{fmtMin(r.mttr_target_minutes)}</span>
               </td>

@@ -44,8 +44,8 @@ const SLA_TARGETS: Record<string, { mttd: number; mttr: number }> = {
   info:     { mttd: 240, mttr: 480 },
 }
 
-const INPUT_CLS = "w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors"
-const SELECT_CLS = "bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+const INPUT_CLS = "ui-input"
+const SELECT_CLS = "ui-select"
 
 // ─── PriorityBadge ────────────────────────────────────────────────────────────
 
@@ -197,7 +197,7 @@ function EnrichmentPanel({ enrichment, incidentId }: { enrichment?: IncidentEnri
 
 function SummaryCard({ label, value, color, sub }: { label: string; value: number; color: string; sub?: string }) {
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+    <div className="ui-panel p-4">
       <p className="text-xs text-slate-500 mb-1">{label}</p>
       <p className={cn('text-2xl font-bold', color)}>{value}</p>
       {sub && <p className="text-[11px] text-slate-700 mt-0.5">{sub}</p>}
@@ -240,7 +240,7 @@ function MttdMttrSection() {
   const rate = data?.resolution_rate ?? null
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+    <div className="ui-panel">
       <button
         onClick={() => setExpanded(v => !v)}
         className="w-full flex items-center gap-4 px-4 py-3 hover:bg-sky-950/15 transition-colors"
@@ -283,29 +283,29 @@ function MttdMttrSection() {
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="text-slate-600 border-b border-sky-900/15">
-                      <th className="text-left py-2 pr-4 font-medium">Severity</th>
-                      <th className="text-right py-2 px-3 font-medium">Hedef MTTD</th>
-                      <th className="text-left py-2 px-3 font-medium">MTTD SLA</th>
-                      <th className="text-right py-2 px-3 font-medium">Ort. MTTD</th>
-                      <th className="text-right py-2 px-3 font-medium">Hedef MTTR</th>
-                      <th className="text-left py-2 px-3 font-medium">MTTR SLA</th>
-                      <th className="text-right py-2 px-3 font-medium">Ort. MTTR</th>
-                      <th className="text-right py-2 pl-3 font-medium">Incident</th>
+                      <th className="ui-th">Severity</th>
+                      <th className="ui-th text-right">Hedef MTTD</th>
+                      <th className="ui-th">MTTD SLA</th>
+                      <th className="ui-th text-right">Ort. MTTD</th>
+                      <th className="ui-th text-right">Hedef MTTR</th>
+                      <th className="ui-th">MTTR SLA</th>
+                      <th className="ui-th text-right">Ort. MTTR</th>
+                      <th className="ui-th text-right">Incident</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.by_severity.map(row => (
                       <tr key={row.severity} className="border-b border-sky-900/10 last:border-0">
-                        <td className="py-2 pr-4">
+                        <td className="ui-td pr-4">
                           <span className={cn('font-medium uppercase', SEV_TEXT[row.severity] ?? 'text-slate-400')}>{row.severity}</span>
                         </td>
-                        <td className="py-2 px-3 text-right text-slate-600">{fmtMin(row.mttd_target_minutes)}</td>
-                        <td className="py-2 px-3"><SlaBar pct={row.mttd_sla_pct} /></td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-300">{fmtMin(row.avg_mttd_minutes)}</td>
-                        <td className="py-2 px-3 text-right text-slate-600">{fmtMin(row.mttr_target_minutes)}</td>
-                        <td className="py-2 px-3"><SlaBar pct={row.mttr_sla_pct} /></td>
-                        <td className="py-2 px-3 text-right font-mono text-slate-300">{fmtMin(row.avg_mttr_minutes)}</td>
-                        <td className="py-2 pl-3 text-right text-slate-600">{row.count}</td>
+                        <td className="ui-td text-right text-slate-600">{fmtMin(row.mttd_target_minutes)}</td>
+                        <td className="ui-td"><SlaBar pct={row.mttd_sla_pct} /></td>
+                        <td className="ui-td text-right font-mono text-slate-300">{fmtMin(row.avg_mttd_minutes)}</td>
+                        <td className="ui-td text-right text-slate-600">{fmtMin(row.mttr_target_minutes)}</td>
+                        <td className="ui-td"><SlaBar pct={row.mttr_sla_pct} /></td>
+                        <td className="ui-td text-right font-mono text-slate-300">{fmtMin(row.avg_mttr_minutes)}</td>
+                        <td className="ui-td pl-3 text-right text-slate-600">{row.count}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -478,7 +478,7 @@ export default function IncidentsPage() {
 
       {/* Create form */}
       {showCreate && (
-        <div className="bg-[#0a1120] border border-sky-900/25 rounded-xl p-4 space-y-3">
+        <div className="ui-panel p-4 space-y-3">
           <div className="flex items-center justify-between mb-1">
             <span className="text-sm font-semibold text-slate-200">Yeni Incident</span>
             <button onClick={() => setShowCreate(false)} className="text-slate-600 hover:text-slate-400 transition-colors">
@@ -506,7 +506,7 @@ export default function IncidentsPage() {
             <button
               disabled={!newTitle || createMutation.isPending}
               onClick={() => createMutation.mutate()}
-              className="px-4 py-2 rounded-lg text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium transition-colors disabled:opacity-50"
+              className="ui-btn ui-btn-primary"
             >
               Oluştur
             </button>
@@ -532,7 +532,7 @@ export default function IncidentsPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {isLoading ? (
           <div className="p-4"><SkeletonTable rows={5} height={44} /></div>
         ) : incidents.length === 0 ? (
@@ -543,43 +543,43 @@ export default function IncidentsPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                <th className="text-left px-4 py-3">Başlık</th>
-                <th className="text-left px-4 py-3 w-16">Öncelik</th>
-                <th className="text-left px-4 py-3 w-24">Severity</th>
-                <th className="text-left px-4 py-3 w-28">Durum</th>
-                <th className="text-left px-4 py-3 w-28">Atanan</th>
-                <th className="text-left px-4 py-3 w-36">Tarih</th>
-                <th className="text-left px-4 py-3 w-20">
+              <tr >
+                <th className="ui-th">Başlık</th>
+                <th className="ui-th w-16">Öncelik</th>
+                <th className="ui-th w-24">Severity</th>
+                <th className="ui-th w-28">Durum</th>
+                <th className="ui-th w-28">Atanan</th>
+                <th className="ui-th w-36">Tarih</th>
+                <th className="ui-th w-20">
                   <Clock size={11} className="inline mr-1 text-slate-700" />Süre
                 </th>
-                <th className="px-4 py-3 w-20" />
+                <th className="ui-th w-20" />
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
               {incidents.map(inc => (
                 <tr key={inc.incident_id} className="hover:bg-sky-950/20 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-200 max-w-xs truncate">{inc.title}</td>
-                  <td className="px-4 py-3"><PriorityBadge score={inc.priority_score ?? 0} /></td>
-                  <td className={cn('px-4 py-3 font-mono text-xs uppercase font-semibold', SEV_TEXT[inc.severity] ?? 'text-slate-400')}>
+                  <td className="ui-td font-medium text-slate-200 max-w-xs truncate">{inc.title}</td>
+                  <td className="ui-td"><PriorityBadge score={inc.priority_score ?? 0} /></td>
+                  <td className={cn('ui-td font-mono uppercase font-semibold', SEV_TEXT[inc.severity] ?? 'text-slate-400')}>
                     {inc.severity}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <span className={cn('px-2 py-0.5 rounded text-xs font-medium border', STATUS_CLS[inc.status] ?? 'text-slate-400 bg-sky-950/20 border-sky-900/20')}>
                       {STATUS_LABELS[inc.status] ?? inc.status}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-slate-500 text-xs font-mono">{inc.assigned_to ?? '—'}</td>
-                  <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">
+                  <td className="ui-td text-slate-500 text-xs font-mono">{inc.assigned_to ?? '—'}</td>
+                  <td className="ui-td text-slate-700 text-xs whitespace-nowrap">
                     {new Date(inc.created_at).toLocaleString('tr-TR')}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <IncidentAge createdAt={inc.created_at} resolvedAt={inc.resolved_at} severity={inc.severity} status={inc.status} />
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="ui-td text-right">
                     <button
                       onClick={() => { setSelected(inc); setEditNotes(inc.notes ?? ''); setEditClosureNote(inc.closure_note ?? ''); setPendingStatus(null) }}
-                      className="px-2.5 py-1 rounded text-xs text-sky-400 border border-sky-900/30 hover:bg-sky-950/30 transition-colors"
+                      className="ui-btn ui-btn-secondary text-sky-400"
                     >
                       Yönet
                     </button>
@@ -593,7 +593,7 @@ export default function IncidentsPage() {
 
       {/* Detail / Edit Panel */}
       {selected && (
-        <div className="bg-[#0a1120] border border-sky-900/25 rounded-xl p-5 space-y-4">
+        <div className="ui-panel p-5 space-y-4">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold text-slate-100">{selected.title}</h2>
@@ -636,18 +636,18 @@ export default function IncidentsPage() {
                 onChange={e => setEditClosureNote(e.target.value)}
                 placeholder="Ne yapıldı? Kök neden neydi? Nasıl çözüldü?"
                 rows={3}
-                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 resize-none focus:outline-none focus:border-sky-500/50"
+                className="ui-input resize-none"
               />
               <div className="flex gap-2">
                 <button
                   disabled={!editClosureNote.trim() || updateMutation.isPending}
                   onClick={() => updateMutation.mutate({ id: selected.incident_id, status: 'resolved', closure_note: editClosureNote.trim() })}
-                  className="px-4 py-1.5 rounded-lg text-sm bg-emerald-700 hover:bg-emerald-600 text-white transition-colors disabled:opacity-50"
+                  className="ui-btn bg-emerald-700 hover:bg-emerald-600 text-white"
                 >
                   Çözüldü Olarak Kapat
                 </button>
                 <button onClick={() => setPendingStatus(null)}
-                  className="px-4 py-1.5 rounded-lg text-sm text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors">
+                  className="ui-btn ui-btn-secondary">
                   Vazgeç
                 </button>
               </div>
@@ -666,7 +666,7 @@ export default function IncidentsPage() {
               />
               <button
                 onClick={() => updateMutation.mutate({ id: selected.incident_id, notes: editNotes })}
-                className="px-3 py-2 rounded-lg text-sm bg-sky-600 hover:bg-sky-500 text-white transition-colors"
+                className="ui-btn ui-btn-primary"
               >
                 Kaydet
               </button>
@@ -745,14 +745,14 @@ export default function IncidentsPage() {
             <div className="flex gap-2 justify-end">
               <button
                 onClick={() => { setShowBlockDialog(false); setBlockReason('') }}
-                className="text-xs px-3 py-1.5 rounded-lg text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+                className="ui-btn ui-btn-secondary"
               >
                 Vazgeç
               </button>
               <button
                 disabled={!blockReason.trim() || blockMutation.isPending}
                 onClick={() => blockingIp && blockMutation.mutate({ ip: blockingIp, reason: blockReason })}
-                className="text-xs px-3 py-1.5 rounded-lg bg-red-700 hover:bg-red-600 text-white transition-colors disabled:opacity-50"
+                className="ui-btn ui-btn-danger"
               >
                 {blockMutation.isPending ? 'Bloklanıyor...' : 'Onayla ve Blokla'}
               </button>

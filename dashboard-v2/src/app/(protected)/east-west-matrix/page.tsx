@@ -106,7 +106,7 @@ export default function EastWestMatrixPage() {
       {isLoading && <Skeleton className="h-72 w-full" />}
       {!isLoading && topPairs.length > 0 && (
         <div className="panel-cyber overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/20">
+          <div className="ui-panel-header">
             <h2 className="text-sm font-semibold text-slate-200">En Yoğun Bağlantı Çiftleri (İlk 10)</h2>
           </div>
           <div className="divide-y divide-sky-900/15">

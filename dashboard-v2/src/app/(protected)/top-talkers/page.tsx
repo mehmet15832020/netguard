@@ -126,7 +126,7 @@ export default function TopTalkersPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <Radio className="w-4 h-4 text-sky-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">En Aktif Kaynak</p>
@@ -138,7 +138,7 @@ export default function TopTalkersPage() {
             {topSource ? `${topSource.count.toLocaleString('tr-TR')} bağlantı · tarama/sızdırma riski` : 'veri yok'}
           </p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <Target className="w-4 h-4 text-sky-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">En Meşgul Hedef</p>
@@ -150,7 +150,7 @@ export default function TopTalkersPage() {
             {topDest ? `${topDest.count.toLocaleString('tr-TR')} bağlantı · C2/exfil hedefi olabilir` : 'veri yok'}
           </p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <Zap className="w-4 h-4 text-emerald-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">En Yaygın Port</p>
@@ -175,7 +175,7 @@ export default function TopTalkersPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             {sources.length > 0 ? (
               <TopTalkersChart
                 title="Top Kaynak IP"
@@ -188,7 +188,7 @@ export default function TopTalkersPage() {
             )}
           </div>
 
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             {dests.length > 0 ? (
               <TopTalkersChart
                 title="Top Hedef IP"
@@ -201,7 +201,7 @@ export default function TopTalkersPage() {
             )}
           </div>
 
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             {ports.length > 0 ? (
               <TopTalkersChart
                 title="Top Hedef Port"

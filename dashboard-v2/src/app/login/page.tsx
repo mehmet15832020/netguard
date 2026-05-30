@@ -89,7 +89,7 @@ export default function LoginPage() {
                 placeholder="admin"
                 required
                 autoFocus
-                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors font-mono"
+                className="ui-input font-mono"
               />
             </div>
             <div className="space-y-1.5">
@@ -100,7 +100,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors font-mono"
+                className="ui-input font-mono"
               />
             </div>
             {error && (
@@ -111,7 +111,7 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              className="ui-btn ui-btn-primary w-full justify-center"
             >
               {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
             </button>
@@ -130,7 +130,7 @@ export default function LoginPage() {
                 placeholder="000000"
                 required
                 autoFocus
-                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors font-mono text-center text-xl tracking-widest"
+                className="ui-input font-mono text-center text-xl tracking-widest"
               />
             </div>
             {error && (
@@ -141,14 +141,14 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+              className="ui-btn ui-btn-primary w-full justify-center"
             >
               {loading ? 'Doğrulanıyor...' : 'Doğrula'}
             </button>
             <button
               type="button"
               onClick={() => { setStep('password'); setTotpCode(''); setError('') }}
-              className="w-full py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-sky-950/30 text-sm transition-colors border border-sky-900/20"
+              className="ui-btn ui-btn-secondary w-full justify-center"
             >
               <ArrowLeft size={14} className="inline mr-1" /> Geri
             </button>

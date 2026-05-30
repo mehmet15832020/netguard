@@ -153,7 +153,7 @@ export default function CompliancePage() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+          className="ui-btn ui-btn-secondary"
         >
           <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
           Yenile
@@ -179,14 +179,14 @@ export default function CompliancePage() {
       </div>
 
       {isLoading ? (
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <SkeletonTable rows={8} height={44} />
         </div>
       ) : (
         <>
           {/* Summary cards */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl flex items-center justify-center py-4 px-3">
+            <div className="ui-panel flex items-center justify-center py-4 px-3">
               <div className="flex flex-col items-center gap-1">
                 <ScoreRing score={data?.overall_score ?? 0} />
                 <p className="text-xs text-slate-500 mt-1">Genel Uyum</p>
@@ -219,9 +219,9 @@ export default function CompliancePage() {
               {Object.entries(data.by_framework).map(([fw, info]) => {
                 const fwInfo = info as { score: number; compliant: number; partial: number; gap: number; total: number }
                 return (
-                  <div key={fw} className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-                    <div className="px-4 py-3 border-b border-sky-900/15">
-                      <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{fw}</span>
+                  <div key={fw} className="ui-panel">
+                    <div className="ui-panel-header">
+                      <span className="ui-section-label">{fw}</span>
                     </div>
                     <div className="p-4 flex items-center gap-4">
                       <ScoreRing score={fwInfo.score} size={64} />
@@ -253,7 +253,7 @@ export default function CompliancePage() {
               <h2 className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-2">
                 {event_category} ({items.length})
               </h2>
-              <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+              <div className="ui-panel">
                 {items.map(ctrl => <ControlRow key={ctrl.control_id} ctrl={ctrl} />)}
               </div>
             </div>

@@ -56,8 +56,8 @@ const FILTER_TYPES = [
   { value: 'discovered', label: 'Keşfedilen' },
 ]
 
-const INP = 'w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors'
-const SEL = 'h-9 bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors'
+const INP = 'ui-input'
+const SEL = 'ui-select'
 
 function SNMPModal({ device, onClose }: { device: Device; onClose: () => void }) {
   const qc = useQueryClient()
@@ -176,11 +176,11 @@ function SNMPModal({ device, onClose }: { device: Device; onClose: () => void })
 
         <div className="flex justify-end gap-2 px-5 py-3 border-t border-sky-900/20">
           <button onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-xs text-slate-400 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors">
+            className="ui-btn ui-btn-secondary">
             İptal
           </button>
           <button onClick={() => mutate()} disabled={isPending || saved}
-            className="px-3 py-1.5 rounded-lg text-xs text-white bg-sky-600 hover:bg-sky-500 transition-colors disabled:opacity-60 shadow-[0_0_12px_rgba(56,189,248,0.15)]">
+            className="ui-btn ui-btn-primary shadow-[0_0_12px_rgba(56,189,248,0.15)]">
             {saved ? 'Kaydedildi ✓' : isPending ? 'Kaydediliyor...' : 'Kaydet'}
           </button>
         </div>
@@ -240,7 +240,7 @@ export default function DevicesPage() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+          className="ui-btn ui-btn-secondary"
         >
           <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
           Yenile
@@ -254,7 +254,7 @@ export default function DevicesPage() {
           { label: 'Erişilemiyor', value: counts.down,    color: 'text-red-400' },
           { label: 'Bilinmiyor',   value: counts.unknown, color: 'text-slate-400' },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div key={label} className="ui-panel p-4">
             <p className="text-xs text-slate-500">{label}</p>
             <p className={cn('text-2xl font-bold mt-1', color)}>{value}</p>
           </div>
@@ -269,7 +269,7 @@ export default function DevicesPage() {
             placeholder="IP, isim, vendor..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            className="pl-8 pr-3 py-1.5 text-xs bg-sky-950/20 border border-sky-900/25 rounded-lg text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors w-52"
+            className="ui-input pl-8 w-52"
           />
         </div>
         <div className="flex gap-1">
@@ -291,7 +291,7 @@ export default function DevicesPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {isLoading ? (
           <div className="p-4">
             <SkeletonTable rows={7} height={40} />
@@ -304,15 +304,15 @@ export default function DevicesPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                <th className="px-4 py-3 w-6" />
-                <th className="px-4 py-3 text-left">Cihaz</th>
-                <th className="px-4 py-3 text-left w-32">IP</th>
-                <th className="px-4 py-3 text-left w-28">Tür</th>
-                <th className="px-4 py-3 text-left w-32">Vendor</th>
-                <th className="px-4 py-3 text-left w-40">OS</th>
-                <th className="px-4 py-3 text-left w-36">Son Görülme</th>
-                <th className="px-4 py-3 text-left w-24">SNMP</th>
+              <tr >
+                <th className="ui-th w-6" />
+                <th className="ui-th">Cihaz</th>
+                <th className="ui-th">IP</th>
+                <th className="ui-th w-28">Tür</th>
+                <th className="ui-th">Vendor</th>
+                <th className="ui-th w-40">OS</th>
+                <th className="ui-th w-36">Son Görülme</th>
+                <th className="ui-th">SNMP</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
@@ -324,19 +324,19 @@ export default function DevicesPage() {
                     className="hover:bg-sky-950/20 cursor-pointer transition-colors"
                     onClick={() => window.location.href = `/devices/${device.device_id}`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <StatusDot status={device.status} />
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <p className="text-sm text-slate-200 font-medium">{device.name}</p>
                       {device.mac && <p className="text-xs text-slate-600 font-mono">{device.mac}</p>}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-300">{device.ip || '—'}</td>
-                    <td className="px-4 py-3"><DeviceTypeBadge type={device.type} /></td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{device.vendor || '—'}</td>
-                    <td className="px-4 py-3 text-xs text-slate-500 max-w-[160px] truncate">{device.os_info || '—'}</td>
-                    <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">{formatDate(device.last_seen)}</td>
-                    <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
+                    <td className="ui-td font-mono text-xs text-slate-300">{device.ip || '—'}</td>
+                    <td className="ui-td"><DeviceTypeBadge type={device.type} /></td>
+                    <td className="ui-td text-xs text-slate-500">{device.vendor || '—'}</td>
+                    <td className="ui-td text-xs text-slate-500 max-w-[160px] truncate">{device.os_info || '—'}</td>
+                    <td className="ui-td text-xs text-slate-600 whitespace-nowrap">{formatDate(device.last_seen)}</td>
+                    <td className="ui-td" onClick={e => e.stopPropagation()}>
                       <button
                         onClick={() => setSnmpDevice(device)}
                         title="SNMP ayarla"

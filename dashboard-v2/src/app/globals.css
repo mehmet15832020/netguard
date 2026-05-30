@@ -152,6 +152,160 @@
   }
 }
 
+/* ── Design Token Utilities ────────────────────────────────────────── */
+
+/* Panel anatomy */
+.ui-panel {
+  background-color: #0a1120;
+  border: 1px solid oklch(0.74 0.18 215 / 12%);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+.ui-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid oklch(0.74 0.18 215 / 10%);
+  flex-shrink: 0;
+}
+.ui-panel-footer {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid oklch(0.74 0.18 215 / 10%);
+}
+
+/* Typography */
+.ui-page-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: oklch(0.93 0.006 240);
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.ui-page-subtitle {
+  font-size: 0.6875rem;
+  color: oklch(0.44 0.035 243);
+  line-height: 1.4;
+}
+.ui-section-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: oklch(0.50 0.04 243);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+.ui-mono {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: oklch(0.73 0.018 243);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons — composable: ui-btn + variant */
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.ui-btn:disabled,
+.ui-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+.ui-btn-secondary {
+  color: oklch(0.73 0.018 243);
+  background: oklch(0.74 0.18 215 / 7%);
+  border-color: oklch(0.74 0.18 215 / 13%);
+}
+.ui-btn-secondary:hover:not(:disabled) {
+  background: oklch(0.74 0.18 215 / 13%);
+  color: oklch(0.87 0.010 240);
+}
+.ui-btn-primary {
+  background: oklch(0.595 0.17 215);
+  color: #fff;
+}
+.ui-btn-primary:hover:not(:disabled) {
+  background: oklch(0.645 0.17 215);
+}
+.ui-btn-danger {
+  background: oklch(0.475 0.175 22);
+  color: #fff;
+}
+.ui-btn-danger:hover:not(:disabled) {
+  background: oklch(0.525 0.175 22);
+}
+
+/* Form controls */
+.ui-input {
+  background: oklch(0.74 0.18 215 / 7%);
+  border: 1px solid oklch(0.74 0.18 215 / 16%);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  color: oklch(0.87 0.010 240);
+  outline: none;
+  transition: border-color 0.15s;
+  width: 100%;
+}
+.ui-input::placeholder {
+  color: oklch(0.42 0.03 243);
+}
+.ui-input:focus {
+  border-color: oklch(0.74 0.18 215 / 45%);
+}
+.ui-select {
+  appearance: none;
+  background: oklch(0.74 0.18 215 / 7%);
+  border: 1px solid oklch(0.74 0.18 215 / 16%);
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+  color: oklch(0.87 0.010 240);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.ui-select:focus {
+  border-color: oklch(0.74 0.18 215 / 45%);
+}
+
+/* Tables */
+.ui-th {
+  padding: 0.5rem 1rem;
+  text-align: left;
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: oklch(0.48 0.04 243);
+  background: oklch(0.07 0.022 243 / 60%);
+  border-bottom: 1px solid oklch(0.74 0.18 215 / 10%);
+  white-space: nowrap;
+}
+.ui-td {
+  padding: 0.5625rem 1rem;
+  font-size: 0.75rem;
+  color: oklch(0.70 0.016 243);
+  border-bottom: 1px solid oklch(0.74 0.18 215 / 7%);
+}
+tr:last-child .ui-td {
+  border-bottom: none;
+}
+tr:hover .ui-td {
+  background: oklch(0.74 0.18 215 / 3%);
+}
+
 @layer utilities {
   /* ── Glow effects ────────────────────────── */
   .glow-cyber {

@@ -38,7 +38,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
   )
 }
 
-const cls = "w-full rounded bg-sky-950/20 border border-sky-900/25 text-slate-200 text-sm px-3 py-2 focus:outline-none focus:border-violet-500"
+const cls = "ui-input"
 
 export function RuleFormModal({ rule, onClose, onSaved }: Props) {
   const isNew = rule === null
@@ -227,14 +227,14 @@ export function RuleFormModal({ rule, onClose, onSaved }: Props) {
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors"
+              className="ui-btn ui-btn-secondary"
             >
               İptal
             </button>
             <button
               type="submit"
               disabled={isPending}
-              className="px-4 py-2 rounded text-sm bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors disabled:opacity-50"
+              className="ui-btn ui-btn-primary"
             >
               {isPending ? 'Kaydediliyor…' : isNew ? 'Oluştur' : 'Kaydet'}
             </button>

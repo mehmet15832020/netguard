@@ -199,7 +199,7 @@ export default function TimelinePage() {
         </div>
         <button
           onClick={() => refetchActive()}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+          className="ui-btn ui-btn-secondary"
         >
           <RefreshCw size={12} /> Yenile
         </button>
@@ -208,7 +208,7 @@ export default function TimelinePage() {
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {KPI_ITEMS.map(({ label, value, icon: Icon, active, activeColor, activeBg }) => (
-          <div key={label} className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex items-center gap-3">
+          <div key={label} className="ui-panel p-4 flex items-center gap-3">
             <div className={cn(
               'w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0',
               active ? cn(activeBg, activeColor) : 'bg-sky-950/20 border-sky-900/15 text-slate-600',
@@ -231,11 +231,11 @@ export default function TimelinePage() {
         </h2>
 
         {activeLoading ? (
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-8 text-center text-slate-600 text-sm">
+          <div className="ui-panel p-8 text-center text-slate-600 text-sm">
             Yükleniyor...
           </div>
         ) : activeChains.length === 0 ? (
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-8 text-center">
+          <div className="ui-panel p-8 text-center">
             <Shield size={24} className="text-emerald-500/30 mx-auto mb-2" />
             <p className="text-slate-500 text-sm">Son 30 dakikada aktif saldırı zinciri tespit edilmedi</p>
           </div>
@@ -251,10 +251,10 @@ export default function TimelinePage() {
       {/* Geçmiş + Diğer Olaylar */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+        <div className="ui-panel">
+          <div className="ui-panel-header">
             <Swords size={13} className="text-slate-500" />
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            <span className="ui-section-label">
               Kill Chain Geçmişi ({historyEvents.length})
             </span>
           </div>
@@ -271,10 +271,10 @@ export default function TimelinePage() {
           )}
         </div>
 
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+        <div className="ui-panel">
+          <div className="ui-panel-header">
             <Activity size={13} className="text-slate-500" />
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            <span className="ui-section-label">
               Diğer Korelasyon ({otherEvents.length})
             </span>
           </div>

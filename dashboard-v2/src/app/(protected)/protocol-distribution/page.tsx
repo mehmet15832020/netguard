@@ -106,7 +106,7 @@ export default function ProtocolDistributionPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Benzersiz Protokol</p>
@@ -116,7 +116,7 @@ export default function ProtocolDistributionPage() {
           </p>
           <p className="text-xs text-slate-600 mt-0.5">farklı protokol türü</p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <TrendingUp className="w-4 h-4 text-sky-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Dominant Protokol</p>
@@ -147,11 +147,11 @@ export default function ProtocolDistributionPage() {
       {isLoading ? (
         <SkeletonChart height={320} className="rounded-xl" />
       ) : isEmpty ? (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <EmptyState />
         </div>
       ) : (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <ProtocolDonutChart
             protocols={data!.protocols}
             total={data!.total}
@@ -166,13 +166,13 @@ export default function ProtocolDistributionPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-sky-900/20">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="ui-th">
                   Protokol
                 </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="ui-th text-right">
                   Sayı
                 </th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                <th className="ui-th text-right">
                   Oran
                 </th>
               </tr>
@@ -189,7 +189,7 @@ export default function ProtocolDistributionPage() {
                     isRisky && 'bg-amber-950/10',
                   )}
                 >
-                  <td className="px-4 py-2.5">
+                  <td className="ui-td">
                     <div className="flex items-center gap-2">
                       <span
                         className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
@@ -205,10 +205,10 @@ export default function ProtocolDistributionPage() {
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-2.5 text-right text-slate-400 tabular-nums">
+                  <td className="ui-td text-right text-slate-400 tabular-nums">
                     {item.count.toLocaleString('tr-TR')}
                   </td>
-                  <td className="px-4 py-2.5 text-right">
+                  <td className="ui-td text-right">
                     <div className="flex items-center justify-end gap-2">
                       <div className="w-16 h-1.5 rounded-full bg-sky-950/30 overflow-hidden">
                         <div

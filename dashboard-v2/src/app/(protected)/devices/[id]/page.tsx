@@ -43,10 +43,10 @@ function Panel({ title, icon: Icon, children }: {
   title: string; icon: React.ElementType; children: React.ReactNode
 }) {
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+    <div className="ui-panel">
+      <div className="ui-panel-header">
         <Icon size={13} className="text-slate-600" />
-        <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">{title}</span>
+        <span className="ui-section-label">{title}</span>
       </div>
       {children}
     </div>

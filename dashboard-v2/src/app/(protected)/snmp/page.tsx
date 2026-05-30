@@ -79,8 +79,8 @@ function InterfaceRow({ iface }: { iface: SNMPInterface }) {
 
 function ResultCard({ info }: { info: SNMPDeviceInfo }) {
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+    <div className="ui-panel">
+      <div className="ui-panel-header">
         {info.reachable
           ? <CheckCircle size={14} className="text-emerald-400" />
           : <XCircle    size={14} className="text-red-400" />
@@ -130,8 +130,8 @@ function ResultCard({ info }: { info: SNMPDeviceInfo }) {
   )
 }
 
-const INP = 'w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors'
-const SEL = 'w-full h-9 bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors'
+const INP = 'ui-input'
+const SEL = 'ui-select w-full'
 
 export default function SNMPPage() {
   const [host,        setHost]        = useState('')
@@ -179,10 +179,10 @@ export default function SNMPPage() {
       </div>
 
       {/* Query form */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="ui-panel p-4">
         <div className="flex items-center gap-2 mb-4">
           <Network size={13} className="text-slate-600" />
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Cihaz Sorgusu</span>
+          <span className="ui-section-label">Cihaz Sorgusu</span>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">

@@ -28,7 +28,7 @@ function ReportCard({ report }: { report: RetentionReport }) {
   const tables = Object.entries(report.tables)
   return (
     <div className="bg-[#0a1120] border border-emerald-500/20 rounded-xl overflow-hidden">
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+      <div className="ui-panel-header">
         <RefreshCw size={13} className="text-emerald-400" />
         <span className="text-sm font-medium text-slate-300">
           Cleanup Tamamlandı — {report.elapsed_seconds}s
@@ -102,7 +102,7 @@ export default function MaintenancePage() {
         <div className="flex gap-2">
           <button
             onClick={() => refetch()}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={12} />
             Yenile
@@ -124,10 +124,10 @@ export default function MaintenancePage() {
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Tablo Kayıt Sayıları */}
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden md:col-span-2">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+        <div className="ui-panel md:col-span-2">
+          <div className="ui-panel-header">
             <Database size={13} className="text-slate-500" />
-            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Tablo Durumu</span>
+            <span className="ui-section-label">Tablo Durumu</span>
           </div>
           <div className="px-4 py-2">
             {isLoading ? (
@@ -143,10 +143,10 @@ export default function MaintenancePage() {
         {/* Right column */}
         <div className="space-y-4">
           {/* Retention Politikası */}
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+          <div className="ui-panel">
+            <div className="ui-panel-header">
               <Clock size={13} className="text-slate-500" />
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Retention Politikası</span>
+              <span className="ui-section-label">Retention Politikası</span>
             </div>
             <div className="px-4 py-2">
               {status ? (
@@ -164,10 +164,10 @@ export default function MaintenancePage() {
           </div>
 
           {/* Arşiv */}
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+          <div className="ui-panel">
+            <div className="ui-panel-header">
               <Archive size={13} className="text-slate-500" />
-              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Arşiv</span>
+              <span className="ui-section-label">Arşiv</span>
             </div>
             <div className="px-4 py-2">
               {status ? (

@@ -158,27 +158,27 @@ function LogRow({ log }: { log: NormalizedLog }) {
         )}
         onClick={() => setOpen((o) => !o)}
       >
-        <td className="w-4 px-2 py-3">
+        <td className="ui-td w-4">
           {open
             ? <ChevronDown size={12} className="text-slate-600" />
             : <ChevronRight size={12} className="text-slate-700" />}
         </td>
-        <td className="px-3 py-3">
+        <td className="ui-td">
           <SeverityBadge severity={log.severity as Severity} />
         </td>
-        <td className="px-3 py-3">
+        <td className="ui-td">
           <SourcePill type={log.source_type} />
         </td>
-        <td className="px-3 py-3 text-xs text-slate-500">
+        <td className="ui-td text-xs text-slate-500">
           {CATEGORY_LABELS[log.event_category] ?? log.event_category}
         </td>
-        <td className="px-3 py-3 text-xs text-slate-200 max-w-xs truncate">{log.message}</td>
-        <td className="px-3 py-3 text-xs text-slate-500 font-mono">
+        <td className="ui-td text-xs text-slate-200 max-w-xs truncate">{log.message}</td>
+        <td className="ui-td text-xs text-slate-500 font-mono">
           {log.source_hostname
             ? <><span className="text-slate-300">{log.source_hostname}</span><span className="text-slate-700 ml-1">({log.source_ip})</span></>
             : log.source_ip ?? <span className="text-slate-700">—</span>}
         </td>
-        <td className="px-3 py-3 text-xs text-slate-700 whitespace-nowrap">{formatDate(log.timestamp)}</td>
+        <td className="ui-td text-xs text-slate-700 whitespace-nowrap">{formatDate(log.timestamp)}</td>
       </tr>
       {open && (
         <tr className="border-b border-sky-900/10 bg-sky-950/10">
@@ -224,7 +224,7 @@ const SEV_FILTER_OPTIONS = [
   { value: 'info',     label: 'Bilgi' },
 ]
 
-const INPUT_CLS = "bg-sky-950/20 border border-sky-900/25 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors"
+const INPUT_CLS = "ui-input"
 
 export default function LogsPage() {
   const queryClient = useQueryClient()
@@ -316,7 +316,7 @@ export default function LogsPage() {
     <div className="p-6 flex gap-4 min-h-0">
       {/* ── Sidebar: Facets ───────────────────────────────────────────── */}
       <aside className="w-44 flex-shrink-0">
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-3">
+        <div className="ui-panel p-3">
           {facetsData ? (
             <>
               <p className="text-[9px] text-slate-700 uppercase tracking-[0.18em] mb-2 select-none">
@@ -397,7 +397,7 @@ export default function LogsPage() {
             <button
               onClick={handleRefresh}
               disabled={fetching}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+              className="ui-btn ui-btn-secondary"
             >
               <RefreshCw size={13} className={fetching ? 'animate-spin' : ''} />
               Yenile
@@ -406,7 +406,7 @@ export default function LogsPage() {
         </div>
 
         {/* Field-level Filter Bar */}
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl px-4 py-2.5 flex flex-wrap gap-2 items-center">
+        <div className="ui-panel px-4 py-2.5 flex flex-wrap gap-2 items-center">
           <span className="text-[10px] text-slate-700 uppercase tracking-[0.15em] flex-shrink-0 select-none">Filtrele</span>
           {[
             { placeholder: 'Kaynak IP',    value: filterSrcIp,    set: setFilterSrcIp    },
@@ -440,9 +440,9 @@ export default function LogsPage() {
         </div>
 
         {/* Log Volume Histogram */}
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-2.5 border-b border-sky-900/15 flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Log Hacmi</span>
+        <div className="ui-panel">
+          <div className="ui-panel-header justify-between">
+            <span className="ui-section-label">Log Hacmi</span>
             <span className="text-[11px] text-slate-700">Severity bazında · {hours}s</span>
           </div>
           {volumeData ? (
@@ -455,9 +455,9 @@ export default function LogsPage() {
         </div>
 
         {/* Table panel */}
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+        <div className="ui-panel">
           {/* Table header controls */}
-          <div className="px-4 py-2.5 border-b border-sky-900/15 flex items-center gap-2 flex-wrap">
+          <div className="ui-panel-header flex-wrap gap-2">
             <span className="text-xs text-slate-500 font-medium flex-shrink-0">Loglar</span>
 
             {/* Search */}
@@ -530,14 +530,14 @@ export default function LogsPage() {
           ) : (
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                  <th className="w-4 px-2 py-3" />
-                  <th className="text-left px-3 py-3 w-24">Seviye</th>
-                  <th className="text-left px-3 py-3 w-24">Kaynak</th>
-                  <th className="text-left px-3 py-3 w-32">Kategori</th>
-                  <th className="text-left px-3 py-3">Mesaj</th>
-                  <th className="text-left px-3 py-3 w-36">Kaynak IP</th>
-                  <th className="text-left px-3 py-3 w-36">Zaman</th>
+                <tr >
+                  <th className="ui-th w-4" />
+                  <th className="ui-th w-24">Seviye</th>
+                  <th className="ui-th w-24">Kaynak</th>
+                  <th className="ui-th w-32">Kategori</th>
+                  <th className="ui-th">Mesaj</th>
+                  <th className="ui-th w-36">Kaynak IP</th>
+                  <th className="ui-th w-36">Zaman</th>
                 </tr>
               </thead>
               <tbody>

@@ -129,7 +129,7 @@ export default function AlertsPage() {
           <button
             onClick={() => resolveAllMutation.mutate()}
             disabled={resolveAllMutation.isPending || activeCount === 0}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-40"
+            className="ui-btn ui-btn-secondary"
           >
             <CheckCheck size={13} />
             Tümünü Çözüldü Yap
@@ -137,7 +137,7 @@ export default function AlertsPage() {
           <button
             onClick={handleRefresh}
             disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
             Yenile
@@ -176,10 +176,10 @@ export default function AlertsPage() {
       {/* Alert Trend + Top Sources */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Volume chart */}
-        <div className="lg:col-span-2 bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+        <div className="lg:col-span-2 ui-panel">
+          <div className="ui-panel-header">
             <Activity size={13} className="text-slate-600" />
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Alert Trendi — 24 Saat</span>
+            <span className="ui-section-label">Alert Trendi — 24 Saat</span>
             <span className="text-[11px] text-slate-700 ml-auto">Severity bazında dağılım</span>
           </div>
           {volumeData ? (
@@ -197,10 +197,10 @@ export default function AlertsPage() {
         </div>
 
         {/* Top sources */}
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/15">
+        <div className="ui-panel">
+          <div className="ui-panel-header">
             <Monitor size={13} className="text-slate-600" />
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">En Aktif Kaynaklar</span>
+            <span className="ui-section-label">En Aktif Kaynaklar</span>
             <span className="text-[11px] text-slate-700 ml-auto">Aktif alertler</span>
           </div>
           {topSources.length === 0 ? (
@@ -225,16 +225,16 @@ export default function AlertsPage() {
       </div>
 
       {/* Alert list */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {/* Filters */}
-        <div className="px-4 py-2.5 border-b border-sky-900/15 flex items-center gap-3 flex-wrap">
+        <div className="ui-panel-header flex-wrap gap-3">
           <span className="text-xs text-slate-500 font-medium flex-shrink-0">Alert Listesi</span>
           <span className="text-xs text-slate-700">{filtered.length} kayıt</span>
           <div className="ml-auto flex items-center gap-2">
             <select
               value={statusFilter}
               onChange={e => setStatusFilter(e.target.value)}
-              className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+              className="ui-select"
             >
               <option value="all">Tüm durumlar</option>
               <option value="active">Aktif</option>
@@ -243,7 +243,7 @@ export default function AlertsPage() {
             <select
               value={severityFilter}
               onChange={e => setSeverityFilter(e.target.value)}
-              className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+              className="ui-select"
             >
               <option value="all">Tüm seviyeler</option>
               <option value="critical">Kritik</option>
@@ -267,15 +267,15 @@ export default function AlertsPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                <th className="text-left px-4 py-3 w-24">Seviye</th>
-                <th className="text-left px-4 py-3 w-24">Durum</th>
-                <th className="text-left px-4 py-3">Mesaj</th>
-                <th className="text-left px-4 py-3 w-32">Host</th>
-                <th className="text-left px-4 py-3 w-24">Metrik</th>
-                <th className="text-left px-4 py-3 w-28">Değer / Eşik</th>
-                <th className="text-left px-4 py-3 w-40">Zaman</th>
-                <th className="text-left px-4 py-3 w-14">Süre</th>
+              <tr >
+                <th className="ui-th w-24">Seviye</th>
+                <th className="ui-th w-24">Durum</th>
+                <th className="ui-th">Mesaj</th>
+                <th className="ui-th w-32">Host</th>
+                <th className="ui-th w-24">Metrik</th>
+                <th className="ui-th w-28">Değer / Eşik</th>
+                <th className="ui-th w-40">Zaman</th>
+                <th className="ui-th w-14">Süre</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
@@ -287,16 +287,16 @@ export default function AlertsPage() {
                     alert.status === 'active' && alert.severity === 'critical' && 'bg-red-950/5',
                   )}
                 >
-                  <td className="px-4 py-3"><SeverityBadge severity={alert.severity} /></td>
-                  <td className="px-4 py-3"><StatusBadge status={alert.status} /></td>
-                  <td className="px-4 py-3 text-slate-200 max-w-xs truncate text-xs" title={alert.message}>{alert.message}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{alert.hostname}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{alert.metric}</td>
-                  <td className="px-4 py-3 text-xs text-slate-400 font-mono">
+                  <td className="ui-td"><SeverityBadge severity={alert.severity} /></td>
+                  <td className="ui-td"><StatusBadge status={alert.status} /></td>
+                  <td className="ui-td text-slate-200 max-w-xs truncate text-xs" title={alert.message}>{alert.message}</td>
+                  <td className="ui-td text-xs text-slate-500 font-mono">{alert.hostname}</td>
+                  <td className="ui-td text-xs text-slate-500">{alert.metric}</td>
+                  <td className="ui-td text-xs text-slate-400 font-mono">
                     {alert.value.toFixed(1)} / {alert.threshold.toFixed(1)}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">{formatDate(alert.triggered_at)}</td>
-                  <td className="px-4 py-3">
+                  <td className="ui-td text-xs text-slate-700 whitespace-nowrap">{formatDate(alert.triggered_at)}</td>
+                  <td className="ui-td">
                     <AlertAge triggeredAt={alert.triggered_at} severity={alert.severity} status={alert.status} />
                   </td>
                 </tr>

@@ -42,7 +42,7 @@ const LEGEND_ITEMS = [
 
 function Legend() {
   return (
-    <div className="flex flex-wrap gap-3 px-4 py-3 border-b border-sky-900/15">
+    <div className="ui-panel-header flex-wrap gap-3">
       {LEGEND_ITEMS.map(({ type, label }) => (
         <div key={type} className="flex items-center gap-1.5">
           <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: nodeColor(type) }} />
@@ -245,7 +245,7 @@ export default function TopologyPage() {
           <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
             Yenile
@@ -253,7 +253,7 @@ export default function TopologyPage() {
           <button
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-primary"
           >
             {refreshMutation.isPending
               ? <><Loader2 size={12} className="animate-spin" />Yenileniyor...</>
@@ -264,7 +264,7 @@ export default function TopologyPage() {
       </div>
 
       {/* Graph card */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         <Legend />
         <div className="relative">
           {isLoading && (
@@ -283,7 +283,7 @@ export default function TopologyPage() {
               <button
                 onClick={() => refreshMutation.mutate()}
                 disabled={refreshMutation.isPending}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50"
+                className="ui-btn ui-btn-primary"
               >
                 {refreshMutation.isPending ? 'Oluşturuluyor...' : 'Topolojiyi Oluştur'}
               </button>

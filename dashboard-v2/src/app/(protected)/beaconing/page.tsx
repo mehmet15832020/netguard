@@ -273,7 +273,7 @@ export default function BeaconingPage() {
           </div>
         </div>
 
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <p className="text-xs text-slate-500 mb-1">Ortalama IAT</p>
           <p className="text-2xl font-bold text-slate-100">
             {avgIat !== null ? `${avgIat.toFixed(1)}s` : '—'}
@@ -283,7 +283,7 @@ export default function BeaconingPage() {
           )}
         </div>
 
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <p className="text-xs text-slate-500 mb-1">Ortalama Jitter (CV)</p>
           <div className="flex items-center gap-2">
             <p className="text-2xl font-bold text-slate-100">
@@ -297,7 +297,7 @@ export default function BeaconingPage() {
 
       {/* C2 İmza Özeti */}
       {detections.length > 0 && (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <p className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Tespit Edilen C2 İmzaları</p>
           <C2SignatureSummary detections={detections} />
           <p className="text-xs text-slate-600 mt-2">
@@ -309,14 +309,14 @@ export default function BeaconingPage() {
       {/* Grafikler */}
       {detections.length > 0 && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <p className="text-sm font-medium text-slate-300 mb-3">IAT Dağılım Histogramı</p>
             <IATHistogram detections={detections} />
             <p className="text-xs text-slate-600 mt-2">
               Renkli barlar: kırmızı=Cobalt Strike, turuncu=Sliver, sarı=Metasploit, mor=Empire
             </p>
           </div>
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <p className="text-sm font-medium text-slate-300 mb-3">IAT vs Jitter Scatter</p>
             <JitterScatter detections={detections} />
             <p className="text-xs text-slate-600 mt-2">
@@ -328,7 +328,7 @@ export default function BeaconingPage() {
 
       {/* Detay Tablosu */}
       <div className="bg-zinc-900 rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/20">
+        <div className="ui-panel-header">
           <h2 className="text-sm font-semibold text-zinc-200">Tespit Edilen Beacon'lar</h2>
         </div>
 
@@ -347,16 +347,16 @@ export default function BeaconingPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-sky-900/20 text-xs text-slate-500">
-                    <th className="text-left px-4 py-2.5">Kaynak IP</th>
-                    <th className="text-left px-4 py-2.5">Hedef IP</th>
-                    <th className="text-left px-4 py-2.5">Port</th>
-                    <th className="text-left px-4 py-2.5">Mean IAT</th>
-                    <th className="text-left px-4 py-2.5">Jitter</th>
-                    <th className="text-left px-4 py-2.5">Bağ.</th>
-                    <th className="text-left px-4 py-2.5">C2 İmzası</th>
-                    <th className="text-left px-4 py-2.5">Risk</th>
-                    <th className="text-left px-4 py-2.5">Zaman</th>
+                  <tr >
+                    <th className="ui-th">Kaynak IP</th>
+                    <th className="ui-th">Hedef IP</th>
+                    <th className="ui-th">Port</th>
+                    <th className="ui-th">Mean IAT</th>
+                    <th className="ui-th">Jitter</th>
+                    <th className="ui-th">Bağ.</th>
+                    <th className="ui-th">C2 İmzası</th>
+                    <th className="ui-th">Risk</th>
+                    <th className="ui-th">Zaman</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sky-900/10">
@@ -366,31 +366,31 @@ export default function BeaconingPage() {
                     return (
                       <tr key={`${det.source_ip}-${det.destination_ip}-${idx}`}
                         className="hover:bg-sky-950/20 transition-colors">
-                        <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{det.source_ip}</td>
-                        <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{det.destination_ip}</td>
-                        <td className="px-4 py-2.5 text-slate-400 text-xs">
+                        <td className="ui-td font-mono text-slate-300 text-xs">{det.source_ip}</td>
+                        <td className="ui-td font-mono text-slate-300 text-xs">{det.destination_ip}</td>
+                        <td className="ui-td text-slate-400 text-xs">
                           {det.destination_port != null ? `${det.destination_port}/${(det.network_protocol ?? 'TCP').toUpperCase()}` : '—'}
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">
+                        <td className="ui-td font-mono text-slate-300 text-xs">
                           {det.mean_iat !== null ? `${det.mean_iat.toFixed(1)}s` : '—'}
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-xs">
+                        <td className="ui-td font-mono text-xs">
                           {det.jitter !== null ? (
                             <span className={det.jitter < 0.1 ? 'text-red-400' : det.jitter < 0.2 ? 'text-amber-400' : 'text-emerald-400'}>
                               {(det.jitter * 100).toFixed(1)}%
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="px-4 py-2.5 text-slate-400 text-xs">{det.conn_count ?? '—'}</td>
-                        <td className="px-4 py-2.5">
+                        <td className="ui-td text-slate-400 text-xs">{det.conn_count ?? '—'}</td>
+                        <td className="ui-td">
                           {sig && (
                             <span className="px-2 py-0.5 rounded text-xs font-semibold bg-orange-900/50 text-orange-400 border border-orange-800">
                               {sig}
                             </span>
                           )}
                         </td>
-                        <td className="px-4 py-2.5"><RiskBadge level={risk} /></td>
-                        <td className="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">
+                        <td className="ui-td"><RiskBadge level={risk} /></td>
+                        <td className="ui-td text-slate-500 text-xs whitespace-nowrap">
                           {new Date(det.detected_at).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                         </td>
                       </tr>

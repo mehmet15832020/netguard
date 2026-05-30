@@ -262,8 +262,8 @@ export default function ThreatIntelSummaryPage() {
       ) : null}
 
       {/* Composite Score bar chart */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/20 flex items-center gap-2">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <TrendingUp className="w-4 h-4 text-slate-400" />
           <h2 className="text-sm font-semibold text-slate-200">Top 10 — Composite Threat Score</h2>
         </div>
@@ -286,8 +286,8 @@ export default function ThreatIntelSummaryPage() {
       </div>
 
       {/* Detay tablosu */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/20">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <h2 className="text-sm font-semibold text-slate-200">Tehdit Kaynakları</h2>
         </div>
         {isLoading ? (
@@ -303,39 +303,39 @@ export default function ThreatIntelSummaryPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-sky-900/20 text-xs text-slate-500">
-                  <th className="text-left px-4 py-2.5 font-medium">#</th>
-                  <th className="text-left px-4 py-2.5 font-medium">IP</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Ülke</th>
-                  <th className="text-left px-4 py-2.5 font-medium w-40">Composite Score</th>
-                  <th className="text-left px-4 py-2.5 font-medium">Feed</th>
-                  <th className="text-left px-4 py-2.5 font-medium">ISP</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Olay</th>
-                  <th className="text-right px-4 py-2.5 font-medium">Son Görülme</th>
+                <tr >
+                  <th className="ui-th">#</th>
+                  <th className="ui-th">IP</th>
+                  <th className="ui-th">Ülke</th>
+                  <th className="ui-th w-40">Composite Score</th>
+                  <th className="ui-th">Feed</th>
+                  <th className="ui-th">ISP</th>
+                  <th className="ui-th text-right">Olay</th>
+                  <th className="ui-th text-right">Son Görülme</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-sky-900/10">
                 {top10Sources.map((src, idx) => (
                   <tr key={src.ip} className="hover:bg-sky-950/20 transition-colors">
-                    <td className="px-4 py-2.5 text-slate-600 text-xs">{idx + 1}</td>
-                    <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{src.ip}</td>
-                    <td className="px-4 py-2.5 text-slate-400 text-xs">
+                    <td className="ui-td text-slate-600 text-xs">{idx + 1}</td>
+                    <td className="ui-td font-mono text-slate-300 text-xs">{src.ip}</td>
+                    <td className="ui-td text-slate-400 text-xs">
                       <span className="mr-1">{countryFlag(src.country_code)}</span>
                       {src.country_code || '—'}
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="ui-td">
                       <ScoreBar score={src.composite_score} />
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="ui-td">
                       <FeedBadges src={src} />
                     </td>
-                    <td className="px-4 py-2.5 text-slate-500 text-xs truncate max-w-[160px]">
+                    <td className="ui-td text-slate-500 text-xs truncate max-w-[160px]">
                       {src.isp || '—'}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-red-400 font-semibold text-xs">
+                    <td className="ui-td text-right text-red-400 font-semibold text-xs">
                       {src.count.toLocaleString('tr-TR')}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-slate-500 text-xs">
+                    <td className="ui-td text-right text-slate-500 text-xs">
                       {fmtDate(src.last_seen)}
                     </td>
                   </tr>
@@ -348,8 +348,8 @@ export default function ThreatIntelSummaryPage() {
 
       {/* Ülke dağılımı */}
       {(isLoading || countryDist.length > 0) && (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-          <div className="px-4 py-3 border-b border-sky-900/20 flex items-center gap-2">
+        <div className="ui-panel">
+          <div className="ui-panel-header">
             <Globe className="w-4 h-4 text-slate-400" />
             <h2 className="text-sm font-semibold text-slate-200">Coğrafi Dağılım</h2>
             {data && (

@@ -179,7 +179,7 @@ function generateSigmaYaml(form: WizardForm, ruleId: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const cls = "w-full rounded bg-sky-950/20 border border-sky-900/25 text-slate-200 text-sm px-3 py-2 focus:outline-none focus:border-violet-500"
+const cls = "ui-input"
 
 function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
@@ -481,7 +481,7 @@ function StepPreview({ yaml, validResult, onValidate, onSave, isPending, saveErr
           type="button"
           onClick={onValidate}
           disabled={isPending}
-          className="px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors disabled:opacity-50"
+          className="ui-btn ui-btn-secondary"
         >
           Doğrula
         </button>
@@ -489,7 +489,7 @@ function StepPreview({ yaml, validResult, onValidate, onSave, isPending, saveErr
           type="button"
           onClick={onSave}
           disabled={isPending || !validResult}
-          className="px-4 py-2 rounded text-sm bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors disabled:opacity-50"
+          className="ui-btn ui-btn-primary"
         >
           {isPending ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
@@ -606,7 +606,7 @@ export default function SigmaWizardPage() {
           type="button"
           onClick={() => setStep(s => Math.max(0, s - 1))}
           disabled={step === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="ui-btn ui-btn-secondary disabled:cursor-not-allowed"
         >
           <ChevronLeft className="h-4 w-4" /> Geri
         </button>
@@ -615,7 +615,7 @@ export default function SigmaWizardPage() {
             type="button"
             onClick={() => setStep(s => Math.min(STEPS.length - 1, s + 1))}
             disabled={!canNext[step]()}
-            className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="ui-btn ui-btn-primary disabled:cursor-not-allowed"
           >
             İleri <ChevronRight className="h-4 w-4" />
           </button>

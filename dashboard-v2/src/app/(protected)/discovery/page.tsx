@@ -23,7 +23,7 @@ function ScanProgress({ running, found, total, cidr }: {
   const pct = total > 0 ? Math.min(100, Math.round((found / total) * 100)) : 0
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+    <div className="ui-panel p-4">
       <div className="flex items-center gap-3 mb-3">
         {running
           ? <Loader2 size={15} className="text-sky-400 animate-spin flex-shrink-0" />
@@ -52,7 +52,7 @@ function ScanProgress({ running, found, total, cidr }: {
   )
 }
 
-const INP = 'bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors disabled:opacity-50'
+const INP = 'ui-input disabled:opacity-50'
 
 export default function DiscoveryPage() {
   const queryClient = useQueryClient()
@@ -102,7 +102,7 @@ export default function DiscoveryPage() {
       </div>
 
       {/* Scan form */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="ui-panel p-4">
         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Yeni Tarama</p>
         <div className="flex flex-wrap gap-4 items-end">
           <div className="space-y-1">
@@ -160,14 +160,14 @@ export default function DiscoveryPage() {
         </div>
         <button
           onClick={() => refetchResults()}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs text-slate-400 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+          className="ui-btn ui-btn-secondary"
         >
           <RefreshCw size={11} /> Yenile
         </button>
       </div>
 
       {/* Results table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {resultsLoading ? (
           <div className="p-4">
             <SkeletonTable rows={6} height={40} />
@@ -181,19 +181,19 @@ export default function DiscoveryPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                <th className="px-4 py-3 w-6" />
-                <th className="px-4 py-3 text-left w-36">IP</th>
-                <th className="px-4 py-3 text-left">Hostname / Adı</th>
-                <th className="px-4 py-3 text-left w-36">Vendor</th>
-                <th className="px-4 py-3 text-left">OS / Bilgi</th>
-                <th className="px-4 py-3 text-left w-40">İlk Görülme</th>
+              <tr >
+                <th className="ui-th w-6" />
+                <th className="ui-th w-36">IP</th>
+                <th className="ui-th">Hostname / Adı</th>
+                <th className="ui-th w-36">Vendor</th>
+                <th className="ui-th">OS / Bilgi</th>
+                <th className="ui-th w-40">İlk Görülme</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
               {devices.map((d) => (
                 <tr key={d.device_id} className="hover:bg-sky-950/20 transition-colors">
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <Circle
                       size={8}
                       className={d.status === 'up'
@@ -202,15 +202,15 @@ export default function DiscoveryPage() {
                       }
                     />
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-300">{d.ip}</td>
-                  <td className="px-4 py-3 text-sm text-slate-200">
+                  <td className="ui-td font-mono text-xs text-slate-300">{d.ip}</td>
+                  <td className="ui-td text-sm text-slate-200">
                     {d.name !== d.ip ? d.name : <span className="text-slate-600">—</span>}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{d.vendor || '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500 max-w-[200px] truncate">
+                  <td className="ui-td text-xs text-slate-500">{d.vendor || '—'}</td>
+                  <td className="ui-td text-xs text-slate-500 max-w-[200px] truncate">
                     {d.os_info || d.notes || '—'}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-600 whitespace-nowrap">
+                  <td className="ui-td text-xs text-slate-600 whitespace-nowrap">
                     {formatDate(d.first_seen)}
                   </td>
                 </tr>

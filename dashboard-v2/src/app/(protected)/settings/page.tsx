@@ -9,8 +9,8 @@ import { SeverityBadge } from '@/components/ui/severity-badge'
 import { SkeletonTable } from '@/components/ui/skeleton'
 import type { CorrelationRule, Severity } from '@/types/models'
 
-const INP = 'w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors'
-const SEL = 'w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors'
+const INP = 'ui-input'
+const SEL = 'ui-select w-full'
 
 function RuleCard({ rule, onSave }: { rule: CorrelationRule; onSave: (updated: CorrelationRule) => void }) {
   const [editing, setEditing] = useState(false)
@@ -20,7 +20,7 @@ function RuleCard({ rule, onSave }: { rule: CorrelationRule; onSave: (updated: C
   const handleCancel = () => { setDraft(rule); setEditing(false) }
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 space-y-3">
+    <div className="ui-panel p-4 space-y-3">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-200">{rule.name}</p>
@@ -31,7 +31,7 @@ function RuleCard({ rule, onSave }: { rule: CorrelationRule; onSave: (updated: C
           {!editing && (
             <button
               onClick={() => setEditing(true)}
-              className="px-2 py-1 rounded-lg text-xs text-slate-400 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+              className="ui-btn ui-btn-secondary"
             >
               Düzenle
             </button>
@@ -79,7 +79,7 @@ function RuleCard({ rule, onSave }: { rule: CorrelationRule; onSave: (updated: C
               <Save size={11} /> Kaydet
             </button>
             <button onClick={handleCancel}
-              className="px-3 py-1 rounded-lg text-xs text-slate-400 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors">
+              className="ui-btn ui-btn-secondary">
               İptal
             </button>
           </div>
@@ -179,7 +179,7 @@ function MfaSection() {
       )}
 
       {!mfaEnabled && !setupData && (
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="ui-panel p-4 flex items-center justify-between gap-4">
           <p className="text-xs text-slate-500">
             TOTP tabanlı iki faktörlü kimlik doğrulamayı etkinleştirin.
             Google Authenticator veya benzeri bir uygulama gereklidir.
@@ -194,7 +194,7 @@ function MfaSection() {
       )}
 
       {!mfaEnabled && setupData && (
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 space-y-4">
+        <div className="ui-panel p-4 space-y-4">
           <p className="text-xs text-slate-500">
             QR kodu Authenticator uygulamanızla tarayın veya gizli anahtarı manuel olarak girin.
           </p>
@@ -224,13 +224,13 @@ function MfaSection() {
             <button
               onClick={handleConfirm}
               disabled={confirmLoading || confirmCode.length !== 6}
-              className="px-3 py-1.5 rounded-lg text-xs text-white bg-sky-600 hover:bg-sky-500 transition-colors disabled:opacity-60"
+              className="ui-btn ui-btn-primary"
             >
               {confirmLoading ? 'Doğrulanıyor...' : 'Onayla ve Etkinleştir'}
             </button>
             <button
               onClick={() => { setSetupData(null); setConfirmCode(''); setSetupError('') }}
-              className="px-3 py-1.5 rounded-lg text-xs text-slate-400 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+              className="ui-btn ui-btn-secondary"
             >
               İptal
             </button>
@@ -239,7 +239,7 @@ function MfaSection() {
       )}
 
       {mfaEnabled && (
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="ui-panel p-4 flex items-center justify-between gap-4">
           <p className="text-xs text-slate-500">
             İki faktörlü kimlik doğrulama etkin. Giriş yaparken Authenticator kodunuz istenecek.
           </p>
@@ -312,7 +312,7 @@ export default function SettingsPage() {
           <button
             onClick={() => reloadMutation.mutate()}
             disabled={reloadMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={12} className={reloadMutation.isPending ? 'animate-spin' : ''} />
             Kuralları Yenile
@@ -331,7 +331,7 @@ export default function SettingsPage() {
         )}
 
         {isLoading ? (
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div className="ui-panel p-4">
             <SkeletonTable rows={4} height={72} />
           </div>
         ) : (
@@ -355,7 +355,7 @@ export default function SettingsPage() {
           <h2 className="text-sm font-medium text-slate-300">Dedektör Eşikleri</h2>
           <p className="text-xs text-slate-600 mt-0.5">Sunucu ortam değişkenleriyle ayarlanır</p>
         </div>
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <div className="grid grid-cols-2 gap-x-8 gap-y-3 text-xs">
             {[
               ['NETGUARD_PORTSCAN_THRESHOLD', '10 port',      'Port tarama eşiği'],

@@ -58,7 +58,7 @@ function SortHeader({
   )
 }
 
-const INPUT_CLS = "w-full bg-sky-950/20 border border-sky-900/25 rounded px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors"
+const INPUT_CLS = "ui-input"
 
 function NewRuleModal({ onClose, onCreate }: { onClose: () => void; onCreate: (d: FPRuleCreate) => void }) {
   const [form, setForm] = useState<FPRuleCreate>({ reason: '' })
@@ -126,11 +126,11 @@ function NewRuleModal({ onClose, onCreate }: { onClose: () => void; onCreate: (d
           {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose}
-              className="px-4 py-1.5 rounded text-sm text-slate-300 hover:text-slate-100 bg-sky-950/30 hover:bg-sky-950/50 border border-sky-900/20 transition-colors">
+              className="ui-btn ui-btn-secondary">
               İptal
             </button>
             <button type="submit"
-              className="px-4 py-1.5 rounded text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium transition-colors">
+              className="ui-btn ui-btn-primary">
               Oluştur
             </button>
           </div>
@@ -233,17 +233,17 @@ export default function FPManagementPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">Aktif Kural</div>
           <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : activeRules.length}</div>
           <div className="text-xs text-slate-700 mt-0.5">{expiredRules.length} süresi dolmuş</div>
         </div>
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">Toplam Bastırılan</div>
           <div className="text-2xl font-bold text-emerald-400">{isLoading ? '—' : totalHits.toLocaleString()}</div>
           <div className="text-xs text-slate-700 mt-0.5">lifetime hit count</div>
         </div>
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">En Çok Hit</div>
           <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : topHitter ? topHitter.hit_count.toLocaleString() : '—'}</div>
           {topHitter && (
@@ -252,7 +252,7 @@ export default function FPManagementPage() {
             </div>
           )}
         </div>
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">Süresi Dolmak Üzere</div>
           <div className={cn('text-2xl font-bold', expiringSoon > 0 ? 'text-yellow-400' : 'text-slate-100')}>
             {isLoading ? '—' : expiringSoon}
@@ -274,7 +274,7 @@ export default function FPManagementPage() {
         <select
           value={actionFilter}
           onChange={e => setActionFilter(e.target.value)}
-          className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+          className="ui-select"
         >
           <option value="">Tüm Event Action'lar</option>
           {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
@@ -295,7 +295,7 @@ export default function FPManagementPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {isLoading ? (
           <div className="p-4">
             <SkeletonTable rows={6} height={40} />
@@ -309,43 +309,43 @@ export default function FPManagementPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-sky-900/15">
-                <th className="text-left px-4 py-3 text-xs text-slate-600 font-medium uppercase tracking-wide">Alan Kombinasyonu</th>
-                <th className="text-left px-4 py-3 text-xs text-slate-600 font-medium uppercase tracking-wide">Neden</th>
-                <th className="text-right px-4 py-3">
+                <th className="ui-th">Alan Kombinasyonu</th>
+                <th className="ui-th">Neden</th>
+                <th className="ui-th text-right">
                   <SortHeader label="Hit" col="hit_count" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="text-left px-4 py-3">
+                <th className="ui-th">
                   <SortHeader label="Kalan Süre" col="expires_at" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="text-left px-4 py-3 text-xs text-slate-600 font-medium uppercase tracking-wide">Oluşturan</th>
-                <th className="text-left px-4 py-3">
+                <th className="ui-th">Oluşturan</th>
+                <th className="ui-th">
                   <SortHeader label="Oluşturulma" col="created_at" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-3"></th>
+                <th className="ui-th"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
               {filtered.map(rule => (
                 <tr key={rule.fp_rule_id} className={cn('transition-colors hover:bg-sky-950/20', !rule.is_active && 'opacity-50')}>
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <FieldCombination rule={rule} />
                   </td>
-                  <td className="px-4 py-3 text-slate-500 max-w-xs truncate text-xs" title={rule.reason}>
+                  <td className="ui-td text-slate-500 max-w-xs truncate text-xs" title={rule.reason}>
                     {rule.reason}
                   </td>
-                  <td className="px-4 py-3 text-right font-mono text-xs">
+                  <td className="ui-td text-right font-mono text-xs">
                     {rule.hit_count > 0
                       ? <span className="text-emerald-400 font-semibold">{rule.hit_count.toLocaleString()}</span>
                       : <span className="text-slate-700">0</span>}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <ExpiryBadge expiresAt={rule.expires_at} />
                   </td>
-                  <td className="px-4 py-3 text-slate-600 text-xs">{rule.created_by}</td>
-                  <td className="px-4 py-3 text-slate-700 text-xs whitespace-nowrap">
+                  <td className="ui-td text-slate-600 text-xs">{rule.created_by}</td>
+                  <td className="ui-td text-slate-700 text-xs whitespace-nowrap">
                     {new Date(rule.created_at).toLocaleDateString('tr-TR')}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="ui-td text-right">
                     {rule.is_active && (
                       <button
                         onClick={() => setConfirmDelete(rule.fp_rule_id)}
@@ -382,12 +382,12 @@ export default function FPManagementPage() {
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmDelete(null)}
-                className="px-4 py-1.5 rounded text-sm text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors">
+                className="ui-btn ui-btn-secondary">
                 İptal
               </button>
               <button onClick={() => deleteMut.mutate(confirmDelete)}
                 disabled={deleteMut.isPending}
-                className="px-4 py-1.5 rounded text-sm bg-red-700 hover:bg-red-600 text-white transition-colors disabled:opacity-60">
+                className="ui-btn ui-btn-danger">
                 {deleteMut.isPending ? 'Siliniyor...' : 'Devre Dışı Bırak'}
               </button>
             </div>

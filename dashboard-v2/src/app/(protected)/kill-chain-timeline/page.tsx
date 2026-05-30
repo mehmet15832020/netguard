@@ -84,7 +84,7 @@ function StageDistributionPanel({ dist }: { dist: Record<string, number> }) {
     ({ recon: 'bg-blue-500', weaponize: 'bg-amber-500', access: 'bg-orange-500', lateral: 'bg-red-500', full_attack_chain: 'bg-red-700' }[k.toLowerCase()] ?? 'bg-zinc-500')
 
   return (
-    <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+    <div className="ui-panel p-4">
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Aşama Dağılımı</p>
       <div className="space-y-2">
         {entries.map(([stage, count]) => (
@@ -109,8 +109,8 @@ function IpDetailList({ rows, selectedIp, onSelect }: {
   if (rows.length === 0) return null
   return (
     <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 overflow-hidden">
-      <div className="px-4 py-3 border-b border-sky-900/15">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">IP Detay Listesi</p>
+      <div className="ui-panel-header">
+        <p className="ui-section-label">IP Detay Listesi</p>
       </div>
       <div className="divide-y divide-sky-900/10">
         {rows.map(row => {

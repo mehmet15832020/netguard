@@ -106,8 +106,8 @@ function CoverageMeter({
 }: { coveredTactics: number; totalTactics: number; totalTech: number; totalRules: number }) {
   const tacticPct = Math.round((coveredTactics / totalTactics) * 100)
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 space-y-3">
-      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Kapsama Özeti</p>
+    <div className="ui-panel p-4 space-y-3">
+      <p className="ui-section-label">Kapsama Özeti</p>
       <div className="grid grid-cols-3 gap-4 text-center">
         <div>
           <p className="text-2xl font-bold text-sky-400">{tacticPct}%</p>
@@ -219,7 +219,7 @@ function TopTechniquesPanel({ rules }: {
   const max = freq[0][1].count
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+    <div className="ui-panel p-4">
       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
         En Çok Kapsanan Teknikler
       </p>
@@ -322,13 +322,13 @@ export default function MitrePage() {
         <div className="flex gap-2">
           <button
             onClick={() => refetch()}
-            className="flex items-center px-2.5 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={12} />
           </button>
           <button
             onClick={handleDownloadHeatmap}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+            className="ui-btn ui-btn-secondary"
           >
             <Download size={12} />
             Navigator Layer
@@ -361,7 +361,7 @@ export default function MitrePage() {
           { label: 'Kör Nokta',                             value: uncoveredTactics.length, color: 'text-slate-400' },
           { label: 'Kapsanan Taktik',                       value: coveredTactics.length,   color: 'text-emerald-400' },
         ].map(({ label, value, color }) => (
-          <div key={label} className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+          <div key={label} className="ui-panel p-4">
             <p className="text-xs text-slate-500 mb-1">{label}</p>
             <p className={`text-2xl font-bold ${color}`}>{value}</p>
           </div>
@@ -371,9 +371,9 @@ export default function MitrePage() {
       {/* Taktik Aktivitesi + ATT&CK Isı Haritası */}
       <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
         {/* Aktivite bar chart */}
-        <div className="xl:col-span-2 bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/15 flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+        <div className="xl:col-span-2 ui-panel">
+          <div className="ui-panel-header justify-between">
+            <p className="ui-section-label">
               Taktik Aktivitesi
             </p>
             <div className="flex gap-1">
@@ -390,9 +390,9 @@ export default function MitrePage() {
         </div>
 
         {/* Isı haritası */}
-        <div className="xl:col-span-3 bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/15 flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+        <div className="xl:col-span-3 ui-panel">
+          <div className="ui-panel-header justify-between">
+            <p className="ui-section-label">
               ATT&CK Isı Haritası — Tetiklenme Sıklığı
             </p>
             <div className="flex gap-1">
@@ -469,7 +469,7 @@ export default function MitrePage() {
       {/* Expanded tactic detail */}
       {expandedTactic && coverage?.tactics[expandedTactic] && (
         <div className="bg-[#0a1120] border border-sky-500/30 rounded-xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-sky-900/15">
+          <div className="ui-panel-header justify-between">
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-sky-300">
                 {coverage.tactics[expandedTactic].label}
@@ -556,24 +556,24 @@ export default function MitrePage() {
           </button>
 
           {showRuleTable && (
-            <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+            <div className="ui-panel">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-sky-900/20">
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Kural</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Taktikler</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Teknikler</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Severity</th>
+                    <th className="ui-th">Kural</th>
+                    <th className="ui-th">Taktikler</th>
+                    <th className="ui-th">Teknikler</th>
+                    <th className="ui-th">Severity</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sky-900/10">
                   {techData.rules.map(rule => (
                     <tr key={rule.rule_id} className="hover:bg-sky-950/20 transition-colors">
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td">
                         <p className="font-medium text-slate-200 text-xs">{rule.rule_name}</p>
                         <p className="text-[11px] text-slate-500 font-mono">{rule.rule_id}</p>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td">
                         <div className="flex flex-wrap gap-1">
                           {rule.mitre_tactics.map(t => (
                             <span key={t} className="px-1.5 py-0.5 rounded text-[10px] bg-violet-500/15 text-violet-300 border border-violet-500/25">
@@ -582,7 +582,7 @@ export default function MitrePage() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td">
                         <div className="flex flex-wrap gap-1">
                           {rule.mitre_techniques.map(t => (
                             <a
@@ -598,7 +598,7 @@ export default function MitrePage() {
                           ))}
                         </div>
                       </td>
-                      <td className="px-4 py-2.5">
+                      <td className="ui-td">
                         <span className={cn('text-xs font-medium uppercase',
                           rule.severity === 'critical' ? 'text-red-400' :
                           rule.severity === 'high'     ? 'text-orange-400' :

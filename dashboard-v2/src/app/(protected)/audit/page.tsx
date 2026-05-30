@@ -97,7 +97,7 @@ function ChainIntegrityPanel() {
   const result = verifyMutation.data
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 space-y-3">
+    <div className="ui-panel p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ShieldCheck size={14} className="text-slate-500" />
@@ -107,7 +107,7 @@ function ChainIntegrityPanel() {
         <button
           disabled={verifyMutation.isPending}
           onClick={() => verifyMutation.mutate()}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+          className="ui-btn ui-btn-secondary"
         >
           {verifyMutation.isPending
             ? <><RefreshCw size={11} className="animate-spin" />Doğrulanıyor...</>
@@ -193,10 +193,10 @@ function AuditRow({ ev }: { ev: AuditEventItem }) {
         )}
         onClick={() => ev.detail ? setExpanded(v => !v) : undefined}
       >
-        <td className="px-4 py-2.5 text-xs text-slate-600 font-mono whitespace-nowrap">
+        <td className="ui-td text-xs text-slate-600 font-mono whitespace-nowrap">
           {formatDate(ev.timestamp)}
         </td>
-        <td className="px-4 py-2.5 text-xs font-medium">
+        <td className="ui-td text-xs font-medium">
           <span className={cn(breakGlass ? 'text-red-300 font-bold' : 'text-slate-200')}>
             {ev.actor}
           </span>
@@ -206,19 +206,19 @@ function AuditRow({ ev }: { ev: AuditEventItem }) {
             </span>
           )}
         </td>
-        <td className={cn('px-4 py-2.5 text-xs font-medium', ACTION_COLORS[ev.action] ?? 'text-slate-300')}>
+        <td className={cn('ui-td font-medium', ACTION_COLORS[ev.action] ?? 'text-slate-300')}>
           {ACTION_LABELS[ev.action] ?? ev.action}
         </td>
-        <td className="px-4 py-2.5 text-xs text-slate-500 font-mono truncate max-w-[10rem]">
+        <td className="ui-td text-xs text-slate-500 font-mono truncate max-w-[10rem]">
           {ev.resource}
         </td>
-        <td className="px-4 py-2.5 text-xs text-slate-600 max-w-xs truncate">
+        <td className="ui-td text-xs text-slate-600 max-w-xs truncate">
           {ev.detail ?? '—'}
         </td>
-        <td className="px-4 py-2.5 text-xs text-slate-600 font-mono whitespace-nowrap">
+        <td className="ui-td text-xs text-slate-600 font-mono whitespace-nowrap">
           {ev.ip_address ?? '—'}
         </td>
-        <td className="px-4 py-2.5 w-6">
+        <td className="ui-td w-6">
           {ev.detail && (
             expanded
               ? <ChevronUp   size={12} className="text-slate-600" />
@@ -241,7 +241,7 @@ function AuditRow({ ev }: { ev: AuditEventItem }) {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 
-const SEL = 'bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors'
+const SEL = 'ui-select'
 
 export default function AuditPage() {
   const [actorFilter,  setActorFilter]  = useState('')
@@ -282,7 +282,7 @@ export default function AuditPage() {
         <button
           onClick={() => refetch()}
           disabled={isFetching}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+          className="ui-btn ui-btn-secondary"
         >
           <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
           Yenile
@@ -304,9 +304,9 @@ export default function AuditPage() {
       )}
 
       {/* Table panel */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {/* Filters */}
-        <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-3 flex-wrap">
+        <div className="ui-panel-header flex-wrap gap-3">
           <span className="text-xs font-medium text-slate-500 flex-1">Admin Eylem Geçmişi</span>
 
           <div className="relative">
@@ -315,7 +315,7 @@ export default function AuditPage() {
               placeholder="Kullanıcı filtrele..."
               value={actorFilter}
               onChange={e => setActorFilter(e.target.value)}
-              className="pl-7 pr-3 py-1.5 w-36 text-xs bg-sky-950/20 border border-sky-900/25 rounded-lg text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors"
+              className="ui-input pl-7 w-36"
             />
           </div>
 
@@ -341,14 +341,14 @@ export default function AuditPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                  <th className="px-4 py-3 text-left w-40">Zaman</th>
-                  <th className="px-4 py-3 text-left w-28">Kullanıcı</th>
-                  <th className="px-4 py-3 text-left w-44">İşlem</th>
-                  <th className="px-4 py-3 text-left w-36">Kaynak</th>
-                  <th className="px-4 py-3 text-left">Detay</th>
-                  <th className="px-4 py-3 text-left w-28">IP</th>
-                  <th className="w-6" />
+                <tr >
+                  <th className="ui-th w-40">Zaman</th>
+                  <th className="ui-th w-28">Kullanıcı</th>
+                  <th className="ui-th w-44">İşlem</th>
+                  <th className="ui-th w-36">Kaynak</th>
+                  <th className="ui-th">Detay</th>
+                  <th className="ui-th w-28">IP</th>
+                  <th className="ui-th w-6" />
                 </tr>
               </thead>
               <tbody>

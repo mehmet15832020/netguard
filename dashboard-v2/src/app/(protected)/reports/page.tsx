@@ -44,7 +44,7 @@ const REPORTS: { type: ReportType; label: string; desc: string; icon: React.Elem
 function SummaryCard({ summary }: { summary: ReportSummary }) {
   return (
     <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="ui-panel p-4">
         <p className="text-xs text-slate-500 mb-1">Toplam Cihaz</p>
         <p className="text-2xl font-semibold text-slate-100">{summary.devices.total}</p>
         <div className="mt-2 flex flex-wrap gap-1">
@@ -56,7 +56,7 @@ function SummaryCard({ summary }: { summary: ReportSummary }) {
         </div>
       </div>
 
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="ui-panel p-4">
         <p className="text-xs text-slate-500 mb-1">Aktif Alert</p>
         <p className="text-2xl font-semibold text-slate-100">{summary.alerts.active}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -69,7 +69,7 @@ function SummaryCard({ summary }: { summary: ReportSummary }) {
         </div>
       </div>
 
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="ui-panel p-4">
         <p className="text-xs text-slate-500 mb-1">Güvenlik Olayı</p>
         <p className="text-2xl font-semibold text-slate-100">{summary.security.total}</p>
         <div className="mt-2 flex flex-wrap gap-1">
@@ -81,7 +81,7 @@ function SummaryCard({ summary }: { summary: ReportSummary }) {
         </div>
       </div>
 
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+      <div className="ui-panel p-4">
         <p className="text-xs text-slate-500 mb-1">Topoloji</p>
         <p className="text-2xl font-semibold text-slate-100">{summary.topology.nodes}</p>
         <p className="text-xs text-slate-600 mt-1">node · {summary.topology.edges} kenar</p>
@@ -154,7 +154,7 @@ export default function ReportsPage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {REPORTS.map(({ type, label, desc, icon: Icon, color }) => (
-            <div key={type} className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex flex-col gap-3">
+            <div key={type} className="ui-panel p-4 flex flex-col gap-3">
               <div className="flex items-center gap-2">
                 <Icon size={14} className={color} />
                 <span className="text-sm font-medium text-slate-200">{label}</span>

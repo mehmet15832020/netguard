@@ -227,19 +227,19 @@ function TopOffendersTable({ results, onSelectIp }: { results: AnomalyResult[]; 
   if (rows.length === 0) return null
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-      <div className="px-4 py-3 border-b border-sky-900/15">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">En Aktif IP&apos;ler</p>
+    <div className="ui-panel">
+      <div className="ui-panel-header">
+        <p className="ui-section-label">En Aktif IP&apos;ler</p>
         <p className="text-[11px] text-slate-600 mt-0.5">En çok anomali üreten kaynak IP&apos;ler</p>
       </div>
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-sky-900/10 text-slate-600 uppercase tracking-wide">
-            <th className="text-left px-4 py-2">IP</th>
-            <th className="text-left px-4 py-2">Anomali</th>
-            <th className="text-left px-4 py-2">Max Z-Score</th>
-            <th className="text-left px-4 py-2">Seviye</th>
-            <th className="px-4 py-2"></th>
+            <th className="ui-th">IP</th>
+            <th className="ui-th">Anomali</th>
+            <th className="ui-th">Max Z-Score</th>
+            <th className="ui-th">Seviye</th>
+            <th className="ui-th"></th>
           </tr>
         </thead>
         <tbody className="divide-y divide-sky-900/10">
@@ -247,15 +247,15 @@ function TopOffendersTable({ results, onSelectIp }: { results: AnomalyResult[]; 
             const m = SEV_META[severity as keyof typeof SEV_META]
             return (
               <tr key={ip} className="hover:bg-sky-950/20 transition-colors">
-                <td className="px-4 py-2.5 font-mono text-slate-200">{ip}</td>
-                <td className="px-4 py-2.5 text-slate-300 font-semibold">{count}</td>
-                <td className="px-4 py-2.5 font-mono text-slate-300">{maxZ.toFixed(1)}σ</td>
-                <td className="px-4 py-2.5">
+                <td className="ui-td font-mono text-slate-200">{ip}</td>
+                <td className="ui-td text-slate-300 font-semibold">{count}</td>
+                <td className="ui-td font-mono text-slate-300">{maxZ.toFixed(1)}σ</td>
+                <td className="ui-td">
                   <span className={cn('px-2 py-0.5 rounded text-xs font-medium border', m?.cls ?? 'text-slate-400 bg-sky-950/20 border-sky-900/20')}>
                     {m?.label ?? severity}
                   </span>
                 </td>
-                <td className="px-4 py-2.5">
+                <td className="ui-td">
                   <div className="flex gap-3">
                     <button onClick={() => onSelectIp(ip)} className="text-sky-400 hover:text-sky-300 transition-colors">
                       Filtrele
@@ -303,12 +303,12 @@ function ResultRow({ result }: { result: AnomalyResult }) {
           expanded ? 'bg-sky-950/25' : 'hover:bg-sky-950/20')}
         onClick={() => setExpanded((e) => !e)}
       >
-        <td className="px-4 py-3">
+        <td className="ui-td">
           <span className={cn('px-2 py-0.5 rounded text-xs font-medium border', m?.cls ?? 'text-slate-400 bg-sky-950/20 border-sky-900/20')}>
             {result.severity.toUpperCase()}
           </span>
         </td>
-        <td className="px-4 py-3 font-mono text-sm text-slate-200">
+        <td className="ui-td font-mono text-sm text-slate-200">
           <div className="flex items-center gap-2">
             {result.entity_id}
             <a
@@ -321,7 +321,7 @@ function ResultRow({ result }: { result: AnomalyResult }) {
             </a>
           </div>
         </td>
-        <td className="px-4 py-3 text-sm text-slate-300">
+        <td className="ui-td text-sm text-slate-300">
           <div className="flex items-center gap-2">
             {METRIC_LABELS[result.metric] ?? result.metric}
             {mitre && (
@@ -331,23 +331,23 @@ function ResultRow({ result }: { result: AnomalyResult }) {
             )}
           </div>
         </td>
-        <td className="px-4 py-3 font-mono text-sm text-slate-200">
+        <td className="ui-td font-mono text-sm text-slate-200">
           {result.observed_value.toFixed(2)}
           <span className="text-slate-600 text-xs ml-1">/ ~{result.baseline_mean.toFixed(2)}</span>
         </td>
-        <td className="px-4 py-3">
+        <td className="ui-td">
           <ZScoreBar z={result.z_score} />
         </td>
-        <td className="px-4 py-3">
+        <td className="ui-td">
           <div className="flex items-center gap-2">
             <WarmupBadge entityId={result.entity_id} />
             <span className="text-xs text-slate-600">{(result.confidence * 100).toFixed(0)}%</span>
           </div>
         </td>
-        <td className="px-4 py-3 text-xs text-slate-600">
+        <td className="ui-td text-xs text-slate-600">
           {new Date(result.detected_at).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
         </td>
-        <td className="px-4 py-3 text-slate-700">
+        <td className="ui-td text-slate-700">
           {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
         </td>
       </tr>
@@ -393,14 +393,14 @@ function ResultRow({ result }: { result: AnomalyResult }) {
               <div className="flex gap-2 shrink-0">
                 <a
                   href={`/logs?source_ip=${encodeURIComponent(result.entity_id)}`}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-sky-950/30 hover:bg-sky-950/50 text-sky-400 border border-sky-900/20 transition-colors"
+                  className="ui-btn ui-btn-secondary text-sky-400"
                 >
                   <ExternalLink size={12} /> Log&apos;larda Ara
                 </a>
                 {!fpSent ? (
                   <button
                     onClick={(e) => { e.stopPropagation(); markFP() }}
-                    className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-sky-950/30 hover:bg-sky-950/50 text-slate-300 border border-sky-900/20 transition-colors"
+                    className="ui-btn ui-btn-secondary"
                   >
                     <Shield size={12} /> FP Olarak İşaretle
                   </button>
@@ -501,7 +501,7 @@ export default function AnomalyPage() {
             { label: 'Uyarı',        value: summary?.warning ?? 0,           color: 'text-yellow-400' },
             { label: 'Etkilenen IP', value: summary?.affected_entities ?? 0, color: 'text-sky-400' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+            <div key={label} className="ui-panel p-4">
               <div className="text-xs text-slate-500 mb-1">{label}</div>
               <div className={cn('text-2xl font-bold', color)}>{value}</div>
             </div>
@@ -512,27 +512,27 @@ export default function AnomalyPage() {
       {/* Charts row */}
       {results.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Z-Score Dağılımı</p>
+          <div className="ui-panel">
+            <div className="ui-panel-header">
+              <p className="ui-section-label">Z-Score Dağılımı</p>
               <p className="text-[11px] text-slate-600 mt-0.5">3σ üzeri anomaliler · Welford algoritması</p>
             </div>
             <div className="p-3">
               <ZScoreHistogram results={results} />
             </div>
           </div>
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Zaman Çizgisi</p>
+          <div className="ui-panel">
+            <div className="ui-panel-header">
+              <p className="ui-section-label">Zaman Çizgisi</p>
               <p className="text-[11px] text-slate-600 mt-0.5">Anomali zamanı vs Z-Score</p>
             </div>
             <div className="p-3">
               <AnomalyTimeline results={results} />
             </div>
           </div>
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15">
-              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Metrik Dağılımı</p>
+          <div className="ui-panel">
+            <div className="ui-panel-header">
+              <p className="ui-section-label">Metrik Dağılımı</p>
               <p className="text-[11px] text-slate-600 mt-0.5">Hangi metrikler en çok anomali üretiyor?</p>
             </div>
             <div className="p-3">
@@ -549,7 +549,7 @@ export default function AnomalyPage() {
 
       {/* Engine warmup */}
       {baselines.length > 0 && (
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-3">
             <Activity size={13} className="text-slate-500" />
             <span className="text-sm font-medium text-slate-300">Model Isınma Durumu</span>
@@ -576,7 +576,7 @@ export default function AnomalyPage() {
         <select
           value={severityFilter}
           onChange={e => setSeverityFilter(e.target.value)}
-          className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+          className="ui-select"
         >
           <option value="all">Tüm Seviyeler</option>
           <option value="critical">Kritik</option>
@@ -588,7 +588,7 @@ export default function AnomalyPage() {
             placeholder="IP filtrele..."
             value={entityFilter}
             onChange={(e) => setEntityFilter(e.target.value)}
-            className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors w-36 pr-6"
+            className="ui-input w-36 pr-6"
           />
           {entityFilter && (
             <button onClick={() => setEntityFilter('')}
@@ -607,7 +607,7 @@ export default function AnomalyPage() {
       </div>
 
       {/* Results table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {resultsLoading ? (
           <div className="p-4">
             <SkeletonTable rows={7} height={44} />
@@ -623,15 +623,15 @@ export default function AnomalyPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                <th className="text-left px-4 py-3">Seviye</th>
-                <th className="text-left px-4 py-3">Entity IP</th>
-                <th className="text-left px-4 py-3">Metrik</th>
-                <th className="text-left px-4 py-3">Gözlemlenen / Baseline</th>
-                <th className="text-left px-4 py-3">Z-Score</th>
-                <th className="text-left px-4 py-3">Model / Güven</th>
-                <th className="text-left px-4 py-3">Zaman</th>
-                <th className="px-4 py-3"></th>
+              <tr >
+                <th className="ui-th">Seviye</th>
+                <th className="ui-th">Entity IP</th>
+                <th className="ui-th">Metrik</th>
+                <th className="ui-th">Gözlemlenen / Baseline</th>
+                <th className="ui-th">Z-Score</th>
+                <th className="ui-th">Model / Güven</th>
+                <th className="ui-th">Zaman</th>
+                <th className="ui-th"></th>
               </tr>
             </thead>
             <tbody>

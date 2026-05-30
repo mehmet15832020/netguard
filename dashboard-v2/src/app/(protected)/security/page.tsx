@@ -119,7 +119,7 @@ export default function SecurityPage() {
           <button
             onClick={() => queryClient.invalidateQueries({ queryKey: ['security-events'] })}
             disabled={isFetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
             Yenile
@@ -127,7 +127,7 @@ export default function SecurityPage() {
           <button
             onClick={() => scanMutation.mutate()}
             disabled={scanMutation.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm bg-sky-600 hover:bg-sky-500 text-white font-medium transition-colors shadow-[0_0_12px_rgba(56,189,248,0.15)] disabled:opacity-60"
+            className="ui-btn ui-btn-primary shadow-[0_0_12px_rgba(56,189,248,0.15)]"
           >
             <ScanLine size={13} />
             {scanMutation.isPending ? 'Taranıyor...' : 'Manuel Tara'}
@@ -157,7 +157,7 @@ export default function SecurityPage() {
         <select
           value={eventTypeFilter}
           onChange={e => setEventTypeFilter(e.target.value)}
-          className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 focus:outline-none focus:border-sky-500/50 transition-colors"
+          className="ui-select"
         >
           <option value="all">Tüm Tipler</option>
           {Object.entries(EVENT_TYPE_LABELS).map(([val, label]) => (
@@ -169,7 +169,7 @@ export default function SecurityPage() {
             placeholder="IP filtrele..."
             value={ipFilter}
             onChange={e => setIpFilter(e.target.value)}
-            className="bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-xs text-slate-300 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors w-36 pr-6"
+            className="ui-input w-36 pr-6"
           />
           {ipFilter && (
             <button onClick={() => setIpFilter('')}
@@ -190,7 +190,7 @@ export default function SecurityPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {isLoading ? (
           <div className="p-4">
             <SkeletonTable rows={8} height={40} />
@@ -205,29 +205,29 @@ export default function SecurityPage() {
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                <th className="text-left px-4 py-3 w-24">Seviye</th>
-                <th className="text-left px-4 py-3 w-36">Tip</th>
-                <th className="text-left px-4 py-3">Mesaj</th>
-                <th className="text-left px-4 py-3 w-40">Kaynak IP</th>
-                <th className="text-left px-4 py-3 w-28">Hostname</th>
-                <th className="text-left px-4 py-3 w-24">Kullanıcı</th>
-                <th className="text-left px-4 py-3 w-36">Zaman</th>
+              <tr >
+                <th className="ui-th w-24">Seviye</th>
+                <th className="ui-th w-36">Tip</th>
+                <th className="ui-th">Mesaj</th>
+                <th className="ui-th w-40">Kaynak IP</th>
+                <th className="ui-th w-28">Hostname</th>
+                <th className="ui-th w-24">Kullanıcı</th>
+                <th className="ui-th w-36">Zaman</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
               {events.map((ev: SecurityEvent) => (
                 <tr key={ev.event_id} className="hover:bg-sky-950/20 transition-colors">
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <SeverityBadge severity={ev.severity as Severity} />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="ui-td">
                     <EventTypeBadge type={ev.event_action} />
                   </td>
-                  <td className="px-4 py-3 text-slate-200 max-w-xs truncate text-xs" title={ev.message}>
+                  <td className="ui-td text-slate-200 max-w-xs truncate text-xs" title={ev.message}>
                     {ev.message}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-400 font-mono">
+                  <td className="ui-td text-xs text-slate-400 font-mono">
                     {ev.source_ip ? (
                       <div className="flex items-center gap-1.5">
                         <span>{ev.source_ip}</span>
@@ -237,9 +237,9 @@ export default function SecurityPage() {
                       <span className="text-slate-700">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs text-slate-500 font-mono">{ev.hostname ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-500">{ev.username ?? '—'}</td>
-                  <td className="px-4 py-3 text-xs text-slate-700 whitespace-nowrap">
+                  <td className="ui-td text-xs text-slate-500 font-mono">{ev.hostname ?? '—'}</td>
+                  <td className="ui-td text-xs text-slate-500">{ev.username ?? '—'}</td>
+                  <td className="ui-td text-xs text-slate-700 whitespace-nowrap">
                     {formatDate(ev.occurred_at)}
                   </td>
                 </tr>

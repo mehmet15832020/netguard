@@ -66,7 +66,7 @@ function Panel({ title, icon: Icon, href, children, className }: {
 }) {
   return (
     <div className={cn('bg-[#0d1526] border border-sky-900/25 rounded-lg overflow-hidden hover:border-sky-800/35 transition-colors', className)}>
-      <div className="flex items-center justify-between px-4 py-3 border-b border-sky-900/20">
+      <div className="ui-panel-header justify-between">
         <div className="flex items-center gap-2">
           <Icon size={13} className="text-sky-700" />
           <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">{title}</span>
@@ -843,7 +843,7 @@ export default function OverviewPage() {
         {/* A-right: compact KPI panel — attack chain + incident metrics */}
         <div className="col-span-12 lg:col-span-4">
           <div className="bg-[#0d1526] border border-sky-900/25 rounded-lg h-full overflow-hidden hover:border-sky-800/40 transition-colors">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-sky-900/20">
+            <div className="ui-panel-header">
               <Swords size={13} className="text-sky-700" />
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Zincir & Incident</span>
             </div>

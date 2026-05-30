@@ -165,9 +165,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
 
       {/* Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/15">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">CPU Kullanımı</span>
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <span className="ui-section-label">CPU Kullanımı</span>
           </div>
           <div className="px-2 py-3">
             {influxAvailable && cpuData.length > 1 ? (
@@ -180,9 +180,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/15">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Bellek Kullanımı</span>
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <span className="ui-section-label">Bellek Kullanımı</span>
           </div>
           <div className="px-2 py-3">
             {influxAvailable && memData.length > 1 ? (
@@ -193,9 +193,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/15">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ağ — Gelen (bytes/s)</span>
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <span className="ui-section-label">Ağ — Gelen (bytes/s)</span>
           </div>
           <div className="px-2 py-3">
             {influxAvailable && netInData.length > 1 ? (
@@ -206,9 +206,9 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
           </div>
         </div>
 
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-          <div className="px-4 py-3 border-b border-sky-900/15">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Ağ — Giden (bytes/s)</span>
+        <div className="ui-panel">
+          <div className="ui-panel-header">
+            <span className="ui-section-label">Ağ — Giden (bytes/s)</span>
           </div>
           <div className="px-2 py-3">
             {influxAvailable && netOutData.length > 1 ? (
@@ -223,10 +223,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       {/* Traffic summary */}
       {traffic && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2">
+          <div className="ui-panel">
+            <div className="ui-panel-header">
               <Wifi size={13} className="text-slate-600" />
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Trafik Özeti</span>
+              <span className="ui-section-label">Trafik Özeti</span>
               {traffic.suspicious_packet_count >= 5 && (
                 <span className="flex items-center gap-1 text-xs text-red-400 ml-2">
                   <AlertTriangle size={11} />
@@ -264,25 +264,25 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             </div>
           </div>
 
-          <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-sky-900/15">
-              <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">En Aktif IP'ler</span>
+          <div className="ui-panel">
+            <div className="ui-panel-header">
+              <span className="ui-section-label">En Aktif IP'ler</span>
             </div>
             {traffic.top_src_ips.length === 0 && traffic.top_dst_ips.length === 0 ? (
               <p className="text-slate-700 text-xs text-center py-6">Veri yok</p>
             ) : (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="border-b border-sky-900/15 text-slate-600 uppercase tracking-wide">
-                    <th className="px-4 py-2.5 text-left font-medium">Kaynak IP</th>
-                    <th className="px-4 py-2.5 text-left font-medium">Hedef IP</th>
+                  <tr>
+                    <th className="ui-th">Kaynak IP</th>
+                    <th className="ui-th">Hedef IP</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-sky-900/10">
                   {Array.from({ length: Math.max(traffic.top_src_ips.length, traffic.top_dst_ips.length) }, (_, i) => (
                     <tr key={i} className="hover:bg-sky-950/20 transition-colors">
-                      <td className="px-4 py-2 font-mono text-slate-300">{traffic.top_src_ips[i] ?? '—'}</td>
-                      <td className="px-4 py-2 font-mono text-slate-300">{traffic.top_dst_ips[i] ?? '—'}</td>
+                      <td className="ui-td font-mono text-slate-300">{traffic.top_src_ips[i] ?? '—'}</td>
+                      <td className="ui-td font-mono text-slate-300">{traffic.top_dst_ips[i] ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -293,19 +293,19 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
       )}
 
       {/* Disk partitions */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
-        <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <HardDrive size={13} className="text-slate-600" />
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Disk Bölümleri</span>
+          <span className="ui-section-label">Disk Bölümleri</span>
         </div>
         <table className="w-full">
           <thead>
-            <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-              <th className="px-4 py-3 text-left font-medium">Bağlama Noktası</th>
-              <th className="px-4 py-3 text-right font-medium">Toplam</th>
-              <th className="px-4 py-3 text-right font-medium">Kullanılan</th>
-              <th className="px-4 py-3 text-right font-medium">Boş</th>
-              <th className="px-4 py-3 text-right font-medium">Kullanım</th>
+            <tr>
+              <th className="ui-th">Bağlama Noktası</th>
+              <th className="ui-th text-right">Toplam</th>
+              <th className="ui-th text-right">Kullanılan</th>
+              <th className="ui-th text-right">Boş</th>
+              <th className="ui-th text-right">Kullanım</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-sky-900/10">
@@ -313,11 +313,11 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               const color = disk.usage_percent >= 90 ? 'text-red-400' : disk.usage_percent >= 70 ? 'text-yellow-400' : 'text-slate-300'
               return (
                 <tr key={disk.mount_point} className="hover:bg-sky-950/20 transition-colors text-sm">
-                  <td className="px-4 py-3 text-slate-200 font-mono">{disk.mount_point}</td>
-                  <td className="px-4 py-3 text-right text-slate-500">{(disk.total_bytes / 1e9).toFixed(1)} GB</td>
-                  <td className="px-4 py-3 text-right text-slate-500">{(disk.used_bytes  / 1e9).toFixed(1)} GB</td>
-                  <td className="px-4 py-3 text-right text-slate-500">{(disk.free_bytes  / 1e9).toFixed(1)} GB</td>
-                  <td className={`px-4 py-3 text-right font-mono font-medium ${color}`}>
+                  <td className="ui-td text-slate-200 font-mono">{disk.mount_point}</td>
+                  <td className="ui-td text-right text-slate-500">{(disk.total_bytes / 1e9).toFixed(1)} GB</td>
+                  <td className="ui-td text-right text-slate-500">{(disk.used_bytes  / 1e9).toFixed(1)} GB</td>
+                  <td className="ui-td text-right text-slate-500">{(disk.free_bytes  / 1e9).toFixed(1)} GB</td>
+                  <td className={`ui-td text-right font-mono font-medium ${color}`}>
                     {disk.usage_percent.toFixed(1)}%
                   </td>
                 </tr>

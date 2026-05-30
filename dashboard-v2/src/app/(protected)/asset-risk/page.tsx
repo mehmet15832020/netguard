@@ -125,9 +125,9 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
   }
 
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+    <div className="ui-panel">
       {/* Tier filter */}
-      <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2 flex-wrap">
+      <div className="ui-panel-header flex-wrap">
         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide mr-2">Risk Tablosu</span>
         {(['all', ...TIER_ORDER] as const).map((t) => {
           const m = t === 'all' ? null : TIER_META[t]
@@ -155,14 +155,14 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-sky-900/20 bg-[#0a1120]/50">
-              <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">IP</th>
-              <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">Risk</th>
+              <th className="ui-th">IP</th>
+              <th className="ui-th">Risk</th>
               <SortHeader col="activity_score" label="Aktivite" />
               <SortHeader col="chain_score"    label="Kill Chain" />
               <SortHeader col="block_score"    label="Blok" />
               <SortHeader col="total_score"    label="Toplam" />
-              <th className="px-3 py-2 text-left text-[11px] font-medium text-zinc-500">Olay</th>
-              <th className="px-3 py-2 text-left text-[11px] font-medium text-zinc-500">Durum</th>
+              <th className="ui-th">Olay</th>
+              <th className="ui-th">Durum</th>
             </tr>
           </thead>
           <tbody>
@@ -171,7 +171,7 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
               const m  = TIER_META[t]
               return (
                 <tr key={asset.ip} className="border-b border-sky-900/10 hover:bg-sky-950/20">
-                  <td className="px-3 py-2.5">
+                  <td className="ui-td">
                     <span className="font-mono text-xs text-slate-200">{asset.ip}</span>
                     {asset.top_severity && (
                       <span className={cn('ml-2 text-[10px] font-medium',
@@ -183,26 +183,26 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
                       </span>
                     )}
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="ui-td">
                     <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded border', m.color, m.bg, m.border)}>
                       {m.label}
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 w-32">
+                  <td className="ui-td w-32">
                     <ScoreBar value={asset.activity_score} maxValue={maxAct} color="bg-blue-500" />
                   </td>
-                  <td className="px-3 py-2.5 w-32">
+                  <td className="ui-td w-32">
                     <ScoreBar value={asset.chain_score} maxValue={maxChain} color="bg-orange-500" />
                   </td>
-                  <td className="px-3 py-2.5 w-32">
+                  <td className="ui-td w-32">
                     <ScoreBar value={asset.block_score} maxValue={maxBlock} color="bg-red-500" />
                   </td>
-                  <td className="px-3 py-2.5">
+                  <td className="ui-td">
                     <span className={cn('text-sm font-bold', m.color)}>{asset.total_score}</span>
                     <span className="text-[10px] text-slate-600">/100</span>
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500">{asset.event_count}</td>
-                  <td className="px-3 py-2.5">
+                  <td className="ui-td text-xs text-slate-500">{asset.event_count}</td>
+                  <td className="ui-td">
                     {asset.is_blocked ? (
                       <span className="flex items-center gap-1 text-[11px] text-red-400">
                         <Link2 size={11} /> Bloklu
@@ -302,8 +302,8 @@ export default function AssetRiskPage() {
       ) : null}
 
       {/* Heatmap */}
-      <div className="rounded-xl border border-sky-900/20 bg-[#0a1120] p-4">
-        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Isı Haritası</p>
+      <div className="ui-panel p-4">
+        <p className="ui-section-label mb-3">Isı Haritası</p>
         {isLoading && <SkeletonChart height={384} />}
         {isError && (
           <div className="h-32 flex items-center justify-center text-red-400 text-sm">

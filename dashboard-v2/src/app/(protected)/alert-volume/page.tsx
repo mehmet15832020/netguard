@@ -122,7 +122,7 @@ export default function AlertVolumePage() {
           </p>
           <p className="text-xs text-slate-600 mt-0.5">öncelikli inceleme</p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <Bell className="w-4 h-4 text-yellow-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Warning</p>
@@ -132,7 +132,7 @@ export default function AlertVolumePage() {
           </p>
           <p className="text-xs text-slate-600 mt-0.5">izleme gerektirir</p>
         </div>
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <div className="flex items-center gap-2 mb-1">
             <Info className="w-4 h-4 text-blue-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Info</p>
@@ -148,11 +148,11 @@ export default function AlertVolumePage() {
       {isLoading ? (
         <SkeletonChart height={256} className="rounded-xl" />
       ) : isEmpty ? (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <EmptyState />
         </div>
       ) : (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+        <div className="ui-panel p-4">
           <AlertVolumeChart series={data!.series} hours={hours} bucketMinutes={data!.bucket_minutes} height={320} />
         </div>
       )}

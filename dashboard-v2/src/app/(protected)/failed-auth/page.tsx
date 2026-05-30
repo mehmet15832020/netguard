@@ -208,7 +208,7 @@ export default function FailedAuthPage() {
       ) : data && kpis ? (
         <div className="grid grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Toplam */}
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <div className="flex items-center justify-between mb-1">
               <span className="text-xs text-slate-500 uppercase tracking-wide">Toplam Deneme</span>
               {kpis.trend === 'up'     && <TrendingUp  size={14} className="text-red-400" />}
@@ -219,7 +219,7 @@ export default function FailedAuthPage() {
             <p className="text-[11px] text-slate-600 mt-0.5">Son {hours} saat</p>
           </div>
           {/* Benzersiz kaynak */}
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <Users size={11} className="text-slate-500" />
               <span className="text-xs text-slate-500 uppercase tracking-wide">Benzersiz Kaynak</span>
@@ -230,7 +230,7 @@ export default function FailedAuthPage() {
             <p className="text-[11px] text-slate-600 mt-0.5">farklı kaynak IP</p>
           </div>
           {/* Dış IP */}
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <Globe size={11} className="text-slate-500" />
               <span className="text-xs text-slate-500 uppercase tracking-wide">Dış Kaynak</span>
@@ -241,7 +241,7 @@ export default function FailedAuthPage() {
             <p className="text-[11px] text-slate-600 mt-0.5">RFC1918 dışı IP</p>
           </div>
           {/* Saatlik ort */}
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <span className="text-xs text-slate-500 uppercase tracking-wide block mb-1">Saatlik Ort.</span>
             <p className={cn('text-2xl font-bold', kpis.avgPerHour >= 50 ? 'text-red-400' : kpis.avgPerHour >= 10 ? 'text-yellow-400' : 'text-orange-400')}>
               {kpis.avgPerHour.toFixed(1)}
@@ -249,7 +249,7 @@ export default function FailedAuthPage() {
             <p className="text-[11px] text-slate-600 mt-0.5">deneme / saat</p>
           </div>
           {/* Zirve saat */}
-          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <div className="ui-panel p-4">
             <div className="flex items-center gap-1.5 mb-1">
               <Clock size={11} className="text-slate-500" />
               <span className="text-xs text-slate-500 uppercase tracking-wide">Zirve Saat</span>
@@ -265,8 +265,8 @@ export default function FailedAuthPage() {
       ) : null}
 
       {/* Trend chart */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/15">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <h2 className="text-sm font-semibold text-slate-200">Saatlik Trend</h2>
         </div>
         {isLoading ? (
@@ -285,8 +285,8 @@ export default function FailedAuthPage() {
 
       {/* Günlük saat dağılımı */}
       {hourlyDistOption && (
-        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-          <div className="px-4 py-3 border-b border-sky-900/15 flex items-center justify-between">
+        <div className="ui-panel">
+          <div className="ui-panel-header justify-between">
             <h2 className="text-sm font-semibold text-slate-200">Saat Dağılımı (Gün Boyu)</h2>
             <span className="text-[11px] text-slate-500">Kırmızı: zirve · Turuncu: gece 22-05</span>
           </div>
@@ -297,8 +297,8 @@ export default function FailedAuthPage() {
       )}
 
       {/* Top kaynak IP'ler */}
-      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
-        <div className="px-4 py-3 border-b border-sky-900/15">
+      <div className="ui-panel">
+        <div className="ui-panel-header">
           <h2 className="text-sm font-semibold text-slate-200">Top Kaynak IP'ler</h2>
         </div>
         {isLoading ? (

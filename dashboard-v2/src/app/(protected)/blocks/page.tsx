@@ -9,8 +9,8 @@ import {
 import { activeResponse, type BlockedIP, type BlockVerifyResponse } from '@/lib/api'
 import { SkeletonTable } from '@/components/ui/skeleton'
 
-const INP = 'bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors'
-const SEL = 'bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:border-sky-500/50 transition-colors'
+const INP = 'ui-input'
+const SEL = 'ui-select'
 
 function formatTtl(expiresAt: string | null): { label: string; cls: string } {
   if (!expiresAt) return { label: 'Süresiz', cls: 'text-slate-500' }
@@ -63,7 +63,7 @@ function KpiCard({
   label, value, sub, accent,
 }: { label: string; value: string | number; sub?: string; accent?: string }) {
   return (
-    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4">
+    <div className="ui-panel p-4">
       <p className="text-xs text-slate-500 mb-1">{label}</p>
       <p className={`text-2xl font-bold tabular-nums ${accent ?? 'text-slate-100'}`}>{value}</p>
       {sub && <p className="text-xs text-slate-700 mt-0.5">{sub}</p>}
@@ -74,7 +74,7 @@ function KpiCard({
 function VerifyPanel({ result }: { result: BlockVerifyResponse }) {
   const ok = result.status === 'ok'
   return (
-    <div className="rounded-xl border border-sky-900/20 bg-[#0a1120] p-4 space-y-3">
+    <div className="ui-panel p-4 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <StatusBadge up={result.opnsense_up} label="OPNsense" />
         <StatusBadge up={result.vyos_up} label="VyOS" />
@@ -166,7 +166,7 @@ function ManualBlockForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   return (
-    <div className="rounded-xl border border-sky-900/20 bg-[#0a1120] p-4">
+    <div className="ui-panel p-4">
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-semibold text-slate-200">Manuel IP Blokla</h3>
         <button onClick={() => { setOpen(false); setError('') }} className="text-slate-500 hover:text-slate-300 transition-colors">
@@ -453,14 +453,14 @@ export default function BlocksPage() {
           <button
             onClick={() => runVerify()}
             disabled={isVerifying}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
+            className="ui-btn ui-btn-secondary"
           >
             {isVerifying ? <RefreshCw size={12} className="animate-spin" /> : <ShieldCheck size={12} />}
             {isVerifying ? 'Doğrulanıyor...' : "Firewall'ı Doğrula"}
           </button>
           <button
             onClick={() => refetch()}
-            className="flex items-center px-2.5 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors"
+            className="ui-btn ui-btn-secondary"
           >
             <RefreshCw size={12} />
           </button>
@@ -528,7 +528,7 @@ export default function BlocksPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {isLoading ? (
           <div className="p-4">
             <SkeletonTable rows={6} height={44} />
@@ -543,20 +543,20 @@ export default function BlocksPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-sky-900/20">
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">IP Adresi</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Sebep</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Kaynak</th>
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500">Provider</th>
-                <th className="px-4 py-2.5 text-left">
+                <th className="ui-th">IP Adresi</th>
+                <th className="ui-th">Sebep</th>
+                <th className="ui-th">Kaynak</th>
+                <th className="ui-th">Provider</th>
+                <th className="ui-th">
                   <SortHeader label="Bloklandığı Zaman" col="blocked_at" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-2.5 text-left">
+                <th className="ui-th">
                   <SortHeader label="Kalan TTL" col="expires_at" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-2.5 text-left">
+                <th className="ui-th">
                   <SortHeader label="Offense" col="offense_count" sort={sort} dir={dir} onSort={handleSort} />
                 </th>
-                <th className="px-4 py-2.5" />
+                <th className="ui-th" />
               </tr>
             </thead>
             <tbody className="divide-y divide-sky-900/10">
@@ -567,11 +567,11 @@ export default function BlocksPage() {
                 const isAuto = block.blocked_by === 'system'
                 return (
                   <tr key={block.block_id} className="hover:bg-sky-950/20 transition-colors">
-                    <td className="px-4 py-3 font-mono text-sm text-slate-200">{block.ip}</td>
-                    <td className="px-4 py-3 text-xs text-slate-400 max-w-xs truncate" title={block.reason}>
+                    <td className="ui-td font-mono text-sm text-slate-200">{block.ip}</td>
+                    <td className="ui-td text-xs text-slate-400 max-w-xs truncate" title={block.reason}>
                       {block.reason}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs backdrop-blur-sm ${
                         isAuto
                           ? 'bg-orange-500/10 text-orange-300 border-orange-500/25'
@@ -581,25 +581,25 @@ export default function BlocksPage() {
                         {isAuto ? 'Sistem' : block.blocked_by}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <ProviderBadge provider={block.provider} />
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">
+                    <td className="ui-td text-xs text-slate-500">
                       {new Date(block.blocked_at).toLocaleString('tr-TR')}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <span className={`text-xs font-mono flex items-center gap-1 ${ttl.cls}`}>
                         <Clock size={11} />
                         {ttl.label}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded border text-xs font-mono ${tier.cls}`}>
                         {offense >= 3 && <Flame size={11} />}
                         {offense}×
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="ui-td">
                       <div className="flex items-center gap-1.5">
                         <button
                           disabled={unblockMutation.isPending}

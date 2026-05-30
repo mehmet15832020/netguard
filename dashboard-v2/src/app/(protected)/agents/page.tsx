@@ -31,7 +31,7 @@ function AgentRow({ agent, onClick }: {
       onClick={onClick}
       className="border-b border-sky-900/10 hover:bg-sky-950/20 cursor-pointer transition-colors"
     >
-      <td className="px-4 py-3">
+      <td className="ui-td">
         <div className="flex items-center gap-2">
           <Circle
             size={8}
@@ -40,14 +40,14 @@ function AgentRow({ agent, onClick }: {
           <span className="text-sm text-slate-100">{agent.hostname}</span>
         </div>
       </td>
-      <td className="px-4 py-3 text-sm text-slate-500 hidden md:table-cell">{agent.os}</td>
-      <td className="px-4 py-3 text-sm text-right font-mono">{pctCell(cpu)}</td>
-      <td className="px-4 py-3 text-sm text-right font-mono">{pctCell(mem)}</td>
-      <td className="px-4 py-3 text-sm text-right font-mono hidden sm:table-cell">{pctCell(disk)}</td>
-      <td className="px-4 py-3 text-sm text-slate-600 hidden lg:table-cell">
+      <td className="ui-td text-sm text-slate-500 hidden md:table-cell">{agent.os}</td>
+      <td className="ui-td text-sm text-right font-mono">{pctCell(cpu)}</td>
+      <td className="ui-td text-sm text-right font-mono">{pctCell(mem)}</td>
+      <td className="ui-td text-sm text-right font-mono hidden sm:table-cell">{pctCell(disk)}</td>
+      <td className="ui-td text-sm text-slate-600 hidden lg:table-cell">
         {new Date(agent.last_seen).toLocaleTimeString('tr-TR')}
       </td>
-      <td className="px-4 py-3 text-right">
+      <td className="ui-td text-right">
         <ChevronRight size={14} className="text-slate-600 inline" />
       </td>
     </tr>
@@ -96,7 +96,7 @@ export default function AgentsPage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-3 gap-3">
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex items-center gap-3">
+        <div className="ui-panel p-4 flex items-center gap-3">
           <div className="p-2 rounded-lg bg-emerald-500/10">
             <Wifi size={16} className="text-emerald-400" />
           </div>
@@ -105,7 +105,7 @@ export default function AgentsPage() {
             <p className="text-2xl font-bold text-emerald-400">{onlineCount}</p>
           </div>
         </div>
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex items-center gap-3">
+        <div className="ui-panel p-4 flex items-center gap-3">
           <div className="p-2 rounded-lg bg-sky-950/40">
             <WifiOff size={16} className="text-slate-500" />
           </div>
@@ -114,7 +114,7 @@ export default function AgentsPage() {
             <p className="text-2xl font-bold text-slate-400">{offlineCount}</p>
           </div>
         </div>
-        <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl p-4 flex items-center gap-3">
+        <div className="ui-panel p-4 flex items-center gap-3">
           <div className="p-2 rounded-lg bg-sky-500/10">
             <Activity size={16} className="text-sky-400" />
           </div>
@@ -126,17 +126,17 @@ export default function AgentsPage() {
       </div>
 
       {/* Table panel */}
-      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
+      <div className="ui-panel">
         {/* Search */}
-        <div className="px-4 py-3 border-b border-sky-900/15">
-          <div className="relative">
+        <div className="ui-panel-header">
+          <div className="relative w-full">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600" />
             <input
               type="text"
               value={search}
               onChange={e => handleSearch(e.target.value)}
               placeholder="Hostname veya OS ara..."
-              className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg pl-8 pr-4 py-1.5 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors"
+              className="ui-input pl-8"
             />
           </div>
         </div>
@@ -157,13 +157,13 @@ export default function AgentsPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-sky-900/15 text-xs text-slate-600 uppercase tracking-wide">
-                    <th className="px-4 py-3 text-left font-medium">Hostname</th>
-                    <th className="px-4 py-3 text-left font-medium hidden md:table-cell">OS</th>
-                    <th className="px-4 py-3 text-right font-medium">CPU</th>
-                    <th className="px-4 py-3 text-right font-medium">RAM</th>
-                    <th className="px-4 py-3 text-right font-medium hidden sm:table-cell">Disk</th>
-                    <th className="px-4 py-3 text-left font-medium hidden lg:table-cell">Son Görülme</th>
+                  <tr>
+                    <th className="ui-th">Hostname</th>
+                    <th className="ui-th hidden md:table-cell">OS</th>
+                    <th className="ui-th text-right">CPU</th>
+                    <th className="ui-th text-right">RAM</th>
+                    <th className="ui-th text-right hidden sm:table-cell">Disk</th>
+                    <th className="ui-th hidden lg:table-cell">Son Görülme</th>
                     <th />
                   </tr>
                 </thead>
@@ -180,7 +180,7 @@ export default function AgentsPage() {
             </div>
 
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 py-3 border-t border-sky-900/15">
+              <div className="ui-panel-footer flex items-center justify-between">
                 <span className="text-xs text-slate-600">
                   {filtered.length} sonuç — sayfa {page} / {totalPages}
                 </span>
@@ -188,14 +188,14 @@ export default function AgentsPage() {
                   <button
                     onClick={() => setPage(p => Math.max(1, p - 1))}
                     disabled={page === 1}
-                    className="px-3 py-1 text-xs rounded-lg bg-sky-950/30 border border-sky-900/20 text-slate-300 disabled:opacity-40 hover:bg-sky-950/50 transition-colors"
+                    className="ui-btn ui-btn-secondary"
                   >
                     Önceki
                   </button>
                   <button
                     onClick={() => setPage(p => Math.min(totalPages, p + 1))}
                     disabled={page === totalPages}
-                    className="px-3 py-1 text-xs rounded-lg bg-sky-950/30 border border-sky-900/20 text-slate-300 disabled:opacity-40 hover:bg-sky-950/50 transition-colors"
+                    className="ui-btn ui-btn-secondary"
                   >
                     Sonraki
                   </button>
