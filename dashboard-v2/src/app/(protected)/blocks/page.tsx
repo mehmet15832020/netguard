@@ -65,7 +65,7 @@ function KpiCard({
   return (
     <div className="ui-panel p-4">
       <p className="text-xs text-slate-500 mb-1">{label}</p>
-      <p className={`text-2xl font-bold tabular-nums ${accent ?? 'text-slate-100'}`}>{value}</p>
+      <p className={`text-3xl font-bold tabular-nums leading-none ${accent ?? 'text-slate-100'}`}>{value}</p>
       {sub && <p className="text-xs text-slate-700 mt-0.5">{sub}</p>}
     </div>
   )

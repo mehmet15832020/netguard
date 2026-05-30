@@ -2,9 +2,9 @@
 
 import Link from 'next/link'
 import {
-  Bell, Server, Shield, GitMerge, ChevronRight, Share2,
+  Bell, Server, Shield, GitMerge, Share2, ChevronRight,
   AlertTriangle, Activity, Swords, ShieldAlert, Zap, Clock,
-  CheckCircle2, Globe, Radio, Dna, Wifi,
+  CheckCircle2, Globe, Radio, Wifi,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
@@ -24,6 +24,7 @@ import type {
 } from '@/lib/api'
 import { MiniTopology } from '@/components/topology/MiniTopology'
 import { Skeleton } from '@/components/ui/skeleton'
+import { StatCard, KpiCard } from '@/components/ui/stat-card'
 import type { Severity } from '@/types/models'
 import { cn } from '@/lib/utils'
 
@@ -156,43 +157,8 @@ function SecurityStatusBanner() {
 }
 
 // ─────────────────────────────────────────────
-//  Row 1 — Primary Stat Cards
-// ─────────────────────────────────────────────
-
-function StatCard({ label, value, sub, accent, icon: Icon, href }: {
-  label: string; value: string | number; sub?: string
-  accent: string; icon: React.ElementType; href?: string
-}) {
-  const inner = (
-    <div className="relative bg-[#0d1526] border border-sky-900/25 rounded-lg p-4 hover:border-sky-800/40 transition-colors group">
-      <div className="flex items-start justify-between mb-3">
-        <div className={`w-8 h-8 rounded-md flex items-center justify-center ${accent}`}><Icon size={15} /></div>
-        {href && <ChevronRight size={13} className="text-slate-700 group-hover:text-slate-500 transition-colors mt-0.5" />}
-      </div>
-      <p className="text-2xl font-bold text-slate-100 tabular-nums">{value}</p>
-      <p className="text-xs text-slate-500 mt-0.5 font-medium">{label}</p>
-      {sub && <p className="text-[11px] text-slate-600 mt-1">{sub}</p>}
-    </div>
-  )
-  return href ? <Link href={href}>{inner}</Link> : inner
-}
-
-// ─────────────────────────────────────────────
 //  Row 2 — Attack Chain + Incident KPIs
 // ─────────────────────────────────────────────
-
-function KpiCard({ label, value, sub, color, href }: {
-  label: string; value: string | number; sub?: string; color: string; href?: string
-}) {
-  const inner = (
-    <div className="bg-[#0d1526] border border-sky-900/25 rounded-lg px-4 py-3 hover:border-sky-800/40 transition-colors group">
-      <p className="text-[11px] text-slate-500 uppercase tracking-wide mb-1 truncate">{label}</p>
-      <p className={cn('text-xl font-bold tabular-nums', color)}>{value}</p>
-      {sub && <p className="text-[10px] text-slate-600 mt-0.5">{sub}</p>}
-    </div>
-  )
-  return href ? <Link href={href}>{inner}</Link> : inner
-}
 
 function AttackChainKpis() {
   const { data } = useQuery({
@@ -203,9 +169,9 @@ function AttackChainKpis() {
   })
   return (
     <>
-      <KpiCard label="Aktif Saldırı IP"  value={data?.active_ips    ?? '—'} color={data && data.active_ips   > 0 ? 'text-red-400'    : 'text-slate-300'} href="/timeline" />
-      <KpiCard label="Zincir 24s"         value={data?.chains_24h    ?? '—'} color={data && data.chains_24h   > 0 ? 'text-orange-400' : 'text-slate-300'} href="/timeline" />
-      <KpiCard label="Kritik Zincir 24s"  value={data?.critical_24h  ?? '—'} color={data && data.critical_24h > 0 ? 'text-red-400'    : 'text-slate-300'} href="/timeline" />
+      <KpiCard label="Aktif Saldırı IP"  value={data?.active_ips    ?? '—'} icon={Swords}        valueCls={data && data.active_ips   > 0 ? 'text-red-400'    : undefined} href="/timeline" />
+      <KpiCard label="Zincir 24s"         value={data?.chains_24h    ?? '—'} icon={Swords}        valueCls={data && data.chains_24h   > 0 ? 'text-orange-400' : undefined} href="/timeline" />
+      <KpiCard label="Kritik Zincir 24s"  value={data?.critical_24h  ?? '—'} icon={AlertTriangle} valueCls={data && data.critical_24h > 0 ? 'text-red-400'    : undefined} href="/timeline" />
     </>
   )
 }
@@ -219,9 +185,9 @@ function IncidentKpis() {
   })
   return (
     <>
-      <KpiCard label="Açık Incident"          value={data?.open          ?? '—'} color={data && data.open          > 0 ? 'text-red-400'    : 'text-slate-300'} href="/incidents" />
-      <KpiCard label="İnceleniyor"            value={data?.investigating  ?? '—'} color={data && data.investigating > 0 ? 'text-yellow-400' : 'text-slate-300'} href="/incidents" />
-      <KpiCard label="Çözüldü (Toplam)"       value={data?.resolved       ?? '—'} color="text-emerald-400"                                                     href="/incidents" sub={data ? `${data.total} toplam` : undefined} />
+      <KpiCard label="Açık Incident"     value={data?.open          ?? '—'} icon={AlertTriangle} valueCls={data && data.open          > 0 ? 'text-red-400'    : undefined} href="/incidents" />
+      <KpiCard label="İnceleniyor"       value={data?.investigating  ?? '—'} icon={Activity}      valueCls={data && data.investigating > 0 ? 'text-yellow-400' : undefined} href="/incidents" />
+      <KpiCard label="Çözüldü (Toplam)"  value={data?.resolved       ?? '—'} icon={CheckCircle2}  valueCls="text-emerald-400"                                               href="/incidents" sub={data ? `${data.total} toplam` : undefined} />
     </>
   )
 }
@@ -817,25 +783,29 @@ export default function OverviewPage() {
           <StatCard
             label="Aktif Alert" value={alerts.length}
             sub={criticalAlerts > 0 ? `${criticalAlerts} kritik` : 'Kritik yok'}
-            accent={criticalAlerts > 0 ? 'bg-red-500/20 text-red-400' : 'bg-emerald-500/20 text-emerald-400'}
+            iconCls={criticalAlerts > 0 ? 'bg-red-500/10 border border-red-500/20 text-red-400' : 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'}
+            accentCls={criticalAlerts > 0 ? 'bg-red-400/40' : 'bg-emerald-400/40'}
             icon={Bell} href="/alerts"
           />
           <StatCard
             label="Güvenlik Olayı" value={totalSecurity}
             sub="Toplam kayıtlı"
-            accent={totalSecurity > 50 ? 'bg-orange-500/20 text-orange-400' : 'bg-purple-500/20 text-purple-400'}
+            iconCls={totalSecurity > 50 ? 'bg-orange-500/10 border border-orange-500/20 text-orange-400' : 'bg-purple-500/10 border border-purple-500/20 text-purple-400'}
+            accentCls={totalSecurity > 50 ? 'bg-orange-400/40' : 'bg-purple-400/40'}
             icon={Shield} href="/security"
           />
           <StatCard
             label="Korelasyon" value={(corrData?.events ?? []).length}
             sub="Son tetiklenen"
-            accent="bg-sky-500/15 text-sky-400"
+            iconCls="bg-sky-500/10 border border-sky-500/20 text-sky-400"
+            accentCls="bg-sky-400/40"
             icon={GitMerge} href="/correlation"
           />
           <StatCard
             label="Bağlı Agent" value={`${onlineAgents}/${agents.length}`}
             sub="Online / Toplam"
-            accent={onlineAgents < agents.length && agents.length > 0 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-blue-500/20 text-blue-400'}
+            iconCls={onlineAgents < agents.length && agents.length > 0 ? 'bg-yellow-500/10 border border-yellow-500/20 text-yellow-400' : 'bg-sky-500/10 border border-sky-500/20 text-sky-400'}
+            accentCls={onlineAgents < agents.length && agents.length > 0 ? 'bg-yellow-400/40' : 'bg-sky-400/40'}
             icon={Server} href="/agents"
           />
         </div>

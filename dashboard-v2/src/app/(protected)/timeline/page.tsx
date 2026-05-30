@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { Swords, RefreshCw, Shield, AlertTriangle, Activity, Target } from 'lucide-react'
 import { attackChainsApi, correlationApi } from '@/lib/api'
+import { KpiCard } from '@/components/ui/stat-card'
 import type { ActiveChain } from '@/lib/api'
 import type { CorrelatedEvent } from '@/types/models'
 import { cn } from '@/lib/utils'
@@ -207,18 +208,15 @@ export default function TimelinePage() {
 
       {/* KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        {KPI_ITEMS.map(({ label, value, icon: Icon, active, activeColor, activeBg }) => (
-          <div key={label} className="ui-panel p-4 flex items-center gap-3">
-            <div className={cn(
-              'w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0',
-              active ? cn(activeBg, activeColor) : 'bg-sky-950/20 border-sky-900/15 text-slate-600',
-            )}>
-              <Icon size={16} />
-            </div>
-            <div>
-              <p className={cn('text-2xl font-bold tabular-nums', active ? activeColor : 'text-slate-100')}>{value}</p>
-              <p className="text-[11px] text-slate-500">{label}</p>
-            </div>
+        {KPI_ITEMS.map(({ label, value, icon, active, activeColor, activeBg }) => (
+          <div key={label}>
+            <KpiCard
+              label={label}
+              value={value}
+              icon={icon}
+              iconCls={active ? cn(activeBg, 'border', activeColor) : 'bg-sky-950/20 border-sky-900/15 text-slate-600'}
+              valueCls={active ? activeColor : undefined}
+            />
           </div>
         ))}
       </div>
