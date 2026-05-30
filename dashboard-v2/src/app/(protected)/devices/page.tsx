@@ -61,13 +61,13 @@ const SEL = 'ui-select'
 
 function SNMPModal({ device, onClose }: { device: Device; onClose: () => void }) {
   const qc = useQueryClient()
-  const [community,   setCommunity]   = useState((device as any).snmp_community || 'public')
-  const [version,     setVersion]     = useState<'v2c' | 'v3'>((device as any).snmp_version || 'v2c')
+  const [community,   setCommunity]   = useState(device.snmp_community || 'public')
+  const [version,     setVersion]     = useState<'v2c' | 'v3'>(device.snmp_version === 'v3' ? 'v3' : 'v2c')
   const [showV3,      setShowV3]      = useState(version === 'v3')
-  const [v3User,      setV3User]      = useState((device as any).snmp_v3_username || '')
-  const [v3AuthProto, setV3AuthProto] = useState<'MD5' | 'SHA'>((device as any).snmp_v3_auth_protocol || 'SHA')
+  const [v3User,      setV3User]      = useState(device.snmp_v3_username || '')
+  const [v3AuthProto, setV3AuthProto] = useState<'MD5' | 'SHA'>(device.snmp_v3_auth_protocol === 'MD5' ? 'MD5' : 'SHA')
   const [v3AuthKey,   setV3AuthKey]   = useState('')
-  const [v3PrivProto, setV3PrivProto] = useState<'DES' | 'AES'>((device as any).snmp_v3_priv_protocol || 'AES')
+  const [v3PrivProto, setV3PrivProto] = useState<'DES' | 'AES'>(device.snmp_v3_priv_protocol === 'DES' ? 'DES' : 'AES')
   const [v3PrivKey,   setV3PrivKey]   = useState('')
   const [saved,       setSaved]       = useState(false)
 
@@ -317,7 +317,7 @@ export default function DevicesPage() {
             </thead>
             <tbody className="divide-y divide-sky-900/10">
               {filtered.map((device) => {
-                const hasCommunity = !!(device as any).snmp_community
+                const hasCommunity = !!device.snmp_community
                 return (
                   <tr
                     key={device.device_id}
@@ -348,7 +348,7 @@ export default function DevicesPage() {
                         )}
                       >
                         <Settings2 size={11} />
-                        {hasCommunity ? (device as any).snmp_community : 'Ayarla'}
+                        {hasCommunity ? device.snmp_community : 'Ayarla'}
                       </button>
                     </td>
                   </tr>

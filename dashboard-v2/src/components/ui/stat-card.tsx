@@ -1,13 +1,14 @@
 'use client'
 
 import Link from 'next/link'
+import type { LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface StatCardProps {
   label: string
   value: string | number
   sub?: string
-  icon: React.ElementType
+  icon: LucideIcon
   iconCls?: string
   valueCls?: string
   accentCls?: string
@@ -37,7 +38,7 @@ interface KpiCardProps {
   label: string
   value: string | number
   sub?: string
-  icon: React.ElementType
+  icon: LucideIcon
   iconCls?: string
   valueCls?: string
   href?: string

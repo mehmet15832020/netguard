@@ -207,7 +207,10 @@ export interface Device {
   first_seen: string
   last_seen: string | null
   snmp_community: string
-  snmp_version: string
+  snmp_version: 'v2c' | 'v3' | string
+  snmp_v3_username: string
+  snmp_v3_auth_protocol: 'MD5' | 'SHA' | string
+  snmp_v3_priv_protocol: 'DES' | 'AES' | string
   risk_score: number
   segment: string
   notes: string

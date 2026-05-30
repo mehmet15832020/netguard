@@ -9,6 +9,7 @@ import type { Alert, MetricSnapshot } from '@/types/models'
 
 const ALERT_KEYS    = new Set(['alerts', 'security-status', 'attack-chain-stats'])
 const CORREL_KEYS   = new Set(['correlated-events', 'corr-events-timeline', 'security-events', 'security-summary', 'security-status'])
+const SEC_EVT_KEYS  = new Set(['security-events', 'security-summary', 'security-status'])
 const CHAIN_KEYS    = new Set(['attack-chains-active', 'attack-chains-stats', 'attack-chains-history', 'attack-chain-stats', 'security-status'])
 const INCIDENT_KEYS = new Set(['incidents', 'incident-summary', 'incident-summary-overview', 'security-status', 'mttd-mttr-incidents', 'mttd-mttr-overview'])
 
@@ -38,6 +39,12 @@ export function useWebSocket() {
 
         case 'metric':
           updateSnapshotRef.current(msg.data as MetricSnapshot)
+          break
+
+        case 'security_event':
+          queryClient.invalidateQueries({
+            predicate: (q) => SEC_EVT_KEYS.has(q.queryKey[0] as string),
+          })
           break
 
         case 'correlated_event':
