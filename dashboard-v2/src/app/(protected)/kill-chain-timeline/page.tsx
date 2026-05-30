@@ -55,7 +55,7 @@ function StatCard({
       </div>
       <div>
         <p className="text-xs text-slate-500">{label}</p>
-        <p className="text-xl font-bold text-slate-100">{value}</p>
+        <p className="text-2xl font-bold leading-none text-slate-100">{value}</p>
       </div>
     </div>
   )

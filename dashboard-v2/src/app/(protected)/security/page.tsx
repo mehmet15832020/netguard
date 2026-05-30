@@ -60,7 +60,7 @@ function SummaryCard({
       )}
     >
       <p className="text-[11px] text-slate-500 mb-1 truncate">{EVENT_TYPE_LABELS[type] ?? type}</p>
-      <p className={cn('text-2xl font-bold', active ? 'text-sky-400' : 'text-slate-100')}>{count}</p>
+      <p className={cn('text-3xl font-bold leading-none', active ? 'text-sky-400' : 'text-slate-100')}>{count}</p>
     </button>
   )
 }

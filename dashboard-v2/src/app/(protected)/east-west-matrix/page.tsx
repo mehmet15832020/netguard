@@ -69,17 +69,17 @@ export default function EastWestMatrixPage() {
         <div className="grid grid-cols-3 gap-4">
           <div className="panel-cyber p-4">
             <p className="text-xs text-slate-500 mb-1">Benzersiz Çift</p>
-            <p className="text-2xl font-bold text-slate-100">{(data?.unique_pairs ?? 0).toLocaleString()}</p>
+            <p className="text-3xl font-bold leading-none text-slate-100">{(data?.unique_pairs ?? 0).toLocaleString()}</p>
             <p className="text-xs text-slate-600 mt-0.5">src→dst kombinasyonu</p>
           </div>
           <div className="panel-cyber p-4">
             <p className="text-xs text-slate-500 mb-1">Maks Bağlantı</p>
-            <p className="text-2xl font-bold text-sky-400">{(data?.max_count ?? 0).toLocaleString()}</p>
+            <p className="text-3xl font-bold leading-none text-sky-400">{(data?.max_count ?? 0).toLocaleString()}</p>
             <p className="text-xs text-slate-600 mt-0.5">tek çiftte en yüksek</p>
           </div>
           <div className="panel-cyber p-4">
             <p className="text-xs text-slate-500 mb-1">Aktif Kaynak</p>
-            <p className="text-2xl font-bold text-slate-100">{uniqueSources.toLocaleString()}</p>
+            <p className="text-3xl font-bold leading-none text-slate-100">{uniqueSources.toLocaleString()}</p>
             <p className="text-xs text-slate-600 mt-0.5">iç ağ bağlantısı başlatan IP</p>
           </div>
         </div>

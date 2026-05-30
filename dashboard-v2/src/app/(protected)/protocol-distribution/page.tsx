@@ -111,7 +111,7 @@ export default function ProtocolDistributionPage() {
             <Layers className="w-4 h-4 text-sky-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Benzersiz Protokol</p>
           </div>
-          <p className="text-2xl font-bold text-slate-100">
+          <p className="text-3xl font-bold leading-none text-slate-100">
             {isLoading ? '—' : uniqueCount.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">farklı protokol türü</p>
@@ -121,7 +121,7 @@ export default function ProtocolDistributionPage() {
             <TrendingUp className="w-4 h-4 text-sky-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Dominant Protokol</p>
           </div>
-          <p className="text-xl font-bold text-slate-100 font-mono uppercase">
+          <p className="text-2xl font-bold leading-none text-slate-100 font-mono uppercase">
             {isLoading ? '—' : (topProtocol?.protocol.toUpperCase() ?? '—')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">
@@ -136,7 +136,7 @@ export default function ProtocolDistributionPage() {
             <AlertTriangle className={cn('w-4 h-4 flex-shrink-0', riskyCount > 0 ? 'text-amber-400' : 'text-slate-500')} />
             <p className="text-xs text-slate-500">Riskli Protokol</p>
           </div>
-          <p className={cn('text-2xl font-bold', riskyCount > 0 ? 'text-amber-400' : 'text-slate-100')}>
+          <p className={cn('text-3xl font-bold leading-none', riskyCount > 0 ? 'text-amber-400' : 'text-slate-100')}>
             {isLoading ? '—' : riskyCount}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">plaintext / zayıf auth protokolü</p>

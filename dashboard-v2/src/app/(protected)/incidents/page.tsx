@@ -199,7 +199,7 @@ function SummaryCard({ label, value, color, sub }: { label: string; value: numbe
   return (
     <div className="ui-panel p-4">
       <p className="text-xs text-slate-500 mb-1">{label}</p>
-      <p className={cn('text-2xl font-bold', color)}>{value}</p>
+      <p className={cn('text-3xl font-bold leading-none', color)}>{value}</p>
       {sub && <p className="text-[11px] text-slate-700 mt-0.5">{sub}</p>}
     </div>
   )

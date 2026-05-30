@@ -362,14 +362,14 @@ export default function TlsFingerprintsPage() {
               <div className="p-2 rounded-lg bg-sky-500/15 text-sky-400"><Shield className="w-5 h-5" /></div>
               <div>
                 <p className="text-xs text-slate-500">Toplam Bağlantı</p>
-                <p className="text-2xl font-bold text-slate-100">{data.total_connections.toLocaleString('tr-TR')}</p>
+                <p className="text-3xl font-bold leading-none text-slate-100">{data.total_connections.toLocaleString('tr-TR')}</p>
               </div>
             </div>
             <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
               <div className="p-2 rounded-lg bg-sky-950/20 text-slate-400"><Fingerprint className="w-5 h-5" /></div>
               <div>
                 <p className="text-xs text-slate-500">Benzersiz Fingerprint</p>
-                <p className="text-2xl font-bold text-slate-100">{data.unique_count.toLocaleString('tr-TR')}</p>
+                <p className="text-3xl font-bold leading-none text-slate-100">{data.unique_count.toLocaleString('tr-TR')}</p>
               </div>
             </div>
             <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
@@ -378,7 +378,7 @@ export default function TlsFingerprintsPage() {
               </div>
               <div>
                 <p className="text-xs text-slate-500">Şüpheli / Zararlı</p>
-                <p className={cn('text-2xl font-bold', data.suspicious_count > 0 ? 'text-red-400' : 'text-slate-100')}>
+                <p className={cn('text-3xl font-bold leading-none', data.suspicious_count > 0 ? 'text-red-400' : 'text-slate-100')}>
                   {data.suspicious_count.toLocaleString('tr-TR')}
                 </p>
               </div>
@@ -389,7 +389,7 @@ export default function TlsFingerprintsPage() {
               </div>
               <div>
                 <p className="text-xs text-slate-500">Self-Signed Sertifika</p>
-                <p className={cn('text-2xl font-bold', data.self_signed_count > 0 ? 'text-amber-400' : 'text-slate-100')}>
+                <p className={cn('text-3xl font-bold leading-none', data.self_signed_count > 0 ? 'text-amber-400' : 'text-slate-100')}>
                   {data.self_signed_count.toLocaleString('tr-TR')}
                 </p>
               </div>

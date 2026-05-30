@@ -503,7 +503,7 @@ export default function AnomalyPage() {
           ].map(({ label, value, color }) => (
             <div key={label} className="ui-panel p-4">
               <div className="text-xs text-slate-500 mb-1">{label}</div>
-              <div className={cn('text-2xl font-bold', color)}>{value}</div>
+              <div className={cn('text-3xl font-bold leading-none', color)}>{value}</div>
             </div>
           ))}
         </div>

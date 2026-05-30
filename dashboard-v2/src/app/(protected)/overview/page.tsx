@@ -147,7 +147,7 @@ function SecurityStatusBanner() {
           { label: 'Anomali 24s',    value: data.anomalies_24h,    href: '/anomaly',     color: data.anomalies_24h    > 0 ? 'text-yellow-400' : 'text-slate-400' },
         ].map(({ label, value, href, color }) => (
           <Link key={label} href={href} className="hover:opacity-80 transition-opacity">
-            <p className={cn('text-2xl font-bold tabular-nums', color)}>{value}</p>
+            <p className={cn('text-3xl font-bold leading-none tabular-nums', color)}>{value}</p>
             <p className="text-[10px] text-slate-600 mt-0.5 whitespace-nowrap">{label}</p>
           </Link>
         ))}
@@ -214,7 +214,7 @@ function MttdRow() {
         <div className="w-8 h-8 rounded-md bg-blue-500/10 flex items-center justify-center flex-shrink-0"><Clock size={14} className="text-blue-400" /></div>
         <div className="min-w-0">
           <p className="text-[11px] text-slate-500 uppercase tracking-wide">Ort. Tespit Süresi</p>
-          <p className="text-2xl font-bold tabular-nums text-blue-400 mt-1">{fmt(data?.overall_mttd_minutes ?? null)}</p>
+          <p className="text-3xl font-bold leading-none tabular-nums text-blue-400 mt-1">{fmt(data?.overall_mttd_minutes ?? null)}</p>
           <p className="text-[11px] text-slate-600 mt-0.5">MTTD · Son 7 gün</p>
         </div>
       </div>
@@ -222,7 +222,7 @@ function MttdRow() {
         <div className="w-8 h-8 rounded-md bg-orange-500/10 flex items-center justify-center flex-shrink-0"><Activity size={14} className="text-orange-400" /></div>
         <div className="min-w-0">
           <p className="text-[11px] text-slate-500 uppercase tracking-wide">Ort. Yanıt Süresi</p>
-          <p className="text-2xl font-bold tabular-nums text-orange-400 mt-1">{fmt(data?.overall_mttr_minutes ?? null)}</p>
+          <p className="text-3xl font-bold leading-none tabular-nums text-orange-400 mt-1">{fmt(data?.overall_mttr_minutes ?? null)}</p>
           <p className="text-[11px] text-slate-600 mt-0.5">MTTR · Son 7 gün</p>
         </div>
       </div>
@@ -232,7 +232,7 @@ function MttdRow() {
         </div>
         <div className="min-w-0">
           <p className="text-[11px] text-slate-500 uppercase tracking-wide">Çözüm Oranı</p>
-          <p className={cn('text-2xl font-bold tabular-nums mt-1', rate === null ? 'text-slate-500' : rate >= 80 ? 'text-emerald-400' : 'text-yellow-400')}>
+          <p className={cn('text-3xl font-bold leading-none tabular-nums mt-1', rate === null ? 'text-slate-500' : rate >= 80 ? 'text-emerald-400' : 'text-yellow-400')}>
             {rate !== null ? `${rate.toFixed(0)}%` : '—'}
           </p>
           <p className="text-[11px] text-slate-600 mt-0.5">
@@ -549,15 +549,15 @@ function ThreatIntelPanel({ data }: { data: ThreatSummaryResponse | undefined })
           {data && (
             <div className="flex gap-3 mb-3">
               <div className="flex-1 bg-[#080f1e] rounded p-2 text-center">
-                <p className={cn('text-xl font-bold tabular-nums', data.critical_count > 0 ? 'text-red-400' : 'text-slate-300')}>{data.critical_count}</p>
+                <p className={cn('text-2xl font-bold leading-none tabular-nums', data.critical_count > 0 ? 'text-red-400' : 'text-slate-300')}>{data.critical_count}</p>
                 <p className="text-[10px] text-slate-600 mt-0.5">Kritik</p>
               </div>
               <div className="flex-1 bg-[#080f1e] rounded p-2 text-center">
-                <p className={cn('text-xl font-bold tabular-nums', data.high_risk_count > 0 ? 'text-orange-400' : 'text-slate-300')}>{data.high_risk_count}</p>
+                <p className={cn('text-2xl font-bold leading-none tabular-nums', data.high_risk_count > 0 ? 'text-orange-400' : 'text-slate-300')}>{data.high_risk_count}</p>
                 <p className="text-[10px] text-slate-600 mt-0.5">Yüksek Risk</p>
               </div>
               <div className="flex-1 bg-[#080f1e] rounded p-2 text-center">
-                <p className="text-xl font-bold tabular-nums text-slate-300">{data.total_alerts}</p>
+                <p className="text-2xl font-bold leading-none tabular-nums text-slate-300">{data.total_alerts}</p>
                 <p className="text-[10px] text-slate-600 mt-0.5">Alert</p>
               </div>
             </div>

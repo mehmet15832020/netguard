@@ -207,7 +207,7 @@ export default function CompliancePage() {
                 )}
               >
                 <p className="text-xs text-slate-500 mb-1">{label}</p>
-                <p className={cn('text-2xl font-bold', color)}>{value}</p>
+                <p className={cn('text-3xl font-bold leading-none', color)}>{value}</p>
                 <p className="text-xs text-slate-700 mt-0.5">kontrol</p>
               </div>
             ))}

@@ -363,7 +363,7 @@ export default function MitrePage() {
         ].map(({ label, value, color }) => (
           <div key={label} className="ui-panel p-4">
             <p className="text-xs text-slate-500 mb-1">{label}</p>
-            <p className={`text-2xl font-bold ${color}`}>{value}</p>
+            <p className={`text-3xl font-bold leading-none ${color}`}>{value}</p>
           </div>
         ))}
       </div>

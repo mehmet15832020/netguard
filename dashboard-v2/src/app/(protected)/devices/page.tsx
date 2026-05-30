@@ -256,7 +256,7 @@ export default function DevicesPage() {
         ].map(({ label, value, color }) => (
           <div key={label} className="ui-panel p-4">
             <p className="text-xs text-slate-500">{label}</p>
-            <p className={cn('text-2xl font-bold mt-1', color)}>{value}</p>
+            <p className={cn('text-3xl font-bold leading-none mt-1', color)}>{value}</p>
           </div>
         ))}
       </div>

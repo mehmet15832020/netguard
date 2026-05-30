@@ -102,7 +102,7 @@ export default function TrafficVolumePage() {
             <span className="w-2.5 h-2.5 rounded-full bg-sky-500 flex-shrink-0" />
             <p className="text-xs text-slate-500">İç ↔ İç (East-West)</p>
           </div>
-          <p className="text-2xl font-bold text-slate-100">
+          <p className="text-3xl font-bold leading-none text-slate-100">
             {isLoading ? '—' : totalEastWest.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">lateral hareket riski</p>
@@ -112,7 +112,7 @@ export default function TrafficVolumePage() {
             <span className="w-2.5 h-2.5 rounded-full bg-orange-500 flex-shrink-0" />
             <p className="text-xs text-slate-500">İç → Dış (Egress)</p>
           </div>
-          <p className="text-2xl font-bold text-orange-400">
+          <p className="text-3xl font-bold leading-none text-orange-400">
             {isLoading ? '—' : totalNsEgress.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">veri sızdırma riski</p>
@@ -122,7 +122,7 @@ export default function TrafficVolumePage() {
             <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
             <p className="text-xs text-slate-500">Dış → İç (Ingress)</p>
           </div>
-          <p className="text-2xl font-bold text-red-400">
+          <p className="text-3xl font-bold leading-none text-red-400">
             {isLoading ? '—' : totalNsIngress.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">dış kaynaklı trafik</p>

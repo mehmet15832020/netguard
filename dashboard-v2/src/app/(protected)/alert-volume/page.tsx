@@ -104,7 +104,7 @@ export default function AlertVolumePage() {
             <ShieldAlert className={cn('w-4 h-4 flex-shrink-0', criticalCount > 0 ? 'text-red-400' : 'text-slate-500')} />
             <p className="text-xs text-slate-500">Critical</p>
           </div>
-          <p className={cn('text-2xl font-bold tabular-nums', criticalCount > 0 ? 'text-red-400' : 'text-slate-100')}>
+          <p className={cn('text-3xl font-bold leading-none tabular-nums', criticalCount > 0 ? 'text-red-400' : 'text-slate-100')}>
             {isLoading ? '—' : criticalCount.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">acil müdahale gerektirir</p>
@@ -117,7 +117,7 @@ export default function AlertVolumePage() {
             <AlertTriangle className={cn('w-4 h-4 flex-shrink-0', highCount > 0 ? 'text-orange-400' : 'text-slate-500')} />
             <p className="text-xs text-slate-500">High</p>
           </div>
-          <p className={cn('text-2xl font-bold tabular-nums', highCount > 0 ? 'text-orange-400' : 'text-slate-100')}>
+          <p className={cn('text-3xl font-bold leading-none tabular-nums', highCount > 0 ? 'text-orange-400' : 'text-slate-100')}>
             {isLoading ? '—' : highCount.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">öncelikli inceleme</p>
@@ -127,7 +127,7 @@ export default function AlertVolumePage() {
             <Bell className="w-4 h-4 text-yellow-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Warning</p>
           </div>
-          <p className="text-2xl font-bold text-yellow-400 tabular-nums">
+          <p className="text-3xl font-bold leading-none text-yellow-400 tabular-nums">
             {isLoading ? '—' : warningCount.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">izleme gerektirir</p>
@@ -137,7 +137,7 @@ export default function AlertVolumePage() {
             <Info className="w-4 h-4 text-blue-400 flex-shrink-0" />
             <p className="text-xs text-slate-500">Info</p>
           </div>
-          <p className="text-2xl font-bold text-blue-400 tabular-nums">
+          <p className="text-3xl font-bold leading-none text-blue-400 tabular-nums">
             {isLoading ? '—' : infoCount.toLocaleString('tr-TR')}
           </p>
           <p className="text-xs text-slate-600 mt-0.5">bilgi amaçlı</p>

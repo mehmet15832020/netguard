@@ -67,7 +67,7 @@ function AgentMetrics({ deviceId }: { deviceId: string }) {
         <div className="grid grid-cols-2 gap-3">
           <div className="bg-sky-950/20 border border-sky-900/15 rounded-lg p-3">
             <p className="text-[10px] text-slate-600 uppercase tracking-wide mb-1">CPU</p>
-            <p className={cn('text-2xl font-bold tabular-nums',
+            <p className={cn('text-3xl font-bold leading-none tabular-nums',
               cpuPct !== null && cpuPct >= 90 ? 'text-red-400' :
               cpuPct !== null && cpuPct >= 70 ? 'text-yellow-400' : 'text-slate-200',
             )}>
@@ -76,7 +76,7 @@ function AgentMetrics({ deviceId }: { deviceId: string }) {
           </div>
           <div className="bg-sky-950/20 border border-sky-900/15 rounded-lg p-3">
             <p className="text-[10px] text-slate-600 uppercase tracking-wide mb-1">Bellek</p>
-            <p className={cn('text-2xl font-bold tabular-nums',
+            <p className={cn('text-3xl font-bold leading-none tabular-nums',
               memPct !== null && memPct >= 90 ? 'text-red-400' :
               memPct !== null && memPct >= 70 ? 'text-yellow-400' : 'text-slate-200',
             )}>

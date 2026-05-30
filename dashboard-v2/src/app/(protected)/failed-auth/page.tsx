@@ -215,7 +215,7 @@ export default function FailedAuthPage() {
               {kpis.trend === 'down'   && <TrendingDown size={14} className="text-emerald-400" />}
               {kpis.trend === 'stable' && <Minus        size={14} className="text-slate-500" />}
             </div>
-            <p className="text-2xl font-bold text-red-400">{data.total.toLocaleString('tr-TR')}</p>
+            <p className="text-3xl font-bold leading-none text-red-400">{data.total.toLocaleString('tr-TR')}</p>
             <p className="text-[11px] text-slate-600 mt-0.5">Son {hours} saat</p>
           </div>
           {/* Benzersiz kaynak */}
@@ -224,7 +224,7 @@ export default function FailedAuthPage() {
               <Users size={11} className="text-slate-500" />
               <span className="text-xs text-slate-500 uppercase tracking-wide">Benzersiz Kaynak</span>
             </div>
-            <p className={cn('text-2xl font-bold', (data.unique_source_count ?? 0) >= 5 ? 'text-orange-400' : 'text-slate-100')}>
+            <p className={cn('text-3xl font-bold leading-none', (data.unique_source_count ?? 0) >= 5 ? 'text-orange-400' : 'text-slate-100')}>
               {(data.unique_source_count ?? 0).toLocaleString('tr-TR')}
             </p>
             <p className="text-[11px] text-slate-600 mt-0.5">farklı kaynak IP</p>
@@ -235,7 +235,7 @@ export default function FailedAuthPage() {
               <Globe size={11} className="text-slate-500" />
               <span className="text-xs text-slate-500 uppercase tracking-wide">Dış Kaynak</span>
             </div>
-            <p className={cn('text-2xl font-bold', (data.external_source_count ?? 0) > 0 ? 'text-red-400' : 'text-slate-100')}>
+            <p className={cn('text-3xl font-bold leading-none', (data.external_source_count ?? 0) > 0 ? 'text-red-400' : 'text-slate-100')}>
               {(data.external_source_count ?? 0).toLocaleString('tr-TR')}
             </p>
             <p className="text-[11px] text-slate-600 mt-0.5">RFC1918 dışı IP</p>
@@ -243,7 +243,7 @@ export default function FailedAuthPage() {
           {/* Saatlik ort */}
           <div className="ui-panel p-4">
             <span className="text-xs text-slate-500 uppercase tracking-wide block mb-1">Saatlik Ort.</span>
-            <p className={cn('text-2xl font-bold', kpis.avgPerHour >= 50 ? 'text-red-400' : kpis.avgPerHour >= 10 ? 'text-yellow-400' : 'text-orange-400')}>
+            <p className={cn('text-3xl font-bold leading-none', kpis.avgPerHour >= 50 ? 'text-red-400' : kpis.avgPerHour >= 10 ? 'text-yellow-400' : 'text-orange-400')}>
               {kpis.avgPerHour.toFixed(1)}
             </p>
             <p className="text-[11px] text-slate-600 mt-0.5">deneme / saat</p>
@@ -254,7 +254,7 @@ export default function FailedAuthPage() {
               <Clock size={11} className="text-slate-500" />
               <span className="text-xs text-slate-500 uppercase tracking-wide">Zirve Saat</span>
             </div>
-            <p className="text-2xl font-bold text-slate-100">
+            <p className="text-3xl font-bold leading-none text-slate-100">
               {String(kpis.peakHour).padStart(2, '0')}:00
             </p>
             <p className="text-[11px] text-slate-600 mt-0.5">

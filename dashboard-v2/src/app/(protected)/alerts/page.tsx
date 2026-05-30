@@ -166,7 +166,7 @@ export default function AlertsPage() {
                 <span className="text-xs text-slate-500">{SEV_LABELS[sev]}</span>
                 <SeverityBadge severity={sev} />
               </div>
-              <span className="text-2xl font-bold text-slate-100">{count}</span>
+              <span className="text-3xl font-bold leading-none text-slate-100">{count}</span>
               <span className="text-xs text-slate-700 ml-1.5">/ {total} toplam</span>
             </button>
           )

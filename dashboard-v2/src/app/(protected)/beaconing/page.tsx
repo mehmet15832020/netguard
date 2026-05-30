@@ -262,7 +262,7 @@ export default function BeaconingPage() {
           <div>
             <p className="text-xs text-slate-500">Tespit Sayısı</p>
             <div className="flex items-center gap-2">
-              <p className={cn('text-2xl font-bold', (data?.total ?? 0) > 0 ? 'text-red-400' : 'text-slate-100')}>
+              <p className={cn('text-3xl font-bold leading-none', (data?.total ?? 0) > 0 ? 'text-red-400' : 'text-slate-100')}>
                 {isLoading ? '—' : (data?.total ?? 0)}
               </p>
               {(data?.total ?? 0) > 0 && (
@@ -275,7 +275,7 @@ export default function BeaconingPage() {
 
         <div className="ui-panel p-4">
           <p className="text-xs text-slate-500 mb-1">Ortalama IAT</p>
-          <p className="text-2xl font-bold text-slate-100">
+          <p className="text-3xl font-bold leading-none text-slate-100">
             {avgIat !== null ? `${avgIat.toFixed(1)}s` : '—'}
           </p>
           {avgIat !== null && (
@@ -286,7 +286,7 @@ export default function BeaconingPage() {
         <div className="ui-panel p-4">
           <p className="text-xs text-slate-500 mb-1">Ortalama Jitter (CV)</p>
           <div className="flex items-center gap-2">
-            <p className="text-2xl font-bold text-slate-100">
+            <p className="text-3xl font-bold leading-none text-slate-100">
               {avgJitter !== null ? `${(avgJitter * 100).toFixed(1)}%` : '—'}
             </p>
             <RiskBadge level={beaconRisk(avgJitter)} />

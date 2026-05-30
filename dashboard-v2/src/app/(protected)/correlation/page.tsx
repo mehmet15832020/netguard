@@ -261,7 +261,7 @@ export default function CorrelationPage() {
         ].map(({ label, value, color }) => (
           <div key={label} className="ui-panel p-4">
             <p className="text-xs text-slate-500 mb-1">{label}</p>
-            <p className={`text-2xl font-bold ${color}`}>{isLoading ? '—' : value}</p>
+            <p className={`text-3xl font-bold leading-none ${color}`}>{isLoading ? '—' : value}</p>
           </div>
         ))}
       </div>

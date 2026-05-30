@@ -235,17 +235,17 @@ export default function FPManagementPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">Aktif Kural</div>
-          <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : activeRules.length}</div>
+          <div className="text-3xl font-bold leading-none text-slate-100">{isLoading ? '—' : activeRules.length}</div>
           <div className="text-xs text-slate-700 mt-0.5">{expiredRules.length} süresi dolmuş</div>
         </div>
         <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">Toplam Bastırılan</div>
-          <div className="text-2xl font-bold text-emerald-400">{isLoading ? '—' : totalHits.toLocaleString()}</div>
+          <div className="text-3xl font-bold leading-none text-emerald-400">{isLoading ? '—' : totalHits.toLocaleString()}</div>
           <div className="text-xs text-slate-700 mt-0.5">lifetime hit count</div>
         </div>
         <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">En Çok Hit</div>
-          <div className="text-2xl font-bold text-slate-100">{isLoading ? '—' : topHitter ? topHitter.hit_count.toLocaleString() : '—'}</div>
+          <div className="text-3xl font-bold leading-none text-slate-100">{isLoading ? '—' : topHitter ? topHitter.hit_count.toLocaleString() : '—'}</div>
           {topHitter && (
             <div className="text-xs text-slate-600 mt-0.5 font-mono truncate">
               {topHitter.event_action ?? topHitter.source_ip ?? 'genel'}
@@ -254,7 +254,7 @@ export default function FPManagementPage() {
         </div>
         <div className="ui-panel p-4">
           <div className="text-xs text-slate-500 mb-1">Süresi Dolmak Üzere</div>
-          <div className={cn('text-2xl font-bold', expiringSoon > 0 ? 'text-yellow-400' : 'text-slate-100')}>
+          <div className={cn('text-3xl font-bold leading-none', expiringSoon > 0 ? 'text-yellow-400' : 'text-slate-100')}>
             {isLoading ? '—' : expiringSoon}
           </div>
           <div className="text-xs text-slate-700 mt-0.5">7 gün içinde</div>

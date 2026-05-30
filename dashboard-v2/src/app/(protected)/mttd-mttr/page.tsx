@@ -141,21 +141,21 @@ export default function MttdMttrPage() {
       <div className="grid grid-cols-3 gap-4">
         <div className="rounded-lg border border-sky-900/20 bg-[#0a1120] p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Ortalama MTTD</p>
-          <p className="text-2xl font-bold text-blue-400">
+          <p className="text-3xl font-bold leading-none text-blue-400">
             {isLoading ? '…' : fmtMin(data?.overall_mttd_minutes ?? null)}
           </p>
           <p className="text-xs text-slate-600 mt-1">Tespit → Onay süresi</p>
         </div>
         <div className="rounded-lg border border-sky-900/20 bg-[#0a1120] p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Ortalama MTTR</p>
-          <p className="text-2xl font-bold text-orange-400">
+          <p className="text-3xl font-bold leading-none text-orange-400">
             {isLoading ? '…' : fmtMin(data?.overall_mttr_minutes ?? null)}
           </p>
           <p className="text-xs text-slate-600 mt-1">Tespit → Çözüm süresi</p>
         </div>
         <div className="rounded-lg border border-sky-900/20 bg-[#0a1120] p-4">
           <p className="text-xs text-slate-500 uppercase tracking-wider mb-1">Çözüm Oranı</p>
-          <p className="text-2xl font-bold text-emerald-400">
+          <p className="text-3xl font-bold leading-none text-emerald-400">
             {isLoading ? '…' : `${data?.resolution_rate ?? 0}%`}
           </p>
           <p className="text-xs text-slate-600 mt-1">

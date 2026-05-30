@@ -128,7 +128,7 @@ function SummaryCard({
         )}
       </div>
       <p className={cn(
-        'text-2xl font-bold tabular-nums',
+        'text-3xl font-bold leading-none tabular-nums',
         danger && value > 0 ? 'text-red-400' : 'text-slate-100',
       )}>
         {value}

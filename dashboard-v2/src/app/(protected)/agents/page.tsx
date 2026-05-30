@@ -102,7 +102,7 @@ export default function AgentsPage() {
           </div>
           <div>
             <p className="text-xs text-slate-500">Online</p>
-            <p className="text-2xl font-bold text-emerald-400">{onlineCount}</p>
+            <p className="text-3xl font-bold leading-none text-emerald-400">{onlineCount}</p>
           </div>
         </div>
         <div className="ui-panel p-4 flex items-center gap-3">
@@ -111,7 +111,7 @@ export default function AgentsPage() {
           </div>
           <div>
             <p className="text-xs text-slate-500">Offline</p>
-            <p className="text-2xl font-bold text-slate-400">{offlineCount}</p>
+            <p className="text-3xl font-bold leading-none text-slate-400">{offlineCount}</p>
           </div>
         </div>
         <div className="ui-panel p-4 flex items-center gap-3">
@@ -120,7 +120,7 @@ export default function AgentsPage() {
           </div>
           <div>
             <p className="text-xs text-slate-500">Toplam</p>
-            <p className="text-2xl font-bold text-slate-100">{agents.length}</p>
+            <p className="text-3xl font-bold leading-none text-slate-100">{agents.length}</p>
           </div>
         </div>
       </div>

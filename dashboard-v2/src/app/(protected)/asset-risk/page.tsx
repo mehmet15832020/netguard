@@ -72,7 +72,7 @@ function TierCards({ assets }: { assets: AssetRiskEntry[] }) {
               <span className={cn('text-xs font-medium uppercase tracking-wide', m.color)}>{m.label}</span>
               <Icon size={14} className={m.color} />
             </div>
-            <p className={cn('text-2xl font-bold', m.color)}>{counts[t]}</p>
+            <p className={cn('text-3xl font-bold leading-none', m.color)}>{counts[t]}</p>
             <p className="text-[11px] text-slate-600 mt-0.5">varlık</p>
           </div>
         )
