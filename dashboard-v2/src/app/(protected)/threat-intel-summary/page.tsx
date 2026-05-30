@@ -20,14 +20,14 @@ function scoreColor(score: number): string {
   if (score >= 70) return 'bg-red-500'
   if (score >= 40) return 'bg-amber-500'
   if (score > 0)   return 'bg-yellow-500'
-  return 'bg-zinc-600'
+  return 'bg-slate-600'
 }
 
 function scoreBadgeClass(score: number): string {
   if (score >= 70) return 'text-red-400 bg-red-500/10 border-red-500/30'
   if (score >= 40) return 'text-amber-400 bg-amber-500/10 border-amber-500/30'
   if (score > 0)   return 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30'
-  return 'text-zinc-500 bg-zinc-800 border-zinc-700'
+  return 'text-slate-500 bg-sky-950/20 border-sky-900/20'
 }
 
 function fmtDate(s: string): string {
@@ -43,14 +43,14 @@ function StatCard({
   icon: React.ElementType; colorClass: string
 }) {
   return (
-    <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-start gap-3">
+    <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-start gap-3">
       <div className={`p-2 rounded-lg mt-0.5 ${colorClass}`}>
         <Icon className="w-4 h-4" />
       </div>
       <div>
-        <p className="text-xs text-zinc-500">{label}</p>
-        <p className="text-2xl font-bold text-zinc-100 leading-tight">{value}</p>
-        {sub && <p className="text-xs text-zinc-500 mt-0.5">{sub}</p>}
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-2xl font-bold text-slate-100 leading-tight">{value}</p>
+        {sub && <p className="text-xs text-slate-500 mt-0.5">{sub}</p>}
       </div>
     </div>
   )
@@ -59,7 +59,7 @@ function StatCard({
 function ScoreBar({ score }: { score: number }) {
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-1.5 bg-sky-950/30 rounded-full overflow-hidden">
         <div
           className={`h-full rounded-full transition-all ${scoreColor(score)}`}
           style={{ width: `${score}%` }}
@@ -89,7 +89,7 @@ function FeedBadges({ src }: { src: ThreatSource }) {
     badges.push({ label: 'ThreatFox', cls: 'bg-orange-900/50 text-orange-300 border-orange-700/50', title: src.threatfox_malware || `score ${src.threatfox_score}` })
   if (src.greynoise_noise && !src.greynoise_classification.toLowerCase().includes('benign'))
     badges.push({ label: 'GreyNoise', cls: 'bg-yellow-900/50 text-yellow-300 border-yellow-700/50', title: src.greynoise_classification || 'Noise' })
-  if (badges.length === 0) return <span className="text-zinc-700 text-[10px]">—</span>
+  if (badges.length === 0) return <span className="text-slate-700 text-[10px]">—</span>
   return (
     <div className="flex flex-wrap gap-1">
       {badges.map(b => (
@@ -192,20 +192,20 @@ export default function ThreatIntelSummaryPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <ShieldAlert className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">Threat Intelligence Özeti</h1>
-          {isFetching && <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />}
+          <ShieldAlert className="w-5 h-5 text-sky-400" />
+          <h1 className="text-lg font-semibold text-slate-100">Threat Intelligence Özeti</h1>
+          {isFetching && <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />}
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex rounded-md overflow-hidden border border-zinc-700">
+          <div className="flex gap-1">
             {HOURS_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setHours(opt.value)}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                className={`px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
                   hours === opt.value
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-100'
+                    ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                    : 'bg-sky-950/20 border-sky-900/20 text-slate-400 hover:bg-sky-950/40'
                 }`}
               >
                 {opt.label}
@@ -214,7 +214,7 @@ export default function ThreatIntelSummaryPage() {
           </div>
           <button
             onClick={() => refetch()}
-            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg border border-sky-900/20 text-slate-400 hover:text-slate-100 hover:bg-sky-950/30 transition-colors"
             title="Yenile"
           >
             <RefreshCw className="w-4 h-4" />
@@ -249,23 +249,23 @@ export default function ThreatIntelSummaryPage() {
             value={data.high_risk_count.toLocaleString('tr-TR')}
             sub="Composite score ≥ 70"
             icon={ShieldAlert}
-            colorClass={data.high_risk_count > 0 ? 'bg-red-500/15 text-red-400' : 'bg-zinc-700/40 text-zinc-400'}
+            colorClass={data.high_risk_count > 0 ? 'bg-red-500/15 text-red-400' : 'bg-sky-950/20 text-slate-400'}
           />
           <StatCard
             label="Kaynak Ülke"
             value={data.country_distribution.length.toLocaleString('tr-TR')}
             sub="Tehdit kaynağı coğrafi dağılım"
             icon={Globe}
-            colorClass="bg-indigo-500/15 text-indigo-400"
+            colorClass="bg-sky-500/15 text-sky-400"
           />
         </div>
       ) : null}
 
       {/* Composite Score bar chart */}
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-        <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-zinc-400" />
-          <h2 className="text-sm font-semibold text-zinc-200">Top 10 — Composite Threat Score</h2>
+      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+        <div className="px-4 py-3 border-b border-sky-900/20 flex items-center gap-2">
+          <TrendingUp className="w-4 h-4 text-slate-400" />
+          <h2 className="text-sm font-semibold text-slate-200">Top 10 — Composite Threat Score</h2>
         </div>
         {isLoading ? (
           <SkeletonChart height={224} className="m-4" />
@@ -278,7 +278,7 @@ export default function ThreatIntelSummaryPage() {
             />
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-12 text-slate-600">
             <ShieldAlert className="w-7 h-7 mb-2 opacity-30" />
             <p className="text-sm">Threat intel kaydı yok</p>
           </div>
@@ -286,16 +286,16 @@ export default function ThreatIntelSummaryPage() {
       </div>
 
       {/* Detay tablosu */}
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-        <div className="px-4 py-3 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-200">Tehdit Kaynakları</h2>
+      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+        <div className="px-4 py-3 border-b border-sky-900/20">
+          <h2 className="text-sm font-semibold text-slate-200">Tehdit Kaynakları</h2>
         </div>
         {isLoading ? (
           <div className="p-4">
             <SkeletonTable rows={4} height={40} />
           </div>
         ) : top10Sources.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-16 text-slate-600">
             <ShieldAlert className="w-8 h-8 mb-2 opacity-30" />
             <p className="text-sm">Veri yok</p>
           </div>
@@ -303,7 +303,7 @@ export default function ThreatIntelSummaryPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-xs text-zinc-500">
+                <tr className="border-b border-sky-900/20 text-xs text-slate-500">
                   <th className="text-left px-4 py-2.5 font-medium">#</th>
                   <th className="text-left px-4 py-2.5 font-medium">IP</th>
                   <th className="text-left px-4 py-2.5 font-medium">Ülke</th>
@@ -314,12 +314,12 @@ export default function ThreatIntelSummaryPage() {
                   <th className="text-right px-4 py-2.5 font-medium">Son Görülme</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/50">
+              <tbody className="divide-y divide-sky-900/10">
                 {top10Sources.map((src, idx) => (
-                  <tr key={src.ip} className="hover:bg-zinc-800/30 transition-colors">
-                    <td className="px-4 py-2.5 text-zinc-600 text-xs">{idx + 1}</td>
-                    <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">{src.ip}</td>
-                    <td className="px-4 py-2.5 text-zinc-400 text-xs">
+                  <tr key={src.ip} className="hover:bg-sky-950/20 transition-colors">
+                    <td className="px-4 py-2.5 text-slate-600 text-xs">{idx + 1}</td>
+                    <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{src.ip}</td>
+                    <td className="px-4 py-2.5 text-slate-400 text-xs">
                       <span className="mr-1">{countryFlag(src.country_code)}</span>
                       {src.country_code || '—'}
                     </td>
@@ -329,13 +329,13 @@ export default function ThreatIntelSummaryPage() {
                     <td className="px-4 py-2.5">
                       <FeedBadges src={src} />
                     </td>
-                    <td className="px-4 py-2.5 text-zinc-500 text-xs truncate max-w-[160px]">
+                    <td className="px-4 py-2.5 text-slate-500 text-xs truncate max-w-[160px]">
                       {src.isp || '—'}
                     </td>
                     <td className="px-4 py-2.5 text-right text-red-400 font-semibold text-xs">
                       {src.count.toLocaleString('tr-TR')}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-zinc-500 text-xs">
+                    <td className="px-4 py-2.5 text-right text-slate-500 text-xs">
                       {fmtDate(src.last_seen)}
                     </td>
                   </tr>
@@ -348,12 +348,12 @@ export default function ThreatIntelSummaryPage() {
 
       {/* Ülke dağılımı */}
       {(isLoading || countryDist.length > 0) && (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-          <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2">
-            <Globe className="w-4 h-4 text-zinc-400" />
-            <h2 className="text-sm font-semibold text-zinc-200">Coğrafi Dağılım</h2>
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+          <div className="px-4 py-3 border-b border-sky-900/20 flex items-center gap-2">
+            <Globe className="w-4 h-4 text-slate-400" />
+            <h2 className="text-sm font-semibold text-slate-200">Coğrafi Dağılım</h2>
             {data && (
-              <span className="text-xs text-zinc-500 ml-auto">
+              <span className="text-xs text-slate-500 ml-auto">
                 {data.country_distribution.length} ülke
               </span>
             )}

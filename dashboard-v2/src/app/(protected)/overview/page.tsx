@@ -395,14 +395,14 @@ function AnomalyPanel() {
       <div className="p-4 space-y-3">
         <div className="flex items-end justify-between">
           <div>
-            <p className={cn('text-3xl font-bold tabular-nums', (data?.total ?? 0) > 0 ? 'text-indigo-400' : 'text-slate-300')}>
+            <p className={cn('text-3xl font-bold tabular-nums', (data?.total ?? 0) > 0 ? 'text-sky-400' : 'text-slate-300')}>
               {data?.total ?? '—'}
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">Toplam anomali</p>
           </div>
           <div className="text-right">
             <p className="text-[10px] text-slate-500 mb-0.5">Etkilenen IP</p>
-            <p className="text-lg font-bold text-indigo-300">{data?.affected_entities ?? '—'}</p>
+            <p className="text-lg font-bold text-sky-300">{data?.affected_entities ?? '—'}</p>
           </div>
         </div>
         <div className="space-y-2">

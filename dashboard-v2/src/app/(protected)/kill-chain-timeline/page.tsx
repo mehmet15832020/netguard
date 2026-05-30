@@ -49,13 +49,13 @@ function StatCard({
   label, value, icon: Icon, colorClass,
 }: { label: string; value: number | string; icon: React.ElementType; colorClass: string }) {
   return (
-    <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-4">
+    <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-4">
       <div className={`p-2 rounded-lg ${colorClass}`}>
         <Icon className="w-5 h-5" />
       </div>
       <div>
-        <p className="text-xs text-zinc-500">{label}</p>
-        <p className="text-xl font-bold text-zinc-100">{value}</p>
+        <p className="text-xs text-slate-500">{label}</p>
+        <p className="text-xl font-bold text-slate-100">{value}</p>
       </div>
     </div>
   )
@@ -67,7 +67,7 @@ function ChainBadge({ type }: { type: string }) {
     <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
       full
         ? 'bg-red-950/60 text-red-400 border-red-800'
-        : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+        : 'bg-sky-950/20 text-slate-400 border-sky-900/20'
     }`}>
       {full ? 'TAM' : 'KISMİ'}
     </span>
@@ -84,16 +84,16 @@ function StageDistributionPanel({ dist }: { dist: Record<string, number> }) {
     ({ recon: 'bg-blue-500', weaponize: 'bg-amber-500', access: 'bg-orange-500', lateral: 'bg-red-500', full_attack_chain: 'bg-red-700' }[k.toLowerCase()] ?? 'bg-zinc-500')
 
   return (
-    <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-      <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Aşama Dağılımı</p>
+    <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Aşama Dağılımı</p>
       <div className="space-y-2">
         {entries.map(([stage, count]) => (
           <div key={stage} className="flex items-center gap-3">
-            <span className="text-[11px] text-zinc-500 w-24 flex-shrink-0">{stageLabel(stage)}</span>
-            <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+            <span className="text-[11px] text-slate-500 w-24 flex-shrink-0">{stageLabel(stage)}</span>
+            <div className="flex-1 h-2 bg-sky-950/30 rounded-full overflow-hidden">
               <div className={cn('h-full rounded-full', stageColor(stage))} style={{ width: `${(count / max) * 100}%` }} />
             </div>
-            <span className="text-[11px] font-mono text-zinc-400 w-6 text-right">{count}</span>
+            <span className="text-[11px] font-mono text-slate-400 w-6 text-right">{count}</span>
           </div>
         ))}
       </div>
@@ -108,11 +108,11 @@ function IpDetailList({ rows, selectedIp, onSelect }: {
 }) {
   if (rows.length === 0) return null
   return (
-    <div className="bg-zinc-900 rounded-xl border border-zinc-800 overflow-hidden">
-      <div className="px-4 py-3 border-b border-zinc-800">
-        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">IP Detay Listesi</p>
+    <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 overflow-hidden">
+      <div className="px-4 py-3 border-b border-sky-900/15">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">IP Detay Listesi</p>
       </div>
-      <div className="divide-y divide-zinc-800/60">
+      <div className="divide-y divide-sky-900/10">
         {rows.map(row => {
           const dwellMs = toMs(row.last_seen) - toMs(row.first_seen)
           const stages = [...new Set(row.events.map(e => e.stage))]
@@ -123,13 +123,13 @@ function IpDetailList({ rows, selectedIp, onSelect }: {
               onClick={() => onSelect(isSel ? null : row.source_ip)}
               className={cn(
                 'px-4 py-3 cursor-pointer transition-colors',
-                isSel ? 'bg-zinc-800' : 'hover:bg-zinc-800/50',
+                isSel ? 'bg-sky-950/20' : 'hover:bg-sky-950/20',
               )}
             >
               <div className="flex items-center gap-3">
-                <span className="font-mono text-xs text-zinc-200 flex-1">{row.source_ip}</span>
+                <span className="font-mono text-xs text-slate-200 flex-1">{row.source_ip}</span>
                 <ChainBadge type={row.chain_type} />
-                <span className="text-[11px] font-mono text-zinc-500">{fmtDuration(dwellMs)}</span>
+                <span className="text-[11px] font-mono text-slate-500">{fmtDuration(dwellMs)}</span>
               </div>
               {isSel && (
                 <div className="mt-2 space-y-1.5 pl-1">
@@ -143,11 +143,11 @@ function IpDetailList({ rows, selectedIp, onSelect }: {
                       ) : null
                     })}
                   </div>
-                  <div className="grid grid-cols-2 gap-x-4 text-[11px] text-zinc-500">
-                    <span>İlk: <span className="text-zinc-300">{fmtDateTime(row.first_seen)}</span></span>
-                    <span>Son: <span className="text-zinc-300">{fmtDateTime(row.last_seen)}</span></span>
-                    <span>Aşama: <span className="text-zinc-300">{row.stage_count}</span></span>
-                    <span>Olay: <span className="text-zinc-300">{row.events.length}</span></span>
+                  <div className="grid grid-cols-2 gap-x-4 text-[11px] text-slate-500">
+                    <span>İlk: <span className="text-slate-300">{fmtDateTime(row.first_seen)}</span></span>
+                    <span>Son: <span className="text-slate-300">{fmtDateTime(row.last_seen)}</span></span>
+                    <span>Aşama: <span className="text-slate-300">{row.stage_count}</span></span>
+                    <span>Olay: <span className="text-slate-300">{row.events.length}</span></span>
                   </div>
                   <div className="space-y-0.5 max-h-32 overflow-y-auto">
                     {row.events.map((ev, i) => {
@@ -155,9 +155,9 @@ function IpDetailList({ rows, selectedIp, onSelect }: {
                       return (
                         <div key={i} className="flex items-center gap-2 text-[10px]">
                           <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: m?.dot ?? '#475569' }} />
-                          <span className={m?.color ?? 'text-zinc-500'}>{m?.label ?? ev.stage}</span>
-                          <span className="text-zinc-600">{ev.label}</span>
-                          <span className="text-zinc-700 ml-auto">{fmtDateTime(ev.occurred_at)}</span>
+                          <span className={m?.color ?? 'text-slate-500'}>{m?.label ?? ev.stage}</span>
+                          <span className="text-slate-600">{ev.label}</span>
+                          <span className="text-slate-700 ml-auto">{fmtDateTime(ev.occurred_at)}</span>
                         </div>
                       )
                     })}
@@ -205,7 +205,7 @@ function SwimlaneChart({
 
   if (rows.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+      <div className="flex flex-col items-center justify-center py-16 text-slate-600">
         <GitBranch className="w-8 h-8 mb-2 opacity-30" />
         <p className="text-sm">Seçilen zaman aralığında kill chain verisi yok</p>
       </div>
@@ -341,19 +341,19 @@ function SwimlaneChart({
       {/* Tooltip */}
       {tooltip && (
         <div
-          className="pointer-events-none absolute z-10 bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-xs shadow-lg min-w-[140px]"
+          className="pointer-events-none absolute z-10 bg-[#0a1120] border border-sky-900/30 rounded-lg px-3 py-2.5 text-xs shadow-lg min-w-[140px]"
           style={{
             left: Math.min(tooltip.x + 10, width - 200),
             top: Math.max(0, tooltip.y - 8),
           }}
         >
-          <div className={cn('font-semibold mb-0.5', STAGE_META[tooltip.event.stage as Stage]?.color ?? 'text-zinc-100')}>
+          <div className={cn('font-semibold mb-0.5', STAGE_META[tooltip.event.stage as Stage]?.color ?? 'text-slate-100')}>
             {STAGE_META[tooltip.event.stage as Stage]?.label ?? tooltip.event.stage}
           </div>
           {tooltip.event.label && (
-            <div className="text-zinc-300 text-[11px] mb-1">{tooltip.event.label}</div>
+            <div className="text-slate-300 text-[11px] mb-1">{tooltip.event.label}</div>
           )}
-          <div className="text-zinc-500 text-[11px]">{fmtDateTime(tooltip.event.occurred_at)}</div>
+          <div className="text-slate-500 text-[11px]">{fmtDateTime(tooltip.event.occurred_at)}</div>
         </div>
       )}
     </div>
@@ -406,21 +406,21 @@ export default function KillChainTimelinePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <GitBranch className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">Kill Chain Timeline</h1>
-          {isFetching && <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />}
+          <GitBranch className="w-5 h-5 text-sky-400" />
+          <h1 className="text-lg font-semibold text-slate-100">Kill Chain Timeline</h1>
+          {isFetching && <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />}
         </div>
         <div className="flex items-center gap-2">
           {/* Hours selector */}
-          <div className="flex rounded-lg overflow-hidden border border-zinc-700">
+          <div className="flex gap-1">
             {HOURS_OPTIONS.map((h) => (
               <button
                 key={h}
                 onClick={() => setHours(h)}
-                className={`px-3 py-1 text-xs font-medium transition-colors ${
+                className={`px-2 py-0.5 text-xs font-medium transition-colors rounded-lg border ${
                   hours === h
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-zinc-900 text-zinc-400 hover:text-zinc-100'
+                    ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                    : 'bg-sky-950/20 border-sky-900/20 text-slate-500 hover:text-slate-300'
                 }`}
               >
                 {h < 48 ? `${h}s` : `${h / 24}g`}
@@ -429,7 +429,7 @@ export default function KillChainTimelinePage() {
           </div>
           <button
             onClick={refetch}
-            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-sky-950/30 border border-sky-900/20 transition-colors"
             title="Yenile"
           >
             <RefreshCw className="w-4 h-4" />
@@ -471,8 +471,8 @@ export default function KillChainTimelinePage() {
       {/* Swimlane */}
       <div className="bg-zinc-900 rounded-xl border border-zinc-800">
         <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-zinc-200">Saldırı Zinciri Zaman Çizelgesi</h2>
-          <span className="text-xs text-zinc-500">{rows.length} IP</span>
+          <h2 className="text-sm font-semibold text-slate-200">Saldırı Zinciri Zaman Çizelgesi</h2>
+          <span className="text-xs text-slate-500">{rows.length} IP</span>
         </div>
 
         <div className="p-4">
@@ -496,17 +496,17 @@ export default function KillChainTimelinePage() {
           {STAGE_ORDER.map((stage) => {
             const m = STAGE_META[stage]
             return (
-              <span key={stage} className="flex items-center gap-1.5 text-xs text-zinc-500">
+              <span key={stage} className="flex items-center gap-1.5 text-xs text-slate-500">
                 <span className="inline-block w-2.5 h-2.5 rounded-full" style={{ background: m.dot }} />
                 {m.label}
               </span>
             )
           })}
-          <span className="flex items-center gap-1.5 text-xs text-zinc-500 ml-2">
+          <span className="flex items-center gap-1.5 text-xs text-slate-500 ml-2">
             <span className="inline-block w-5 h-px border-t border-zinc-400" />
             Tam Zincir
           </span>
-          <span className="flex items-center gap-1.5 text-xs text-zinc-500">
+          <span className="flex items-center gap-1.5 text-xs text-slate-500">
             <span className="inline-block w-5 h-px border-t border-dashed border-zinc-500" />
             Kısmi Zincir
           </span>

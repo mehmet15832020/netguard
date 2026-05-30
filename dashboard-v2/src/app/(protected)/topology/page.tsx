@@ -5,23 +5,16 @@ import { Share2, RefreshCw, Loader2, Info } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import * as echarts from 'echarts'
 import { topologyApi } from '@/lib/api'
-import { Card, CardContent } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import type { TopologyNode, TopologyEdge } from '@/types/models'
 
-// ------------------------------------------------------------------ //
-//  Node renk ve şekil haritalama
-// ------------------------------------------------------------------ //
-
 const NODE_COLOR: Record<string, string> = {
-  router:     '#6366f1',
+  router:     '#38bdf8',
   switch:     '#3b82f6',
   server:     '#10b981',
   agent:      '#8b5cf6',
   snmp:       '#06b6d4',
   discovered: '#f59e0b',
-  unknown:    '#64748b',
+  unknown:    '#475569',
 }
 
 const NODE_SYMBOL: Record<string, string> = {
@@ -34,17 +27,8 @@ const NODE_SYMBOL: Record<string, string> = {
   unknown:    'circle',
 }
 
-function nodeColor(type: string) {
-  return NODE_COLOR[type] ?? NODE_COLOR.unknown
-}
-
-function nodeSymbol(type: string) {
-  return NODE_SYMBOL[type] ?? 'circle'
-}
-
-// ------------------------------------------------------------------ //
-//  Efsane (legend) bileşeni
-// ------------------------------------------------------------------ //
+function nodeColor(type: string) { return NODE_COLOR[type] ?? NODE_COLOR.unknown }
+function nodeSymbol(type: string) { return NODE_SYMBOL[type] ?? 'circle' }
 
 const LEGEND_ITEMS = [
   { type: 'router',     label: 'Router' },
@@ -58,32 +42,25 @@ const LEGEND_ITEMS = [
 
 function Legend() {
   return (
-    <div className="flex flex-wrap gap-3 px-4 py-3 border-b border-zinc-800">
+    <div className="flex flex-wrap gap-3 px-4 py-3 border-b border-sky-900/15">
       {LEGEND_ITEMS.map(({ type, label }) => (
         <div key={type} className="flex items-center gap-1.5">
-          <div
-            className="w-2.5 h-2.5 rounded-full shrink-0"
-            style={{ backgroundColor: nodeColor(type) }}
-          />
-          <span className="text-xs text-zinc-400">{label}</span>
+          <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: nodeColor(type) }} />
+          <span className="text-xs text-slate-400">{label}</span>
         </div>
       ))}
     </div>
   )
 }
 
-// ------------------------------------------------------------------ //
-//  Detay paneli (sağ tık / tıklama)
-// ------------------------------------------------------------------ //
-
 function NodeDetail({ node, onClose }: { node: TopologyNode; onClose: () => void }) {
   return (
-    <div className="absolute top-4 right-4 w-56 bg-zinc-900/95 border border-zinc-700 rounded-lg p-4 shadow-xl backdrop-blur-sm z-10">
+    <div className="absolute top-4 right-4 w-56 bg-[#0a1120]/95 border border-sky-900/30 rounded-xl p-4 shadow-[0_8px_32px_rgba(0,0,0,0.6)] backdrop-blur-sm z-10">
       <div className="flex items-start justify-between mb-3">
-        <h3 className="text-sm font-semibold text-zinc-100 truncate">{node.name}</h3>
+        <h3 className="text-sm font-semibold text-slate-100 truncate">{node.name}</h3>
         <button
           onClick={onClose}
-          className="text-zinc-500 hover:text-zinc-200 text-xs ml-2 shrink-0"
+          className="text-slate-500 hover:text-slate-200 text-xs ml-2 shrink-0 transition-colors"
         >✕</button>
       </div>
       <dl className="space-y-1.5 text-xs">
@@ -95,25 +72,18 @@ function NodeDetail({ node, onClose }: { node: TopologyNode; onClose: () => void
           { label: 'Katman', value: `L${node.layer}` },
         ].map(({ label, value }) => (
           <div key={label} className="flex gap-2">
-            <dt className="text-zinc-500 w-14 shrink-0">{label}</dt>
-            <dd className="text-zinc-300 truncate font-mono">{value}</dd>
+            <dt className="text-slate-500 w-14 shrink-0">{label}</dt>
+            <dd className="text-slate-300 truncate font-mono">{value}</dd>
           </div>
         ))}
       </dl>
-      <div className="mt-3 pt-3 border-t border-zinc-800">
-        <div
-          className="w-2.5 h-2.5 rounded-full inline-block mr-1.5"
-          style={{ backgroundColor: nodeColor(node.type) }}
-        />
-        <span className="text-xs text-zinc-400">{node.type}</span>
+      <div className="mt-3 pt-3 border-t border-sky-900/15 flex items-center gap-1.5">
+        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: nodeColor(node.type) }} />
+        <span className="text-xs text-slate-400">{node.type}</span>
       </div>
     </div>
   )
 }
-
-// ------------------------------------------------------------------ //
-//  Ana bileşen
-// ------------------------------------------------------------------ //
 
 export default function TopologyPage() {
   const queryClient = useQueryClient()
@@ -140,20 +110,13 @@ export default function TopologyPage() {
   const nodes: TopologyNode[] = data?.nodes ?? []
   const edges: TopologyEdge[] = data?.edges ?? []
 
-  // ECharts grafiğini kur / güncelle
   useEffect(() => {
     if (!chartRef.current) return
-
     if (!chartInstance.current) {
       chartInstance.current = echarts.init(chartRef.current, 'dark')
     }
-
     const chart = chartInstance.current
-
-    if (nodes.length === 0) {
-      chart.clear()
-      return
-    }
+    if (nodes.length === 0) { chart.clear(); return }
 
     const option: echarts.EChartsOption = {
       backgroundColor: 'transparent',
@@ -176,168 +139,154 @@ export default function TopologyPage() {
         textStyle: { color: '#cbd5e1' },
         extraCssText: 'box-shadow: 0 8px 24px rgba(0,0,0,0.5);',
       },
-      series: [
-        {
-          type: 'graph',
-          layout: 'force',
-          roam: true,
-          draggable: true,
-          animation: true,
-          animationDuration: 800,
-          force: {
-            repulsion: 180,
-            gravity: 0.05,
-            edgeLength: [80, 180],
-            layoutAnimation: true,
-          },
-          label: {
-            show: true,
-            position: 'bottom',
-            fontSize: 10,
-            color: '#64748b',
-            formatter: (params: any) => {
-              const name = (params.data as TopologyNode).name
-              return name.length > 14 ? name.slice(0, 12) + '…' : name
-            },
-          },
-          edgeLabel: {
-            show: false,
-          },
-          lineStyle: {
-            color: 'rgba(56,189,248,0.15)',
-            width: 1.5,
-            curveness: 0.1,
-          },
-          emphasis: {
-            focus: 'adjacency',
-            lineStyle: { width: 2.5, color: '#6366f1' },
-            label: { color: '#cbd5e1', fontSize: 11 },
-          },
-          nodes: nodes.map((n) => ({
-            id: n.device_id,
-            name: n.name,
-            ip: n.ip,
-            type: n.type,
-            vendor: n.vendor,
-            os_info: n.os_info,
-            layer: n.layer,
-            updated_at: n.updated_at,
-            symbolSize: n.type === 'router' ? 20 : n.type === 'switch' ? 18 : 14,
-            symbol: nodeSymbol(n.type),
-            itemStyle: {
-              color: nodeColor(n.type),
-              borderColor: nodeColor(n.type) + '66',
-              borderWidth: 2,
-              shadowBlur: 6,
-              shadowColor: nodeColor(n.type) + '44',
-            },
-          })),
-          edges: edges.map((e) => ({
-            source: e.src_id,
-            target: e.dst_id,
-            lineStyle: {
-              color: e.link_type === 'lldp' ? '#6366f1' : 'rgba(56,189,248,0.15)',
-              width: e.link_type === 'lldp' ? 2 : 1.5,
-            },
-          })),
+      series: [{
+        type: 'graph',
+        layout: 'force',
+        roam: true,
+        draggable: true,
+        animation: true,
+        animationDuration: 800,
+        force: {
+          repulsion: 180,
+          gravity: 0.05,
+          edgeLength: [80, 180],
+          layoutAnimation: true,
         },
-      ],
+        label: {
+          show: true,
+          position: 'bottom',
+          fontSize: 10,
+          color: '#64748b',
+          formatter: (params: any) => {
+            const name = (params.data as TopologyNode).name
+            return name.length > 14 ? name.slice(0, 12) + '…' : name
+          },
+        },
+        edgeLabel: { show: false },
+        lineStyle: {
+          color: 'rgba(56,189,248,0.15)',
+          width: 1.5,
+          curveness: 0.1,
+        },
+        emphasis: {
+          focus: 'adjacency',
+          lineStyle: { width: 2.5, color: '#38bdf8' },
+          label: { color: '#cbd5e1', fontSize: 11 },
+        },
+        nodes: nodes.map((n) => ({
+          id: n.device_id,
+          name: n.name,
+          ip: n.ip,
+          type: n.type,
+          vendor: n.vendor,
+          os_info: n.os_info,
+          layer: n.layer,
+          updated_at: n.updated_at,
+          symbolSize: n.type === 'router' ? 20 : n.type === 'switch' ? 18 : 14,
+          symbol: nodeSymbol(n.type),
+          itemStyle: {
+            color: nodeColor(n.type),
+            borderColor: nodeColor(n.type) + '66',
+            borderWidth: 2,
+            shadowBlur: 6,
+            shadowColor: nodeColor(n.type) + '44',
+          },
+        })),
+        edges: edges.map((e) => ({
+          source: e.src_id,
+          target: e.dst_id,
+          lineStyle: {
+            color: e.link_type === 'lldp' ? '#38bdf8' : 'rgba(56,189,248,0.15)',
+            width: e.link_type === 'lldp' ? 2 : 1.5,
+          },
+        })),
+      }],
     }
 
     chart.setOption(option, { notMerge: true })
-
     chart.off('click')
     chart.on('click', (params: any) => {
       if (params.dataType === 'node') {
-        const nodeData = params.data as TopologyNode
-        setSelectedNode(nodeData)
+        setSelectedNode(params.data as TopologyNode)
       } else {
         setSelectedNode(null)
       }
     })
   }, [nodes, edges])
 
-  // Resize observer
   useEffect(() => {
     const el = chartRef.current
     if (!el) return
-
-    const ro = new ResizeObserver(() => {
-      chartInstance.current?.resize()
-    })
+    const ro = new ResizeObserver(() => { chartInstance.current?.resize() })
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
 
-  // Temizlik
   useEffect(() => {
-    return () => {
-      chartInstance.current?.dispose()
-      chartInstance.current = null
-    }
+    return () => { chartInstance.current?.dispose(); chartInstance.current = null }
   }, [])
 
   return (
     <div className="p-6 space-y-4">
-      {/* Başlık */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-zinc-100 flex items-center gap-2">
-            <Share2 size={18} /> Ağ Topolojisi
-          </h1>
-          <p className="text-sm text-zinc-500 mt-0.5">
-            {data?.node_count ?? 0} cihaz · {data?.edge_count ?? 0} bağlantı
-          </p>
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center">
+            <Share2 size={15} className="text-sky-400" />
+          </div>
+          <div>
+            <h1 className="text-base font-semibold text-slate-100 leading-tight">Ağ Topolojisi</h1>
+            <p className="text-xs text-slate-600">
+              {data?.node_count ?? 0} cihaz · {data?.edge_count ?? 0} bağlantı
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline" size="sm"
+          <button
             onClick={() => refetch()}
             disabled={isFetching}
-            className="border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs text-slate-300 bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/50 transition-colors disabled:opacity-50"
           >
-            <RefreshCw size={14} className={isFetching ? 'animate-spin' : ''} />
-            <span className="ml-1.5">Yenile</span>
-          </Button>
-          <Button
-            size="sm"
+            <RefreshCw size={12} className={isFetching ? 'animate-spin' : ''} />
+            Yenile
+          </button>
+          <button
             onClick={() => refreshMutation.mutate()}
             disabled={refreshMutation.isPending}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50"
           >
             {refreshMutation.isPending
-              ? <><Loader2 size={14} className="animate-spin" /><span className="ml-1.5">Yenileniyor...</span></>
-              : <><Share2 size={14} /><span className="ml-1.5">Topolojiyi Oluştur</span></>
+              ? <><Loader2 size={12} className="animate-spin" />Yenileniyor...</>
+              : <><Share2 size={12} />Topolojiyi Oluştur</>
             }
-          </Button>
+          </button>
         </div>
       </div>
 
-      {/* Grafik kartı */}
-      <Card className="bg-zinc-900 border-zinc-800 overflow-hidden">
+      {/* Graph card */}
+      <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
         <Legend />
         <div className="relative">
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/80 z-10">
-              <Loader2 size={24} className="text-indigo-400 animate-spin" />
+            <div className="absolute inset-0 flex items-center justify-center bg-[#0a1120]/80 z-10">
+              <Loader2 size={24} className="text-sky-400 animate-spin" />
             </div>
           )}
 
           {!isLoading && nodes.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-96">
-              <Share2 size={40} className="text-zinc-700 mb-3" />
-              <p className="text-zinc-500 text-sm">Topoloji verisi yok</p>
-              <p className="text-zinc-600 text-xs mt-1 mb-4">
+            <div className="flex flex-col items-center justify-center h-96 gap-2">
+              <Share2 size={40} className="text-slate-700 mb-1" />
+              <p className="text-slate-500 text-sm">Topoloji verisi yok</p>
+              <p className="text-slate-600 text-xs mb-3">
                 SNMP cihazları ekleyip "Topolojiyi Oluştur" butonuna tıklayın
               </p>
-              <Button
-                size="sm"
+              <button
                 onClick={() => refreshMutation.mutate()}
                 disabled={refreshMutation.isPending}
-                className="bg-indigo-600 hover:bg-indigo-500 text-white"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50"
               >
                 {refreshMutation.isPending ? 'Oluşturuluyor...' : 'Topolojiyi Oluştur'}
-              </Button>
+              </button>
             </div>
           )}
 
@@ -351,14 +300,14 @@ export default function TopologyPage() {
             <NodeDetail node={selectedNode} onClose={() => setSelectedNode(null)} />
           )}
         </div>
-      </Card>
+      </div>
 
-      {/* İpuçları */}
-      <div className="flex items-start gap-2 text-xs text-zinc-500">
-        <Info size={12} className="mt-0.5 shrink-0 text-zinc-600" />
+      {/* Hint */}
+      <div className="flex items-start gap-2 text-xs text-slate-500">
+        <Info size={12} className="mt-0.5 shrink-0 text-slate-600" />
         <span>
           Cihaza tıklayarak detay görebilirsiniz. Fare tekerleği ile yakınlaştırın, sürükleyerek hareket ettirin.
-          Mor renkli bağlantılar LLDP ile, gri bağlantılar ARP ile keşfedildi.
+          Mavi bağlantılar LLDP ile, gri bağlantılar ARP ile keşfedildi.
         </span>
       </div>
     </div>

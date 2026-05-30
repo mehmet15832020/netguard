@@ -293,8 +293,8 @@ function EditorContent() {
         <div className="flex items-center gap-3">
           <FileCode2 className="h-6 w-6 text-violet-400" />
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">Sigma YAML Editör</h1>
-            <p className="text-sm text-zinc-400">
+            <h1 className="text-xl font-semibold text-slate-100">Sigma YAML Editör</h1>
+            <p className="text-sm text-slate-400">
               {ruleId ? `Düzenleniyor: ${ruleId}` : 'Yeni kural — pySigma v2 formatı'}
             </p>
           </div>
@@ -303,15 +303,15 @@ function EditorContent() {
         {/* Template picker */}
         {!ruleId && (
           <div className="relative">
-            <div className="flex items-center gap-1.5 px-3 py-2 rounded border border-zinc-700 bg-zinc-800/60 text-sm text-zinc-300 cursor-pointer group">
-              <ChevronDown className="h-4 w-4 text-zinc-500" />
+            <div className="flex items-center gap-1.5 px-3 py-2 rounded border border-sky-900/25 bg-sky-950/20 text-sm text-slate-300 cursor-pointer group">
+              <ChevronDown className="h-4 w-4 text-slate-500" />
               <select
                 value={selectedTemplate}
                 onChange={e => handleTemplateChange(Number(e.target.value))}
-                className="bg-transparent cursor-pointer outline-none text-sm text-zinc-300 pr-1"
+                className="bg-transparent cursor-pointer outline-none text-sm text-slate-300 pr-1"
               >
                 {TEMPLATES.map((t, i) => (
-                  <option key={i} value={i} className="bg-zinc-800 text-zinc-200">
+                  <option key={i} value={i} className="bg-sky-950 text-slate-200">
                     {t.label}
                   </option>
                 ))}
@@ -328,14 +328,14 @@ function EditorContent() {
       )}
 
       {loadingRule && (
-        <div className="flex-shrink-0 h-8 flex items-center gap-2 text-sm text-zinc-400">
+        <div className="flex-shrink-0 h-8 flex items-center gap-2 text-sm text-slate-400">
           <RefreshCw className="h-4 w-4 animate-spin" />
           Kural yükleniyor…
         </div>
       )}
 
       {/* Monaco editor */}
-      <div className="flex-1 rounded-lg border border-zinc-700 overflow-hidden min-h-0">
+      <div className="flex-1 rounded-lg border border-sky-900/20 overflow-hidden min-h-0">
         <MonacoEditor
           height="100%"
           language="yaml"
@@ -369,7 +369,7 @@ function EditorContent() {
           disabled={validating || !yaml.trim()}
           className={cn(
             'flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors',
-            'bg-zinc-700 hover:bg-zinc-600 text-zinc-100 disabled:opacity-50',
+            'bg-sky-950/30 border border-sky-900/20 hover:bg-sky-950/40 text-slate-100 disabled:opacity-50',
           )}
         >
           {validating
@@ -385,7 +385,7 @@ function EditorContent() {
             'flex items-center gap-2 px-4 py-2 rounded text-sm font-medium transition-colors',
             validateResult?.valid && !saved
               ? 'bg-violet-600 hover:bg-violet-500 text-white'
-              : 'bg-zinc-800 text-zinc-600 cursor-not-allowed',
+              : 'bg-sky-950/10 text-slate-600 cursor-not-allowed',
             'disabled:opacity-60',
           )}
         >
@@ -417,7 +417,7 @@ function EditorContent() {
         )}
       </div>
 
-      <p className="text-xs text-zinc-700 flex-shrink-0">
+      <p className="text-xs text-slate-700 flex-shrink-0">
         Kural kaydedildikten sonra correlator otomatik yeniden yüklenir. Aynı UUID ile kayıt mevcut dosyanın üzerine yazar.
       </p>
     </div>
@@ -429,7 +429,7 @@ function EditorContent() {
 export default function SigmaEditorPage() {
   return (
     <Suspense fallback={
-      <div className="flex items-center justify-center h-64 text-zinc-500 text-sm">
+      <div className="flex items-center justify-center h-64 text-slate-500 text-sm">
         Yükleniyor…
       </div>
     }>

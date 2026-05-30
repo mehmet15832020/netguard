@@ -25,7 +25,7 @@ function SectionHeader({ icon: Icon, title, count, accent }: {
       <div className={cn('w-7 h-7 rounded-md flex items-center justify-center', accent)}>
         <Icon size={13} />
       </div>
-      <span className="text-sm font-semibold text-zinc-300">{title}</span>
+      <span className="text-sm font-semibold text-slate-300">{title}</span>
       {count > 0 && (
         <span className={cn(
           'ml-auto text-xs font-bold px-2 py-0.5 rounded-full',
@@ -43,7 +43,7 @@ function SectionHeader({ icon: Icon, title, count, accent }: {
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="flex items-center justify-center py-6 text-zinc-600 text-xs gap-2">
+    <div className="flex items-center justify-center py-6 text-slate-600 text-xs gap-2">
       <Info size={12} />
       <span>{label}</span>
     </div>
@@ -63,19 +63,19 @@ function EventRow({ ev, badgeText, badgeColor }: {
   return (
     <div className="flex items-start gap-3 px-4 py-2.5 border-b border-white/[0.04] last:border-0 hover:bg-white/[0.02] transition-colors">
       <div className="flex-1 min-w-0">
-        <p className="text-xs text-zinc-300 font-medium truncate">{ev.message}</p>
+        <p className="text-xs text-slate-300 font-medium truncate">{ev.message}</p>
         <div className="flex items-center gap-2 mt-0.5 flex-wrap">
           {ev.source_ip && (
-            <span className="text-[11px] text-zinc-600 font-mono">{ev.source_ip}</span>
+            <span className="text-[11px] text-slate-600 font-mono">{ev.source_ip}</span>
           )}
           {ev.destination_ip && ev.destination_ip !== ev.source_ip && (
             <>
-              <span className="text-zinc-700">→</span>
-              <span className="text-[11px] text-zinc-600 font-mono">{ev.destination_ip}</span>
+              <span className="text-slate-700">→</span>
+              <span className="text-[11px] text-slate-600 font-mono">{ev.destination_ip}</span>
             </>
           )}
           {hash && (
-            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-500 border border-zinc-700" title="TLS fingerprint hash">
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-sky-950/20 text-slate-500 border border-sky-900/20" title="TLS fingerprint hash">
               {hash}…
             </span>
           )}
@@ -87,7 +87,7 @@ function EventRow({ ev, badgeText, badgeColor }: {
             {badgeText}
           </span>
         )}
-        <span className="text-[11px] text-zinc-600 font-mono whitespace-nowrap">{ts}</span>
+        <span className="text-[11px] text-slate-600 font-mono whitespace-nowrap">{ts}</span>
       </div>
     </div>
   )
@@ -100,7 +100,7 @@ function Panel({ title, children, className }: {
     <div className={cn('bg-[#13161e] border border-white/[0.06] rounded-lg overflow-hidden', className)}>
       {title && (
         <div className="px-4 py-3 border-b border-white/[0.06]">
-          <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide">{title}</span>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{title}</span>
         </div>
       )}
       {children}
@@ -129,12 +129,12 @@ function SummaryCard({
       </div>
       <p className={cn(
         'text-2xl font-bold tabular-nums',
-        danger && value > 0 ? 'text-red-400' : 'text-zinc-100',
+        danger && value > 0 ? 'text-red-400' : 'text-slate-100',
       )}>
         {value}
       </p>
-      <p className="text-xs text-zinc-500 mt-0.5 font-medium">{label}</p>
-      {sub && <p className="text-[11px] text-zinc-600 mt-1">{sub}</p>}
+      <p className="text-xs text-slate-500 mt-0.5 font-medium">{label}</p>
+      {sub && <p className="text-[11px] text-slate-600 mt-1">{sub}</p>}
     </div>
   )
 }
@@ -164,8 +164,8 @@ function extractHash(msg: string): string | null {
 
 const ZEEK_COLORS: Record<string, string> = {
   dns_query:                 'bg-blue-500',
-  ssl_connection:            'bg-indigo-500',
-  network_connection:        'bg-zinc-500',
+  ssl_connection:            'bg-sky-500',
+  network_connection:        'bg-slate-500',
   ssh_failure:               'bg-red-500',
   ssh_success:               'bg-green-500',
   web_request:               'bg-cyan-500',
@@ -190,15 +190,15 @@ function ZeekDistribution({ data }: { data: Record<string, number> }) {
         return (
           <div key={action}>
             <div className="flex items-center justify-between mb-1">
-              <span className="text-[11px] text-zinc-400 font-mono truncate max-w-[60%]">
+              <span className="text-[11px] text-slate-400 font-mono truncate max-w-[60%]">
                 {action.replace(/_/g, ' ')}
               </span>
               <div className="flex items-center gap-2">
-                <span className="text-[11px] text-zinc-600">{pct.toFixed(1)}%</span>
-                <span className="text-[11px] text-zinc-500 font-mono w-12 text-right">{count.toLocaleString()}</span>
+                <span className="text-[11px] text-slate-600">{pct.toFixed(1)}%</span>
+                <span className="text-[11px] text-slate-500 font-mono w-12 text-right">{count.toLocaleString()}</span>
               </div>
             </div>
-            <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+            <div className="h-1.5 bg-sky-950/30 rounded-full overflow-hidden">
               <div
                 className={cn('h-full rounded-full', color)}
                 style={{ width: `${Math.max(pct, 0.5)}%` }}
@@ -240,11 +240,11 @@ export default function NetworkIntelligencePage() {
       {/* Başlık */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
-            <Network size={18} className="text-indigo-400" />
+          <h1 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+            <Network size={18} className="text-sky-400" />
             Network Intelligence
           </h1>
-          <p className="text-xs text-zinc-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-0.5">
             Zeek tabanlı TLS/JA4, x509, FTP, SMTP ve DNS analizi
           </p>
         </div>
@@ -256,8 +256,8 @@ export default function NetworkIntelligencePage() {
               className={cn(
                 'text-xs px-3 py-1.5 rounded-md font-medium transition-colors',
                 hours === h
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700',
+                  ? 'bg-sky-500/15 border border-sky-500/30 text-sky-300'
+                  : 'bg-sky-950/20 border border-sky-900/20 text-slate-400 hover:bg-sky-950/40',
               )}
             >
               {h < 24 ? `${h}s` : `${h / 24}g`}
@@ -315,7 +315,7 @@ export default function NetworkIntelligencePage() {
       </div>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-16 text-zinc-600 text-sm">
+        <div className="flex items-center justify-center py-16 text-slate-600 text-sm">
           Yükleniyor…
         </div>
       )}
@@ -327,9 +327,9 @@ export default function NetworkIntelligencePage() {
 
       {data && data.summary.zeek_total_24h === 0 && (
         <div className="flex flex-col items-center justify-center py-16 gap-3 rounded-lg border border-white/[0.06] bg-[#13161e]">
-          <Wifi size={32} className="text-zinc-700" />
-          <p className="text-sm text-zinc-500 font-medium">Zeek veri akışı bekleniyor</p>
-          <p className="text-xs text-zinc-600 max-w-sm text-center">
+          <Wifi size={32} className="text-slate-700" />
+          <p className="text-sm text-slate-500 font-medium">Zeek veri akışı bekleniyor</p>
+          <p className="text-xs text-slate-600 max-w-sm text-center">
             Son {hours} saatte normalize edilmiş Zeek logu bulunamadı. Zeek collector ve Zeek agent durumunu kontrol edin.
           </p>
         </div>
@@ -507,14 +507,14 @@ export default function NetworkIntelligencePage() {
                       <div key={i} className="px-4 py-2.5">
                         <div className="flex items-center justify-between mb-1">
                           <div className="flex items-center gap-2">
-                            <span className="text-[11px] text-zinc-600 w-5 text-right">{i + 1}</span>
-                            <span className="text-sm text-zinc-300 font-mono">{src.ip}</span>
+                            <span className="text-[11px] text-slate-600 w-5 text-right">{i + 1}</span>
+                            <span className="text-sm text-slate-300 font-mono">{src.ip}</span>
                           </div>
-                          <span className="text-xs font-mono text-indigo-400">{src.count.toLocaleString()}</span>
+                          <span className="text-xs font-mono text-sky-400">{src.count.toLocaleString()}</span>
                         </div>
-                        <div className="ml-7 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                        <div className="ml-7 h-1 bg-sky-950/30 rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-indigo-500/60 rounded-full"
+                            className="h-full bg-sky-500/60 rounded-full"
                             style={{ width: `${(src.count / maxCount) * 100}%` }}
                           />
                         </div>
@@ -537,8 +537,8 @@ export default function NetworkIntelligencePage() {
                     return (
                       <div key={i} className="flex items-center justify-between px-4 py-2.5">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="text-[11px] text-zinc-600 w-5 text-right flex-shrink-0">{i + 1}</span>
-                          <span className={cn('text-xs truncate', isDga ? 'text-orange-300' : 'text-zinc-300')}>
+                          <span className="text-[11px] text-slate-600 w-5 text-right flex-shrink-0">{i + 1}</span>
+                          <span className={cn('text-xs truncate', isDga ? 'text-orange-300' : 'text-slate-300')}>
                             {d.query}
                           </span>
                           {isDga && (

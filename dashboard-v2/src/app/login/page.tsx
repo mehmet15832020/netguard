@@ -4,10 +4,6 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Activity, ArrowLeft } from 'lucide-react'
 import { authApi, auth } from '@/lib/api'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -57,110 +53,108 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-zinc-950">
-      <Card className="w-full max-w-sm bg-zinc-900 border-zinc-800">
-        <CardHeader className="text-center">
+    <div className="min-h-screen flex items-center justify-center bg-[#040911]">
+      <div className="w-full max-w-sm bg-[#0a1120] border border-sky-900/20 rounded-xl shadow-[0_24px_64px_rgba(0,0,0,0.8)] p-6">
+        <div className="text-center mb-6">
           <div className="flex justify-center mb-3">
-            <div className="p-3 bg-indigo-600/20 rounded-full">
-              <Activity className="text-indigo-400" size={28} />
+            <div className="p-3 bg-sky-500/10 rounded-full">
+              <Activity className="text-sky-400" size={28} />
             </div>
           </div>
           {step === 'password' ? (
             <>
-              <CardTitle className="text-zinc-100 text-xl">NetGuard</CardTitle>
-              <CardDescription className="text-zinc-400">
+              <h1 className="text-slate-100 text-xl font-semibold">NetGuard</h1>
+              <p className="text-slate-400 text-sm mt-1">
                 Güvenlik izleme sistemine giriş yapın
-              </CardDescription>
+              </p>
             </>
           ) : (
             <>
-              <CardTitle className="text-zinc-100 text-xl">İki Faktörlü Doğrulama</CardTitle>
-              <CardDescription className="text-zinc-400">
+              <h1 className="text-slate-100 text-xl font-semibold">İki Faktörlü Doğrulama</h1>
+              <p className="text-slate-400 text-sm mt-1">
                 Authenticator uygulamanızdaki 6 haneli kodu girin
-              </CardDescription>
+              </p>
             </>
           )}
-        </CardHeader>
-        <CardContent>
-          {step === 'password' ? (
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="username" className="text-zinc-300">Kullanıcı adı</Label>
-                <Input
-                  id="username"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  placeholder="admin"
-                  required
-                  autoFocus
-                  className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="password" className="text-zinc-300">Şifre</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  className="bg-zinc-800 border-zinc-700 text-zinc-100"
-                />
-              </div>
-              {error && (
-                <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded px-3 py-2">
-                  {error}
-                </p>
-              )}
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
-              >
-                {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleTotp} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="totp-code" className="text-zinc-300">Doğrulama Kodu</Label>
-                <Input
-                  id="totp-code"
-                  type="text"
-                  inputMode="numeric"
-                  maxLength={6}
-                  value={totpCode}
-                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
-                  placeholder="000000"
-                  required
-                  autoFocus
-                  className="bg-zinc-800 border-zinc-700 text-zinc-100 placeholder:text-zinc-500 text-center text-xl tracking-widest"
-                />
-              </div>
-              {error && (
-                <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded px-3 py-2">
-                  {error}
-                </p>
-              )}
-              <Button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
-              >
-                {loading ? 'Doğrulanıyor...' : 'Doğrula'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => { setStep('password'); setTotpCode(''); setError('') }}
-                className="w-full text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800"
-              >
-                <ArrowLeft size={14} className="mr-1" /> Geri
-              </Button>
-            </form>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+
+        {step === 'password' ? (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="username" className="text-xs font-medium text-slate-400">Kullanıcı adı</label>
+              <input
+                id="username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="admin"
+                required
+                autoFocus
+                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors font-mono"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label htmlFor="password" className="text-xs font-medium text-slate-400">Şifre</label>
+              <input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors font-mono"
+              />
+            </div>
+            {error && (
+              <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded px-3 py-2">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Giriş yapılıyor...' : 'Giriş Yap'}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleTotp} className="space-y-4">
+            <div className="space-y-1.5">
+              <label htmlFor="totp-code" className="text-xs font-medium text-slate-400">Doğrulama Kodu</label>
+              <input
+                id="totp-code"
+                type="text"
+                inputMode="numeric"
+                maxLength={6}
+                value={totpCode}
+                onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                placeholder="000000"
+                required
+                autoFocus
+                className="w-full bg-sky-950/20 border border-sky-900/25 rounded-lg px-3 py-2 text-sm text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-sky-500/50 transition-colors font-mono text-center text-xl tracking-widest"
+              />
+            </div>
+            {error && (
+              <p className="text-red-400 text-sm bg-red-900/20 border border-red-800 rounded px-3 py-2">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-sm font-medium transition-colors disabled:opacity-50"
+            >
+              {loading ? 'Doğrulanıyor...' : 'Doğrula'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStep('password'); setTotpCode(''); setError('') }}
+              className="w-full py-2 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-sky-950/30 text-sm transition-colors border border-sky-900/20"
+            >
+              <ArrowLeft size={14} className="inline mr-1" /> Geri
+            </button>
+          </form>
+        )}
+      </div>
     </div>
   )
 }

@@ -46,24 +46,24 @@ export default function AlertVolumePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Activity className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">Alert Hacmi</h1>
+          <Activity className="w-5 h-5 text-sky-400" />
+          <h1 className="text-lg font-semibold text-slate-100">Alert Hacmi</h1>
           {isFetching && (
-            <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />
+            <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />
           )}
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md overflow-hidden border border-zinc-700">
+          <div className="flex gap-1">
             {HOURS_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setHours(opt.value)}
                 className={cn(
-                  'px-3 py-1 text-xs',
+                  'px-2 py-0.5 text-xs rounded-lg border',
                   hours === opt.value
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700',
+                    ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                    : 'bg-sky-950/20 border-sky-900/20 text-slate-500 hover:text-slate-300',
                 )}
               >
                 {opt.label}
@@ -73,7 +73,7 @@ export default function AlertVolumePage() {
 
           <button
             onClick={() => refetch()}
-            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-sky-950/30 border border-sky-900/20 transition-colors"
             title="Yenile"
           >
             <RefreshCw className="w-4 h-4" />
@@ -98,49 +98,49 @@ export default function AlertVolumePage() {
       <div className="grid grid-cols-4 gap-4">
         <div className={cn(
           'rounded-xl border p-4',
-          criticalCount > 0 ? 'bg-red-950/20 border-red-800/60' : 'bg-zinc-900 border-zinc-800'
+          criticalCount > 0 ? 'bg-red-950/20 border-red-800/60' : 'bg-[#0a1120] border-sky-900/20'
         )}>
           <div className="flex items-center gap-2 mb-1">
-            <ShieldAlert className={cn('w-4 h-4 flex-shrink-0', criticalCount > 0 ? 'text-red-400' : 'text-zinc-500')} />
-            <p className="text-xs text-zinc-500">Critical</p>
+            <ShieldAlert className={cn('w-4 h-4 flex-shrink-0', criticalCount > 0 ? 'text-red-400' : 'text-slate-500')} />
+            <p className="text-xs text-slate-500">Critical</p>
           </div>
-          <p className={cn('text-2xl font-bold tabular-nums', criticalCount > 0 ? 'text-red-400' : 'text-zinc-100')}>
+          <p className={cn('text-2xl font-bold tabular-nums', criticalCount > 0 ? 'text-red-400' : 'text-slate-100')}>
             {isLoading ? '—' : criticalCount.toLocaleString('tr-TR')}
           </p>
-          <p className="text-xs text-zinc-600 mt-0.5">acil müdahale gerektirir</p>
+          <p className="text-xs text-slate-600 mt-0.5">acil müdahale gerektirir</p>
         </div>
         <div className={cn(
           'rounded-xl border p-4',
-          highCount > 0 ? 'bg-orange-950/20 border-orange-800/60' : 'bg-zinc-900 border-zinc-800'
+          highCount > 0 ? 'bg-orange-950/20 border-orange-800/60' : 'bg-[#0a1120] border-sky-900/20'
         )}>
           <div className="flex items-center gap-2 mb-1">
-            <AlertTriangle className={cn('w-4 h-4 flex-shrink-0', highCount > 0 ? 'text-orange-400' : 'text-zinc-500')} />
-            <p className="text-xs text-zinc-500">High</p>
+            <AlertTriangle className={cn('w-4 h-4 flex-shrink-0', highCount > 0 ? 'text-orange-400' : 'text-slate-500')} />
+            <p className="text-xs text-slate-500">High</p>
           </div>
-          <p className={cn('text-2xl font-bold tabular-nums', highCount > 0 ? 'text-orange-400' : 'text-zinc-100')}>
+          <p className={cn('text-2xl font-bold tabular-nums', highCount > 0 ? 'text-orange-400' : 'text-slate-100')}>
             {isLoading ? '—' : highCount.toLocaleString('tr-TR')}
           </p>
-          <p className="text-xs text-zinc-600 mt-0.5">öncelikli inceleme</p>
+          <p className="text-xs text-slate-600 mt-0.5">öncelikli inceleme</p>
         </div>
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
           <div className="flex items-center gap-2 mb-1">
             <Bell className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-            <p className="text-xs text-zinc-500">Warning</p>
+            <p className="text-xs text-slate-500">Warning</p>
           </div>
           <p className="text-2xl font-bold text-yellow-400 tabular-nums">
             {isLoading ? '—' : warningCount.toLocaleString('tr-TR')}
           </p>
-          <p className="text-xs text-zinc-600 mt-0.5">izleme gerektirir</p>
+          <p className="text-xs text-slate-600 mt-0.5">izleme gerektirir</p>
         </div>
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
           <div className="flex items-center gap-2 mb-1">
             <Info className="w-4 h-4 text-blue-400 flex-shrink-0" />
-            <p className="text-xs text-zinc-500">Info</p>
+            <p className="text-xs text-slate-500">Info</p>
           </div>
           <p className="text-2xl font-bold text-blue-400 tabular-nums">
             {isLoading ? '—' : infoCount.toLocaleString('tr-TR')}
           </p>
-          <p className="text-xs text-zinc-600 mt-0.5">bilgi amaçlı</p>
+          <p className="text-xs text-slate-600 mt-0.5">bilgi amaçlı</p>
         </div>
       </div>
 
@@ -148,18 +148,18 @@ export default function AlertVolumePage() {
       {isLoading ? (
         <SkeletonChart height={256} className="rounded-xl" />
       ) : isEmpty ? (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
           <EmptyState />
         </div>
       ) : (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
           <AlertVolumeChart series={data!.series} hours={hours} bucketMinutes={data!.bucket_minutes} height={320} />
         </div>
       )}
 
       {/* Summary */}
       {data && (
-        <p className="text-xs text-zinc-600 text-right">
+        <p className="text-xs text-slate-600 text-right">
           Son {hours} saatte {totalAlerts.toLocaleString('tr-TR')} alert
         </p>
       )}
@@ -169,7 +169,7 @@ export default function AlertVolumePage() {
 
 function EmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center h-48 text-zinc-600">
+    <div className="flex flex-col items-center justify-center h-48 text-slate-600">
       <Activity className="w-8 h-8 mb-2 opacity-30" />
       <p className="text-sm">Alert Hacmi</p>
       <p className="text-xs mt-1">Veri yok</p>

@@ -39,7 +39,7 @@ function RiskBadge({ level }: { level: 'HIGH' | 'MEDIUM' | 'LOW' | null }) {
   const cls = {
     HIGH:   'bg-red-900/60 text-red-400 border-red-800',
     MEDIUM: 'bg-amber-900/50 text-amber-400 border-amber-800',
-    LOW:    'bg-zinc-700/60 text-zinc-400 border-zinc-600',
+    LOW:    'bg-sky-950/20 text-slate-400 border-sky-900/20',
   }[level]
   return <span className={cn('px-2 py-0.5 rounded text-xs font-semibold border', cls)}>{level}</span>
 }
@@ -162,7 +162,7 @@ function JitterScatter({ detections }: { detections: BeaconingDetection[] }) {
   }
 
   if (data.length === 0) return (
-    <div className="h-48 flex items-center justify-center text-zinc-500 text-sm">Scatter için yetersiz veri</div>
+    <div className="h-48 flex items-center justify-center text-slate-500 text-sm">Scatter için yetersiz veri</div>
   )
 
   return <ReactECharts option={option} style={{ height: 200 }} notMerge />
@@ -183,7 +183,7 @@ function C2SignatureSummary({ detections }: { detections: BeaconingDetection[] }
     'Sliver':        'text-orange-400 bg-orange-950/40 border-orange-900',
     'Metasploit':    'text-yellow-400 bg-yellow-950/40 border-yellow-900',
     'Empire':        'text-purple-400 bg-purple-950/40 border-purple-900',
-    'Bilinmeyen':    'text-zinc-400 bg-zinc-800 border-zinc-700',
+    'Bilinmeyen':    'text-slate-400 bg-sky-950/20 border-sky-900/20',
   }
 
   if (groups.length === 0) return null
@@ -226,22 +226,22 @@ export default function BeaconingPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Radio className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">Beaconing Tespiti</h1>
-          {isFetching && <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />}
+          <Radio className="w-5 h-5 text-sky-400" />
+          <h1 className="text-lg font-semibold text-slate-100">Beaconing Tespiti</h1>
+          {isFetching && <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />}
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md overflow-hidden border border-zinc-700">
+          <div className="flex gap-1">
             {HOURS_OPTIONS.map(opt => (
               <button key={opt.value} onClick={() => setHours(opt.value)}
-                className={cn('px-3 py-1 text-xs', hours === opt.value
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700')}>
+                className={cn('px-2 py-0.5 text-xs rounded-lg border', hours === opt.value
+                  ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                  : 'bg-sky-950/20 border-sky-900/20 text-slate-500 hover:text-slate-300')}>
                 {opt.label}
               </button>
             ))}
           </div>
-          <button onClick={() => refetch()} className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800">
+          <button onClick={() => refetch()} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-sky-950/30 border border-sky-900/20">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
@@ -255,52 +255,52 @@ export default function BeaconingPage() {
 
       {/* KPI Kartlar */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-3">
-          <div className={cn('p-2 rounded-lg', (data?.total ?? 0) > 0 ? 'bg-red-500/15 text-red-400' : 'bg-zinc-700/40 text-zinc-400')}>
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
+          <div className={cn('p-2 rounded-lg', (data?.total ?? 0) > 0 ? 'bg-red-500/15 text-red-400' : 'bg-sky-950/20 text-slate-400')}>
             <Radio className="w-5 h-5" />
           </div>
           <div>
-            <p className="text-xs text-zinc-500">Tespit Sayısı</p>
+            <p className="text-xs text-slate-500">Tespit Sayısı</p>
             <div className="flex items-center gap-2">
-              <p className={cn('text-2xl font-bold', (data?.total ?? 0) > 0 ? 'text-red-400' : 'text-zinc-100')}>
+              <p className={cn('text-2xl font-bold', (data?.total ?? 0) > 0 ? 'text-red-400' : 'text-slate-100')}>
                 {isLoading ? '—' : (data?.total ?? 0)}
               </p>
               {(data?.total ?? 0) > 0 && (
                 <span className="px-2 py-0.5 rounded text-xs font-semibold bg-red-900/50 text-red-400 border border-red-800">UYARI</span>
               )}
             </div>
-            <p className="text-xs text-zinc-500 mt-0.5">Son {hours} saat</p>
+            <p className="text-xs text-slate-500 mt-0.5">Son {hours} saat</p>
           </div>
         </div>
 
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <p className="text-xs text-zinc-500 mb-1">Ortalama IAT</p>
-          <p className="text-2xl font-bold text-zinc-100">
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <p className="text-xs text-slate-500 mb-1">Ortalama IAT</p>
+          <p className="text-2xl font-bold text-slate-100">
             {avgIat !== null ? `${avgIat.toFixed(1)}s` : '—'}
           </p>
           {avgIat !== null && (
-            <p className="text-xs text-zinc-500 mt-0.5">{c2Signature(avgIat) ?? 'Bilinen imza yok'}</p>
+            <p className="text-xs text-slate-500 mt-0.5">{c2Signature(avgIat) ?? 'Bilinen imza yok'}</p>
           )}
         </div>
 
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <p className="text-xs text-zinc-500 mb-1">Ortalama Jitter (CV)</p>
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <p className="text-xs text-slate-500 mb-1">Ortalama Jitter (CV)</p>
           <div className="flex items-center gap-2">
-            <p className="text-2xl font-bold text-zinc-100">
+            <p className="text-2xl font-bold text-slate-100">
               {avgJitter !== null ? `${(avgJitter * 100).toFixed(1)}%` : '—'}
             </p>
             <RiskBadge level={beaconRisk(avgJitter)} />
           </div>
-          <p className="text-xs text-zinc-500 mt-0.5">CV &lt; 10% → C2 otomasyonu</p>
+          <p className="text-xs text-slate-500 mt-0.5">CV &lt; 10% → C2 otomasyonu</p>
         </div>
       </div>
 
       {/* C2 İmza Özeti */}
       {detections.length > 0 && (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-          <p className="text-xs text-zinc-500 mb-2 uppercase tracking-wide">Tespit Edilen C2 İmzaları</p>
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+          <p className="text-xs text-slate-500 mb-2 uppercase tracking-wide">Tespit Edilen C2 İmzaları</p>
           <C2SignatureSummary detections={detections} />
-          <p className="text-xs text-zinc-600 mt-2">
+          <p className="text-xs text-slate-600 mt-2">
             Cobalt Strike: IAT ≈60s ±5s · Sliver: ≈30s ±5s · Metasploit: ≈300s ±30s · Empire: &lt;10s
           </p>
         </div>
@@ -309,17 +309,17 @@ export default function BeaconingPage() {
       {/* Grafikler */}
       {detections.length > 0 && (
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-            <p className="text-sm font-medium text-zinc-300 mb-3">IAT Dağılım Histogramı</p>
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+            <p className="text-sm font-medium text-slate-300 mb-3">IAT Dağılım Histogramı</p>
             <IATHistogram detections={detections} />
-            <p className="text-xs text-zinc-600 mt-2">
+            <p className="text-xs text-slate-600 mt-2">
               Renkli barlar: kırmızı=Cobalt Strike, turuncu=Sliver, sarı=Metasploit, mor=Empire
             </p>
           </div>
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-            <p className="text-sm font-medium text-zinc-300 mb-3">IAT vs Jitter Scatter</p>
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+            <p className="text-sm font-medium text-slate-300 mb-3">IAT vs Jitter Scatter</p>
             <JitterScatter detections={detections} />
-            <p className="text-xs text-zinc-600 mt-2">
+            <p className="text-xs text-slate-600 mt-2">
               Düşük IAT + düşük jitter (sol-alt) = yüksek C2 riski. Nokta büyüklüğü = bağlantı sayısı.
             </p>
           </div>
@@ -327,8 +327,8 @@ export default function BeaconingPage() {
       )}
 
       {/* Detay Tablosu */}
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-        <div className="px-4 py-3 border-b border-zinc-800">
+      <div className="bg-zinc-900 rounded-xl border border-sky-900/20">
+        <div className="px-4 py-3 border-b border-sky-900/20">
           <h2 className="text-sm font-semibold text-zinc-200">Tespit Edilen Beacon'lar</h2>
         </div>
 
@@ -347,7 +347,7 @@ export default function BeaconingPage() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-xs text-zinc-500">
+                  <tr className="border-b border-sky-900/20 text-xs text-slate-500">
                     <th className="text-left px-4 py-2.5">Kaynak IP</th>
                     <th className="text-left px-4 py-2.5">Hedef IP</th>
                     <th className="text-left px-4 py-2.5">Port</th>
@@ -359,19 +359,19 @@ export default function BeaconingPage() {
                     <th className="text-left px-4 py-2.5">Zaman</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-zinc-800/50">
+                <tbody className="divide-y divide-sky-900/10">
                   {detections.map((det, idx) => {
                     const risk = beaconRisk(det.jitter)
                     const sig  = c2Signature(det.mean_iat)
                     return (
                       <tr key={`${det.source_ip}-${det.destination_ip}-${idx}`}
-                        className="hover:bg-zinc-800/30 transition-colors">
-                        <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">{det.source_ip}</td>
-                        <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">{det.destination_ip}</td>
-                        <td className="px-4 py-2.5 text-zinc-400 text-xs">
+                        className="hover:bg-sky-950/20 transition-colors">
+                        <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{det.source_ip}</td>
+                        <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">{det.destination_ip}</td>
+                        <td className="px-4 py-2.5 text-slate-400 text-xs">
                           {det.destination_port != null ? `${det.destination_port}/${(det.network_protocol ?? 'TCP').toUpperCase()}` : '—'}
                         </td>
-                        <td className="px-4 py-2.5 font-mono text-zinc-300 text-xs">
+                        <td className="px-4 py-2.5 font-mono text-slate-300 text-xs">
                           {det.mean_iat !== null ? `${det.mean_iat.toFixed(1)}s` : '—'}
                         </td>
                         <td className="px-4 py-2.5 font-mono text-xs">
@@ -381,7 +381,7 @@ export default function BeaconingPage() {
                             </span>
                           ) : '—'}
                         </td>
-                        <td className="px-4 py-2.5 text-zinc-400 text-xs">{det.conn_count ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-slate-400 text-xs">{det.conn_count ?? '—'}</td>
                         <td className="px-4 py-2.5">
                           {sig && (
                             <span className="px-2 py-0.5 rounded text-xs font-semibold bg-orange-900/50 text-orange-400 border border-orange-800">
@@ -390,7 +390,7 @@ export default function BeaconingPage() {
                           )}
                         </td>
                         <td className="px-4 py-2.5"><RiskBadge level={risk} /></td>
-                        <td className="px-4 py-2.5 text-zinc-500 text-xs whitespace-nowrap">
+                        <td className="px-4 py-2.5 text-slate-500 text-xs whitespace-nowrap">
                           {new Date(det.detected_at).toLocaleString('tr-TR', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })}
                         </td>
                       </tr>
@@ -399,7 +399,7 @@ export default function BeaconingPage() {
                 </tbody>
               </table>
             </div>
-            <p className="px-4 py-3 text-xs text-zinc-600 border-t border-zinc-800/50">
+            <p className="px-4 py-3 text-xs text-slate-600 border-t border-sky-900/20/50">
               Jitter (CV) &lt; 0.1: yüksek olasılıkla C2 otomasyonu. Cobalt Strike varsayılan CV ≈ 0.02. Kaynak: MITRE ATT&CK T1071, Mandiant APT analizi.
             </p>
           </>

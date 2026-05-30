@@ -26,7 +26,7 @@ const TIER_META: Record<Tier, { label: string; color: string; bg: string; border
   critical: { label: 'Kritik',  color: 'text-red-400',     bg: 'bg-red-950/30',     border: 'border-red-700/60' },
   high:     { label: 'Yüksek', color: 'text-orange-400',  bg: 'bg-orange-950/20',  border: 'border-orange-700/50' },
   medium:   { label: 'Orta',   color: 'text-yellow-400',  bg: 'bg-yellow-950/20',  border: 'border-yellow-700/50' },
-  low:      { label: 'Düşük',  color: 'text-zinc-400',    bg: 'bg-zinc-900',       border: 'border-zinc-800' },
+  low:      { label: 'Düşük',  color: 'text-slate-400',   bg: 'bg-[#0a1120]',      border: 'border-sky-900/20' },
 }
 
 const TIER_ORDER: Tier[] = ['critical', 'high', 'medium', 'low']
@@ -37,10 +37,10 @@ function ScoreBar({ value, maxValue, color }: { value: number; maxValue: number;
   const pct = maxValue > 0 ? Math.round((value / maxValue) * 100) : 0
   return (
     <div className="flex items-center gap-2">
-      <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+      <div className="flex-1 h-1 bg-sky-950/30 rounded-full overflow-hidden">
         <div className={cn('h-full rounded-full', color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11px] font-mono text-zinc-400 w-6 text-right">{value}</span>
+      <span className="text-[11px] font-mono text-slate-400 w-6 text-right">{value}</span>
     </div>
   )
 }
@@ -73,7 +73,7 @@ function TierCards({ assets }: { assets: AssetRiskEntry[] }) {
               <Icon size={14} className={m.color} />
             </div>
             <p className={cn('text-2xl font-bold', m.color)}>{counts[t]}</p>
-            <p className="text-[11px] text-zinc-600 mt-0.5">varlık</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">varlık</p>
           </div>
         )
       })}
@@ -111,7 +111,7 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
   function SortHeader({ col, label }: { col: SortKey; label: string }) {
     return (
       <th
-        className="px-3 py-2 text-left text-[11px] font-medium text-zinc-500 cursor-pointer select-none hover:text-zinc-300 whitespace-nowrap"
+        className="px-3 py-2 text-left text-[11px] font-medium text-slate-500 cursor-pointer select-none hover:text-slate-300 whitespace-nowrap"
         onClick={() => toggleSort(col)}
       >
         <span className="flex items-center gap-1">
@@ -125,10 +125,10 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
   }
 
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+    <div className="bg-[#0a1120] border border-sky-900/20 rounded-xl overflow-hidden">
       {/* Tier filter */}
-      <div className="px-4 py-3 border-b border-zinc-800 flex items-center gap-2 flex-wrap">
-        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mr-2">Risk Tablosu</span>
+      <div className="px-4 py-3 border-b border-sky-900/15 flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide mr-2">Risk Tablosu</span>
         {(['all', ...TIER_ORDER] as const).map((t) => {
           const m = t === 'all' ? null : TIER_META[t]
           return (
@@ -139,24 +139,24 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
                 'px-2.5 py-0.5 text-[11px] rounded border transition-colors',
                 tierFilter === t
                   ? t === 'all'
-                    ? 'bg-indigo-600/20 border-indigo-600 text-indigo-300'
+                    ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
                     : cn(m?.bg, m?.border, m?.color)
-                  : 'border-zinc-700 text-zinc-500 hover:text-zinc-300 bg-zinc-800',
+                  : 'border-sky-900/20 text-slate-500 hover:text-slate-300 bg-sky-950/20',
               )}
             >
               {t === 'all' ? 'Tümü' : TIER_META[t].label}
             </button>
           )
         })}
-        <span className="ml-auto text-[11px] text-zinc-600">{sorted.length} varlık</span>
+        <span className="ml-auto text-[11px] text-slate-600">{sorted.length} varlık</span>
       </div>
 
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-zinc-800 bg-zinc-900/50">
-              <th className="px-3 py-2 text-left text-[11px] font-medium text-zinc-500">IP</th>
-              <th className="px-3 py-2 text-left text-[11px] font-medium text-zinc-500">Risk</th>
+            <tr className="border-b border-sky-900/20 bg-[#0a1120]/50">
+              <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">IP</th>
+              <th className="px-3 py-2 text-left text-[11px] font-medium text-slate-500">Risk</th>
               <SortHeader col="activity_score" label="Aktivite" />
               <SortHeader col="chain_score"    label="Kill Chain" />
               <SortHeader col="block_score"    label="Blok" />
@@ -170,9 +170,9 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
               const t  = tier(asset.total_score)
               const m  = TIER_META[t]
               return (
-                <tr key={asset.ip} className="border-b border-zinc-800/50 hover:bg-zinc-800/30">
+                <tr key={asset.ip} className="border-b border-sky-900/10 hover:bg-sky-950/20">
                   <td className="px-3 py-2.5">
-                    <span className="font-mono text-xs text-zinc-200">{asset.ip}</span>
+                    <span className="font-mono text-xs text-slate-200">{asset.ip}</span>
                     {asset.top_severity && (
                       <span className={cn('ml-2 text-[10px] font-medium',
                         asset.top_severity === 'critical' ? 'text-red-400' :
@@ -199,16 +199,16 @@ function RiskTable({ assets }: { assets: AssetRiskEntry[] }) {
                   </td>
                   <td className="px-3 py-2.5">
                     <span className={cn('text-sm font-bold', m.color)}>{asset.total_score}</span>
-                    <span className="text-[10px] text-zinc-600">/100</span>
+                    <span className="text-[10px] text-slate-600">/100</span>
                   </td>
-                  <td className="px-3 py-2.5 text-xs text-zinc-500">{asset.event_count}</td>
+                  <td className="px-3 py-2.5 text-xs text-slate-500">{asset.event_count}</td>
                   <td className="px-3 py-2.5">
                     {asset.is_blocked ? (
                       <span className="flex items-center gap-1 text-[11px] text-red-400">
                         <Link2 size={11} /> Bloklu
                       </span>
                     ) : (
-                      <span className="text-[11px] text-zinc-600">—</span>
+                      <span className="text-[11px] text-slate-600">—</span>
                     )}
                   </td>
                 </tr>
@@ -250,8 +250,8 @@ export default function AssetRiskPage() {
         <div className="flex items-center gap-3">
           <ShieldAlert className="h-6 w-6 text-rose-400" />
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">Asset Risk Haritası</h1>
-            <p className="text-sm text-zinc-400">İç ağ varlıklarının çok boyutlu risk analizi</p>
+            <h1 className="text-xl font-semibold text-slate-100">Asset Risk Haritası</h1>
+            <p className="text-sm text-slate-400">İç ağ varlıklarının çok boyutlu risk analizi</p>
           </div>
         </div>
         <div className="flex gap-1">
@@ -263,7 +263,7 @@ export default function AssetRiskPage() {
                 'px-3 py-1.5 rounded text-sm font-medium transition-colors',
                 hours === o.value
                   ? 'bg-rose-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700',
+                  : 'bg-sky-950/20 text-slate-400 hover:bg-sky-950/40',
               )}
             >
               {o.label}
@@ -276,7 +276,7 @@ export default function AssetRiskPage() {
       {data && (
         <div className="flex gap-6 text-sm text-zinc-400 flex-wrap">
           <span>
-            <span className="text-zinc-200 font-medium">{data.assets.length}</span> izlenen varlık
+            <span className="text-slate-200 font-medium">{data.assets.length}</span> izlenen varlık
           </span>
           {blockedCount > 0 && (
             <span>
@@ -286,7 +286,7 @@ export default function AssetRiskPage() {
           {topAsset && (
             <span>
               En riskli:{' '}
-              <span className="font-mono text-zinc-200">{topAsset.ip}</span>
+              <span className="font-mono text-slate-200">{topAsset.ip}</span>
               {' · '}
               <span className="text-rose-400 font-medium">{topAsset.total_score}/100</span>
             </span>
@@ -302,8 +302,8 @@ export default function AssetRiskPage() {
       ) : null}
 
       {/* Heatmap */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
-        <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wide mb-3">Isı Haritası</p>
+      <div className="rounded-xl border border-sky-900/20 bg-[#0a1120] p-4">
+        <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Isı Haritası</p>
         {isLoading && <SkeletonChart height={384} />}
         {isError && (
           <div className="h-32 flex items-center justify-center text-red-400 text-sm">
@@ -311,8 +311,8 @@ export default function AssetRiskPage() {
           </div>
         )}
         {data && data.assets.length === 0 && (
-          <div className="h-32 flex flex-col items-center justify-center gap-2 text-zinc-500">
-            <ShieldAlert className="h-8 w-8 text-zinc-700" />
+          <div className="h-32 flex flex-col items-center justify-center gap-2 text-slate-500">
+            <ShieldAlert className="h-8 w-8 text-slate-700" />
             <p className="text-sm">Bu zaman aralığında izlenecek iç ağ varlığı bulunamadı</p>
           </div>
         )}
@@ -331,24 +331,24 @@ export default function AssetRiskPage() {
 
       {/* Skor formülü */}
       <div className="grid grid-cols-3 gap-3 text-xs text-zinc-500">
-        <div className="rounded border border-zinc-800 bg-zinc-900/50 p-3">
+        <div className="rounded border border-sky-900/15 bg-sky-950/10 p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <div className="w-2 h-2 rounded-full bg-blue-500" />
-            <span className="font-medium text-zinc-400">Ağ Aktivitesi ×0.5</span>
+            <span className="font-medium text-slate-400">Ağ Aktivitesi ×0.5</span>
           </div>
           Severity ağırlıklı olay yoğunluğu: critical×40, high×15, warning×5, info×1 — maks 100
         </div>
-        <div className="rounded border border-zinc-800 bg-zinc-900/50 p-3">
+        <div className="rounded border border-sky-900/15 bg-sky-950/10 p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <div className="w-2 h-2 rounded-full bg-orange-500" />
-            <span className="font-medium text-zinc-400">Kill Chain ×0.3</span>
+            <span className="font-medium text-slate-400">Kill Chain ×0.3</span>
           </div>
           MITRE ATT&amp;CK eşleşen olaylar: keşif×2, silahlanma×8, yanal hareket×20 — maks 100
         </div>
-        <div className="rounded border border-zinc-800 bg-zinc-900/50 p-3">
+        <div className="rounded border border-sky-900/15 bg-sky-950/10 p-3">
           <div className="flex items-center gap-1.5 mb-1">
             <div className="w-2 h-2 rounded-full bg-red-500" />
-            <span className="font-medium text-zinc-400">Blok Durumu ×0.2</span>
+            <span className="font-medium text-slate-400">Blok Durumu ×0.2</span>
           </div>
           Aktif blok listesinde → 100; değil → 0. Risk: ≥70 Kritik · ≥50 Yüksek · ≥30 Orta · &lt;30 Düşük
         </div>

@@ -179,13 +179,13 @@ function generateSigmaYaml(form: WizardForm, ruleId: string): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-const cls = "w-full rounded bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm px-3 py-2 focus:outline-none focus:border-violet-500"
+const cls = "w-full rounded bg-sky-950/20 border border-sky-900/25 text-slate-200 text-sm px-3 py-2 focus:outline-none focus:border-violet-500"
 
 function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
-    <label className="block text-xs font-medium text-zinc-400 mb-1">
+    <label className="block text-xs font-medium text-slate-400 mb-1">
       {children}
-      {hint && <span className="text-zinc-600 font-normal ml-1">({hint})</span>}
+      {hint && <span className="text-slate-600 font-normal ml-1">({hint})</span>}
     </label>
   )
 }
@@ -201,7 +201,7 @@ function TagToggle({ tag, label, selected, onToggle }: {
         'px-2.5 py-1 rounded text-xs font-medium transition-colors border',
         selected
           ? 'bg-violet-600/30 text-violet-300 border-violet-500/50'
-          : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500 hover:text-zinc-300',
+          : 'bg-sky-950/20 text-slate-500 border-sky-900/20 hover:border-sky-500/40 hover:text-slate-300',
       )}
     >
       {label}
@@ -285,7 +285,7 @@ function StepDetection({ form, set }: { form: WizardForm; set: (k: keyof WizardF
               onChange={e => updateFilter(f.id, 'value', e.target.value)}
               placeholder="değer" />
             <button type="button" onClick={() => removeFilter(f.id)}
-              className="text-zinc-600 hover:text-red-400 transition-colors flex-shrink-0">
+              className="text-slate-600 hover:text-red-400 transition-colors flex-shrink-0">
               <X className="h-4 w-4" />
             </button>
           </div>
@@ -327,8 +327,8 @@ function StepCorrelation({ form, set }: { form: WizardForm; set: (k: keyof Wizar
         </div>
       </div>
 
-      <div className="rounded border border-zinc-800 bg-zinc-800/30 p-4 text-sm text-zinc-400 space-y-1">
-        <p className="text-zinc-300 font-medium text-xs">Kural Mantığı</p>
+      <div className="rounded border border-sky-900/20 bg-sky-950/10 p-4 text-sm text-slate-400 space-y-1">
+        <p className="text-slate-300 font-medium text-xs">Kural Mantığı</p>
         <p>
           Son <span className="text-violet-300">{form.timespan}</span> içinde&nbsp;
           <span className="text-violet-300">{form.group_by}</span> başına&nbsp;
@@ -429,7 +429,7 @@ function StepMetadata({ form, set }: { form: WizardForm; set: (k: keyof WizardFo
               placeholder="Örn: Normal yönetici girişleri" />
             {form.false_positives.length > 1 && (
               <button type="button" onClick={() => removeFP(i)}
-                className="text-zinc-600 hover:text-red-400 transition-colors">
+                className="text-slate-600 hover:text-red-400 transition-colors">
                 <X className="h-4 w-4" />
               </button>
             )}
@@ -451,8 +451,8 @@ function StepPreview({ yaml, validResult, onValidate, onSave, isPending, saveErr
   return (
     <div className="space-y-4">
       <div>
-        <p className="text-xs text-zinc-500 mb-2">Oluşturulan Sigma YAML — pySigma v2 formatı</p>
-        <pre className="w-full rounded bg-zinc-950 border border-zinc-800 text-xs text-emerald-300 p-4 overflow-auto max-h-72 font-mono leading-relaxed">
+        <p className="text-xs text-slate-500 mb-2">Oluşturulan Sigma YAML — pySigma v2 formatı</p>
+        <pre className="w-full rounded bg-[#040911] border border-sky-900/20 text-xs text-emerald-300 p-4 overflow-auto max-h-72 font-mono leading-relaxed">
           {yaml}
         </pre>
       </div>
@@ -462,7 +462,7 @@ function StepPreview({ yaml, validResult, onValidate, onSave, isPending, saveErr
           <Check className="h-4 w-4 text-emerald-400 flex-shrink-0 mt-0.5" />
           <div className="text-sm">
             <p className="text-emerald-400 font-medium">Kural geçerli</p>
-            <p className="text-zinc-400 text-xs mt-0.5">
+            <p className="text-slate-400 text-xs mt-0.5">
               Başlık: {validResult.title} · Seviye: {validResult.level} · {validResult.rule_count} belge
             </p>
           </div>
@@ -481,7 +481,7 @@ function StepPreview({ yaml, validResult, onValidate, onSave, isPending, saveErr
           type="button"
           onClick={onValidate}
           disabled={isPending}
-          className="px-4 py-2 rounded text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-50"
+          className="px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors disabled:opacity-50"
         >
           Doğrula
         </button>
@@ -494,7 +494,7 @@ function StepPreview({ yaml, validResult, onValidate, onSave, isPending, saveErr
           {isPending ? 'Kaydediliyor…' : 'Kaydet'}
         </button>
         {!validResult && (
-          <p className="text-xs text-zinc-500 self-center">Kaydetmeden önce doğrulayın</p>
+          <p className="text-xs text-slate-500 self-center">Kaydetmeden önce doğrulayın</p>
         )}
       </div>
     </div>
@@ -547,8 +547,8 @@ export default function SigmaWizardPage() {
       <div className="flex items-center gap-3">
         <Wand2 className="h-6 w-6 text-violet-400" />
         <div>
-          <h1 className="text-xl font-semibold text-zinc-100">Sigma Kural Sihirbazı</h1>
-          <p className="text-sm text-zinc-400">Formdan Sigma YAML otomatik oluşturulur — YAML bilgisi gerekmez</p>
+          <h1 className="text-xl font-semibold text-slate-100">Sigma Kural Sihirbazı</h1>
+          <p className="text-sm text-slate-400">Formdan Sigma YAML otomatik oluşturulur — YAML bilgisi gerekmez</p>
         </div>
       </div>
 
@@ -564,27 +564,27 @@ export default function SigmaWizardPage() {
                 i === step
                   ? 'bg-violet-600/20 text-violet-300'
                   : i < step
-                    ? 'text-zinc-400 hover:text-zinc-200 cursor-pointer'
-                    : 'text-zinc-600 cursor-default',
+                    ? 'text-slate-400 hover:text-slate-200 cursor-pointer'
+                    : 'text-slate-600 cursor-default',
               )}
             >
               <span className={cn(
                 'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0',
-                i === step ? 'bg-violet-600 text-white' : i < step ? 'bg-zinc-600 text-zinc-300' : 'bg-zinc-800 text-zinc-600',
+                i === step ? 'bg-violet-600 text-white' : i < step ? 'bg-sky-950/30 text-slate-300' : 'bg-sky-950/15 text-slate-600',
               )}>
                 {i < step ? <Check className="h-3 w-3" /> : i + 1}
               </span>
               <span className="hidden sm:inline">{label}</span>
             </button>
             {i < STEPS.length - 1 && (
-              <div className={cn('w-6 h-px mx-1', i < step ? 'bg-zinc-600' : 'bg-zinc-800')} />
+              <div className={cn('w-6 h-px mx-1', i < step ? 'bg-sky-950/30' : 'bg-sky-950/15')} />
             )}
           </div>
         ))}
       </div>
 
       {/* Step content */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-6">
+      <div className="rounded-lg border border-sky-900/20 bg-[#0a1120] p-6">
         {step === 0 && <StepDetection form={form} set={set} />}
         {step === 1 && <StepCorrelation form={form} set={set} />}
         {step === 2 && <StepMetadata form={form} set={set} />}
@@ -606,7 +606,7 @@ export default function SigmaWizardPage() {
           type="button"
           onClick={() => setStep(s => Math.max(0, s - 1))}
           disabled={step === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+          className="flex items-center gap-2 px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="h-4 w-4" /> Geri
         </button>

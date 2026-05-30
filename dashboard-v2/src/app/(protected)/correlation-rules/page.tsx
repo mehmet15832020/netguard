@@ -61,8 +61,8 @@ export default function CorrelationRulesPage() {
         <div className="flex items-center gap-3">
           <GitMerge className="h-6 w-6 text-violet-400" />
           <div>
-            <h1 className="text-xl font-semibold text-zinc-100">Korelasyon Kuralları</h1>
-            <p className="text-sm text-zinc-400">Kural tabanlı olay tespiti — hot-reload destekli</p>
+            <h1 className="text-xl font-semibold text-slate-100">Korelasyon Kuralları</h1>
+            <p className="text-sm text-slate-400">Kural tabanlı olay tespiti — hot-reload destekli</p>
           </div>
         </div>
         <button
@@ -83,15 +83,15 @@ export default function CorrelationRulesPage() {
 
       {/* Stats */}
       {data && (
-        <div className="flex gap-6 text-sm text-zinc-400">
-          <span><span className="text-zinc-200 font-medium">{data.count}</span> kural</span>
+        <div className="flex gap-6 text-sm text-slate-400">
+          <span><span className="text-slate-200 font-medium">{data.count}</span> kural</span>
           <span>
             <span className="text-emerald-400 font-medium">
               {rules.filter(r => r.enabled).length}
             </span> aktif
           </span>
           <span>
-            <span className="text-zinc-500 font-medium">
+            <span className="text-slate-500 font-medium">
               {rules.filter(r => !r.enabled).length}
             </span> pasif
           </span>
@@ -99,7 +99,7 @@ export default function CorrelationRulesPage() {
       )}
 
       {/* Table */}
-      <div className="rounded-lg border border-zinc-800 bg-zinc-900 overflow-hidden">
+      <div className="rounded-xl border border-sky-900/20 bg-[#0a1120] overflow-hidden">
         {isLoading && <div className="m-4"><SkeletonTable rows={4} height={36} /></div>}
         {isError && (
           <div className="h-24 flex items-center justify-center text-red-400 text-sm">
@@ -107,15 +107,15 @@ export default function CorrelationRulesPage() {
           </div>
         )}
         {!isLoading && rules.length === 0 && (
-          <div className="h-24 flex flex-col items-center justify-center gap-2 text-zinc-500">
-            <GitMerge className="h-7 w-7 text-zinc-700" />
+          <div className="h-24 flex flex-col items-center justify-center gap-2 text-slate-500">
+            <GitMerge className="h-7 w-7 text-slate-700" />
             <p className="text-sm">Henüz kural yok — ilk kuralı ekle</p>
           </div>
         )}
         {rules.length > 0 && (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500 text-xs">
+              <tr className="border-b border-zinc-800 text-slate-500 text-xs">
                 <th className="text-left py-3 px-4 font-medium w-8">Aktif</th>
                 <th className="text-left py-3 px-4 font-medium">Kural Adı</th>
                 <th className="text-left py-3 px-4 font-medium">Event Tipi</th>
@@ -130,7 +130,7 @@ export default function CorrelationRulesPage() {
               {rules.map(rule => (
                 <tr
                   key={rule.rule_id}
-                  className={`border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors ${
+                  className={`border-b border-sky-900/10 hover:bg-sky-950/20 transition-colors ${
                     !rule.enabled ? 'opacity-50' : ''
                   }`}
                 >
@@ -142,31 +142,31 @@ export default function CorrelationRulesPage() {
                       className={`p-1 rounded transition-colors ${
                         rule.enabled
                           ? 'text-emerald-400 hover:text-emerald-300'
-                          : 'text-zinc-600 hover:text-zinc-400'
+                          : 'text-slate-600 hover:text-slate-400'
                       }`}
                     >
                       <Power className="h-4 w-4" />
                     </button>
                   </td>
                   <td className="py-3 px-4">
-                    <div className="font-medium text-zinc-200">{rule.name}</div>
-                    <div className="text-xs text-zinc-500 font-mono">{rule.rule_id}</div>
+                    <div className="font-medium text-slate-200">{rule.name}</div>
+                    <div className="text-xs text-slate-500 font-mono">{rule.rule_id}</div>
                   </td>
-                  <td className="py-3 px-4 font-mono text-zinc-400 text-xs">
-                    {rule.match_event_action || <span className="text-zinc-600 italic">tümü</span>}
+                  <td className="py-3 px-4 font-mono text-slate-400 text-xs">
+                    {rule.match_event_action || <span className="text-slate-600 italic">tümü</span>}
                   </td>
-                  <td className="py-3 px-4 text-zinc-400 text-xs">
+                  <td className="py-3 px-4 text-slate-400 text-xs">
                     {rule.group_by}
                     {rule.distinct_by && (
-                      <span className="text-zinc-600"> / {rule.distinct_by}</span>
+                      <span className="text-slate-600"> / {rule.distinct_by}</span>
                     )}
                   </td>
                   <td className="py-3 px-4 text-right text-zinc-300">{rule.threshold}</td>
-                  <td className="py-3 px-4 text-right text-zinc-400 text-xs">
+                  <td className="py-3 px-4 text-right text-slate-400 text-xs">
                     {fmtWindow(rule.window_seconds)}
                   </td>
                   <td className="py-3 px-4 text-center">
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${SEV_COLORS[rule.severity] ?? 'text-zinc-400'}`}>
+                    <span className={`px-2 py-0.5 rounded text-xs font-medium ${SEV_COLORS[rule.severity] ?? 'text-slate-400'}`}>
                       {rule.severity}
                     </span>
                   </td>
@@ -174,14 +174,14 @@ export default function CorrelationRulesPage() {
                     <div className="flex items-center gap-1 justify-end">
                       <button
                         onClick={() => setEditing(rule)}
-                        className="p-1.5 rounded text-zinc-500 hover:text-zinc-300 hover:bg-zinc-700 transition-colors"
+                        className="p-1.5 rounded text-slate-500 hover:text-slate-300 hover:bg-sky-950/30 transition-colors"
                         title="Düzenle"
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </button>
                       <button
                         onClick={() => setConfirmDelete(rule.rule_id)}
-                        className="p-1.5 rounded text-zinc-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                        className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
                         title="Sil"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
@@ -195,7 +195,7 @@ export default function CorrelationRulesPage() {
         )}
       </div>
 
-      <p className="text-xs text-zinc-700">
+      <p className="text-xs text-slate-700">
         Kural değişiklikleri anında yüklenir. Correlator her 60 saniyede otomatik kontrol eder.
       </p>
 
@@ -214,10 +214,10 @@ export default function CorrelationRulesPage() {
       {/* Delete confirm dialog */}
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-sm rounded-lg border border-zinc-700 bg-zinc-900 p-6 space-y-4">
-            <h2 className="text-base font-semibold text-zinc-100">Kuralı Sil</h2>
-            <p className="text-sm text-zinc-400">
-              <span className="font-mono text-zinc-200">{confirmDelete}</span> kuralı kalıcı olarak silinecek.
+          <div className="w-full max-w-sm rounded-lg border border-sky-900/30 bg-[#0a1120] p-6 space-y-4">
+            <h2 className="text-base font-semibold text-slate-100">Kuralı Sil</h2>
+            <p className="text-sm text-slate-400">
+              <span className="font-mono text-slate-200">{confirmDelete}</span> kuralı kalıcı olarak silinecek.
               Bu işlem geri alınamaz.
             </p>
             {mutError && (
@@ -228,7 +228,7 @@ export default function CorrelationRulesPage() {
             <div className="flex justify-end gap-2">
               <button
                 onClick={() => setConfirmDelete(null)}
-                className="px-4 py-2 rounded text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+                className="px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors"
               >
                 İptal
               </button>

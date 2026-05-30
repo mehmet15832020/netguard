@@ -29,16 +29,16 @@ const EMPTY: CorrelationRule = {
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-zinc-400 mb-1">
+      <label className="block text-xs font-medium text-slate-400 mb-1">
         {label}
-        {hint && <span className="text-zinc-600 font-normal ml-1">({hint})</span>}
+        {hint && <span className="text-slate-600 font-normal ml-1">({hint})</span>}
       </label>
       {children}
     </div>
   )
 }
 
-const cls = "w-full rounded bg-zinc-800 border border-zinc-700 text-zinc-200 text-sm px-3 py-2 focus:outline-none focus:border-violet-500"
+const cls = "w-full rounded bg-sky-950/20 border border-sky-900/25 text-slate-200 text-sm px-3 py-2 focus:outline-none focus:border-violet-500"
 
 export function RuleFormModal({ rule, onClose, onSaved }: Props) {
   const isNew = rule === null
@@ -73,13 +73,13 @@ export function RuleFormModal({ rule, onClose, onSaved }: Props) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-      <div className="w-full max-w-2xl rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl my-4">
+      <div className="w-full max-w-2xl rounded-lg border border-sky-900/30 bg-[#0a1120] shadow-2xl my-4">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800">
-          <h2 className="text-base font-semibold text-zinc-100">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-sky-900/20">
+          <h2 className="text-base font-semibold text-slate-100">
             {isNew ? 'Yeni Korelasyon Kuralı' : `Düzenle: ${rule.rule_id}`}
           </h2>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-300 transition-colors">
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-300 transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -209,11 +209,11 @@ export function RuleFormModal({ rule, onClose, onSaved }: Props) {
           <label className="flex items-center gap-3 cursor-pointer select-none">
             <div
               onClick={() => set('enabled', !form.enabled)}
-              className={`w-10 h-5 rounded-full transition-colors ${form.enabled ? 'bg-violet-600' : 'bg-zinc-700'}`}
+              className={`w-10 h-5 rounded-full transition-colors ${form.enabled ? 'bg-violet-600' : 'bg-sky-950/30'}`}
             >
               <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${form.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
             </div>
-            <span className="text-sm text-zinc-300">Kural aktif</span>
+            <span className="text-sm text-slate-300">Kural aktif</span>
           </label>
 
           {error && (
@@ -223,11 +223,11 @@ export function RuleFormModal({ rule, onClose, onSaved }: Props) {
           )}
 
           {/* Footer */}
-          <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+          <div className="flex justify-end gap-2 pt-2 border-t border-sky-900/20">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 rounded text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700 transition-colors"
+              className="px-4 py-2 rounded text-sm bg-sky-950/20 border border-sky-900/20 text-slate-300 hover:bg-sky-950/30 transition-colors"
             >
               İptal
             </button>

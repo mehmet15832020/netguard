@@ -104,21 +104,21 @@ function Ja4Modal({ fp, onClose }: { fp: TlsFingerprintItem; onClose: () => void
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
-      <div className="bg-zinc-900 border border-zinc-700 rounded-xl w-full max-w-lg shadow-2xl">
+      <div className="bg-[#0a1120] border border-sky-900/30 rounded-xl w-full max-w-lg shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-sky-900/20">
           <div className="flex items-center gap-2">
-            <Fingerprint size={16} className="text-indigo-400" />
-            <h2 className="text-sm font-semibold text-zinc-100">JA4 Fingerprint Detayı</h2>
+            <Fingerprint size={16} className="text-sky-400" />
+            <h2 className="text-sm font-semibold text-slate-100">JA4 Fingerprint Detayı</h2>
           </div>
-          <button onClick={onClose} className="text-zinc-500 hover:text-zinc-200"><X size={16} /></button>
+          <button onClick={onClose} className="text-slate-500 hover:text-slate-200"><X size={16} /></button>
         </div>
 
         <div className="p-5 space-y-4">
           {/* Ham Hash */}
-          <div className="bg-zinc-800 rounded-lg px-4 py-3 flex items-start justify-between gap-3">
-            <code className="text-xs text-indigo-300 break-all font-mono">{fp.fingerprint}</code>
-            <button onClick={copyHash} className="shrink-0 text-zinc-500 hover:text-zinc-200 mt-0.5">
+          <div className="bg-sky-950/20 rounded-lg px-4 py-3 flex items-start justify-between gap-3">
+            <code className="text-xs text-sky-300 break-all font-mono">{fp.fingerprint}</code>
+            <button onClick={copyHash} className="shrink-0 text-slate-500 hover:text-slate-200 mt-0.5">
               {copied ? <CheckCheck size={14} className="text-emerald-400" /> : <Copy size={14} />}
             </button>
           </div>
@@ -133,7 +133,7 @@ function Ja4Modal({ fp, onClose }: { fp: TlsFingerprintItem; onClose: () => void
                 ZARARLI
               </span>
             )}
-            <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium border border-zinc-700 bg-zinc-800', riskColors[parsed.risk])}>
+            <span className={cn('px-2.5 py-1 rounded-full text-xs font-medium border border-sky-900/20 bg-sky-950/20', riskColors[parsed.risk])}>
               Risk: {parsed.risk.toUpperCase()}
             </span>
           </div>
@@ -147,9 +147,9 @@ function Ja4Modal({ fp, onClose }: { fp: TlsFingerprintItem; onClose: () => void
               { label: 'ALPN', value: parsed.alpn_first || '—' },
               { label: 'Bağlantı Sayısı', value: fp.count.toLocaleString('tr-TR') },
             ].map(({ label, value }) => (
-              <div key={label} className="bg-zinc-800/60 rounded-lg p-3">
-                <p className="text-xs text-zinc-500 mb-1">{label}</p>
-                <p className="text-sm text-zinc-200 font-mono">{value}</p>
+              <div key={label} className="bg-sky-950/20 rounded-lg p-3">
+                <p className="text-xs text-slate-500 mb-1">{label}</p>
+                <p className="text-sm text-slate-200 font-mono">{value}</p>
               </div>
             ))}
           </div>
@@ -170,18 +170,18 @@ function Ja4Modal({ fp, onClose }: { fp: TlsFingerprintItem; onClose: () => void
           <div className="flex gap-2 flex-wrap">
             <a href={`https://ja4db.com/api/read?ja4=${encodeURIComponent(fp.fingerprint)}`}
               target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700">
+              className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-sky-950/20 hover:bg-sky-950/30 text-slate-300 border border-sky-900/20">
               <ExternalLink size={11} /> JA4+ DB
             </a>
             <a href={`https://www.shodan.io/search?query=ja4%3A${encodeURIComponent(fp.fingerprint)}`}
               target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border border-zinc-700">
+              className="flex items-center gap-1 px-3 py-1.5 rounded text-xs bg-sky-950/20 hover:bg-sky-950/30 text-slate-300 border border-sky-900/20">
               <ExternalLink size={11} /> Shodan
             </a>
           </div>
 
           {/* Kaynak notu */}
-          <p className="text-xs text-zinc-600">
+          <p className="text-xs text-slate-600">
             Kaynak: FoxIO JA4+ Spec · NIST SP 800-52r2 TLS versiyon rehberi · MITRE ATT&CK T1071
           </p>
         </div>
@@ -206,7 +206,7 @@ const MATRIX_STYLES: Record<string, string> = {
   safe:   'bg-emerald-900/40 text-emerald-400 border-emerald-900',
   warn:   'bg-yellow-900/40 text-yellow-400 border-yellow-900',
   danger: 'bg-red-900/40 text-red-400 border-red-900',
-  none:   'bg-zinc-800/30 text-zinc-600 border-zinc-800',
+  none:   'bg-sky-950/10 text-slate-600 border-sky-900/15',
 }
 const MATRIX_LABELS: Record<string, string> = { safe: '✓ Güvenli', warn: '⚠ Dikkat', danger: '✕ Risk', none: '—' }
 
@@ -223,20 +223,20 @@ function CipherRiskMatrix({ versions }: { versions: TlsVersionItem[] }) {
       <table className="w-full text-xs">
         <thead>
           <tr>
-            <th className="text-left px-3 py-2 text-zinc-500 font-medium w-24">Versiyon</th>
+            <th className="text-left px-3 py-2 text-slate-500 font-medium w-24">Versiyon</th>
             {CIPHER_CLASSES.map(c => (
-              <th key={c} className="text-center px-3 py-2 text-zinc-500 font-medium">{c}</th>
+              <th key={c} className="text-center px-3 py-2 text-slate-500 font-medium">{c}</th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-800/50">
+        <tbody className="divide-y divide-sky-900/10">
           {activeVersions.map(ver => {
             const item = versions.find(v => v.version === ver)
             return (
               <tr key={ver}>
                 <td className="px-3 py-2">
-                  <div className="font-mono text-zinc-300">{ver}</div>
-                  {item && <div className="text-zinc-600">{item.count.toLocaleString()} bağ.</div>}
+                  <div className="font-mono text-slate-300">{ver}</div>
+                  {item && <div className="text-slate-600">{item.count.toLocaleString()} bağ.</div>}
                 </td>
                 {CIPHER_CLASSES.map(cls => {
                   const state = MATRIX_DATA[ver]?.[cls] ?? 'none'
@@ -264,7 +264,7 @@ function tlsVersionColor(version: string): { bar: string; warning: boolean } {
   if (v.includes('1.0') || v.includes('1.1')) return { bar: 'bg-red-500',    warning: true  }
   if (v.includes('1.2'))                       return { bar: 'bg-amber-400',  warning: false }
   if (v.includes('1.3'))                       return { bar: 'bg-emerald-500', warning: false }
-  return { bar: 'bg-zinc-500', warning: false }
+  return { bar: 'bg-slate-500', warning: false }
 }
 
 function TlsVersionBar({ item, total }: { item: TlsVersionItem; total: number }) {
@@ -274,15 +274,15 @@ function TlsVersionBar({ item, total }: { item: TlsVersionItem; total: number })
     <div className="flex items-center gap-3">
       <div className="w-28 shrink-0 flex items-center gap-1.5">
         {warning && <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />}
-        <span className={cn('text-xs font-mono', warning ? 'text-red-300' : 'text-zinc-300')}>
+        <span className={cn('text-xs font-mono', warning ? 'text-red-300' : 'text-slate-300')}>
           {item.version}
         </span>
       </div>
-      <div className="flex-1 bg-zinc-700 rounded-full h-2">
+      <div className="flex-1 bg-sky-950/30 rounded-full h-2">
         <div className={cn('h-2 rounded-full transition-all', bar)} style={{ width: `${pct}%` }} />
       </div>
       <span className="w-14 text-right text-xs text-zinc-400 shrink-0">
-        {item.count.toLocaleString('tr-TR')} <span className="text-zinc-600">({pct}%)</span>
+        {item.count.toLocaleString('tr-TR')} <span className="text-slate-600">({pct}%)</span>
       </span>
     </div>
   )
@@ -310,22 +310,22 @@ export default function TlsFingerprintsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Fingerprint className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">TLS / JA4 Fingerprint</h1>
-          {isFetching && <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />}
+          <Fingerprint className="w-5 h-5 text-sky-400" />
+          <h1 className="text-lg font-semibold text-slate-100">TLS / JA4 Fingerprint</h1>
+          {isFetching && <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />}
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md overflow-hidden border border-zinc-700">
+          <div className="flex gap-1">
             {HOURS_OPTIONS.map(opt => (
               <button key={opt.value} onClick={() => setHours(opt.value)}
-                className={cn('px-3 py-1 text-xs', hours === opt.value
-                  ? 'bg-indigo-600 text-white'
-                  : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700')}>
+                className={cn('px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors', hours === opt.value
+                  ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                  : 'bg-sky-950/20 border-sky-900/20 text-slate-400 hover:bg-sky-950/40')}>
                 {opt.label}
               </button>
             ))}
           </div>
-          <button onClick={() => refetch()} className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800">
+          <button onClick={() => refetch()} className="p-1.5 rounded-lg border border-sky-900/20 text-slate-400 hover:text-slate-100 hover:bg-sky-950/30">
             <RefreshCw className="w-4 h-4" />
           </button>
         </div>
@@ -358,38 +358,38 @@ export default function TlsFingerprintsPage() {
       <div className={isLoading ? 'hidden' : 'grid grid-cols-2 md:grid-cols-4 gap-4'}>
         {data ? (
           <>
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-indigo-500/15 text-indigo-400"><Shield className="w-5 h-5" /></div>
+            <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-sky-500/15 text-sky-400"><Shield className="w-5 h-5" /></div>
               <div>
-                <p className="text-xs text-zinc-500">Toplam Bağlantı</p>
-                <p className="text-2xl font-bold text-zinc-100">{data.total_connections.toLocaleString('tr-TR')}</p>
+                <p className="text-xs text-slate-500">Toplam Bağlantı</p>
+                <p className="text-2xl font-bold text-slate-100">{data.total_connections.toLocaleString('tr-TR')}</p>
               </div>
             </div>
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-zinc-700/40 text-zinc-400"><Fingerprint className="w-5 h-5" /></div>
+            <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-sky-950/20 text-slate-400"><Fingerprint className="w-5 h-5" /></div>
               <div>
-                <p className="text-xs text-zinc-500">Benzersiz Fingerprint</p>
-                <p className="text-2xl font-bold text-zinc-100">{data.unique_count.toLocaleString('tr-TR')}</p>
+                <p className="text-xs text-slate-500">Benzersiz Fingerprint</p>
+                <p className="text-2xl font-bold text-slate-100">{data.unique_count.toLocaleString('tr-TR')}</p>
               </div>
             </div>
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-3">
-              <div className={cn('p-2 rounded-lg', data.suspicious_count > 0 ? 'bg-red-500/15 text-red-400' : 'bg-zinc-700/40 text-zinc-400')}>
+            <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
+              <div className={cn('p-2 rounded-lg', data.suspicious_count > 0 ? 'bg-red-500/15 text-red-400' : 'bg-sky-950/20 text-slate-400')}>
                 <AlertTriangle className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs text-zinc-500">Şüpheli / Zararlı</p>
-                <p className={cn('text-2xl font-bold', data.suspicious_count > 0 ? 'text-red-400' : 'text-zinc-100')}>
+                <p className="text-xs text-slate-500">Şüpheli / Zararlı</p>
+                <p className={cn('text-2xl font-bold', data.suspicious_count > 0 ? 'text-red-400' : 'text-slate-100')}>
                   {data.suspicious_count.toLocaleString('tr-TR')}
                 </p>
               </div>
             </div>
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4 flex items-center gap-3">
-              <div className={cn('p-2 rounded-lg', data.self_signed_count > 0 ? 'bg-amber-500/15 text-amber-400' : 'bg-zinc-700/40 text-zinc-400')}>
+            <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4 flex items-center gap-3">
+              <div className={cn('p-2 rounded-lg', data.self_signed_count > 0 ? 'bg-amber-500/15 text-amber-400' : 'bg-sky-950/20 text-slate-400')}>
                 <ShieldAlert className="w-5 h-5" />
               </div>
               <div>
-                <p className="text-xs text-zinc-500">Self-Signed Sertifika</p>
-                <p className={cn('text-2xl font-bold', data.self_signed_count > 0 ? 'text-amber-400' : 'text-zinc-100')}>
+                <p className="text-xs text-slate-500">Self-Signed Sertifika</p>
+                <p className={cn('text-2xl font-bold', data.self_signed_count > 0 ? 'text-amber-400' : 'text-slate-100')}>
                   {data.self_signed_count.toLocaleString('tr-TR')}
                 </p>
               </div>
@@ -401,13 +401,13 @@ export default function TlsFingerprintsPage() {
       {/* TLS Versiyon + Cipher Risk Matrix */}
       {data && (
         <div className="grid md:grid-cols-2 gap-4">
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-            <div className="px-4 py-3 border-b border-zinc-800">
-              <h2 className="text-sm font-semibold text-zinc-200">TLS Versiyon Dağılımı</h2>
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+            <div className="px-4 py-3 border-b border-sky-900/20">
+              <h2 className="text-sm font-semibold text-slate-200">TLS Versiyon Dağılımı</h2>
             </div>
             <div className="p-4 space-y-3">
               {data.tls_version_dist.length === 0 ? (
-                <p className="text-sm text-zinc-600 py-4 text-center">Versiyon verisi mevcut değil</p>
+                <p className="text-sm text-slate-600 py-4 text-center">Versiyon verisi mevcut değil</p>
               ) : (
                 data.tls_version_dist.map(item => (
                   <TlsVersionBar key={item.version} item={item} total={versionTotal} />
@@ -416,14 +416,14 @@ export default function TlsFingerprintsPage() {
             </div>
           </div>
 
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-            <div className="px-4 py-3 border-b border-zinc-800">
-              <h2 className="text-sm font-semibold text-zinc-200">Cipher Suite Risk Matrisi</h2>
-              <p className="text-xs text-zinc-600 mt-0.5">TLS versiyon × cipher gücü (NIST SP 800-52r2)</p>
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+            <div className="px-4 py-3 border-b border-sky-900/20">
+              <h2 className="text-sm font-semibold text-slate-200">Cipher Suite Risk Matrisi</h2>
+              <p className="text-xs text-slate-600 mt-0.5">TLS versiyon × cipher gücü (NIST SP 800-52r2)</p>
             </div>
             <div className="p-4">
               {data.tls_version_dist.length === 0 ? (
-                <p className="text-sm text-zinc-600 py-4 text-center">Veri yok</p>
+                <p className="text-sm text-slate-600 py-4 text-center">Veri yok</p>
               ) : (
                 <CipherRiskMatrix versions={data.tls_version_dist} />
               )}
@@ -434,25 +434,25 @@ export default function TlsFingerprintsPage() {
 
       {/* SNI Tablosu */}
       {data && data.top_sni.length > 0 && (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-          <div className="px-4 py-3 border-b border-zinc-800">
-            <h2 className="text-sm font-semibold text-zinc-200">Bağlanılan Top Domainler (SNI)</h2>
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+          <div className="px-4 py-3 border-b border-sky-900/20">
+            <h2 className="text-sm font-semibold text-slate-200">Bağlanılan Top Domainler (SNI)</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-xs text-zinc-500">
+                <tr className="border-b border-sky-900/20 text-xs text-slate-500">
                   <th className="text-left px-4 py-2.5">#</th>
                   <th className="text-left px-4 py-2.5">Domain</th>
                   <th className="text-right px-4 py-2.5">Bağlantı</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/50">
+              <tbody className="divide-y divide-sky-900/10">
                 {data.top_sni.map((item, i) => (
-                  <tr key={item.sni} className="hover:bg-zinc-800/30">
-                    <td className="px-4 py-2.5 text-zinc-600 text-xs">{i + 1}</td>
-                    <td className="px-4 py-2.5 font-mono text-xs text-zinc-300 max-w-xs truncate" title={item.sni}>{item.sni}</td>
-                    <td className="px-4 py-2.5 text-right text-zinc-300 font-semibold text-xs">{item.count.toLocaleString('tr-TR')}</td>
+                  <tr key={item.sni} className="hover:bg-sky-950/20">
+                    <td className="px-4 py-2.5 text-slate-600 text-xs">{i + 1}</td>
+                    <td className="px-4 py-2.5 font-mono text-xs text-slate-300 max-w-xs truncate" title={item.sni}>{item.sni}</td>
+                    <td className="px-4 py-2.5 text-right text-slate-300 font-semibold text-xs">{item.count.toLocaleString('tr-TR')}</td>
                   </tr>
                 ))}
               </tbody>
@@ -462,16 +462,16 @@ export default function TlsFingerprintsPage() {
       )}
 
       {/* Fingerprint Tablosu */}
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-        <div className="px-4 py-3 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-200">Top Fingerprint'ler</h2>
-          <p className="text-xs text-zinc-600 mt-0.5">Satıra tıkla → JA4 detay modalı</p>
+      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+        <div className="px-4 py-3 border-b border-sky-900/20">
+          <h2 className="text-sm font-semibold text-slate-200">Top Fingerprint'ler</h2>
+          <p className="text-xs text-slate-600 mt-0.5">Satıra tıkla → JA4 detay modalı</p>
         </div>
 
         {isLoading ? (
           <div className="p-4"><SkeletonTable rows={4} height={36} /></div>
         ) : !data || data.top_fingerprints.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-16 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-16 text-slate-600">
             <Fingerprint className="w-8 h-8 mb-2 opacity-30" />
             <p className="text-sm">Bu zaman aralığında TLS bağlantısı tespit edilmedi</p>
           </div>
@@ -479,7 +479,7 @@ export default function TlsFingerprintsPage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-xs text-zinc-500">
+                <tr className="border-b border-sky-900/20 text-xs text-slate-500">
                   <th className="text-left px-4 py-2.5">#</th>
                   <th className="text-left px-4 py-2.5">Parmak İzi (JA4)</th>
                   <th className="text-left px-4 py-2.5">TLS Ver.</th>
@@ -488,17 +488,17 @@ export default function TlsFingerprintsPage() {
                   <th className="px-4 py-2.5"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800/50">
+              <tbody className="divide-y divide-sky-900/10">
                 {data.top_fingerprints.map((fp, idx) => {
                   const parsed = parseJa4(fp.fingerprint)
                   return (
                     <tr key={fp.fingerprint}
                       onClick={() => setSelectedFp(fp)}
                       className={cn('cursor-pointer transition-colors',
-                        fp.is_malicious ? 'bg-red-950/20 hover:bg-red-950/30' : 'hover:bg-zinc-800/30')}>
-                      <td className="px-4 py-2.5 text-zinc-600 text-xs">{idx + 1}</td>
+                        fp.is_malicious ? 'bg-red-950/20 hover:bg-red-950/30' : 'hover:bg-sky-950/20')}>
+                      <td className="px-4 py-2.5 text-slate-600 text-xs">{idx + 1}</td>
                       <td className="px-4 py-2.5">
-                        <span className="font-mono text-xs text-indigo-300" title={fp.fingerprint}>
+                        <span className="font-mono text-xs text-sky-300" title={fp.fingerprint}>
                           {fp.fingerprint.length > 36 ? `${fp.fingerprint.slice(0, 36)}…` : fp.fingerprint}
                         </span>
                       </td>
@@ -509,7 +509,7 @@ export default function TlsFingerprintsPage() {
                           {parsed.tls_version}
                         </span>
                       </td>
-                      <td className="px-4 py-2.5 text-right text-zinc-300 font-semibold text-sm">
+                      <td className="px-4 py-2.5 text-right text-slate-300 font-semibold text-sm">
                         {fp.count.toLocaleString('tr-TR')}
                       </td>
                       <td className="px-4 py-2.5">
@@ -519,7 +519,7 @@ export default function TlsFingerprintsPage() {
                           <span className="px-2 py-0.5 rounded text-xs font-semibold bg-emerald-900/40 text-emerald-400 border border-emerald-800">Temiz</span>
                         )}
                       </td>
-                      <td className="px-4 py-2.5 text-zinc-600 text-xs">Detay →</td>
+                      <td className="px-4 py-2.5 text-slate-600 text-xs">Detay →</td>
                     </tr>
                   )
                 })}

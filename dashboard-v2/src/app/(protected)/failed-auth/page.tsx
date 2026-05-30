@@ -59,7 +59,7 @@ export default function FailedAuthPage() {
       return { label: 'Credential Stuffing', desc: 'Dış kaynaklı, çok IP — T1110.004', color: 'text-red-400', border: 'border-red-800/60', bg: 'bg-red-950/20' }
     if (avgHr >= 10)
       return { label: 'Brute Force', desc: 'Yüksek hız, tek kaynak — T1110.001', color: 'text-red-400', border: 'border-red-800/60', bg: 'bg-red-950/20' }
-    return { label: 'Düşük Yoğunluk', desc: 'Normal seviye — izle', color: 'text-zinc-400', border: 'border-zinc-700', bg: 'bg-zinc-900' }
+    return { label: 'Düşük Yoğunluk', desc: 'Normal seviye — izle', color: 'text-slate-400', border: 'border-sky-900/20', bg: 'bg-[#0a1120]' }
   }, [data, hours])
 
   // NIST eşik durumu
@@ -147,21 +147,21 @@ export default function FailedAuthPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Lock className="w-5 h-5 text-indigo-400" />
-          <h1 className="text-lg font-semibold text-zinc-100">Başarısız Kimlik Doğrulama</h1>
-          {isFetching && <RefreshCw className="w-4 h-4 text-zinc-500 animate-spin" />}
+          <Lock className="w-5 h-5 text-sky-400" />
+          <h1 className="text-lg font-semibold text-slate-100">Başarısız Kimlik Doğrulama</h1>
+          {isFetching && <RefreshCw className="w-4 h-4 text-slate-500 animate-spin" />}
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-md overflow-hidden border border-zinc-700">
+          <div className="flex gap-1">
             {HOURS_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 onClick={() => setHours(opt.value)}
                 className={cn(
-                  'px-3 py-1 text-xs',
+                  'px-2 py-0.5 text-xs rounded-lg border',
                   hours === opt.value
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700',
+                    ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                    : 'bg-sky-950/20 border-sky-900/20 text-slate-500 hover:text-slate-300',
                 )}
               >
                 {opt.label}
@@ -170,7 +170,7 @@ export default function FailedAuthPage() {
           </div>
           <button
             onClick={() => refetch()}
-            className="p-1.5 rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-100 hover:bg-sky-950/30 border border-sky-900/20 transition-colors"
             title="Yenile"
           >
             <RefreshCw className="w-4 h-4" />
@@ -194,7 +194,7 @@ export default function FailedAuthPage() {
           <ShieldAlert size={16} className={cn('flex-shrink-0', attackType.color)} />
           <div>
             <span className={cn('text-sm font-semibold', attackType.color)}>{attackType.label}</span>
-            <span className="text-xs text-zinc-500 ml-2">{attackType.desc}</span>
+            <span className="text-xs text-slate-500 ml-2">{attackType.desc}</span>
           </div>
           {nistStatus && (
             <span className={cn('ml-auto text-xs font-mono', nistStatus.color)}>{nistStatus.label}</span>
@@ -208,56 +208,56 @@ export default function FailedAuthPage() {
       ) : data && kpis ? (
         <div className="grid grid-cols-3 lg:grid-cols-5 gap-4">
           {/* Toplam */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-xs text-zinc-500 uppercase tracking-wide">Toplam Deneme</span>
+              <span className="text-xs text-slate-500 uppercase tracking-wide">Toplam Deneme</span>
               {kpis.trend === 'up'     && <TrendingUp  size={14} className="text-red-400" />}
               {kpis.trend === 'down'   && <TrendingDown size={14} className="text-emerald-400" />}
-              {kpis.trend === 'stable' && <Minus        size={14} className="text-zinc-500" />}
+              {kpis.trend === 'stable' && <Minus        size={14} className="text-slate-500" />}
             </div>
             <p className="text-2xl font-bold text-red-400">{data.total.toLocaleString('tr-TR')}</p>
-            <p className="text-[11px] text-zinc-600 mt-0.5">Son {hours} saat</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">Son {hours} saat</p>
           </div>
           {/* Benzersiz kaynak */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
             <div className="flex items-center gap-1.5 mb-1">
-              <Users size={11} className="text-zinc-500" />
-              <span className="text-xs text-zinc-500 uppercase tracking-wide">Benzersiz Kaynak</span>
+              <Users size={11} className="text-slate-500" />
+              <span className="text-xs text-slate-500 uppercase tracking-wide">Benzersiz Kaynak</span>
             </div>
-            <p className={cn('text-2xl font-bold', (data.unique_source_count ?? 0) >= 5 ? 'text-orange-400' : 'text-zinc-100')}>
+            <p className={cn('text-2xl font-bold', (data.unique_source_count ?? 0) >= 5 ? 'text-orange-400' : 'text-slate-100')}>
               {(data.unique_source_count ?? 0).toLocaleString('tr-TR')}
             </p>
-            <p className="text-[11px] text-zinc-600 mt-0.5">farklı kaynak IP</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">farklı kaynak IP</p>
           </div>
           {/* Dış IP */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
             <div className="flex items-center gap-1.5 mb-1">
-              <Globe size={11} className="text-zinc-500" />
-              <span className="text-xs text-zinc-500 uppercase tracking-wide">Dış Kaynak</span>
+              <Globe size={11} className="text-slate-500" />
+              <span className="text-xs text-slate-500 uppercase tracking-wide">Dış Kaynak</span>
             </div>
-            <p className={cn('text-2xl font-bold', (data.external_source_count ?? 0) > 0 ? 'text-red-400' : 'text-zinc-100')}>
+            <p className={cn('text-2xl font-bold', (data.external_source_count ?? 0) > 0 ? 'text-red-400' : 'text-slate-100')}>
               {(data.external_source_count ?? 0).toLocaleString('tr-TR')}
             </p>
-            <p className="text-[11px] text-zinc-600 mt-0.5">RFC1918 dışı IP</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">RFC1918 dışı IP</p>
           </div>
           {/* Saatlik ort */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
-            <span className="text-xs text-zinc-500 uppercase tracking-wide block mb-1">Saatlik Ort.</span>
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
+            <span className="text-xs text-slate-500 uppercase tracking-wide block mb-1">Saatlik Ort.</span>
             <p className={cn('text-2xl font-bold', kpis.avgPerHour >= 50 ? 'text-red-400' : kpis.avgPerHour >= 10 ? 'text-yellow-400' : 'text-orange-400')}>
               {kpis.avgPerHour.toFixed(1)}
             </p>
-            <p className="text-[11px] text-zinc-600 mt-0.5">deneme / saat</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">deneme / saat</p>
           </div>
           {/* Zirve saat */}
-          <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-4">
+          <div className="bg-[#0a1120] rounded-xl border border-sky-900/20 p-4">
             <div className="flex items-center gap-1.5 mb-1">
-              <Clock size={11} className="text-zinc-500" />
-              <span className="text-xs text-zinc-500 uppercase tracking-wide">Zirve Saat</span>
+              <Clock size={11} className="text-slate-500" />
+              <span className="text-xs text-slate-500 uppercase tracking-wide">Zirve Saat</span>
             </div>
-            <p className="text-2xl font-bold text-zinc-100">
+            <p className="text-2xl font-bold text-slate-100">
               {String(kpis.peakHour).padStart(2, '0')}:00
             </p>
-            <p className="text-[11px] text-zinc-600 mt-0.5">
+            <p className="text-[11px] text-slate-600 mt-0.5">
               {kpis.peakHour >= 22 || kpis.peakHour <= 5 ? 'Gece saati saldırısı' : 'Mesai saati'}
             </p>
           </div>
@@ -265,9 +265,9 @@ export default function FailedAuthPage() {
       ) : null}
 
       {/* Trend chart */}
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-        <div className="px-4 py-3 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-200">Saatlik Trend</h2>
+      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+        <div className="px-4 py-3 border-b border-sky-900/15">
+          <h2 className="text-sm font-semibold text-slate-200">Saatlik Trend</h2>
         </div>
         {isLoading ? (
           <SkeletonChart height={208} className="m-4" />
@@ -276,7 +276,7 @@ export default function FailedAuthPage() {
             <ReactECharts option={chartOption} style={{ height: 200 }} notMerge />
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-12 text-slate-600">
             <Lock className="w-7 h-7 mb-2 opacity-30" />
             <p className="text-sm">Veri yok</p>
           </div>
@@ -285,10 +285,10 @@ export default function FailedAuthPage() {
 
       {/* Günlük saat dağılımı */}
       {hourlyDistOption && (
-        <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-          <div className="px-4 py-3 border-b border-zinc-800 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-zinc-200">Saat Dağılımı (Gün Boyu)</h2>
-            <span className="text-[11px] text-zinc-500">Kırmızı: zirve · Turuncu: gece 22-05</span>
+        <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+          <div className="px-4 py-3 border-b border-sky-900/15 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-200">Saat Dağılımı (Gün Boyu)</h2>
+            <span className="text-[11px] text-slate-500">Kırmızı: zirve · Turuncu: gece 22-05</span>
           </div>
           <div className="p-4">
             <ReactECharts option={hourlyDistOption} style={{ height: 140 }} notMerge />
@@ -297,16 +297,16 @@ export default function FailedAuthPage() {
       )}
 
       {/* Top kaynak IP'ler */}
-      <div className="bg-zinc-900 rounded-xl border border-zinc-800">
-        <div className="px-4 py-3 border-b border-zinc-800">
-          <h2 className="text-sm font-semibold text-zinc-200">Top Kaynak IP'ler</h2>
+      <div className="bg-[#0a1120] rounded-xl border border-sky-900/20">
+        <div className="px-4 py-3 border-b border-sky-900/15">
+          <h2 className="text-sm font-semibold text-slate-200">Top Kaynak IP'ler</h2>
         </div>
         {isLoading ? (
           <div className="p-4">
             <SkeletonTable rows={3} height={36} />
           </div>
         ) : !data || data.top_sources.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-12 text-zinc-600">
+          <div className="flex flex-col items-center justify-center py-12 text-slate-600">
             <p className="text-sm">Veri yok</p>
           </div>
         ) : (
@@ -315,9 +315,9 @@ export default function FailedAuthPage() {
               const max = Math.max(1, ...data.top_sources.map(s => s.count))
               return data.top_sources.map((src, idx) => (
                 <div key={src.ip} className="flex items-center gap-3">
-                  <span className="text-xs text-zinc-600 w-4 flex-shrink-0">{idx + 1}</span>
-                  <span className="font-mono text-xs text-zinc-300 w-32 flex-shrink-0 truncate" title={src.ip}>{src.ip}</span>
-                  <div className="flex-1 h-2 bg-zinc-800 rounded-full overflow-hidden">
+                  <span className="text-xs text-slate-600 w-4 flex-shrink-0">{idx + 1}</span>
+                  <span className="font-mono text-xs text-slate-300 w-32 flex-shrink-0 truncate" title={src.ip}>{src.ip}</span>
+                  <div className="flex-1 h-2 bg-sky-950/30 rounded-full overflow-hidden">
                     <div
                       className={cn('h-full rounded-full', idx === 0 ? 'bg-red-500' : 'bg-orange-500/70')}
                       style={{ width: `${(src.count / max) * 100}%` }}
