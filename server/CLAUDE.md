@@ -21,9 +21,6 @@ correlator.py + sigma_parser.py (detect)
 attack_chain.py → incident (respond)
 ```
 
-## Bilinen Sorunlar (Dokunma)
-- `log_normalizer.py:166` → Suricata parser `dest_ip` kullanıyor, `destination_ip` olmalı
-
 ## Test Fixture
 ```python
 # conftest.py'dan

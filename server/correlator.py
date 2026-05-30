@@ -46,6 +46,14 @@ def _ti_lookup_bg(ip: str) -> None:
         logger.debug(f"TI arka plan sorgusu başarısız [{ip}]: {exc}")
 
 
+def _notify_bg(event) -> None:
+    try:
+        from server.notifier import notifier
+        notifier.notify_correlated(event)
+    except Exception as exc:
+        logger.warning("Notifier hatası: %s", exc)
+
+
 RULES_PATH = os.getenv(
     "NETGUARD_CORRELATION_RULES",
     str(Path(__file__).parent.parent / "config" / "correlation_rules.json"),
@@ -251,13 +259,9 @@ class Correlator:
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
                 self._check_attack_chain(event)
-                try:
-                    from server.notifier import notifier
-                    notifier.notify_correlated(event)
-                except Exception as exc:
-                    logger.warning("Notifier hatası: %s", exc)
+                import threading
+                threading.Thread(target=_notify_bg, args=(event,), daemon=True).start()
                 if group_val:
-                    import threading
                     threading.Thread(
                         target=_ti_lookup_bg, args=(group_val,), daemon=True
                     ).start()
@@ -342,13 +346,9 @@ class Correlator:
                 self._create_alert(event)
                 self._create_incident_from_corr(event)
                 self._check_attack_chain(event)
-                try:
-                    from server.notifier import notifier
-                    notifier.notify_correlated(event)
-                except Exception as exc:
-                    logger.warning(f"Notifier hatası: {exc}")
+                import threading
+                threading.Thread(target=_notify_bg, args=(event,), daemon=True).start()
                 if event.group_value:
-                    import threading
                     threading.Thread(
                         target=_ti_lookup_bg, args=(event.group_value,), daemon=True
                     ).start()
