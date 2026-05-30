@@ -30,7 +30,7 @@ export function StatCard({ label, value, sub, icon: Icon, iconCls, valueCls, acc
       {sub && <p className="text-[10px] text-slate-600 mt-1.5 leading-tight">{sub}</p>}
     </div>
   )
-  return href ? <Link href={href} className="block">{inner}</Link> : inner
+  return href ? <Link href={href} className="block" aria-label={label}>{inner}</Link> : inner
 }
 
 interface KpiCardProps {
@@ -56,5 +56,5 @@ export function KpiCard({ label, value, sub, icon: Icon, iconCls, valueCls, href
       </div>
     </div>
   )
-  return href ? <Link href={href} className="block">{inner}</Link> : inner
+  return href ? <Link href={href} className="block" aria-label={label}>{inner}</Link> : inner
 }
