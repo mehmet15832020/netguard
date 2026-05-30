@@ -1,6 +1,6 @@
 // NetGuard — WebSocket istemcisi
 // Singleton pattern: uygulama boyunca tek bağlantı.
-// Yeniden bağlanma (reconnect) otomatik.
+// Auth: bağlantı sonrası JSON mesajı — token URL'de asla gönderilmez (RFC 6750 §5.3)
 
 import { auth } from '@/lib/api'
 
@@ -19,8 +19,9 @@ class NetGuardWebSocket {
   private ws: WebSocket | null = null
   private handlers: Set<MessageHandler> = new Set()
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
-  private reconnectDelay = 2000   // ms
-  private maxDelay = 30000        // 30s üst sınır
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  private reconnectDelay = 2000
+  private maxDelay = 30000
   private shouldConnect = false
 
   connect(): void {
@@ -30,15 +31,11 @@ class NetGuardWebSocket {
 
   private _connect(): void {
     if (typeof window === 'undefined') return
-    if (this.ws?.readyState === WebSocket.OPEN) return
-
-    const token = auth.getToken()
-    const url = token
-      ? `${WS_URL}/ws?token=${token}`
-      : `${WS_URL}/ws`
+    const state = this.ws?.readyState
+    if (state === WebSocket.OPEN || state === WebSocket.CONNECTING) return
 
     try {
-      this.ws = new WebSocket(url)
+      this.ws = new WebSocket(`${WS_URL}/ws`)
     } catch {
       this._scheduleReconnect()
       return
@@ -47,19 +44,37 @@ class NetGuardWebSocket {
     this.ws.onopen = () => {
       console.log('[NetGuard WS] Bağlandı')
       this.reconnectDelay = 2000
+      const token = auth.getToken()
+      if (token) {
+        this.ws!.send(JSON.stringify({ type: 'auth', token }))
+      }
+      this._startHeartbeat()
     }
 
     this.ws.onmessage = (event) => {
       try {
         const msg: WSMessage = JSON.parse(event.data)
+        if ((msg.type as string) === 'pong') return
         this.handlers.forEach((h) => h(msg))
       } catch {
         // parse hatası — yoksay
       }
     }
 
-    this.ws.onclose = () => {
-      console.log('[NetGuard WS] Bağlantı kesildi')
+    this.ws.onclose = (event) => {
+      console.log('[NetGuard WS] Bağlantı kesildi', event.code)
+      this._stopHeartbeat()
+      if (event.code === 4401) {
+        auth.refreshToken().then((ok) => {
+          if (!ok) {
+            auth.removeToken()
+            window.location.href = '/login'
+            return
+          }
+          if (this.shouldConnect) this._scheduleReconnect()
+        })
+        return
+      }
       if (this.shouldConnect) this._scheduleReconnect()
     }
 
@@ -68,18 +83,37 @@ class NetGuardWebSocket {
     }
   }
 
+  private _startHeartbeat(): void {
+    this._stopHeartbeat()
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        this.ws.send('{"type":"ping"}')
+      }
+    }, 30_000)
+  }
+
+  private _stopHeartbeat(): void {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  }
+
   private _scheduleReconnect(): void {
     if (this.reconnectTimer) return
+    // ±30% jitter — Thundering Herd önlemi
+    const jitter = 1 + (Math.random() * 0.6 - 0.3)
+    const delay = Math.min(this.reconnectDelay * jitter, this.maxDelay)
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null
       this._connect()
-      // Exponential backoff
       this.reconnectDelay = Math.min(this.reconnectDelay * 2, this.maxDelay)
-    }, this.reconnectDelay)
+    }, delay)
   }
 
   disconnect(): void {
     this.shouldConnect = false
+    this._stopHeartbeat()
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer)
       this.reconnectTimer = null

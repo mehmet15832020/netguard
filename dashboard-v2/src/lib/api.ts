@@ -39,6 +39,25 @@ export const auth = {
   },
 
   isLoggedIn: (): boolean => !!auth.getToken(),
+
+  refreshToken: async (): Promise<boolean> => {
+    const refreshToken = auth.getRefreshToken()
+    if (!refreshToken) return false
+    try {
+      const res = await fetch(`${API}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      })
+      if (res.ok) {
+        const data = await res.json()
+        auth.setToken(data.access_token)
+        auth.setRefreshToken(data.refresh_token)
+        return true
+      }
+    } catch { /* network error */ }
+    return false
+  },
 }
 
 // ------------------------------------------------------------------ //

@@ -20,6 +20,9 @@ class WebSocketManager:
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
+        await self.register(ws)
+
+    async def register(self, ws: WebSocket) -> None:
         async with self._lock:
             self._connections.add(ws)
         logger.info(f"WS bağlandı — aktif: {len(self._connections)}")
