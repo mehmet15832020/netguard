@@ -8,6 +8,7 @@ Her parse çağrısı list[NormalizedLog] döner (birden fazla akış olabilir).
 """
 
 import logging
+import os
 import socket
 import struct
 import uuid
@@ -33,9 +34,31 @@ _PROTO_MAP = {
 
 _SUSPICIOUS_PORTS = {22, 23, 3389, 445, 135, 5900, 4444, 1337}
 
+# Protokol tünel setleri — T1572 (Protocol Tunneling): GRE, ESP, IPv6-in-IPv4
+_TUNNELED_PROTOCOLS = {47, 50, 41}
+
+# Büyük akış eşiği — T1048 (Exfil Over Alt Protocol); env ile geçersiz kılınabilir
+_LARGE_FLOW_BYTES: int = int(os.environ.get("NETFLOW_LARGE_FLOW_BYTES", str(50 * 1024 * 1024)))
+
 
 def _ip_from_int(n: int) -> str:
     return socket.inet_ntoa(struct.pack("!I", n))
+
+
+def _event_action_for_flow(
+    proto_num: int,
+    destination_port: int,
+    source_port: int,
+    octets: int,
+) -> str:
+    """Akış özelliklerine göre event_action döner (öncelik sırası korunur)."""
+    if octets > _LARGE_FLOW_BYTES:
+        return "netflow_large_flow"
+    if proto_num in _TUNNELED_PROTOCOLS:
+        return "netflow_tunneled"
+    if destination_port in _SUSPICIOUS_PORTS or source_port in _SUSPICIOUS_PORTS:
+        return "netflow_suspicious_port"
+    return "netflow_flow"
 
 
 def _severity_for_flow(proto: str, destination_port: int, source_port: int) -> str:
@@ -59,6 +82,7 @@ def _make_log(
     proto = _PROTO_MAP.get(proto_num, str(proto_num))
     severity = _severity_for_flow(proto, destination_port, source_port)
     ts = datetime.fromtimestamp(unix_secs, tz=timezone.utc)
+    action = _event_action_for_flow(proto_num, destination_port, source_port, octets)
 
     return NormalizedLog(
         log_id      = str(uuid.uuid4()),
@@ -68,7 +92,7 @@ def _make_log(
         timestamp   = ts,
         severity    = severity,
         event_category    = LogCategory.NETWORK,
-        event_action  = "netflow_flow",
+        event_action  = action,
         source_ip      = source_ip,
         destination_ip      = destination_ip,
         source_port    = source_port,

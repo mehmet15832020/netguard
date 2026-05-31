@@ -131,6 +131,13 @@ STAGE_MAP: dict[str, str] = {
     "suricata_http_anomaly": "recon",     # T1595 — scanner UA = active scanning / recon
     "suricata_tls_anomaly":  "lateral",   # T1071 — C2 over TLS / self-signed / old version
     "suricata_ssh_anomaly":  "weaponize", # T1110 — SSH brute-force tool (erisim denemesi)
+    # NetFlow D1 — büyük akış / şüpheli port / tünel (MITRE T1048 / T1071 / T1572)
+    "netflow_large_flow":    "lateral",   # T1048 — exfil over alt protocol (büyük tek akış)
+    "netflow_suspicious_por":"lateral",   # T1071 — C2/lateral suspicious port akışı
+    "netflow_tunneled":      "lateral",   # T1572 — GRE/ESP/IPv6-in-IPv4 protocol tunneling
+    # NetFlow Sigma korelasyon çıktı slug prefix'leri
+    "netflow_large_flow_exf":"lateral",   # NetFlow Large Flow Exfiltration Burst (T1048)
+    "netflow_tunnel_protoco":"lateral",   # NetFlow Tunnel Protocol Burst (T1572)
     # Windows / Sysmon (U2)
     "windows_explicit_logon":      "weaponize",  # 4648 — pass-the-hash göstergesi
     "windows_user_created":        "execute",    # 4720 — persistence (yeni hesap)
