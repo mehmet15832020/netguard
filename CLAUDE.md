@@ -228,10 +228,10 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 #### Mimari Bütünleşme (3-5 Gün)
 
-- [ ] **A1** — BeaconingDetector `DetectorManager`'a entegre edilmeli
+- [x] **A1** — BeaconingDetector `DetectorManager`'a entegre edilmeli
   - `server/detectors/manager.py` — 5 dedektör var, beaconing yok; `main.py`'de ayrı `_beaconing_loop()` çalışıyor
-  - 3 ayrı detection pipeline var: DetectorManager → Beaconing loop → Agent SecurityEvents; unified olmalı
-  - Fix: `BeaconingDetector` manager'a ekle veya beaconing loop manager'a taşı; ortak FP suppression + tenant izolasyon sağlanır
+  - **Teslim:** `BeaconingDetector` → `detector_manager._beaconing` (singleton); `DetectorManager.run_beaconing()` metodu (normalized_logs + security_events + kill chain `db_save=True`); `_EVENT_TYPE_MAP`'e `c2_beaconing` eklendi; `SecurityEventType.C2_BEACONING` enum eklendi; `_beaconing_loop()` sadeleşti (3 satır); 9 yeni test — toplam test ✓
+  - **Mimari karar (RITA BlackHat 2018 + MITRE T1071):** Beaconing 300s cadence korundu — IAT istatistik analizi için 5 dakikalık örnekleme yeterli; 30s'de çalıştırmak 10× gereksiz DB sorgusu; `run_beaconing()` `run_all()`'dan ayrı çünkü C2 tespiti doğrudan kill chain feed gerektirir (60s correlator gecikmesi kabul edilemez)
 - [ ] **A2** — `log_store.count_by_group()` implement edilmeli
   - `server/log_store.py:134` — `raise NotImplementedError("Faz 3'te implement edilecek")` — Sigma backtest, analitik, retention çağırınca runtime crash
   - Fix: PostgreSQL `GROUP BY` sorgusu implement et

@@ -208,31 +208,10 @@ BEACONING_INTERVAL = int(os.getenv("NETGUARD_BEACON_INTERVAL", "300"))  # saniye
 
 async def _beaconing_loop():
     """Her 5 dakikada bir C2 beaconing tespiti çalıştır (MITRE ATT&CK T1071)."""
-    from server.detectors.beaconing import beaconing_detector
-    from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
-    from server.database import db as _db
-
-    async def _run_once():
-        logs = await asyncio.to_thread(beaconing_detector.detect)
-        for log in logs:
-            _db.save_normalized_log(log)
-            if log.source_ip:
-                try:
-                    trigger = attack_chain_tracker.record(
-                        source_ip=log.source_ip,
-                        event_action=log.event_action,
-                        occurred_at=log.timestamp,
-                    )
-                    if trigger:
-                        chain_trigger_to_correlated_event(trigger)
-                except Exception as exc:
-                    logger.warning("Beaconing kill chain kaydı başarısız: %s", exc)
-        if logs:
-            logger.warning("Beaconing dedektörü: %d C2 beacon tespiti", len(logs))
-
+    from server.detectors.manager import detector_manager
     while True:
         try:
-            await _run_once()
+            await asyncio.to_thread(detector_manager.run_beaconing)
         except Exception as exc:
             logger.error("Beaconing dedektör hatası: %s", exc)
         await asyncio.sleep(BEACONING_INTERVAL)

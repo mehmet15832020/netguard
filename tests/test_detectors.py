@@ -365,6 +365,236 @@ class TestDetectorManager:
         logs = manager.run_all()
         assert isinstance(logs, list)
 
+    def test_detector_names_includes_beaconing(self):
+        """detector_names beaconing'i içermeli."""
+        from server.detectors.manager import DetectorManager
+        manager = DetectorManager()
+        assert "beaconing" in manager.detector_names
+
+    def test_detector_names_includes_all_five_plus_beaconing(self):
+        """6 dedektör adı dönmeli."""
+        from server.detectors.manager import DetectorManager
+        manager = DetectorManager()
+        assert len(manager.detector_names) == 6
+
+    def test_run_beaconing_saves_to_normalized_logs(self, tmp_db, monkeypatch):
+        """run_beaconing() tespiti normalized_logs'a yazar."""
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        from datetime import datetime, timezone
+
+        beacon_log = NormalizedLog(
+            log_id="beacon-1", raw_id="raw-1",
+            source_type=LogSourceType.NETGUARD,
+            observer_hostname="server",
+            timestamp=datetime.now(timezone.utc),
+            severity="high",
+            event_category=LogCategory.NETWORK,
+            event_action="c2_beaconing",
+            source_ip="10.0.0.5",
+            destination_ip="1.2.3.4",
+            destination_port=443,
+            message="C2 Beaconing test",
+        )
+
+        manager = DetectorManager()
+        monkeypatch.setattr(manager._beaconing, "detect", lambda: [beacon_log])
+
+        logs = manager.run_beaconing()
+        assert len(logs) == 1
+
+        with tmp_db._connect() as conn:
+            row = conn.execute(
+                "SELECT event_action, severity FROM normalized_logs WHERE event_action = %s",
+                ("c2_beaconing",),
+            ).fetchone()
+        assert row is not None
+        assert row["severity"] == "high"
+
+    def test_run_beaconing_saves_to_security_events(self, tmp_db, monkeypatch):
+        """run_beaconing() tespiti security_events tablosuna da yazar."""
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        from datetime import datetime, timezone
+
+        beacon_log = NormalizedLog(
+            log_id="beacon-2", raw_id="raw-2",
+            source_type=LogSourceType.NETGUARD,
+            observer_hostname="server",
+            timestamp=datetime.now(timezone.utc),
+            severity="high",
+            event_category=LogCategory.NETWORK,
+            event_action="c2_beaconing",
+            source_ip="10.0.0.6",
+            message="C2 Beaconing security_events test",
+        )
+
+        manager = DetectorManager()
+        monkeypatch.setattr(manager._beaconing, "detect", lambda: [beacon_log])
+
+        manager.run_beaconing()
+
+        with tmp_db._connect() as conn:
+            row = conn.execute(
+                "SELECT event_action FROM security_events WHERE event_action = %s",
+                ("c2_beaconing",),
+            ).fetchone()
+        assert row is not None
+
+    def test_run_beaconing_feeds_kill_chain(self, tmp_db, monkeypatch):
+        """run_beaconing() kill chain tracker'ı çağırır."""
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        from datetime import datetime, timezone
+
+        beacon_log = NormalizedLog(
+            log_id="beacon-3", raw_id="raw-3",
+            source_type=LogSourceType.NETGUARD,
+            observer_hostname="server",
+            timestamp=datetime.now(timezone.utc),
+            severity="high",
+            event_category=LogCategory.NETWORK,
+            event_action="c2_beaconing",
+            source_ip="10.0.0.7",
+            message="kill chain test",
+        )
+
+        recorded: list[dict] = []
+
+        def _fake_record(source_ip, event_action, occurred_at=None):
+            recorded.append({"source_ip": source_ip, "event_action": event_action})
+            return None
+
+        from server import attack_chain as ac_module
+        monkeypatch.setattr(ac_module.attack_chain_tracker, "record", _fake_record)
+
+        manager = DetectorManager()
+        monkeypatch.setattr(manager._beaconing, "detect", lambda: [beacon_log])
+        manager.run_beaconing()
+
+        assert len(recorded) == 1
+        assert recorded[0]["source_ip"] == "10.0.0.7"
+        assert recorded[0]["event_action"] == "c2_beaconing"
+
+    def test_run_beaconing_kill_chain_trigger_saved_with_db_save(self, tmp_db, monkeypatch):
+        """chain_trigger_to_correlated_event db_save=True ile çağrılmalı."""
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        from datetime import datetime, timezone
+
+        beacon_log = NormalizedLog(
+            log_id="beacon-4", raw_id="raw-4",
+            source_type=LogSourceType.NETGUARD,
+            observer_hostname="server",
+            timestamp=datetime.now(timezone.utc),
+            severity="high",
+            event_category=LogCategory.NETWORK,
+            event_action="c2_beaconing",
+            source_ip="10.0.0.8",
+            message="db_save test",
+        )
+
+        db_save_values: list[bool] = []
+        fake_trigger = {"chain_type": "LATERAL", "source_ip": "10.0.0.8"}
+
+        from server import attack_chain as ac_module
+        monkeypatch.setattr(ac_module.attack_chain_tracker, "record", lambda **kw: fake_trigger)
+
+        def _capture_db_save(trigger, db_save=True):
+            db_save_values.append(db_save)
+        monkeypatch.setattr(ac_module, "chain_trigger_to_correlated_event", _capture_db_save)
+
+        manager = DetectorManager()
+        monkeypatch.setattr(manager._beaconing, "detect", lambda: [beacon_log])
+        manager.run_beaconing()
+
+        assert db_save_values == [True]
+
+    def test_run_beaconing_kill_chain_error_does_not_crash(self, tmp_db, monkeypatch):
+        """Kill chain hatası run_beaconing()'i çökertmemeli."""
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        from datetime import datetime, timezone
+
+        beacon_log = NormalizedLog(
+            log_id="beacon-5", raw_id="raw-5",
+            source_type=LogSourceType.NETGUARD,
+            observer_hostname="server",
+            timestamp=datetime.now(timezone.utc),
+            severity="high",
+            event_category=LogCategory.NETWORK,
+            event_action="c2_beaconing",
+            source_ip="10.0.0.9",
+            message="error test",
+        )
+
+        from server import attack_chain as ac_module
+        monkeypatch.setattr(
+            ac_module.attack_chain_tracker,
+            "record",
+            lambda **kw: (_ for _ in ()).throw(RuntimeError("simulated kill chain error")),
+        )
+
+        manager = DetectorManager()
+        monkeypatch.setattr(manager._beaconing, "detect", lambda: [beacon_log])
+        logs = manager.run_beaconing()
+
+        assert len(logs) == 1
+
+    def test_run_beaconing_empty_returns_empty_list(self, tmp_db, monkeypatch):
+        """Tespit yoksa boş liste döner, DB'ye yazı olmaz."""
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        manager = DetectorManager()
+        monkeypatch.setattr(manager._beaconing, "detect", lambda: [])
+
+        logs = manager.run_beaconing()
+        assert logs == []
+
+        with tmp_db._connect() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) AS c FROM normalized_logs WHERE event_action = %s",
+                ("c2_beaconing",),
+            ).fetchone()["c"]
+        assert count == 0
+
+    def test_run_beaconing_detect_exception_returns_empty(self, tmp_db, monkeypatch, caplog):
+        """detect() hata fırlatırsa run_beaconing() boş liste döner ve hatayı loglar."""
+        import logging
+        import server.detectors.manager as mgr_module
+        monkeypatch.setattr(mgr_module, "db", tmp_db)
+
+        from server.detectors.manager import DetectorManager
+        manager = DetectorManager()
+        monkeypatch.setattr(
+            manager._beaconing,
+            "detect",
+            lambda: (_ for _ in ()).throw(RuntimeError("DB down")),
+        )
+
+        with caplog.at_level(logging.ERROR, logger="server.detectors.manager"):
+            logs = manager.run_beaconing()
+
+        assert logs == []
+        assert any("[beaconing] hata" in r.message for r in caplog.records)
+
 
 # ------------------------------------------------------------------ #
 #  Lateral Movement Dedektörü

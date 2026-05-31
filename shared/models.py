@@ -198,6 +198,7 @@ class SecurityEventType(str, Enum):
     WIN_SYSMON_DNS         = "windows_sysmon_dns"          # Sysmon EID 22
     LATERAL_MOVEMENT  = "lateral_movement"                 # İç ağdan iç ağa tarama
     SUSPICIOUS_CONN   = "suspicious_outbound_connection"   # Şüpheli dış bağlantı
+    C2_BEACONING      = "c2_beaconing"                     # C2 beacon tespiti (MITRE T1071)
 
 
 class SecurityEvent(BaseModel):
