@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
-    parse_x509, parse_smtp, parse_ftp, _KNOWN_BAD_JA3, _KNOWN_BAD_JA4,
+    parse_x509, parse_smtp, parse_ftp, _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
 
@@ -349,6 +349,72 @@ class TestParseSsl:
         log = parse_ssl(self._row(ja4=ja4, ja3=ja3))
         assert log.extra.get("ja4") == ja4
         assert log.extra.get("ja3") == ja3
+
+    # ── JA4S (server-side fingerprint) ────────────────────────────────────────
+
+    def test_known_bad_ja4s_high_severity(self):
+        bad_ja4s = next(iter(_KNOWN_BAD_JA4S))
+        log = parse_ssl(self._row(ja4s=bad_ja4s))
+        assert log.severity == "high"
+        assert log.event_action == "tls_suspicious_ja4s"
+        assert "ja4s_malware" in log.tags
+        assert "KNOWN_MALWARE_JA4S" in log.message
+
+    def test_ja4s_stored_in_extra(self):
+        ja4s = next(iter(_KNOWN_BAD_JA4S))
+        log = parse_ssl(self._row(ja4s=ja4s))
+        assert log.extra.get("ja4s") == ja4s
+
+    def test_unknown_ja4s_no_detection(self):
+        log = parse_ssl(self._row(ja4s="s13d010000_aabbccdd1234_eeff00112233"))
+        assert log.event_action == "ssl_connection"
+        assert "ja4s_malware" not in log.tags
+
+    def test_double_match_ja4_and_ja4s_critical(self):
+        bad_ja4  = next(iter(_KNOWN_BAD_JA4))
+        bad_ja4s = next(iter(_KNOWN_BAD_JA4S))
+        log = parse_ssl(self._row(ja4=bad_ja4, ja4s=bad_ja4s))
+        assert log.severity == "critical"
+        assert log.event_action == "tls_suspicious_fingerprint"
+        assert "ja4_malware" in log.tags
+        assert "ja4s_malware" in log.tags
+        assert "double_fingerprint" in log.tags
+        assert "DOUBLE_FINGERPRINT" in log.message
+        assert log.extra.get("double_fingerprint") is True
+
+    def test_double_match_message_contains_both(self):
+        bad_ja4  = next(iter(_KNOWN_BAD_JA4))
+        bad_ja4s = next(iter(_KNOWN_BAD_JA4S))
+        log = parse_ssl(self._row(ja4=bad_ja4, ja4s=bad_ja4s))
+        assert "KNOWN_MALWARE_JA4]" in log.message
+        assert "KNOWN_MALWARE_JA4S]" in log.message
+
+    def test_ja4s_alone_not_critical(self):
+        bad_ja4s = next(iter(_KNOWN_BAD_JA4S))
+        log = parse_ssl(self._row(ja4s=bad_ja4s))
+        assert log.severity != "critical"
+
+    def test_bad_ja4_takes_priority_over_bad_ja4s_alone(self):
+        bad_ja4  = next(iter(_KNOWN_BAD_JA4))
+        bad_ja4s = next(iter(_KNOWN_BAD_JA4S))
+        log_ja4_only  = parse_ssl(self._row(ja4=bad_ja4))
+        log_ja4s_only = parse_ssl(self._row(ja4s=bad_ja4s))
+        assert log_ja4_only.severity  == "critical"
+        assert log_ja4s_only.severity == "high"
+
+    def test_dash_ja4s_ignored(self):
+        log = parse_ssl(self._row(ja4s="-"))
+        assert log.extra.get("ja4s") is None
+        assert "ja4s_malware" not in log.tags
+
+    def test_ja4s_case_insensitive(self):
+        bad_ja4s = next(iter(_KNOWN_BAD_JA4S)).upper()
+        log = parse_ssl(self._row(ja4s=bad_ja4s))
+        assert "ja4s_malware" in log.tags
+
+    def test_ja4s_not_shown_in_message_when_clean(self):
+        log = parse_ssl(self._row(ja4s="s13d010000_aabbccdd1234_eeff00112233"))
+        assert "JA4S=" not in log.message
 
 
 class TestParseX509:

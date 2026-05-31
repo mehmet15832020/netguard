@@ -1,4 +1,4 @@
-title: TLS Suspicious JA3 Fingerprint
+title: TLS Suspicious JA3/JA4 Client Fingerprint
 id: 9f1a2b3c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
 status: stable
 logsource:
@@ -10,6 +10,36 @@ detection:
 level: critical
 tags:
     - attack.command_and_control
+    - attack.t1573.002
+---
+title: TLS Suspicious JA4S Server Fingerprint (C2 Listener)
+id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: tls_suspicious_ja4s
+    condition: selection
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
+---
+title: TLS Double Fingerprint Match (Client+Server C2)
+id: b2c3d4e5-f6a7-8901-bcde-f12345678901
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: tls_suspicious_fingerprint
+        message|contains: DOUBLE_FINGERPRINT
+    condition: selection
+level: critical
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
     - attack.t1573.002
 ---
 title: SSL Self-Signed Certificate (Base)

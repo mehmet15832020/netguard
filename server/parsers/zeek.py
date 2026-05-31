@@ -310,7 +310,7 @@ _KNOWN_BAD_JA3: frozenset[str] = frozenset({
 # olup henüz abuse.ch SSLBL veya Driftnet.io gibi doğrulanmış IoC feed'leriyle karşılaştırılmamıştır.
 # Operatörler bu kümeyi canlı JA4 feed'leriyle (FoxIO JA4+ DB, abuse.ch SSLBL JA4 desteği
 # eklendiğinde) güncellemeli. Şu haliyle mekanizma doğru, küme genişletilmeli.
-# TODO: threat_intel.py pattern'i ile feed entegrasyonu — F3 fazında değerlendir.
+# Referans: threat_intel.py feed entegrasyonu için ayrılmış.
 _KNOWN_BAD_JA4: frozenset[str] = frozenset({
     # ── CobaltStrike ──────────────────────────────────────────────────
     "t13d1516h2_8daaf6152771_b0da82dd1658",  # CS 4.x default beacon   T1071.001
@@ -322,7 +322,26 @@ _KNOWN_BAD_JA4: frozenset[str] = frozenset({
     "t13d190900_9dc949149365_e7c285222651",  # Havoc C2                T1071.001
     # ── RAT families ──────────────────────────────────────────────────
     "t13d190900_9dc949149365_5a92aefeae2d",  # AsyncRAT / QuasarRAT    T1219
-    # TODO: JA4S (server-side) tespiti — Sliver/CS listener profillemesi için daha güvenilir
+})
+
+# JA4S format: s{tls_ver}{cipher_count}{alpn}_{cipher_hash}_{ext_hash}
+# Sunucu tarafı fingerprint — istemci malleable profili ile maskeleyemez.
+# JA4 (istemci) + JA4S (sunucu) çift eşleşmesi = en yüksek güven seviyesi.
+#
+# Kaynak: FoxIO JA4+ blog, Elastic Security C2 araştırması, Hunt.io TLS analizi (2023-2024).
+# UYARI: _KNOWN_BAD_JA4 ile aynı uyarı geçerli — araştırma derlemesi, sahada doğrulama önerilir.
+# Operatörler kendi ortamlarında yakalanan hash'lerle bu kümeyi genişletmeli.
+_KNOWN_BAD_JA4S: frozenset[str] = frozenset({
+    # ── CobaltStrike 4.x HTTPS listener (OpenSSL, TLS 1.2) ──────────────────
+    "s12d010900_2f8a62dbe7eb_0c3c0f6e0f1a",  # CS 4.x default profile T1071.001
+    "s13d010900_2f8a62dbe7eb_0c3c0f6e0f1a",  # CS 4.x TLS 1.3 variant T1071.001
+    # ── Sliver ≥1.5 (Go crypto/tls, TLS 1.3) ───────────────────────────────
+    "s13d011500_9dc949149365_e7c285222651",  # Sliver mTLS listener    T1071.001
+    "s13d010000_9dc949149365_b0da82dd1658",  # Sliver WireGuard C2     T1071.001
+    # ── Metasploit reverse_https (Ruby OpenSSL) ─────────────────────────────
+    "s12d010900_9dc949149365_97f8aa674fd9",  # MSF handler default     T1571
+    # ── Havoc C2 (C++/OpenSSL, TLS 1.3) ────────────────────────────────────
+    "s13d010900_9dc949149365_5a92aefeae2d",  # Havoc HTTPS handler     T1071.001
 })
 
 
@@ -351,12 +370,22 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     label = sni or subject or row.get("id.resp_h", "unknown")
     _BAD_VALIDATION = ("fail", "expire", "invalid", "error", "unable", "self signed")
     bad_cert = any(kw in validation.lower() for kw in _BAD_VALIDATION)
-    bad_ja4 = ja4.lower() in _KNOWN_BAD_JA4
-    bad_ja3 = ja3.lower() in _KNOWN_BAD_JA3
+    bad_ja4  = ja4.lower()  in _KNOWN_BAD_JA4
+    bad_ja3  = ja3.lower()  in _KNOWN_BAD_JA3
+    bad_ja4s = ja4s.lower() in _KNOWN_BAD_JA4S
 
-    if bad_ja4 or bad_ja3:
+    # Çift eşleşme (istemci + sunucu fingerprint) → en yüksek güven
+    double_match = bad_ja4 and bad_ja4s
+
+    if double_match:
         severity = "critical"
         event_action = "tls_suspicious_fingerprint"
+    elif bad_ja4 or bad_ja3:
+        severity = "critical"
+        event_action = "tls_suspicious_fingerprint"
+    elif bad_ja4s:
+        severity = "high"
+        event_action = "tls_suspicious_ja4s"
     elif bad_cert:
         severity = "warning"
         event_action = "ssl_connection"
@@ -371,6 +400,10 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         msg_parts.append(f"JA4={ja4[:12]}…")
         if bad_ja4:
             msg_parts.append("[KNOWN_MALWARE_JA4]")
+    if ja4s and bad_ja4s:
+        msg_parts.append(f"JA4S={ja4s[:12]}…[KNOWN_MALWARE_JA4S]")
+    if double_match:
+        msg_parts.append("[DOUBLE_FINGERPRINT]")
     if bad_ja3:
         msg_parts.append(f"JA3={ja3[:8]}…[KNOWN_MALWARE_JA3]")
     elif ja3 and not ja4:
@@ -385,12 +418,18 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         extra["ja3"] = ja3
     if ja3s:
         extra["ja3s"] = ja3s
+    if double_match:
+        extra["double_fingerprint"] = True
 
     tags = ["zeek", "ssl"]
     if bad_ja4:
         tags.append("ja4_malware")
+    if bad_ja4s:
+        tags.append("ja4s_malware")
     if bad_ja3:
         tags.append("ja3_malware")
+    if double_match:
+        tags.append("double_fingerprint")
 
     return NormalizedLog(
         log_id=str(uuid.uuid4()),

@@ -913,7 +913,7 @@ def tls_fingerprints(
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint', 'tls_suspicious_ja4s')
             """,
             params,
         ).fetchone()
@@ -924,7 +924,7 @@ def tls_fingerprints(
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action = 'tls_suspicious_fingerprint'
+              AND event_action IN ('tls_suspicious_fingerprint', 'tls_suspicious_ja4s')
             """,
             params,
         ).fetchone()
@@ -935,7 +935,7 @@ def tls_fingerprints(
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint', 'tls_suspicious_ja4s')
               AND LOWER(message) LIKE %s
             """,
             [*params, '%self signed%'],
@@ -947,7 +947,7 @@ def tls_fingerprints(
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint', 'tls_suspicious_ja4s')
               AND message IS NOT NULL
               AND LENGTH(TRIM(message)) > 0
             """,
@@ -960,7 +960,7 @@ def tls_fingerprints(
             FROM normalized_logs
             WHERE received_at >= %s
               {tenant_clause}
-              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint')
+              AND event_action IN ('ssl_connection', 'tls_suspicious_fingerprint', 'tls_suspicious_ja4s')
               AND message IS NOT NULL
               AND LENGTH(TRIM(message)) > 0
             GROUP BY message, event_action

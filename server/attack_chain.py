@@ -115,6 +115,7 @@ STAGE_MAP: dict[str, str] = {
     "anomaly_cluster":       "recon",     # Anomaly Cluster Multi-Source
     "coordinated":           "recon",     # Coordinated Multi-Source Attack
     "tls_suspicious":        "recon",     # TLS Suspicious JA3
+    "tls_suspicious_ja4s":  "lateral",   # JA4S server fingerprint → TA0011 C&C T1071.001
     "ssl_self":              "recon",     # SSL Self-Signed Certificate Burst
     "ssl_cert":              "recon",     # SSL Certificate Invalid
     "command_injection":     "execute",   # Command Injection
