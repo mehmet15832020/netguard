@@ -113,7 +113,25 @@ class DatabaseManager:
             self.ensure_default_tenant()
         except Exception as exc:
             logger.warning("DB init: %s — Alembic migration çalışmamış olabilir", exc)
+        self._check_hypertable_schema()
         logger.info("PostgreSQL bağlantı havuzu açıldı: %s", url.split("@")[-1])
+
+    def _check_hypertable_schema(self) -> None:
+        """Migration 013 çalıştırılmadıysa ON CONFLICT uyumsuzluğunu startup'ta yakala."""
+        try:
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT indexdef FROM pg_indexes "
+                    "WHERE tablename = 'normalized_logs' AND indexname = 'idx_norm_log_id'"
+                ).fetchone()
+                if row and "received_at" not in row["indexdef"].lower():
+                    logger.error(
+                        "normalized_logs.idx_norm_log_id partition-uyumsuz (sadece log_id). "
+                        "save_normalized_log() ON CONFLICT hatası üretir. "
+                        "Çözüm: 'alembic upgrade head' (Migration 013) çalıştırın."
+                    )
+        except Exception:
+            pass
 
     @contextmanager
     def _connect(self):
@@ -361,7 +379,7 @@ class DatabaseManager:
                      source_port, destination_port, network_protocol,
                      username, message, tags, extra, network_bytes, processed_at, tenant_id)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (log_id) DO NOTHING
+                ON CONFLICT (log_id, received_at) DO NOTHING
             """, (
                 log.log_id,
                 log.raw_id,
