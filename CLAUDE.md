@@ -39,11 +39,10 @@ EVTX (Windows)          ARP/DNS/ICMP/port_scan det.
 
 | Ortam | Veritabanı | Koşul |
 |-------|-----------|-------|
-| Production | PostgreSQL + TimescaleDB | `DATABASE_URL` env set |
-| Test (tmp_db) | SQLite (geçici) | `DATABASE_URL` yok |
-| Test (pg_db) | PostgreSQL (testcontainers) | `DATABASE_URL` set |
+| Production | PostgreSQL 16 (VM'de TimescaleDB YOK — O1 görevi) | `DATABASE_URL` env set |
+| Test (tmp_db / pg_db) | PostgreSQL + TimescaleDB (testcontainers) | Docker daemon erişilebilir |
 
-**Mevcut sorun:** `database.py` (2583 satır SQLite) + `database_pg.py` (1584 satır PG) = ~2600 satır tekrar → FAZ 2'de çözülecek.
+**Not:** F2-1 tamamlandı — `database.py` PostgreSQL-only, `database_pg.py` kaldırıldı. Production VM'de TimescaleDB kurulumu O1 görevi olarak planlandı.
 
 ---
 
@@ -213,6 +212,67 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - **`layout-client.tsx`:** Ctrl+K / Cmd+K global dinleyici, `<CommandPalette />` portal
   - **`Topbar.tsx`:** "Ara... Ctrl K" search pill (`hidden lg:flex`); TypeScript: 0 hata
 
+### AŞAMA 4.6 — Mimari Sağlamlaştırma (ÜRETİM ÖNCESİ ZORUNLU)
+
+> Kod analizi + derin araştırma (31 Mayıs 2026) ile tespit edildi. Bu sorunlar kapatılmadan pilot müşteriye gidilemez.
+
+#### Kritik Buglar (1-2 Gün)
+
+- [ ] **B1** — Agent SecurityEvents → `normalized_logs`'a yazılmıyor
+  - `server/routes/agents.py:157` — `receive_security_events()` sadece `security_events` tablosuna yazıyor
+  - Correlator + Sigma kuralları `normalized_logs`'tan okuduğu için **agent güvenlik olayları hiçbir Sigma kuralını tetiklemiyor**
+  - Fix: `log_store.save()` çağrısı ekle → Windows Sysmon/EVTX event'ları da artık korelasyona girer
+- [ ] **B2** — `GET /agents` ve `GET /agents/{id}/latest` endpoint'lerinde rate limit yok
+  - `server/routes/agents.py:203,222` — POST'larda `@limiter.limit("120/minute")` var, GET'lerde yok
+  - Agent ID enumeration + DoS vektörü
+  - Fix: `@limiter.limit("120/minute")` decorator ekle
+- [ ] **B3** — Silent `except Exception: pass` kill chain dispatch'i sessizce kesiyor
+  - `server/routes/agents.py:194` — Kill chain güncellenemedi, log yok, troubleshoot imkânsız
+  - Fix: `logger.warning(...)` ile replace et
+
+#### Mimari Bütünleşme (3-5 Gün)
+
+- [ ] **A1** — BeaconingDetector `DetectorManager`'a entegre edilmeli
+  - `server/detectors/manager.py` — 5 dedektör var, beaconing yok; `main.py`'de ayrı `_beaconing_loop()` çalışıyor
+  - 3 ayrı detection pipeline var: DetectorManager → Beaconing loop → Agent SecurityEvents; unified olmalı
+  - Fix: `BeaconingDetector` manager'a ekle veya beaconing loop manager'a taşı; ortak FP suppression + tenant izolasyon sağlanır
+- [ ] **A2** — `log_store.count_by_group()` implement edilmeli
+  - `server/log_store.py:134` — `raise NotImplementedError("Faz 3'te implement edilecek")` — Sigma backtest, analitik, retention çağırınca runtime crash
+  - Fix: PostgreSQL `GROUP BY` sorgusu implement et
+- [ ] **A3** — Lateral movement dedektörü test yok
+  - `tests/` — `test_lateral*.py` yok; pyshark bağımlı, thread-based, en karmaşık dedektör
+  - Fix: en az 8 birim testi + sniffer fail senaryosu
+
+#### Operasyonel Hazırlık (1-2 Hafta)
+
+- [ ] **O1** — TimescaleDB production VM'e kurulumu
+  - VM'de sadece `plpgsql` var, TimescaleDB yok; `normalized_logs` düz tablo; büyük log hacminde ciddi yavaşlama
+  - Fix: `sudo apt install timescaledb-2-postgresql-16` + `CREATE EXTENSION timescaledb` + hypertable dönüşümü
+- [ ] **O2** — Docker Compose tek kurulum paketi
+  - Şu an GNS3 lab'a özel konfigürasyon; müşteriye götürülemez
+  - Fix: `docker-compose.yml` (server + dashboard + postgres + zeek), `.env.example`, kurulum scripti
+- [ ] **O3** — Backup/restore prosedürü
+  - DB yedekleme, config yedekleme, felaket kurtarma dökümantasyonu yok
+
+#### Tespit Genişletme (1-2 Hafta)
+
+- [ ] **D1** — NetFlow Sigma kuralları
+  - NetFlow `normalized_logs`'a `source_type=NETFLOW` ile yazılıyor ama **sıfır Sigma kuralı** kapsamıyor
+  - Eklenecek: büyük veri akışı (exfil), port sweep (recon), C2 beacon deseni (lateral)
+- [ ] **D2** — `network_bytes` alanı Zeek + Suricata parser'larına eklenmeli
+  - `migration 009` ile kolon eklendi ama sadece `parsers/netflow.py:84` dolduruyor
+  - Bandwidth anomali + exfiltration tespiti için gerekli
+
+#### İleri Özellikler (Baklog)
+
+- [ ] **F1** — Sigma Rule Backtest Engine (`POST /api/v1/sigma/rules/backtest`) — 1-2 hafta
+- [ ] **F2** — Live Log Stream (WebSocket + TanStack Virtual) — 1 hafta
+- [ ] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi — 2-3 hafta
+- [ ] **F4** — AI Alert Explainer (Claude API, rate limit, 24h cache) — 1 hafta
+- [ ] **F5** — Threat Hunt Workbench (no-code sorgu builder, saved hunts) — 2 hafta
+
+---
+
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
 - [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle)
@@ -245,7 +305,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1914 test, 0 hata (28 Mayıs 2026) — F2-3 fixture migrasyonu
+**Test durumu:** 1931 test, 0 hata (31 Mayıs 2026) — PostgreSQL uyumluluk düzeltmeleri + JA4/JA4S hash doğrulaması
 
 ---
 
