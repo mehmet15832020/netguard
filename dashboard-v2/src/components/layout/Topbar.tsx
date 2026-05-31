@@ -2,8 +2,9 @@
 
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
-import { Bell, User, ChevronRight, Wifi, WifiOff, Search } from 'lucide-react'
+import { Bell, User, ChevronRight, Wifi, WifiOff, Search, Radio } from 'lucide-react'
 import { useAlertStore } from '@/store/alertStore'
+import { useWsStore } from '@/store/wsStore'
 import { useQuery } from '@tanstack/react-query'
 import { analyticsApi } from '@/lib/api'
 import { cn } from '@/lib/utils'
@@ -99,6 +100,21 @@ function DataLiveIndicator() {
   )
 }
 
+function WsIndicator() {
+  const isConnected = useWsStore((s) => s.isConnected)
+  return (
+    <div
+      className="flex items-center gap-1"
+      title={isConnected ? 'WebSocket bağlı' : 'WebSocket bağlı değil'}
+    >
+      <Radio
+        size={11}
+        className={isConnected ? 'text-emerald-500' : 'text-slate-600'}
+      />
+    </div>
+  )
+}
+
 export function Topbar() {
   const pathname    = usePathname()
   const unreadCount = useAlertStore((s) => s.unreadCount)
@@ -154,6 +170,9 @@ export function Topbar() {
 
         {/* Data freshness indicator */}
         <DataLiveIndicator />
+
+        {/* WebSocket bağlantı durumu */}
+        <WsIndicator />
 
         {/* Notification bell */}
         <button

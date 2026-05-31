@@ -3,14 +3,16 @@
 import { useQuery } from '@tanstack/react-query'
 import { alertsApi } from '@/lib/api'
 import { useAlertStore } from '@/store/alertStore'
+import { useWsStore } from '@/store/wsStore'
 
 export function useAlerts(status?: 'active' | 'resolved', limit = 100) {
-  const liveAlerts = useAlertStore((s) => s.liveAlerts)
+  const liveAlerts  = useAlertStore((s) => s.liveAlerts)
+  const wsConnected = useWsStore((s) => s.isConnected)
 
   const query = useQuery({
     queryKey: ['alerts', status, limit],
     queryFn: () => alertsApi.list({ status, limit }),
-    refetchInterval: 20_000,
+    refetchInterval: wsConnected ? false : 20_000,
   })
 
   // Canlı alert'leri REST sonucunun önüne koy, duplikaları çıkar

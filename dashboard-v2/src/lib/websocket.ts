@@ -3,6 +3,7 @@
 // Auth: bağlantı sonrası JSON mesajı — token URL'de asla gönderilmez (RFC 6750 §5.3)
 
 import { auth } from '@/lib/api'
+import { useWsStore } from '@/store/wsStore'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000'
 
@@ -49,6 +50,7 @@ class NetGuardWebSocket {
         this.ws!.send(JSON.stringify({ type: 'auth', token }))
       }
       this._startHeartbeat()
+      useWsStore.getState().setConnected(true)
     }
 
     this.ws.onmessage = (event) => {
@@ -64,6 +66,7 @@ class NetGuardWebSocket {
     this.ws.onclose = (event) => {
       console.log('[NetGuard WS] Bağlantı kesildi', event.code)
       this._stopHeartbeat()
+      useWsStore.getState().setConnected(false)
       if (event.code === 4401) {
         auth.refreshToken().then((ok) => {
           if (!ok) {
