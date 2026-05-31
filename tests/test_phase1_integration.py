@@ -43,17 +43,17 @@ def sigma_ex():
 
 
 def _insert_event(conn, event_action, source_ip="1.2.3.4",
-                  severity="info", minutes_ago=1,
-                  message="test"):
+                  severity="info", minutes_ago=0,
+                  message="test", source_type="zeek"):
     from datetime import datetime, timezone, timedelta
     ts = (datetime.now(timezone.utc) - timedelta(minutes=minutes_ago)).isoformat()
     conn.execute(
         """
         INSERT INTO normalized_logs
-          (log_id, event_action, source_ip, timestamp, message, severity, tenant_id)
-        VALUES (%s, %s, %s, %s, %s, %s, 'default')
+          (log_id, event_action, source_ip, timestamp, message, severity, tenant_id, source_type)
+        VALUES (%s, %s, %s, %s, %s, %s, 'default', %s)
         """,
-        (str(uuid.uuid4()), event_action, source_ip, ts, message, severity),
+        (str(uuid.uuid4()), event_action, source_ip, ts, message, severity, source_type),
     )
     conn.commit()
 

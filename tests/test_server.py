@@ -47,7 +47,7 @@ class TestHealthEndpoint:
 
 
 class TestAgentRegistration:
-    def test_register_agent_success(self):
+    def test_register_agent_success(self, tmp_db):
         payload = AgentRegistration(
             agent_id="agent-001",
             hostname="test-machine",
@@ -60,7 +60,7 @@ class TestAgentRegistration:
         assert response.status_code == 201
         assert response.json()["agent_id"] == "agent-001"
 
-    def test_register_updates_existing_agent(self):
+    def test_register_updates_existing_agent(self, tmp_db):
         payload = AgentRegistration(
             agent_id="agent-001",
             hostname="test-machine",

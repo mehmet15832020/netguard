@@ -36,7 +36,7 @@ class TestCorrelationRoutes:
         assert "rules" in r.json()
         assert "count" in r.json()
 
-    def test_list_events_returns_list(self, admin_token):
+    def test_list_events_returns_list(self, admin_token, tmp_db):
         r = client.get("/api/v1/correlation/events", headers={"Authorization": f"Bearer {admin_token}"})
         assert r.status_code == 200
         assert "events" in r.json()

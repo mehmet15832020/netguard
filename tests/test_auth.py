@@ -10,7 +10,7 @@ client = TestClient(app)
 
 
 class TestLogin:
-    def test_login_success(self):
+    def test_login_success(self, tmp_db):
         response = client.post("/api/v1/auth/login", json={
             "username": "admin",
             "password": "netguard123"
@@ -28,7 +28,7 @@ class TestLogin:
         })
         assert response.status_code == 401
 
-    def test_login_unknown_user(self):
+    def test_login_unknown_user(self, tmp_db):
         response = client.post("/api/v1/auth/login", json={
             "username": "olmayan_kullanici",
             "password": "sifre"
@@ -48,7 +48,7 @@ class TestProtectedEndpoints:
         response = client.get("/api/v1/auth/me")
         assert response.status_code == 401
 
-    def test_me_with_token_returns_user(self):
+    def test_me_with_token_returns_user(self, tmp_db):
         token = self._get_token()
         response = client.get(
             "/api/v1/auth/me",
@@ -68,7 +68,7 @@ class TestProtectedEndpoints:
 
 
 class TestRefreshToken:
-    def test_refresh_flow(self):
+    def test_refresh_flow(self, tmp_db):
         from server.auth import create_access_token, create_refresh_token
 
         access  = create_access_token("admin", "admin")

@@ -99,7 +99,10 @@ class TestBuildSnmpAuthFromDevice:
 class TestDatabaseV3Migration:
     def test_v3_columns_exist(self, tmp_db):
         with tmp_db._connect() as conn:
-            cols = {row[1] for row in conn.execute("PRAGMA table_info(devices)").fetchall()}
+            rows = conn.execute(
+                "SELECT column_name FROM information_schema.columns WHERE table_name='devices'"
+            ).fetchall()
+            cols = {row["column_name"] for row in rows}
         expected = {
             "snmp_v3_username",
             "snmp_v3_auth_protocol",

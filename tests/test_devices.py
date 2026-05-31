@@ -69,12 +69,12 @@ class TestDevicesAPI:
         r = client.get("/api/v1/devices")
         assert r.status_code == 401
 
-    def test_list_devices_empty(self, admin_token):
+    def test_list_devices_empty(self, admin_token, tmp_db):
         r = client.get("/api/v1/devices", headers={"Authorization": f"Bearer {admin_token}"})
         assert r.status_code == 200
         assert "devices" in r.json()
 
-    def test_get_nonexistent_device(self, admin_token):
+    def test_get_nonexistent_device(self, admin_token, tmp_db):
         r = client.get("/api/v1/devices/nonexistent-id", headers={"Authorization": f"Bearer {admin_token}"})
         assert r.status_code == 404
 

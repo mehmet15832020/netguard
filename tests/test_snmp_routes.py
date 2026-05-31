@@ -10,7 +10,6 @@ DELETE /api/v1/snmp/devices/{host}
 import pytest
 from fastapi.testclient import TestClient
 from server.main import app
-from server.database import db
 
 client = TestClient(app)
 
@@ -21,12 +20,12 @@ def auth(admin_token):
 
 
 @pytest.fixture(autouse=True)
-def clean_snmp_devices():
+def clean_snmp_devices(tmp_db):
     """Her testten önce snmp_devices tablosunu temizle."""
-    with db._connect() as conn:
+    with tmp_db._connect() as conn:
         conn.execute("DELETE FROM snmp_devices")
     yield
-    with db._connect() as conn:
+    with tmp_db._connect() as conn:
         conn.execute("DELETE FROM snmp_devices")
 
 

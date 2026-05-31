@@ -14,7 +14,7 @@ client = TestClient(app)
 
 
 @pytest.fixture
-def auth(admin_token):
+def auth(admin_token, tmp_db):
     return {"Authorization": f"Bearer {admin_token}"}
 
 

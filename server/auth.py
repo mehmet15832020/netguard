@@ -172,7 +172,7 @@ def verify_token(token: str, token_type: str = "access") -> Optional[dict]:
         jti = payload.get("jti")
         if jti:
             from server.database import db
-            if db.is_token_blacklisted(jti):
+            if db is not None and db.is_token_blacklisted(jti):
                 return None
         return payload
     except JWTError:
