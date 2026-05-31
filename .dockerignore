@@ -1,15 +1,55 @@
-venv/
+# Git
+.git/
+.gitignore
+
+# Python
 __pycache__/
 *.pyc
 *.pyo
-.pytest_cache/
+*.pyd
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Tests
 tests/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Secrets / env
 .env
-netguard.db
-*.db
+*.env.local
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docs + scripts (build context'e girmesi gerekmez)
 docs/
-.git/
-dashboard-v2/
-agent/
 scripts/
+
+# Frontend ve nginx (backend build context'inde gereksiz)
+dashboard-v2/
 nginx/
+agent/
+
+# Node
+node_modules/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db

@@ -2,3 +2,16 @@ node_modules/
 .next/
 .git/
 *.md
+.env.local
+.env*.local
+.vscode/
+.idea/
+*.log
+coverage/
+.pytest_cache/
+cypress/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx

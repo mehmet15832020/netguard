@@ -245,9 +245,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - VM'de sadece `plpgsql` var, TimescaleDB yok; `normalized_logs` düz tablo; büyük log hacminde ciddi yavaşlama
   - **Teslim:** `scripts/setup_timescaledb.sh` (Ubuntu 24.04 + PG16 kurulum; signed-by APT; shared_preload_libraries runtime doğrulama); Alembic `013_timescaledb_hypertable.py` (extension runtime check + ValueError, idempotent unique constraint cleanup, create_hypertable received_at/1d/migrate_data, compression policy 7d tenant_id segmentby); `database.py` `ON CONFLICT (log_id, received_at)` + `_check_hypertable_schema()` startup guard; 20 test (extension, hypertable, compression, unique index compat, operations, migration reliability) — toplam test ✓
   - **VM'de çalıştırılacak:** `sudo bash scripts/setup_timescaledb.sh` → `alembic upgrade head`
-- [ ] **O2** — Docker Compose tek kurulum paketi
+- [x] **O2** — Docker Compose tek kurulum paketi
   - Şu an GNS3 lab'a özel konfigürasyon; müşteriye götürülemez
-  - Fix: `docker-compose.yml` (server + dashboard + postgres + zeek), `.env.example`, kurulum scripti
+  - **Teslim:** `docker-compose.yml` (6 servis: backend/frontend/nginx/postgres/influxdb/zeek; resource limits CIS Benchmark; `no-new-privileges:true` tüm servislere; healthcheck status code doğrulama; nginx healthcheck; InfluxDB `service_started` bağımlılığı; start_period 120s migration için; InfluxDB healthcheck `/ping` endpoint); `install.sh` (--host validation regex; placeholder guard; `docker inspect` health wait; prerequisites check; HOST_ARG + CORS update; build false-negative fix; ~120 bit admin parola); 47 test (TestComposeStructure/Dockerfiles/Healthchecks/Dependencies/ResourceLimits/EnvExample/InstallScript/ZeekConfig/SecurityHardening) — toplam test ✓
 - [ ] **O3** — Backup/restore prosedürü
   - DB yedekleme, config yedekleme, felaket kurtarma dökümantasyonu yok
 

@@ -19,23 +19,30 @@ services:
       - ./config:/app/config:ro
       - zeek_logs:/zeek-logs:ro
     ports:
-      - "${SYSLOG_PORT:-5140}:5140/udp"    # OPNsense / VyOS syslog
-      - "${NETFLOW_PORT:-2055}:2055/udp"   # VyOS NetFlow
+      - "${SYSLOG_PORT:-5140}:5140/udp"
+      - "${NETFLOW_PORT:-2055}:2055/udp"
     cap_add:
-      - NET_RAW    # pyshark paket yakalama için
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
     depends_on:
-      influxdb:
-        condition: service_healthy
       postgres:
         condition: service_healthy
+      influxdb:
+        condition: service_started   # InfluxDB isteğe bağlı; token yoksa devre dışı
     networks:
       - netguard_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/health')"]
+      test: ["CMD", "python", "-c", "import urllib.request,sys; r=urllib.request.urlopen('http://localhost:8000/api/v1/health',timeout=5); sys.exit(0 if r.status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 30s
+      start_period: 120s  # Alembic migration (TimescaleDB hypertable) beklenir
 
   # ── Frontend: Next.js ──────────────────────────────────────────────
   frontend:
@@ -43,15 +50,27 @@ services:
       context: ./dashboard-v2
       dockerfile: Dockerfile
       args:
-        # Boş = tarayıcı mevcut origin'i kullanır (/api/v1/... → nginx üzerinden backend'e)
         - NEXT_PUBLIC_API_URL=
-        # wss:// nginx üzerinden WebSocket — ${NETGUARD_HOST} .env'den gelir
         - NEXT_PUBLIC_WS_URL=wss://${NETGUARD_HOST:-localhost}/ws
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     networks:
       - netguard_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get({hostname:'localhost',port:3000,path:'/api/health',timeout:4000}, r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1)).on('timeout', () => process.exit(1))"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   # ── Nginx: TLS reverse proxy ───────────────────────────────────────
   nginx:
@@ -66,77 +85,108 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    security_opt:
+      - no-new-privileges:true
     depends_on:
-      - backend
-      - frontend
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
     networks:
       - netguard_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/api/v1/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
-  # ── Zeek: Ağ trafiği analiz motoru (NSM/NDR) ─────────────────────
+  # ── Zeek: Ağ trafiği analiz motoru ───────────────────────────────
   zeek:
     image: zeek/zeek:lts
-    network_mode: host          # Host arayüzünü doğrudan görür (TAP/SPAN benzeri)
+    network_mode: host
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - zeek_logs:/zeek-logs
       - ./config/zeek/local.zeek:/usr/local/zeek/share/zeek/site/local.zeek:ro
       - ./config/zeek/start.sh:/start.sh:ro
     environment:
-      - ZEEK_INTERFACE=${ZEEK_INTERFACE:-vmnet8}
+      - ZEEK_INTERFACE=${ZEEK_INTERFACE:-eth0}
       - ZEEK_LOG_DIR=/zeek-logs
     entrypoint: ["/bin/sh", "/start.sh"]
     cap_add:
       - NET_ADMIN
       - NET_RAW
 
-  # ── PostgreSQL + TimescaleDB: İlişkisel + zaman serisi loglar ────
+  # ── PostgreSQL + TimescaleDB ───────────────────────────────────────
   postgres:
     image: timescale/timescaledb:latest-pg16
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       POSTGRES_DB: netguard
       POSTGRES_USER: netguard
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-netguard_dev}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - netguard_net
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 2G
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U netguard -d netguard"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 20s
-    networks:
-      - netguard_net
 
-  # ── InfluxDB: Zaman serisi metrikleri ─────────────────────────────
+  # ── InfluxDB: Zaman serisi metrikleri (isteğe bağlı) ──────────────
   influxdb:
     image: influxdb:2.7-alpine
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     environment:
       - DOCKER_INFLUXDB_INIT_MODE=setup
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
-      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD}
-      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG}
-      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET}
-      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_ADMIN_PASSWORD:-influxdb_admin}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG:-netguard}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET:-netguard}
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN:-}
     volumes:
       - influxdb_data:/var/lib/influxdb2
+    networks:
+      - netguard_net
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
     healthcheck:
-      test: ["CMD", "influx", "ping"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8086/ping"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 10s
-    networks:
-      - netguard_net
+      start_period: 15s
 
 networks:
   netguard_net:
     driver: bridge
 
 volumes:
-  netguard_data:    # SQLite DB + anomaly baselines (geçiş sürecinde korunur)
-  influxdb_data:    # InfluxDB zaman serisi metrikleri
-  postgres_data:    # PostgreSQL + TimescaleDB (V1-7)
-  zeek_logs:        # Zeek JSON log paylaşım alanı (V1-8)
-  ssl_certs:        # Nginx self-signed TLS sertifikaları
+  netguard_data:
+  influxdb_data:
+  postgres_data:
+  zeek_logs:
+  ssl_certs:
