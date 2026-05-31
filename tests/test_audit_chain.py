@@ -29,10 +29,13 @@ def client(tmp_db, admin_token, monkeypatch):
 # ── Yardımcı: hash yeniden hesaplama ──────────────────────────────────────────
 
 def _recompute_hash(row: dict, previous_hash: str) -> str:
+    from datetime import timezone
+    ts = row["timestamp"]
+    ts_str = ts.astimezone(timezone.utc).isoformat() if hasattr(ts, "astimezone") else str(ts)
     content = _audit_content(
         row["event_id"], row["actor"], row["action"], row["resource"],
         row["detail"] or "", row["ip_address"] or "",
-        row["timestamp"], previous_hash,
+        ts_str, previous_hash,
     )
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
@@ -131,7 +134,7 @@ class TestAuditChainIntegrity:
             db_instance.save_audit_event("admin", f"a{i}", f"/r{i}")
         with db_instance._connect() as conn:
             row = conn.execute("SELECT id FROM audit_log ORDER BY id ASC LIMIT 1").fetchone()
-            conn.execute("DELETE FROM audit_log WHERE id=?", (row[0],))
+            conn.execute("DELETE FROM audit_log WHERE id=%s", (row["id"],))
         result = db_instance.verify_audit_chain()
         assert result["valid"] is False
 
@@ -154,9 +157,9 @@ class TestAuditChainIntegrity:
             row = conn.execute(
                 "SELECT id FROM audit_log ORDER BY id ASC LIMIT 1 OFFSET 2"
             ).fetchone()
-            tampered_id = row[0]
+            tampered_id = row["id"]
             conn.execute(
-                "UPDATE audit_log SET entry_hash=? WHERE id=?", ("0" * 64, tampered_id)
+                "UPDATE audit_log SET entry_hash=%s WHERE id=%s", ("0" * 64, tampered_id)
             )
         result = db_instance.verify_audit_chain()
         assert result["valid"] is False

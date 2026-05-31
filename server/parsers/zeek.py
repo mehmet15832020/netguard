@@ -305,43 +305,29 @@ _KNOWN_BAD_JA3: frozenset[str] = frozenset({
 
 # JA4 format: {protocol}{tls_ver}{sni}{cipher_count}{ext_count}{alpn}_{cipher_hash}_{ext_hash}
 # Chrome 110+ dahil tüm modern istemcilerde deterministik — JA3'ün yerini almaktadır.
-#
-# UYARI: Bu hash'ler araştırma derlemesinden (FoxIO blog, Elastic Security, Hunt.io) türetilmiş
-# olup henüz abuse.ch SSLBL veya Driftnet.io gibi doğrulanmış IoC feed'leriyle karşılaştırılmamıştır.
-# Operatörler bu kümeyi canlı JA4 feed'leriyle (FoxIO JA4+ DB, abuse.ch SSLBL JA4 desteği
-# eklendiğinde) güncellemeli. Şu haliyle mekanizma doğru, küme genişletilmeli.
-# Referans: threat_intel.py feed entegrasyonu için ayrılmış.
+# Kaynak: FoxIO ja4plus-mapping.csv (github.com/FoxIO-LLC/ja4) — doğrulanmış IoC feed.
 _KNOWN_BAD_JA4: frozenset[str] = frozenset({
     # ── CobaltStrike ──────────────────────────────────────────────────
-    "t13d1516h2_8daaf6152771_b0da82dd1658",  # CS 4.x default beacon   T1071.001
-    "t12d1516h2_8daaf6152771_b0da82dd1658",  # CS 4.x TLS 1.2 fallback T1071.001
-    # ── Metasploit / Meterpreter ──────────────────────────────────────
-    "t13d191000_9dc949149365_97f8aa674fd9",  # MSF 6.x reverse_tcp     T1571
-    # ── C2 frameworks (open-source) ───────────────────────────────────
-    "t13d881000_d4bb11353d5b_b0da82dd1658",  # Sliver C2               T1071.001
-    "t13d190900_9dc949149365_e7c285222651",  # Havoc C2                T1071.001
-    # ── RAT families ──────────────────────────────────────────────────
-    "t13d190900_9dc949149365_5a92aefeae2d",  # AsyncRAT / QuasarRAT    T1219
+    "t13d201100_2b729b4bf6f3_9e7b989ebec8",  # CS beacon               T1071.001
+    "t12i190700_d83cc789557e_16bbda4055b2",  # CS v4.9.1 wininet (IP)  T1071.001
+    "t12i210700_76e208dd3e22_16bbda4055b2",  # CS v4.9.1 winhttp (IP)  T1071.001
+    "t12d190800_d83cc789557e_16bbda4055b2",  # CS v4.9.1 wininet (SNI) T1071.001
+    "t12d210800_76e208dd3e22_16bbda4055b2",  # CS v4.9.1 winhttp (SNI) T1071.001
+    # ── Sliver (Go crypto/tls) ────────────────────────────────────────
+    "t13d190900_9dc949149365_97f8aa674fd9",  # Sliver Agent (domain)   T1071.001
+    "t13i190800_9dc949149365_97f8aa674fd9",  # Sliver Agent (IP)       T1071.001
 })
 
-# JA4S format: s{tls_ver}{cipher_count}{alpn}_{cipher_hash}_{ext_hash}
-# Sunucu tarafı fingerprint — istemci malleable profili ile maskeleyemez.
+# JA4S format: {protocol}{tls_ver}{ext_count}{alpn}_{cipher_hex}_{ext_hash}
+# JA4S'te SNI indikatörü (d/i) yoktur; sunucu seçtiği tek cipher hex olarak yazılır.
 # JA4 (istemci) + JA4S (sunucu) çift eşleşmesi = en yüksek güven seviyesi.
-#
-# Kaynak: FoxIO JA4+ blog, Elastic Security C2 araştırması, Hunt.io TLS analizi (2023-2024).
-# UYARI: _KNOWN_BAD_JA4 ile aynı uyarı geçerli — araştırma derlemesi, sahada doğrulama önerilir.
-# Operatörler kendi ortamlarında yakalanan hash'lerle bu kümeyi genişletmeli.
+# Kaynak: FoxIO ja4plus-mapping.csv (github.com/FoxIO-LLC/ja4) — doğrulanmış IoC feed.
 _KNOWN_BAD_JA4S: frozenset[str] = frozenset({
-    # ── CobaltStrike 4.x HTTPS listener (OpenSSL, TLS 1.2) ──────────────────
-    "s12d010900_2f8a62dbe7eb_0c3c0f6e0f1a",  # CS 4.x default profile T1071.001
-    "s13d010900_2f8a62dbe7eb_0c3c0f6e0f1a",  # CS 4.x TLS 1.3 variant T1071.001
-    # ── Sliver ≥1.5 (Go crypto/tls, TLS 1.3) ───────────────────────────────
-    "s13d011500_9dc949149365_e7c285222651",  # Sliver mTLS listener    T1071.001
-    "s13d010000_9dc949149365_b0da82dd1658",  # Sliver WireGuard C2     T1071.001
-    # ── Metasploit reverse_https (Ruby OpenSSL) ─────────────────────────────
-    "s12d010900_9dc949149365_97f8aa674fd9",  # MSF handler default     T1571
-    # ── Havoc C2 (C++/OpenSSL, TLS 1.3) ────────────────────────────────────
-    "s13d010900_9dc949149365_5a92aefeae2d",  # Havoc HTTPS handler     T1071.001
+    # ── CobaltStrike (OpenSSL, TLS 1.2, cipher 0xC030) ──────────────────────
+    "t120300_c030_5e2616a54c73",  # CS beacon default                  T1071.001
+    "t120300_c030_52d195ce1d92",  # CS v4.9.1 beacon                   T1071.001
+    # ── Sliver Agent (Go crypto/tls, TLS 1.3, cipher 0x1301) ────────────────
+    "t130200_1301_a56c5b993250",  # Sliver HTTPS listener              T1071.001
 })
 
 

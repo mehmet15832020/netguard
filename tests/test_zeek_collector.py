@@ -366,7 +366,7 @@ class TestParseSsl:
         assert log.extra.get("ja4s") == ja4s
 
     def test_unknown_ja4s_no_detection(self):
-        log = parse_ssl(self._row(ja4s="s13d010000_aabbccdd1234_eeff00112233"))
+        log = parse_ssl(self._row(ja4s="t130300_1302_aabbccdd1234"))
         assert log.event_action == "ssl_connection"
         assert "ja4s_malware" not in log.tags
 
@@ -413,7 +413,7 @@ class TestParseSsl:
         assert "ja4s_malware" in log.tags
 
     def test_ja4s_not_shown_in_message_when_clean(self):
-        log = parse_ssl(self._row(ja4s="s13d010000_aabbccdd1234_eeff00112233"))
+        log = parse_ssl(self._row(ja4s="t130300_1302_aabbccdd1234"))
         assert "JA4S=" not in log.message
 
 
