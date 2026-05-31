@@ -232,9 +232,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - `server/detectors/manager.py` — 5 dedektör var, beaconing yok; `main.py`'de ayrı `_beaconing_loop()` çalışıyor
   - **Teslim:** `BeaconingDetector` → `detector_manager._beaconing` (singleton); `DetectorManager.run_beaconing()` metodu (normalized_logs + security_events + kill chain `db_save=True`); `_EVENT_TYPE_MAP`'e `c2_beaconing` eklendi; `SecurityEventType.C2_BEACONING` enum eklendi; `_beaconing_loop()` sadeleşti (3 satır); 9 yeni test — toplam test ✓
   - **Mimari karar (RITA BlackHat 2018 + MITRE T1071):** Beaconing 300s cadence korundu — IAT istatistik analizi için 5 dakikalık örnekleme yeterli; 30s'de çalıştırmak 10× gereksiz DB sorgusu; `run_beaconing()` `run_all()`'dan ayrı çünkü C2 tespiti doğrudan kill chain feed gerektirir (60s correlator gecikmesi kabul edilemez)
-- [ ] **A2** — `log_store.count_by_group()` implement edilmeli
+- [x] **A2** — `log_store.count_by_group()` implement edilmeli
   - `server/log_store.py:134` — `raise NotImplementedError("Faz 3'te implement edilecek")` — Sigma backtest, analitik, retention çağırınca runtime crash
-  - Fix: PostgreSQL `GROUP BY` sorgusu implement et
+  - **Teslim:** PostgreSQL `GROUP BY` + OWASP A3 whitelist (`_VALID_LOG_GROUP_COLS`); NULL grup dışlama (`IS NOT NULL`); port → `str()` dönüşümü; ILIKE `%/_` escape; `since` None guard (NIST SP 800-94 §6.1); 16 test (basic/filters/edge-cases/security) — toplam test ✓
 - [ ] **A3** — Lateral movement dedektörü test yok
   - `tests/` — `test_lateral*.py` yok; pyshark bağımlı, thread-based, en karmaşık dedektör
   - Fix: en az 8 birim testi + sniffer fail senaryosu

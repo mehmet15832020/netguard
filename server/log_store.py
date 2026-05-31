@@ -67,6 +67,12 @@ class LogStore(Protocol):
 
 from server.database import db as _db
 
+_VALID_LOG_GROUP_COLS: frozenset[str] = frozenset({
+    "source_ip", "destination_ip", "observer_hostname", "username",
+    "event_action", "event_category", "tenant_id", "source_type",
+    "network_protocol", "source_port", "destination_port", "severity",
+})
+
 
 class PostgreSQLLogStore:
     """LogStore'un PostgreSQL + TimescaleDB implementasyonu."""
@@ -141,7 +147,46 @@ class PostgreSQLLogStore:
         until: datetime | None = None,
         tenant_id: str | None = None,
     ) -> list[tuple[str, int]]:
-        raise NotImplementedError("Faz 3'te implement edilecek")
+        if group_by not in _VALID_LOG_GROUP_COLS:
+            raise ValueError(
+                f"Geçersiz group_by kolonu: {group_by!r}. "
+                f"İzin verilenler: {sorted(_VALID_LOG_GROUP_COLS)}"
+            )
+        if since is None:
+            raise ValueError("since parametresi zorunludur (NIST SP 800-94 §6.1)")
+
+        clauses: list[str] = [f"{group_by} IS NOT NULL", "timestamp >= %s"]
+        params: list = [since]
+
+        if until is not None:
+            clauses.append("timestamp <= %s")
+            params.append(until)
+        if event_action is not None:
+            clauses.append("event_action = %s")
+            params.append(event_action)
+        if message_filter is not None:
+            escaped = message_filter.replace("%", r"\%").replace("_", r"\_")
+            clauses.append(r"message ILIKE %s ESCAPE '\'")
+            params.append(f"%{escaped}%")
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+
+        where = "WHERE " + " AND ".join(clauses)
+
+        with _db._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT {group_by}, COUNT(*) AS cnt
+                FROM normalized_logs
+                {where}
+                GROUP BY {group_by}
+                ORDER BY cnt DESC
+                """,
+                params,
+            ).fetchall()
+
+        return [(str(row[group_by]), row["cnt"]) for row in rows]
 
     def get_connection(self):
         return _db._connect()
