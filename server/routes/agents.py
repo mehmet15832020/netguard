@@ -20,6 +20,7 @@ from shared.models import (
 )
 from server.storage import storage
 from server.database import db
+from server.log_store import log_store
 from server.alert_engine import alert_engine
 from server.influx_writer import influx_writer
 from server.notifier import notifier
@@ -30,6 +31,78 @@ from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlate
 
 SUSPICIOUS_WARN_THRESHOLD    = 5
 SUSPICIOUS_CRITICAL_THRESHOLD = 15
+
+_WIN_EVENTS = frozenset({
+    SecurityEventType.WIN_LOGON_SUCCESS, SecurityEventType.WIN_LOGON_FAILURE,
+    SecurityEventType.WIN_EXPLICIT_LOGON, SecurityEventType.WIN_PROCESS_CREATE,
+    SecurityEventType.WIN_USER_CREATED, SecurityEventType.WIN_GROUP_MEMBER_ADDED,
+    SecurityEventType.WIN_KERBEROS_TGT, SecurityEventType.WIN_KERBEROS_SERVICE,
+    SecurityEventType.WIN_SYSMON_PROCESS, SecurityEventType.WIN_SYSMON_NETWORK,
+    SecurityEventType.WIN_SYSMON_PROC_ACCESS, SecurityEventType.WIN_SYSMON_DNS,
+})
+_AUTH_EVENTS = frozenset({
+    SecurityEventType.BRUTE_FORCE, SecurityEventType.SSH_FAILURE,
+    SecurityEventType.SSH_SUCCESS, SecurityEventType.SUDO_USAGE,
+})
+_INTRUSION_EVENTS = frozenset({
+    SecurityEventType.PORT_SCAN, SecurityEventType.ARP_SPOOF,
+    SecurityEventType.ICMP_FLOOD, SecurityEventType.LATERAL_MOVEMENT,
+    SecurityEventType.SUSPICIOUS_CONN,
+})
+_AUTH_CATEGORY_EVENTS = frozenset({
+    SecurityEventType.WIN_LOGON_SUCCESS, SecurityEventType.WIN_LOGON_FAILURE,
+    SecurityEventType.WIN_EXPLICIT_LOGON, SecurityEventType.WIN_USER_CREATED,
+    SecurityEventType.WIN_GROUP_MEMBER_ADDED, SecurityEventType.WIN_KERBEROS_TGT,
+    SecurityEventType.WIN_KERBEROS_SERVICE,
+}) | _AUTH_EVENTS
+_SYSTEM_CATEGORY_EVENTS = frozenset({
+    SecurityEventType.WIN_PROCESS_CREATE, SecurityEventType.WIN_SYSMON_PROCESS,
+    SecurityEventType.WIN_SYSMON_PROC_ACCESS,
+    SecurityEventType.PORT_OPENED, SecurityEventType.PORT_CLOSED,
+    SecurityEventType.CHECKSUM_CHANGED, SecurityEventType.DEVICE_DOWN,
+    SecurityEventType.DEVICE_UP, SecurityEventType.SNMP_TRAP,
+})
+
+
+def _security_event_to_normalized_log(event: SecurityEvent, tenant_id: str) -> NormalizedLog:
+    now = datetime.now(timezone.utc)
+    if event.event_action in _WIN_EVENTS:
+        source_type = LogSourceType.WINDOWS
+    elif event.event_action in _AUTH_EVENTS:
+        source_type = LogSourceType.AUTH_LOG
+    else:
+        source_type = LogSourceType.NETGUARD
+
+    if event.event_action in _AUTH_CATEGORY_EVENTS:
+        category = LogCategory.AUTHENTICATION
+    elif event.event_action in _SYSTEM_CATEGORY_EVENTS:
+        category = LogCategory.SYSTEM
+    elif event.event_action in _INTRUSION_EVENTS:
+        category = LogCategory.INTRUSION
+    else:
+        category = LogCategory.NETWORK
+
+    extra: dict = {"agent_id": event.agent_id}
+    if event.raw_data:
+        extra["raw_data"] = event.raw_data
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=event.event_id,
+        source_type=source_type,
+        observer_hostname=event.hostname,
+        timestamp=event.occurred_at,
+        received_at=now,
+        severity=event.severity,
+        event_category=category,
+        event_action=event.event_action.value,
+        source_ip=event.source_ip,
+        username=event.username,
+        message=event.message,
+        tags=["agent", event.agent_id],
+        extra=extra,
+        processed_at=now,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -178,6 +251,8 @@ def receive_security_events(
                 occurred_at = datetime.fromisoformat(ev.occurred_at) if ev.occurred_at else datetime.now(timezone.utc),
             )
             db.save_security_event(event)
+            norm_log = _security_event_to_normalized_log(event, tenant_id="default")
+            log_store.save(norm_log, tenant_id="default")
             saved += 1
             if ev.source_ip:
                 try:
@@ -192,15 +267,16 @@ def receive_security_events(
                         chain_event = chain_trigger_to_correlated_event(trigger, db_save=True)
                         _correlator.dispatch_chain_event(chain_event)
                         logger.warning(f"SALDIRI ZİNCİRİ (agent): {ev.source_ip} — {trigger['chain_type']}")
-                except Exception:
-                    pass
+                except Exception as chain_exc:
+                    logger.warning(f"Kill chain dispatch hatası (agent {agent_id}): {chain_exc}")
         except Exception as e:
             logger.warning(f"Güvenlik olayı kaydedilemedi: {e}")
     return {"status": "accepted", "saved": saved}
 
 
 @router.get("/agents")
-def list_agents():
+@limiter.limit("120/minute")
+def list_agents(request: Request, response: Response):
     """Kayıtlı tüm agent'ları listele."""
     agents = storage.get_all_agents()
     return {
@@ -219,7 +295,8 @@ def list_agents():
 
 
 @router.get("/agents/{agent_id}/latest")
-def get_latest_snapshot(agent_id: str):
+@limiter.limit("120/minute")
+def get_latest_snapshot(request: Request, response: Response, agent_id: str):
     """Agent'ın en son metriklerini döndür."""
     snapshot = storage.get_latest_snapshot(agent_id)
     if snapshot is None:

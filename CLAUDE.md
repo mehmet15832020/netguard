@@ -218,17 +218,13 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 #### Kritik Buglar (1-2 Gün)
 
-- [ ] **B1** — Agent SecurityEvents → `normalized_logs`'a yazılmıyor
+- [x] **B1** — Agent SecurityEvents → `normalized_logs`'a yazılmıyor
   - `server/routes/agents.py:157` — `receive_security_events()` sadece `security_events` tablosuna yazıyor
-  - Correlator + Sigma kuralları `normalized_logs`'tan okuduğu için **agent güvenlik olayları hiçbir Sigma kuralını tetiklemiyor**
-  - Fix: `log_store.save()` çağrısı ekle → Windows Sysmon/EVTX event'ları da artık korelasyona girer
-- [ ] **B2** — `GET /agents` ve `GET /agents/{id}/latest` endpoint'lerinde rate limit yok
-  - `server/routes/agents.py:203,222` — POST'larda `@limiter.limit("120/minute")` var, GET'lerde yok
-  - Agent ID enumeration + DoS vektörü
-  - Fix: `@limiter.limit("120/minute")` decorator ekle
-- [ ] **B3** — Silent `except Exception: pass` kill chain dispatch'i sessizce kesiyor
-  - `server/routes/agents.py:194` — Kill chain güncellenemedi, log yok, troubleshoot imkânsız
-  - Fix: `logger.warning(...)` ile replace et
+  - **Teslim:** `_security_event_to_normalized_log()` helper (12 WIN + AUTH_LOG + NETGUARD source_type mapping); `log_store.save()` çağrısı; 14 birim testi — `test_agents_security_events.py` ✓
+- [x] **B2** — `GET /agents` ve `GET /agents/{id}/latest` endpoint'lerinde rate limit yok
+  - `server/routes/agents.py` — `@limiter.limit("120/minute")` + `Request/Response` parametreleri eklendi
+- [x] **B3** — Silent `except Exception: pass` kill chain dispatch'i sessizce kesiyor
+  - `server/routes/agents.py` — `logger.warning(f"Kill chain dispatch hatası ...")` ile replace edildi; 2 test ✓
 
 #### Mimari Bütünleşme (3-5 Gün)
 
