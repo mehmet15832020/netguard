@@ -248,8 +248,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **O2** — Docker Compose tek kurulum paketi
   - Şu an GNS3 lab'a özel konfigürasyon; müşteriye götürülemez
   - **Teslim:** `docker-compose.yml` (6 servis: backend/frontend/nginx/postgres/influxdb/zeek; resource limits CIS Benchmark; `no-new-privileges:true` tüm servislere; healthcheck status code doğrulama; nginx healthcheck; InfluxDB `service_started` bağımlılığı; start_period 120s migration için; InfluxDB healthcheck `/ping` endpoint); `install.sh` (--host validation regex; placeholder guard; `docker inspect` health wait; prerequisites check; HOST_ARG + CORS update; build false-negative fix; ~120 bit admin parola); 47 test (TestComposeStructure/Dockerfiles/Healthchecks/Dependencies/ResourceLimits/EnvExample/InstallScript/ZeekConfig/SecurityHardening) — toplam test ✓
-- [ ] **O3** — Backup/restore prosedürü
+- [x] **O3** — Backup/restore prosedürü
   - DB yedekleme, config yedekleme, felaket kurtarma dökümantasyonu yok
+  - **Teslim:** `scripts/backup.sh` (pg_dump -Fc + config tar + .env AES-256-CBC PBKDF2 şifreli + ssl_certs/netguard_data volume; SHA-256 manifest; 7 günlük + 4 haftalık retention); `scripts/restore.sh` (manifest doğrulama → servis durdur → pg_restore → config → .env → volume → servis başlat; dry-run + skip-db/skip-volumes + --date/--set/--dir); `scripts/verify-backup.sh` (manifest checksum + pg_restore --list + tar bütünlük + boyut + yaş kontrolü); 52 test (TestScriptExistence/StrictMode/BackupComponents/Retention/RestoreComponents/VerifyScript/Security/Integration); RPO: ~24s, RTO: ~30dk (NIST SP 800-34 Rev 1)
 
 #### Tespit Genişletme (1-2 Hafta)
 
