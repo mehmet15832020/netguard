@@ -200,9 +200,13 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
     url        = http.get("url", "/")
     method     = http.get("http_method", "GET")
     status     = http.get("status", 0)
-    length     = http.get("length", 0)
     _raw_ua   = http.get("http_user_agent")
     user_agent = _raw_ua if isinstance(_raw_ua, str) else (str(_raw_ua) if _raw_ua is not None else "")
+
+    try:
+        length = int(http.get("length") or 0)
+    except (ValueError, TypeError):
+        length = 0
 
     suspicious = _is_suspicious_ua(user_agent)
     event_action = "suricata_http_anomaly" if suspicious else "http_request"
@@ -232,6 +236,7 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
         tags=["suricata", "http"] + (["suspicious_ua"] if suspicious else []),
         extra={"method": method, "status": status, "length": length,
                "hostname": hostname, "user_agent": user_agent[:200]},
+        network_bytes=length or None,
     )
 
 
@@ -336,6 +341,8 @@ def parse_flow(row: dict) -> Optional[NormalizedLog]:
         msg += f" app={app_proto}"
     msg += f" bytes={bytes_ts + bytes_tc}"
 
+    total_bytes = bytes_ts + bytes_tc
+
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
         raw_id=str(uuid.uuid4()),
@@ -355,6 +362,7 @@ def parse_flow(row: dict) -> Optional[NormalizedLog]:
         extra={"bytes_toserver": bytes_ts, "bytes_toclient": bytes_tc,
                "pkts_toserver": pkts_ts, "pkts_toclient": pkts_tc,
                "state": state, "reason": reason, "app_proto": app_proto},
+        network_bytes=total_bytes or None,
     )
 
 
@@ -402,8 +410,12 @@ def parse_fileinfo(row: dict) -> Optional[NormalizedLog]:
     filename = fi.get("filename", "")
     magic    = fi.get("magic", "")
     md5      = fi.get("md5", "")
-    size     = int(fi.get("size", 0) or 0)
     state    = fi.get("state", "")
+
+    try:
+        size = int(fi.get("size") or 0)
+    except (ValueError, TypeError):
+        size = 0
 
     severity = "warning" if state in ("TRUNCATED", "ERROR") else "info"
     msg = f"File {filename or '?'} size={size}"
@@ -429,6 +441,7 @@ def parse_fileinfo(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         tags=["suricata", "fileinfo"],
         extra={"filename": filename, "magic": magic, "md5": md5, "size": size, "state": state},
+        network_bytes=size or None,
     )
 
 

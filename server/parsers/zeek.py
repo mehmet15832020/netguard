@@ -132,6 +132,11 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
     except (ValueError, TypeError):
         status_int = 0
 
+    try:
+        resp_body_len = int(row.get("response_body_len") or 0)
+    except (ValueError, TypeError):
+        resp_body_len = 0
+
     if status_int >= 400:
         event_action = "web_client_error"
         severity = "warning"
@@ -155,6 +160,7 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
         network_protocol="tcp",
         message=f"HTTP {method} {host}{uri} → {status_int or '-'}",
         tags=["zeek", "http"],
+        network_bytes=resp_body_len or None,
     )
 
 
@@ -172,6 +178,13 @@ def parse_conn(row: dict) -> Optional[NormalizedLog]:
         return None
 
     severity = "info" if state == "SF" else "warning"
+
+    try:
+        orig_bytes = int(row.get("orig_bytes") or 0)
+        resp_bytes = int(row.get("resp_bytes") or 0)
+        total_bytes = orig_bytes + resp_bytes
+    except (ValueError, TypeError):
+        total_bytes = 0
 
     return NormalizedLog(
         log_id=str(uuid.uuid4()),
@@ -192,6 +205,7 @@ def parse_conn(row: dict) -> Optional[NormalizedLog]:
             f" → {row.get('id.resp_h')}:{row.get('id.resp_p')} ({duration:.1f}s)"
         ),
         tags=["zeek", "conn"],
+        network_bytes=total_bytes or None,
     )
 
 
