@@ -257,9 +257,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **D1** — NetFlow Sigma kuralları
   - NetFlow `normalized_logs`'a `source_type=NETFLOW` ile yazılıyor ama **sıfır Sigma kuralı** kapsamıyor
   - **Teslim:** `parsers/netflow.py` `_event_action_for_flow()` (öncelik sırası: large_flow → tunneled → suspicious_port → normal; `NETFLOW_LARGE_FLOW_BYTES` env, varsayılan 50MB; `_TUNNELED_PROTOCOLS` {47 GRE, 50 ESP, 41 IPv6-in-IPv4}); `config/sigma_rules_v2/netflow.yml` 6 kural (3 base + 3 korelasyon: Large Flow Exfil Burst/Suspicious Port Burst/Tunnel Burst); `attack_chain.py` STAGE_MAP 5 yeni giriş; 34 test — toplam test ✓
-- [ ] **D2** — `network_bytes` alanı Zeek + Suricata parser'larına eklenmeli
+- [x] **D2** — `network_bytes` alanı Zeek + Suricata parser'larına eklenmeli
   - `migration 009` ile kolon eklendi ama sadece `parsers/netflow.py:84` dolduruyor
-  - Bandwidth anomali + exfiltration tespiti için gerekli
+  - **Teslim:** `zeek.parse_conn()` (orig_bytes+resp_bytes), `zeek.parse_http()` (response_body_len), `suricata.parse_flow()` (bytes_toserver+bytes_toclient), `suricata.parse_http()` (http.length), `suricata.parse_fileinfo()` (fileinfo.size); 0/None guard for missing/zero; 23 test — toplam test ✓
 
 #### İleri Özellikler (Baklog)
 
