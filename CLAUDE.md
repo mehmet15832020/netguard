@@ -235,9 +235,9 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **A2** — `log_store.count_by_group()` implement edilmeli
   - `server/log_store.py:134` — `raise NotImplementedError("Faz 3'te implement edilecek")` — Sigma backtest, analitik, retention çağırınca runtime crash
   - **Teslim:** PostgreSQL `GROUP BY` + OWASP A3 whitelist (`_VALID_LOG_GROUP_COLS`); NULL grup dışlama (`IS NOT NULL`); port → `str()` dönüşümü; ILIKE `%/_` escape; `since` None guard (NIST SP 800-94 §6.1); 16 test (basic/filters/edge-cases/security) — toplam test ✓
-- [ ] **A3** — Lateral movement dedektörü test yok
+- [x] **A3** — Lateral movement dedektörü test yok
   - `tests/` — `test_lateral*.py` yok; pyshark bağımlı, thread-based, en karmaşık dedektör
-  - Fix: en az 8 birim testi + sniffer fail senaryosu
+  - **Teslim:** `tests/test_lateral_movement.py` — 28 test (8 RFC1918 edge, 3 LATERAL_PORTS, 5 sniffer hata senaryosu, 6 paket işleme, 2 window cleanup deterministik, 2 alerted reset, 2 thread safety); `lateral.py` TOCTOU fix (alerted check+add atomik lock altında); `except (AttributeError, ValueError, TypeError, KeyError)` genişletildi + debug log eklendi — toplam test ✓
 
 #### Operasyonel Hazırlık (1-2 Hafta)
 

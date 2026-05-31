@@ -119,8 +119,8 @@ class LateralMovementDetector(BaseDetector):
                         now = time.monotonic()
                         with self._lock:
                             self._history[source_ip].append((now, destination_ip, destination_port))
-                except AttributeError:
-                    pass
+                except (AttributeError, ValueError, TypeError, KeyError) as pkt_exc:
+                    logger.debug("Lateral: malformed packet atlandı: %r", pkt_exc)
         except Exception as exc:
             logger.error(f"Lateral movement sniffer durdu: {exc}")
 
@@ -141,31 +141,34 @@ class LateralMovementDetector(BaseDetector):
         results = []
         for source_ip, entries in snapshot.items():
             unique_hosts = {destination_ip for _, destination_ip, _ in entries}
-            if len(unique_hosts) >= self._threshold and source_ip not in self._alerted:
-                with self._lock:
-                    self._alerted.add(source_ip)
-                ports_seen   = sorted({port for _, _, port in entries})
-                target_hosts = sorted(unique_hosts)
-                log = self._make_log(
-                    event_action = "lateral_movement",
-                    message    = (
-                        f"Yanal hareket tespiti: {source_ip} → "
-                        f"{len(unique_hosts)} farklı iç hedef / {self._window}s "
-                        f"(eşik: {self._threshold}) | "
-                        f"Hedefler: {target_hosts} | Portlar: {ports_seen}"
-                    ),
-                    event_category = LogCategory.INTRUSION,
-                    severity = "critical",
-                    source_ip   = source_ip,
-                    destination_ip   = target_hosts[0] if target_hosts else None,
-                    network_protocol = "tcp",
-                    tags     = ["lateral_movement", "internal_scan"],
-                )
-                results.append(log)
-                logger.warning(
-                    f"YANAL HAREKET: {source_ip} → "
-                    f"{len(unique_hosts)} iç hedef / {self._window}s | "
-                    f"Portlar: {ports_seen}"
-                )
+            if len(unique_hosts) < self._threshold:
+                continue
+            with self._lock:
+                if source_ip in self._alerted:
+                    continue
+                self._alerted.add(source_ip)
+            ports_seen   = sorted({port for _, _, port in entries})
+            target_hosts = sorted(unique_hosts)
+            log = self._make_log(
+                event_action = "lateral_movement",
+                message    = (
+                    f"Yanal hareket tespiti: {source_ip} → "
+                    f"{len(unique_hosts)} farklı iç hedef / {self._window}s "
+                    f"(eşik: {self._threshold}) | "
+                    f"Hedefler: {target_hosts} | Portlar: {ports_seen}"
+                ),
+                event_category = LogCategory.INTRUSION,
+                severity = "critical",
+                source_ip   = source_ip,
+                destination_ip   = target_hosts[0] if target_hosts else None,
+                network_protocol = "tcp",
+                tags     = ["lateral_movement", "internal_scan"],
+            )
+            results.append(log)
+            logger.warning(
+                f"YANAL HAREKET: {source_ip} → "
+                f"{len(unique_hosts)} iç hedef / {self._window}s | "
+                f"Portlar: {ports_seen}"
+            )
 
         return results
