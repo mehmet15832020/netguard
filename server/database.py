@@ -970,6 +970,89 @@ class DatabaseManager:
             )
 
     # ------------------------------------------------------------------ #
+    #  SAVED HUNTS (F5 Threat Hunt Workbench)
+    # ------------------------------------------------------------------ #
+
+    def create_hunt(
+        self,
+        hunt_id: str,
+        tenant_id: str,
+        created_by: str,
+        name: str,
+        description: str,
+        filter_params: str,
+        tags: str = "[]",
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO saved_hunts
+                       (hunt_id, tenant_id, created_by, name, description, filter_params, tags)
+                   VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+                (hunt_id, tenant_id, created_by, name, description, filter_params, tags),
+            )
+
+    def get_hunts(self, tenant_id: str, created_by: Optional[str] = None) -> list[dict]:
+        clauses = ["tenant_id = %s"]
+        params: list = [tenant_id]
+        if created_by is not None:
+            clauses.append("created_by = %s")
+            params.append(created_by)
+        where = "WHERE " + " AND ".join(clauses)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM saved_hunts {where} ORDER BY is_favorite DESC, updated_at DESC",
+                params,
+            ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_hunt(self, hunt_id: str, tenant_id: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM saved_hunts WHERE hunt_id=%s AND tenant_id=%s",
+                (hunt_id, tenant_id),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def update_hunt(
+        self,
+        hunt_id: str,
+        tenant_id: str,
+        name: str,
+        description: str,
+        filter_params: str,
+        tags: str,
+        is_favorite: bool,
+    ) -> bool:
+        with self._connect() as conn:
+            result = conn.execute(
+                """UPDATE saved_hunts
+                   SET name=%s, description=%s, filter_params=%s,
+                       tags=%s, is_favorite=%s, updated_at=NOW()
+                   WHERE hunt_id=%s AND tenant_id=%s""",
+                (name, description, filter_params, tags, is_favorite, hunt_id, tenant_id),
+            )
+        return result.rowcount > 0
+
+    def delete_hunt(self, hunt_id: str, tenant_id: str) -> bool:
+        with self._connect() as conn:
+            result = conn.execute(
+                "DELETE FROM saved_hunts WHERE hunt_id=%s AND tenant_id=%s",
+                (hunt_id, tenant_id),
+            )
+        return result.rowcount > 0
+
+    def record_hunt_run(self, hunt_id: str, tenant_id: str, result_count: int) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """UPDATE saved_hunts
+                   SET run_count = run_count + 1,
+                       last_run_at = NOW(),
+                       last_run_count = %s
+                   WHERE hunt_id=%s AND tenant_id=%s""",
+                (result_count, hunt_id, tenant_id),
+            )
+
+    # ------------------------------------------------------------------ #
     #  ATTACK CHAIN STATE
     # ------------------------------------------------------------------ #
 

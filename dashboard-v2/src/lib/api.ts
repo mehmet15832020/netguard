@@ -15,6 +15,8 @@ import type {
   TrafficSummary,
 } from '@/types/models'
 
+export type { NormalizedLog }
+
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
 const API = `${BASE_URL}/api/v1`
 
@@ -1491,4 +1493,89 @@ export const analyticsApi = {
   logFacets: (hours = 24) =>
     request<LogFacetsApiResponse>(`/analytics/log-facets?hours=${hours}`),
 }
+
+// ------------------------------------------------------------------ //
+//  Hunt Workbench (F5)
+// ------------------------------------------------------------------ //
+
+export interface HuntFilters {
+  source_ip?:        string | null
+  destination_ip?:   string | null
+  event_action?:     string | null
+  event_category?:   string | null
+  severity?:         string | null
+  source_type?:      string | null
+  network_protocol?: string | null
+  keyword?:          string | null
+  hours:             number
+  limit:             number
+}
+
+export interface SavedHunt {
+  hunt_id:        string
+  tenant_id:      string
+  created_by:     string
+  name:           string
+  description:    string
+  filter_params:  HuntFilters
+  tags:           string[]
+  is_favorite:    boolean
+  run_count:      number
+  last_run_at:    string | null
+  last_run_count: number | null
+  created_at:     string
+  updated_at:     string
+}
+
+export interface HuntStat {
+  value: string
+  count: number
+}
+
+export interface HuntResult {
+  count: number
+  logs:  NormalizedLog[]
+  stats: {
+    source_ip:      HuntStat[]
+    event_action:   HuntStat[]
+    event_category: HuntStat[]
+    severity:       HuntStat[]
+  }
+}
+
+export const huntsApi = {
+  list: () =>
+    request<{ count: number; hunts: SavedHunt[] }>('/hunts'),
+
+  create: (body: { name: string; description?: string; filters: HuntFilters; tags?: string[]; is_favorite?: boolean }) =>
+    request<{ hunt_id: string; name: string }>('/hunts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  get: (hunt_id: string) =>
+    request<SavedHunt>(`/hunts/${hunt_id}`),
+
+  update: (hunt_id: string, body: { name: string; description?: string; filters: HuntFilters; tags?: string[]; is_favorite?: boolean }) =>
+    request<{ hunt_id: string; updated: boolean }>(`/hunts/${hunt_id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  delete: (hunt_id: string) =>
+    request<void>(`/hunts/${hunt_id}`, { method: 'DELETE' }),
+
+  toggleFavorite: (hunt_id: string) =>
+    request<{ hunt_id: string; is_favorite: boolean }>(`/hunts/${hunt_id}/favorite`, { method: 'PATCH' }),
+
+  execute: (hunt_id: string) =>
+    request<HuntResult>(`/hunts/${hunt_id}/execute`, { method: 'POST' }),
+
+  executeAdhoc: (filters: HuntFilters) =>
+    request<HuntResult>('/hunts/execute', {
+      method: 'POST',
+      body: JSON.stringify(filters),
+    }),
+}
+
 

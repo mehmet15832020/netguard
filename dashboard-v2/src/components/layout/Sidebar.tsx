@@ -9,7 +9,7 @@ import {
   ClipboardList, ShieldAlert, Crosshair, Swords,
   Zap, Fingerprint, ShieldOff, CheckSquare, BarChart2, Activity, PieChart, TrendingUp,
   GitBranch, AlertTriangle, Lock, Globe, Radio, Grid2X2, Gauge, Clock,
-  ShieldCheck, Wand2, FileCode2, ChevronDown, ChevronUp, Pin, PinOff,
+  ShieldCheck, Wand2, FileCode2, Target, ChevronDown, ChevronUp, Pin, PinOff,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { auth, authApi } from '@/lib/api'
@@ -114,8 +114,9 @@ const SECTIONS: Section[] = [
   {
     label: 'Araştırma',
     entries: [
-      { href: '/logs',     label: 'Loglar',      icon: FileText },
-      { href: '/security', label: 'Ham Olaylar', icon: Shield },
+      { href: '/logs',     label: 'Loglar',        icon: FileText },
+      { href: '/security', label: 'Ham Olaylar',   icon: Shield },
+      { href: '/hunts',    label: 'Threat Hunt',   icon: Target },
     ],
   },
   {
