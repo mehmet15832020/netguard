@@ -264,7 +264,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 #### İleri Özellikler (Baklog)
 
 - [x] **F1** — Sigma Rule Backtest Engine (`POST /api/v1/sigma/rules/{rule_id}/backtest`) — 23 test ✓
-- [ ] **F2** — Live Log Stream (WebSocket + TanStack Virtual) — 1 hafta
+- [x] **F2** — Live Log Stream (WebSocket + TanStack Virtual) — 6 test ✓
 - [ ] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi — 2-3 hafta
 - [ ] **F4** — AI Alert Explainer (Claude API, rate limit, 24h cache) — 1 hafta
 - [ ] **F5** — Threat Hunt Workbench (no-code sorgu builder, saved hunts) — 2 hafta
