@@ -5,7 +5,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { wsClient } from '@/lib/websocket'
 import { useAlertStore } from '@/store/alertStore'
 import { useMetricsStore } from '@/store/metricsStore'
-import type { Alert, MetricSnapshot } from '@/types/models'
+import { useLogStreamStore } from '@/store/logStreamStore'
+import type { Alert, MetricSnapshot, NormalizedLog } from '@/types/models'
 
 const ALERT_KEYS    = new Set(['alerts', 'security-status', 'attack-chain-stats'])
 const CORREL_KEYS   = new Set(['correlated-events', 'corr-events-timeline', 'security-events', 'security-summary', 'security-status'])
@@ -63,6 +64,10 @@ export function useWebSocket() {
           queryClient.invalidateQueries({
             predicate: (q) => INCIDENT_KEYS.has(q.queryKey[0] as string),
           })
+          break
+
+        case 'log':
+          useLogStreamStore.getState().addStreamLog(msg.data as NormalizedLog)
           break
 
         default:

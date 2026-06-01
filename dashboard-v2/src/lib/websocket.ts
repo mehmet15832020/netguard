@@ -7,7 +7,7 @@ import { useWsStore } from '@/store/wsStore'
 
 const WS_URL = process.env.NEXT_PUBLIC_WS_URL ?? 'ws://localhost:8000'
 
-export type WSMessageType = 'alert' | 'metric' | 'security_event' | 'correlated_event' | 'incident' | 'attack_chain' | 'ping'
+export type WSMessageType = 'alert' | 'metric' | 'security_event' | 'correlated_event' | 'incident' | 'attack_chain' | 'ping' | 'log'
 
 export interface WSMessage<T = unknown> {
   type: WSMessageType

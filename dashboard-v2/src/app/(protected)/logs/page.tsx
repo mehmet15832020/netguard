@@ -1,16 +1,18 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import {
   FileText, RefreshCw, Search, X, ChevronDown, ChevronRight,
   Radio, Wifi, WifiOff,
 } from 'lucide-react'
+import { useVirtualizer } from '@tanstack/react-virtual'
 import { SkeletonTable, SkeletonChart } from '@/components/ui/skeleton'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
 import { logsApi, analyticsApi, type LogFacetItem } from '@/lib/api'
 import { TOOLTIP_BASE, SEVERITY_COLORS } from '@/lib/echarts-theme'
 import { SeverityBadge } from '@/components/ui/severity-badge'
+import { useLogStreamStore } from '@/store/logStreamStore'
 import type { NormalizedLog, Severity } from '@/types/models'
 import { cn } from '@/lib/utils'
 
@@ -37,6 +39,8 @@ const SEV_CHART_COLORS: Record<string, string> = {
   warning:  SEVERITY_COLORS.warning,
   info:     SEVERITY_COLORS.info,
 }
+
+const COL_GRID = 'grid-cols-[16px_96px_96px_128px_1fr_144px_144px]'
 
 // ─── Yardımcı ─────────────────────────────────────────────────────────────────
 
@@ -143,74 +147,139 @@ function FacetList({
   )
 }
 
-// ─── Expandable Row ───────────────────────────────────────────────────────────
+// ─── Virtual Log Row ──────────────────────────────────────────────────────────
 
-function LogRow({ log }: { log: NormalizedLog }) {
-  const [open, setOpen] = useState(false)
-  const ext = log as unknown as Record<string, string>
+function VirtualLogRow({
+  log,
+  expanded,
+  onToggle,
+  measureRef,
+}: {
+  log:        NormalizedLog
+  expanded:   boolean
+  onToggle:   () => void
+  measureRef: (el: Element | null) => void
+}) {
+  const ext = log as unknown as Record<string, string | number | null>
 
   return (
-    <>
-      <tr
+    <div ref={measureRef} className="border-b border-sky-900/10">
+      {/* Collapsed row */}
+      <div
         className={cn(
-          'cursor-pointer transition-colors border-b border-sky-900/10',
-          open ? 'bg-sky-950/25' : 'hover:bg-sky-950/20',
+          'grid cursor-pointer transition-colors py-2 px-2',
+          COL_GRID,
+          expanded ? 'bg-sky-950/25' : 'hover:bg-sky-950/20',
         )}
-        onClick={() => setOpen((o) => !o)}
+        onClick={onToggle}
       >
-        <td className="ui-td w-4">
-          {open
+        <div className="flex items-center justify-center">
+          {expanded
             ? <ChevronDown size={12} className="text-slate-600" />
             : <ChevronRight size={12} className="text-slate-700" />}
-        </td>
-        <td className="ui-td">
+        </div>
+        <div className="flex items-center">
           <SeverityBadge severity={log.severity as Severity} />
-        </td>
-        <td className="ui-td">
+        </div>
+        <div className="flex items-center">
           <SourcePill type={log.source_type} />
-        </td>
-        <td className="ui-td text-xs text-slate-500">
+        </div>
+        <div className="flex items-center text-xs text-slate-500">
           {CATEGORY_LABELS[log.event_category] ?? log.event_category}
-        </td>
-        <td className="ui-td text-xs text-slate-200 max-w-xs truncate">{log.message}</td>
-        <td className="ui-td text-xs text-slate-500 font-mono">
+        </div>
+        <div className="flex items-center text-xs text-slate-200 truncate pr-2">
+          {log.message}
+        </div>
+        <div className="flex items-center text-xs text-slate-500 font-mono">
           {log.source_hostname
             ? <><span className="text-slate-300">{log.source_hostname}</span><span className="text-slate-700 ml-1">({log.source_ip})</span></>
             : log.source_ip ?? <span className="text-slate-700">—</span>}
-        </td>
-        <td className="ui-td text-xs text-slate-700 whitespace-nowrap">{formatDate(log.timestamp)}</td>
-      </tr>
-      {open && (
-        <tr className="border-b border-sky-900/10 bg-sky-950/10">
-          <td colSpan={7} className="px-8 py-3">
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-1.5 text-[11px]">
-              {[
-                ['Log ID',         log.log_id],
-                ['Event Action',   ext.event_action ?? '—'],
-                ['Kaynak IP',      log.source_ip ?? '—'],
-                ['Hedef IP',       ext.destination_ip ?? '—'],
-                ['Kaynak Port',    ext.source_port ?? '—'],
-                ['Hedef Port',     ext.destination_port ?? '—'],
-                ['Protokol',       ext.network_protocol ?? '—'],
-                ['Hostname',       log.source_hostname ?? '—'],
-                ['Observer',       ext.observer_hostname ?? '—'],
-                ['Zaman',          formatDate(log.timestamp)],
-              ].map(([k, v]) => (
-                <div key={k as string}>
-                  <span className="text-slate-700">{k}: </span>
-                  <span className="text-slate-300 font-mono break-all">{v ?? '—'}</span>
-                </div>
-              ))}
-            </div>
-            {log.message && (
-              <div className="mt-2 px-3 py-2 bg-sky-950/20 border border-sky-900/15 rounded text-[11px] font-mono text-slate-400 break-all">
-                {log.message}
+        </div>
+        <div className="flex items-center text-xs text-slate-700 whitespace-nowrap">
+          {formatDate(log.timestamp)}
+        </div>
+      </div>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-8 py-3 bg-sky-950/10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-1.5 text-[11px]">
+            {([
+              ['Log ID',        log.log_id],
+              ['Event Action',  ext.event_action ?? '—'],
+              ['Kaynak IP',     log.source_ip ?? '—'],
+              ['Hedef IP',      ext.destination_ip ?? '—'],
+              ['Kaynak Port',   ext.source_port ?? '—'],
+              ['Hedef Port',    ext.destination_port ?? '—'],
+              ['Protokol',      ext.network_protocol ?? '—'],
+              ['Hostname',      log.source_hostname ?? '—'],
+              ['Observer',      ext.observer_hostname ?? '—'],
+              ['Zaman',         formatDate(log.timestamp)],
+            ] as [string, string | number | null][]).map(([k, v]) => (
+              <div key={k}>
+                <span className="text-slate-700">{k}: </span>
+                <span className="text-slate-300 font-mono break-all">{v ?? '—'}</span>
               </div>
-            )}
-          </td>
-        </tr>
+            ))}
+          </div>
+          {log.message && (
+            <div className="mt-2 px-3 py-2 bg-sky-950/20 border border-sky-900/15 rounded text-[11px] font-mono text-slate-400 break-all">
+              {log.message}
+            </div>
+          )}
+        </div>
       )}
-    </>
+    </div>
+  )
+}
+
+// ─── Virtual Log List ─────────────────────────────────────────────────────────
+
+function VirtualLogList({ logs }: { logs: NormalizedLog[] }) {
+  const parentRef = useRef<HTMLDivElement>(null)
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+
+  const toggle = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }, [])
+
+  const virtualizer = useVirtualizer({
+    count: logs.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: (i) => expandedIds.has(logs[i]?.log_id) ? 180 : 44,
+    getItemKey: (i) => logs[i]?.log_id ?? i,
+    overscan: 8,
+    measureElement: (el) => el.getBoundingClientRect().height,
+  })
+
+  return (
+    <div ref={parentRef} className="overflow-auto" style={{ height: '50vh', minHeight: 320 }}>
+      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+        {virtualizer.getVirtualItems().map((vRow) => {
+          const log = logs[vRow.index]
+          if (!log) return null
+          return (
+            <div
+              key={vRow.key}
+              data-index={vRow.index}
+              ref={virtualizer.measureElement}
+              style={{ position: 'absolute', top: vRow.start, width: '100%' }}
+            >
+              <VirtualLogRow
+                log={log}
+                expanded={expandedIds.has(log.log_id)}
+                onToggle={() => toggle(log.log_id)}
+                measureRef={() => {}}
+              />
+            </div>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 
@@ -228,6 +297,7 @@ const INPUT_CLS = "ui-input"
 
 export default function LogsPage() {
   const queryClient = useQueryClient()
+
   const [sourceFilter, setSourceFilter]     = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
@@ -246,6 +316,10 @@ export default function LogsPage() {
   const debouncedAction   = useDebounce(filterAction, 400)
   const isSearching       = debouncedSearch.trim().length > 0
 
+  const streamLogs  = useLogStreamStore((s) => s.streamLogs)
+  const setStream   = useLogStreamStore((s) => s.setStreamLogs)
+  const clearStream = useLogStreamStore((s) => s.clearStream)
+
   const facetSourceFilter   = sourceFilter   !== 'all' ? sourceFilter   : undefined
   const facetCategoryFilter = categoryFilter !== 'all' ? categoryFilter : undefined
 
@@ -261,7 +335,7 @@ export default function LogsPage() {
         event_action:     debouncedAction    || undefined,
         limit: 200,
       }),
-    refetchInterval: liveMode ? 5_000 : 20_000,
+    refetchInterval: liveMode ? false : 20_000,
     enabled: !isSearching,
   })
 
@@ -281,7 +355,7 @@ export default function LogsPage() {
   const { data: volumeData } = useQuery({
     queryKey: ['log-volume', hours, facetSourceFilter, facetCategoryFilter],
     queryFn:  () => analyticsApi.logVolume(hours, facetSourceFilter, facetCategoryFilter),
-    refetchInterval: liveMode ? 10_000 : 60_000,
+    refetchInterval: liveMode ? false : 60_000,
     staleTime: 30_000,
   })
 
@@ -292,16 +366,47 @@ export default function LogsPage() {
     staleTime: 30_000,
   })
 
+  // liveMode açılınca: REST verisiyle stream'i başlat; kapanınca temizle + polling'e dön
+  useEffect(() => {
+    if (liveMode) {
+      const initial = listQuery.data?.logs ?? []
+      setStream(initial)
+    } else {
+      clearStream()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveMode])
+
+  // Aktif filtrelerle eşleşen stream logları (client-side filtre)
+  const filteredStreamLogs = useMemo(() => {
+    if (!liveMode) return []
+    return streamLogs.filter((log) => {
+      const ext = log as unknown as Record<string, string | null>
+      if (sourceFilter   !== 'all' && log.source_type    !== sourceFilter)    return false
+      if (categoryFilter !== 'all' && log.event_category !== categoryFilter)   return false
+      if (severityFilter !== 'all' && log.severity       !== severityFilter)   return false
+      if (debouncedSrcIp     && log.source_ip             !== debouncedSrcIp)     return false
+      if (debouncedDstIp     && ext.destination_ip        !== debouncedDstIp)     return false
+      if (debouncedProtocol  && ext.network_protocol      !== debouncedProtocol)  return false
+      if (debouncedAction    && ext.event_action          !== debouncedAction)     return false
+      return true
+    })
+  }, [liveMode, streamLogs, sourceFilter, categoryFilter, severityFilter,
+      debouncedSrcIp, debouncedDstIp, debouncedProtocol, debouncedAction])
+
   const active   = isSearching ? searchQuery : listQuery
-  const allLogs  = active.data?.logs ?? []
   const count    = active.data?.count ?? 0
   const loading  = active.isLoading
   const fetching = active.isFetching
 
-  const logs = useMemo(() => {
-    if (severityFilter === 'all' || isSearching) return allLogs
-    return allLogs.filter((l) => l.severity === severityFilter)
-  }, [allLogs, severityFilter, isSearching])
+  const logs: NormalizedLog[] = useMemo(() => {
+    if (liveMode && !isSearching) return filteredStreamLogs
+    const raw = active.data?.logs ?? []
+    if (severityFilter === 'all' || isSearching) return raw
+    return raw.filter((l) => l.severity === severityFilter)
+  }, [liveMode, isSearching, filteredStreamLogs, active.data, severityFilter])
+
+  const displayCount = liveMode && !isSearching ? streamLogs.length : count
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ['logs-list'] })
@@ -363,10 +468,12 @@ export default function LogsPage() {
               <p className="text-xs text-slate-600">
                 {isSearching
                   ? `"${debouncedSearch}" için ${count} sonuç`
-                  : `${logs.length} kayıt${logs.length < count ? ` (${count} toplam)` : ''}`}
+                  : liveMode
+                    ? `${filteredStreamLogs.length} gösterilen · ${displayCount} buffer`
+                    : `${logs.length} kayıt${logs.length < count ? ` (${count} toplam)` : ''}`}
               </p>
             </div>
-            {fetching && <RefreshCw size={13} className="text-slate-500 animate-spin" />}
+            {fetching && !liveMode && <RefreshCw size={13} className="text-slate-500 animate-spin" />}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {/* Zaman aralığı */}
@@ -515,8 +622,19 @@ export default function LogsPage() {
             )}
           </div>
 
+          {/* Column headers */}
+          <div className={cn('grid px-2 py-1.5 border-b border-sky-900/15 text-[10px] text-slate-600 uppercase tracking-[0.12em] select-none', COL_GRID)}>
+            <div />
+            <div>Seviye</div>
+            <div>Kaynak</div>
+            <div>Kategori</div>
+            <div>Mesaj</div>
+            <div>Kaynak IP</div>
+            <div>Zaman</div>
+          </div>
+
           {/* Table body */}
-          {loading ? (
+          {loading && !liveMode ? (
             <div className="p-4">
               <SkeletonTable rows={8} height={40} />
             </div>
@@ -528,24 +646,7 @@ export default function LogsPage() {
               </p>
             </div>
           ) : (
-            <table className="w-full text-sm">
-              <thead>
-                <tr >
-                  <th className="ui-th w-4" />
-                  <th className="ui-th w-24">Seviye</th>
-                  <th className="ui-th w-24">Kaynak</th>
-                  <th className="ui-th w-32">Kategori</th>
-                  <th className="ui-th">Mesaj</th>
-                  <th className="ui-th w-36">Kaynak IP</th>
-                  <th className="ui-th w-36">Zaman</th>
-                </tr>
-              </thead>
-              <tbody>
-                {logs.map((log) => (
-                  <LogRow key={log.log_id} log={log} />
-                ))}
-              </tbody>
-            </table>
+            <VirtualLogList logs={logs} />
           )}
         </div>
       </div>

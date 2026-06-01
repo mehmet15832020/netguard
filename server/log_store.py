@@ -79,10 +79,20 @@ class PostgreSQLLogStore:
 
     def save(self, log: NormalizedLog, tenant_id: str = "default") -> None:
         _db.save_normalized_log(log, tenant_id=tenant_id)
+        try:
+            from server.ws_manager import ws_manager
+            ws_manager.broadcast_from_thread("log", {**log.model_dump(mode="json"), "tenant_id": tenant_id})
+        except Exception:
+            pass
 
     def save_batch(self, logs: list[NormalizedLog], tenant_id: str = "default") -> None:
         for log in logs:
             _db.save_normalized_log(log, tenant_id=tenant_id)
+            try:
+                from server.ws_manager import ws_manager
+                ws_manager.broadcast_from_thread("log", {**log.model_dump(mode="json"), "tenant_id": tenant_id})
+            except Exception:
+                pass
 
     def search(
         self,
