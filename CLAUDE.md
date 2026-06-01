@@ -304,9 +304,17 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - `dce_rpc.log`: `drsuapi/DsGetNCChanges` = DCSync T1003.006
   - MITRE BZAR projesini referans al — notice.log çıktısını tüket (parser mevcut)
   - **Entegrasyon:** `zeek_collector.py` + `parsers/zeek.py` 4 parser + `zeek_advanced.yml` + STAGE_MAP
-- [ ] **W1** — Windows Agent (psutil tabanlı, Windows Service) — Bağımlılık: N1 sonrası daha güçlü
-  - Mevcut Ubuntu agent'ı Windows'a port et; `pywin32` + `win32evtlog` ile EID streaming
-  - `nssm` veya `pywin32.servicemanager` ile Windows Service; `pyinstaller` ile tek EXE
+- [ ] **W1-A** — Windows Agent Hızlı Demo (1-2 saat) — Mevcut `agent/windows_log_shipper.py` zaten var (3 EID: 4624/4625/4688)
+  - Windows VM'e Python + `pip install pywin32 httpx psutil` + env vars → agent çalıştır → dashboardda görür
+  - **Sınır:** Sadece 3 EID, Sysmon kanalı yok; görsel kanıt için yeterli
+- [ ] **W1-B** — Windows Agent Tam (4-5 gün) — N1 ile paralel yapılabilir, birbirini güçlendirir
+  - `windows_log_shipper.py`: 12 EID → 60+ EID + `Microsoft-Windows-Sysmon/Operational` kanalı + `Microsoft-Windows-PowerShell/Operational` kanalı
+  - `nssm` veya `pywin32.servicemanager` ile Windows Service kurulumu; `pyinstaller` ile tek `.exe` installer
+  - Multi-channel reader: Security + Sysmon + PowerShell kanalları ayrı thread'ler
+- [ ] **E1** — E-posta Bildirim Kalitesi (1-2 gün) — başlanıyor
+  - **Sorunlar:** Correlated event'lerde cooldown yok → dakikada 8 duplicate; microsecond timestamp; düz metin
+  - **Çözüm (NIST SP 800-61 Rev 3 / PagerDuty):** Severity-bazlı cooldown (C:5dk, H:15dk, M:30dk, W:1s); ISO 8601 timestamp (microsecond yok); HTML+plain-text MIME multipart; `[SEV] NetGuard | event | ip` konu formatı
+  - **Entegrasyon:** `server/notifier.py` `_CORRELATED_COOLDOWN_SECS` + `_correlated_cooldown` dict + HTML template
 
 #### P2 — Orta Vadeli (Ay 3-5)
 

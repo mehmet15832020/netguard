@@ -219,6 +219,22 @@ class WebhookNotifier:
 _SEV_RANK = {"info": 0, "warning": 1, "medium": 2, "high": 3, "critical": 4}
 _ANOMALY_COOLDOWN_SECS = 3600  # Aynı entity+metric için saatte bir bildirim
 
+# NIST SP 800-61 Rev 3 + PagerDuty: severity bazlı dedup penceresi
+_CORRELATED_COOLDOWN_SECS: dict[str, int] = {
+    "critical": 300,   # 5 dk
+    "high":     900,   # 15 dk
+    "medium":  1800,   # 30 dk
+    "warning": 3600,   # 1 saat
+}
+
+_SEV_COLOR = {
+    "critical": "#dc2626",
+    "high":     "#ea580c",
+    "medium":   "#d97706",
+    "warning":  "#ca8a04",
+    "info":     "#2563eb",
+}
+
 
 class Notifier:
     """
@@ -230,6 +246,7 @@ class Notifier:
         self.email = EmailNotifier()
         self.webhook = WebhookNotifier()
         self._anomaly_cooldown: dict[str, datetime] = {}
+        self._correlated_cooldown: dict[str, datetime] = {}
         self._cooldown_lock = threading.Lock()
 
     def _get_min_severity(self) -> str:
@@ -256,9 +273,18 @@ class Notifier:
         self.webhook.send(alert)
 
     def notify_correlated(self, event: CorrelatedEvent) -> None:
-        """Korelasyon event'ini gönderir. Min severity filtresi uygulanır."""
+        """Korelasyon event'ini gönderir. Min severity + dedup cooldown filtresi uygulanır."""
         if _SEV_RANK.get(event.severity, 0) < _SEV_RANK.get(self._get_min_severity(), 3):
             return
+        cooldown_secs = _CORRELATED_COOLDOWN_SECS.get(event.severity, 900)
+        dedup_key = f"{event.rule_id}:{event.group_value}:{event.event_action}"
+        now = datetime.now(timezone.utc)
+        with self._cooldown_lock:
+            last = self._correlated_cooldown.get(dedup_key)
+            if last and (now - last).total_seconds() < cooldown_secs:
+                logger.debug("Correlated bildirim bekleniyor (cooldown): %s", dedup_key)
+                return
+            self._correlated_cooldown[dedup_key] = now
         self._send_correlated_email(event)
         self._send_correlated_webhook(event)
 
@@ -279,24 +305,48 @@ class Notifier:
     def _send_correlated_email(self, event: CorrelatedEvent) -> None:
         if not self.email.enabled:
             return
-        severity_prefix = {"critical": "🚨", "high": "🔴", "medium": "🟡", "warning": "⚠️"}.get(event.severity, "ℹ️")
-        subject = f"{severity_prefix} NetGuard Korelasyon — {event.severity.upper()}: {event.event_action}"
-        body = (
+        ts = event.last_seen.strftime("%Y-%m-%dT%H:%M:%SZ")
+        sev_up = event.severity.upper()
+        subject = f"[{sev_up}] NetGuard | {event.event_action} | {event.group_value} ({event.rule_id})"
+        plain = (
             f"NetGuard Korelasyon Alarmı\n{'='*40}\n\n"
             f"Olay Tipi  : {event.event_action}\n"
             f"Kural      : {event.rule_id} ({event.rule_name})\n"
-            f"Seviye     : {event.severity.upper()}\n"
+            f"Seviye     : {sev_up}\n"
             f"Kaynak     : {event.group_value}\n"
             f"Mesaj      : {event.message}\n"
             f"Eşleşme    : {event.matched_count} olay / {event.window_seconds}s\n"
-            f"Zaman      : {event.last_seen}\n\n"
+            f"Zaman      : {ts}\n\n"
             f"{'='*40}\nBu mesaj NetGuard tarafından otomatik gönderilmiştir.\n"
         )
-        msg = MIMEMultipart()
+        color = _SEV_COLOR.get(event.severity, "#2563eb")
+        html = f"""<!DOCTYPE html>
+<html lang="tr"><body style="font-family:Arial,sans-serif;background:#f4f4f4;padding:20px;margin:0">
+<table width="600" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:6px;overflow:hidden;margin:auto">
+  <tr><td style="background:{color};padding:16px 24px">
+    <span style="color:#fff;font-size:18px;font-weight:bold">&#9888; NetGuard — {sev_up}</span>
+  </td></tr>
+  <tr><td style="padding:24px">
+    <p style="font-size:15px;color:#111;margin:0 0 16px">{event.message}</p>
+    <table width="100%" style="border-collapse:collapse;font-size:13px">
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;color:#555;width:35%"><b>Olay Tipi</b></td><td style="padding:8px 12px">{event.event_action}</td></tr>
+      <tr><td style="padding:8px 12px;color:#555"><b>Kural</b></td><td style="padding:8px 12px">{event.rule_id} — {event.rule_name}</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;color:#555"><b>Kaynak IP</b></td><td style="padding:8px 12px;font-family:monospace">{event.group_value}</td></tr>
+      <tr><td style="padding:8px 12px;color:#555"><b>Eşleşme</b></td><td style="padding:8px 12px">{event.matched_count} olay / {event.window_seconds}s</td></tr>
+      <tr style="background:#f9f9f9"><td style="padding:8px 12px;color:#555"><b>Zaman</b></td><td style="padding:8px 12px;font-family:monospace">{ts}</td></tr>
+    </table>
+  </td></tr>
+  <tr><td style="background:#f4f4f4;padding:12px 24px;font-size:11px;color:#888;text-align:center">
+    Bu mesaj NetGuard tarafından otomatik gönderilmiştir.
+  </td></tr>
+</table>
+</body></html>"""
+        msg = MIMEMultipart("alternative")
         msg["From"]    = self.email.from_email
         msg["To"]      = ", ".join(self.email.to_emails)
         msg["Subject"] = subject
-        msg.attach(MIMEText(body, "plain", "utf-8"))
+        msg.attach(MIMEText(plain, "plain", "utf-8"))
+        msg.attach(MIMEText(html,  "html",  "utf-8"))
         self.email._send_msg(msg, event.event_action)
 
     def _send_correlated_webhook(self, event: CorrelatedEvent) -> None:

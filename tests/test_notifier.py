@@ -246,3 +246,121 @@ class TestRetryHelpers:
                 result = w._post_payload({"x": 1}, "ctx")
         assert result is True
         assert mock_post.call_count == 2
+
+
+class TestCorrelatedCooldown:
+    """Correlated event dedup cooldown — NIST SP 800-61 Rev 3."""
+
+    def _make_smtp(self):
+        smtp = MagicMock()
+        smtp.__enter__ = lambda s: s
+        smtp.__exit__ = MagicMock(return_value=False)
+        return smtp
+
+    def _notifier_with_email(self) -> Notifier:
+        n = Notifier()
+        n.email.enabled = True
+        n.email.smtp_host = "smtp.test"
+        n.email.smtp_port = 587
+        n.email.smtp_user = "u"
+        n.email.smtp_password = "p"
+        n.email.from_email = "ng@test"
+        n.email.to_emails = ["dest@test"]
+        n.webhook.enabled = False
+        return n
+
+    def test_duplicate_correlated_blocked_by_cooldown(self):
+        n = self._notifier_with_email()
+        smtp = self._make_smtp()
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical"))
+                n.notify_correlated(_make_event(severity="critical"))
+        assert smtp.send_message.call_count == 1
+
+    def test_different_sources_both_sent(self):
+        n = self._notifier_with_email()
+        smtp = self._make_smtp()
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical", group_value="1.1.1.1"))
+                n.notify_correlated(_make_event(severity="critical", group_value="2.2.2.2"))
+        assert smtp.send_message.call_count == 2
+
+    def test_different_rules_both_sent(self):
+        n = self._notifier_with_email()
+        smtp = self._make_smtp()
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(rule_id="rule_a"))
+                n.notify_correlated(_make_event(rule_id="rule_b"))
+        assert smtp.send_message.call_count == 2
+
+    def test_cooldown_expires_allows_resend(self):
+        n = self._notifier_with_email()
+        event = _make_event(severity="critical")
+        dedup_key = f"{event.rule_id}:{event.group_value}:{event.event_action}"
+        n._correlated_cooldown[dedup_key] = datetime.now(timezone.utc) - timedelta(hours=1)
+        smtp = self._make_smtp()
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(event)
+        assert smtp.send_message.call_count == 1
+
+    def test_subject_line_format(self):
+        n = self._notifier_with_email()
+        sent_msgs = []
+        smtp = self._make_smtp()
+        smtp.send_message.side_effect = lambda m: sent_msgs.append(m)
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(
+                    severity="critical",
+                    event_action="brute_force_detected",
+                    group_value="10.0.0.1",
+                    rule_id="ssh_brute_force",
+                ))
+        assert len(sent_msgs) == 1
+        subj = sent_msgs[0]["Subject"]
+        assert subj.startswith("[CRITICAL]")
+        assert "brute_force_detected" in subj
+        assert "10.0.0.1" in subj
+
+    def test_timestamp_has_no_microseconds(self):
+        n = self._notifier_with_email()
+        sent_msgs = []
+        smtp = self._make_smtp()
+        smtp.send_message.side_effect = lambda m: sent_msgs.append(m)
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical"))
+        assert len(sent_msgs) == 1
+        plain_body = sent_msgs[0].get_payload(0).get_payload(decode=True).decode()
+        assert "." not in [c for line in plain_body.splitlines()
+                           if "Zaman" in line for c in line.split(":")[-1]]
+
+    def test_email_has_html_part(self):
+        n = self._notifier_with_email()
+        sent_msgs = []
+        smtp = self._make_smtp()
+        smtp.send_message.side_effect = lambda m: sent_msgs.append(m)
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical"))
+        assert len(sent_msgs) == 1
+        content_types = [p.get_content_type() for p in sent_msgs[0].get_payload()]
+        assert "text/html" in content_types
+        assert "text/plain" in content_types
+
+    def test_html_contains_severity_color(self):
+        n = self._notifier_with_email()
+        sent_msgs = []
+        smtp = self._make_smtp()
+        smtp.send_message.side_effect = lambda m: sent_msgs.append(m)
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical"))
+        html_part = next(p for p in sent_msgs[0].get_payload()
+                        if p.get_content_type() == "text/html")
+        html = html_part.get_payload(decode=True).decode()
+        assert "#dc2626" in html  # critical rengi
