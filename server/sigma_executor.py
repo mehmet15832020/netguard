@@ -61,6 +61,21 @@ _LEVEL_TO_SEVERITY = {
     "critical":      "critical",
 }
 
+_NOW_INTERVAL_RE = re.compile(
+    r"AND timestamp >= NOW\(\) - INTERVAL '\d+ seconds'",
+    re.IGNORECASE,
+)
+
+
+def _inject_backtest_window(sql: str) -> tuple[str, int]:
+    """NOW()-bazlı zaman filtresini %s/%s placeholder çiftleriyle değiştirir.
+
+    Returns: (yeniden_yazılan_sql, değiştirilen_sayı)
+    """
+    count = len(_NOW_INTERVAL_RE.findall(sql))
+    result = _NOW_INTERVAL_RE.sub("AND timestamp >= %s AND timestamp <= %s", sql)
+    return result, count
+
 
 # ------------------------------------------------------------------ #
 #  Custom SQLite Backend
@@ -286,9 +301,80 @@ class SigmaExecutor:
 
         return results
 
+    @classmethod
+    def for_file(cls, path: Path) -> "SigmaExecutor":
+        """Tek bir YAML dosyasından executor oluşturur (load_dir çağrılmaz)."""
+        inst = object.__new__(cls)
+        inst._dir = str(path.parent)
+        inst._backend = _NetGuardPGBackend()
+        inst._rules = inst._load_file(path)
+        return inst
+
     @property
     def rules(self) -> list[SigmaExecutableRule]:
         return list(self._rules)
+
+    def execute_backtest(
+        self,
+        rule: "SigmaExecutableRule",
+        conn,
+        tenant_id: str,
+        start_ts: datetime,
+        end_ts: datetime,
+    ) -> list[dict]:
+        """Belirtilen zaman aralığında kuralı normalized_logs'a karşı çalıştırır."""
+        if not _SAFE_TENANT_RE.match(tenant_id):
+            logger.error("Geçersiz tenant_id reddedildi: %r", tenant_id)
+            return []
+
+        backtest_sql, ts_pair_count = _inject_backtest_window(rule.sql)
+        if ts_pair_count == 0:
+            logger.warning("Backtest: zaman filtresi yok [%s]", rule.rule_id)
+            return []
+
+        injection_target = "FROM normalized_logs WHERE"
+        param_count = backtest_sql.count(injection_target)
+        sql = backtest_sql.replace(
+            injection_target,
+            "FROM normalized_logs WHERE tenant_id = %s AND",
+        )
+
+        params: list = []
+        for _ in range(param_count):
+            params.extend([tenant_id, start_ts, end_ts])
+
+        try:
+            rows = conn.execute(sql, params).fetchall()
+        except Exception as exc:
+            logger.error("Backtest SQL hatası [%s]: %s", rule.rule_id, exc)
+            return []
+
+        results = []
+        for row in rows:
+            keys = set(row.keys())
+            if rule.is_correlation:
+                group_fields = rule.group_by_fields
+                group_val = (
+                    row[group_fields[0]] if group_fields and group_fields[0] in keys
+                    else (list(row.values())[0] if keys else "unknown")
+                )
+                count = row["event_count"] if "event_count" in keys else 1
+            else:
+                group_val = (
+                    row["source_ip"]         if "source_ip"         in keys else
+                    row["observer_hostname"]  if "observer_hostname"  in keys else
+                    "unknown"
+                )
+                count = 1
+
+            results.append({
+                "group_value": str(group_val) if group_val is not None else "unknown",
+                "event_count": count,
+                "first_ts": str(row["first_ts"]) if "first_ts" in keys and row["first_ts"] else None,
+                "last_ts":  str(row["last_ts"])  if "last_ts"  in keys and row["last_ts"]  else None,
+            })
+
+        return results
 
     def execute_rule(
         self,

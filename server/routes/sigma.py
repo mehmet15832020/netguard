@@ -12,15 +12,19 @@ import logging
 import os
 import tempfile
 import threading
+import time as _time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sigma.collection import SigmaCollection as _SC
 from sigma.correlations import SigmaCorrelationRule
 
 from server.auth import User, get_current_user, require_admin
 from server.correlator import correlator, SIGMA_RULES_V2_DIR
+from server.database import db
 from server.limiter import limiter, _auth_key
 
 logger = logging.getLogger(__name__)
@@ -77,6 +81,12 @@ def _parse_v2_rule(path: Path) -> dict | None:
 
 class SigmaRuleUpload(BaseModel):
     yaml_content: str
+
+
+class BacktestRequest(BaseModel):
+    hours: int = Field(default=24, ge=1, le=168)
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
 
 
 @router.get("/sigma/rules")
@@ -197,6 +207,82 @@ def toggle_sigma_rule(request: Request, response: Response, rule_id: str, _: Use
     enabled = not str(new_path).endswith(".disabled")
     logger.info(f"Sigma kuralı toggle: {rule_id} → enabled={enabled}")
     return {"rule_id": rule_id, "enabled": enabled, "filename": new_path.name, "loaded_count": loaded}
+
+
+@router.post("/sigma/rules/{rule_id}/backtest")
+@limiter.limit("10/minute", key_func=_auth_key)
+def backtest_sigma_rule(
+    request: Request,
+    response: Response,
+    rule_id: str,
+    body: BacktestRequest,
+    current_user: User = Depends(get_current_user),
+):
+    """Sigma kuralını geçmiş normalized_logs verisiyle backtest et."""
+    from server.sigma_executor import SigmaExecutor
+
+    now = datetime.now(timezone.utc)
+
+    if body.start_time or body.end_time:
+        try:
+            start_ts = (
+                datetime.fromisoformat(body.start_time)
+                if body.start_time
+                else now - timedelta(hours=body.hours)
+            )
+            end_ts = (
+                datetime.fromisoformat(body.end_time)
+                if body.end_time
+                else now
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=f"Geçersiz zaman formatı: {exc}")
+        if start_ts >= end_ts:
+            raise HTTPException(status_code=422, detail="start_time < end_time olmalı")
+    else:
+        end_ts   = now
+        start_ts = now - timedelta(hours=body.hours)
+
+    target_file: Path | None = None
+    for f in _list_sigma_files():
+        meta = _parse_v2_rule(f)
+        if meta and meta["rule_id"] == rule_id:
+            target_file = f
+            break
+    if target_file is None:
+        raise HTTPException(status_code=404, detail=f"Kural bulunamadı: {rule_id}")
+
+    try:
+        executor = SigmaExecutor.for_file(target_file)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Kural yüklenemedi: {exc}")
+
+    if not executor.rules:
+        raise HTTPException(status_code=422, detail="Kural SQL üretemedi")
+
+    rule = executor.rules[-1]
+    tenant_id = current_user.tenant_id or "default"
+
+    t0 = _time.monotonic()
+    with db._connect() as conn:
+        matches = executor.execute_backtest(rule, conn, tenant_id, start_ts, end_ts)
+    duration_ms = round((_time.monotonic() - t0) * 1000)
+
+    return {
+        "rule_id":        rule.rule_id,
+        "title":          rule.title,
+        "severity":       rule.severity,
+        "is_correlation": rule.is_correlation,
+        "window": {
+            "start": start_ts.isoformat(),
+            "end":   end_ts.isoformat(),
+            "hours": body.hours if not (body.start_time or body.end_time) else None,
+        },
+        "match_count":  len(matches),
+        "matches":      matches[:100],
+        "executed_at":  now.isoformat(),
+        "duration_ms":  duration_ms,
+    }
 
 
 @router.delete("/sigma/rules/{rule_id}")
