@@ -2,7 +2,6 @@
 sigma_executor testleri — pySigma kural yükleme, SQL üretimi, yürütme.
 """
 import re
-import sqlite3
 from pathlib import Path
 
 import pytest
@@ -11,51 +10,6 @@ from server.sigma_executor import (
     SigmaExecutor, SigmaExecutableRule, _inject_time_window,
     _pg_ilike, _pg_escape_percent, _pg_fix_having,
 )
-
-_PG_RE = re.compile(r"%s")
-
-
-class _CompatCursor:
-    def __init__(self, cur):
-        self._c = cur
-
-    def fetchall(self):
-        return self._c.fetchall()
-
-    def fetchone(self):
-        return self._c.fetchone()
-
-    @property
-    def rowcount(self):
-        return self._c.rowcount
-
-    def __iter__(self):
-        return iter(self._c)
-
-
-class _CompatConn:
-    """memory_db için %s → ? ve NOW() → datetime('now') çevirisi yapan wrapper."""
-
-    _NOW_RE = re.compile(
-        r"NOW\(\)\s*-\s*INTERVAL\s*'(\d+)\s*seconds?'",
-        re.IGNORECASE,
-    )
-
-    def __init__(self, conn):
-        self._conn = conn
-
-    def _adapt(self, sql: str) -> str:
-        sql = _PG_RE.sub("?", sql)
-        sql = self._NOW_RE.sub(lambda m: f"datetime('now', '-{m.group(1)} seconds')", sql)
-        sql = sql.replace(" ILIKE ", " LIKE ")
-        sql = sql.replace("%%", "%")
-        return sql
-
-    def execute(self, sql: str, params=None):
-        return _CompatCursor(self._conn.execute(self._adapt(sql), params or []))
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
 
 
 # ------------------------------------------------------------------ #
@@ -214,82 +168,64 @@ def test_pg_fix_having_no_op_when_count_already_used():
 #  SigmaExecutor — SQL yürütme
 # ------------------------------------------------------------------ #
 
-@pytest.fixture()
-def memory_db():
-    """İzole in-memory SQLite DB, normalized_logs tablosuyla."""
-    raw = sqlite3.connect(":memory:")
-    raw.row_factory = sqlite3.Row
-    raw.execute("""
-        CREATE TABLE normalized_logs (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            log_id TEXT,
-            event_action TEXT,
-            source_ip TEXT,
-            timestamp TEXT,
-            message TEXT,
-            severity TEXT DEFAULT 'info',
-            tenant_id TEXT DEFAULT 'default'
-        )
-    """)
-    raw.commit()
-    return _CompatConn(raw)
-
-
-def test_execute_correlation_rule_returns_match(memory_db):
+def test_execute_correlation_rule_returns_match(mem_db):
     """5 dakika içinde 5+ ssh_failure → satır döner."""
     for i in range(6):
-        memory_db.execute(
-            "INSERT INTO normalized_logs (log_id, event_action, source_ip, timestamp, message) "
-            "VALUES (?, 'ssh_failure', '1.2.3.4', datetime('now', '-1 minutes'), 'SSH fail')",
-            (f"log-{i}",)
+        mem_db.execute(
+            "INSERT INTO normalized_logs "
+            "(log_id, source_type, timestamp, event_action, source_ip, message) "
+            "VALUES (%s, 'syslog', NOW() - INTERVAL '1 minutes', 'ssh_failure', '1.2.3.4', 'SSH fail')",
+            (f"log-{i}",),
         )
-    memory_db.commit()
+    mem_db.commit()
 
     rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
     ex = SigmaExecutor(str(rules_dir))
     ssh_rule = next((r for r in ex.rules if r.title == "SSH Brute Force"), None)
     assert ssh_rule is not None
 
-    rows = ex.execute_rule(ssh_rule, memory_db)
+    rows = ex.execute_rule(ssh_rule, mem_db)
     assert len(rows) == 1
     assert rows[0]["group_value"] == "1.2.3.4"
     assert rows[0]["event_count"] >= 5
 
 
-def test_execute_correlation_rule_no_match_below_threshold(memory_db):
+def test_execute_correlation_rule_no_match_below_threshold(mem_db):
     """Eşiğin altında → boş liste."""
     for i in range(3):
-        memory_db.execute(
-            "INSERT INTO normalized_logs (log_id, event_action, source_ip, timestamp, message) "
-            "VALUES (?, 'ssh_failure', '1.2.3.4', datetime('now', '-1 minutes'), 'SSH fail')",
-            (f"log-{i}",)
+        mem_db.execute(
+            "INSERT INTO normalized_logs "
+            "(log_id, source_type, timestamp, event_action, source_ip, message) "
+            "VALUES (%s, 'syslog', NOW() - INTERVAL '1 minutes', 'ssh_failure', '1.2.3.4', 'SSH fail')",
+            (f"log-{i}",),
         )
-    memory_db.commit()
+    mem_db.commit()
 
     rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
     ex = SigmaExecutor(str(rules_dir))
     ssh_rule = next((r for r in ex.rules if r.title == "SSH Brute Force"), None)
     assert ssh_rule is not None
 
-    rows = ex.execute_rule(ssh_rule, memory_db)
+    rows = ex.execute_rule(ssh_rule, mem_db)
     assert rows == []
 
 
-def test_execute_detection_rule_wildcard_match(memory_db):
+def test_execute_detection_rule_wildcard_match(mem_db):
     """SQL injection LIKE sorgusu — mesaj içinde anahtar kelime varsa eşleşir."""
-    memory_db.execute(
-        "INSERT INTO normalized_logs (log_id, event_action, source_ip, timestamp, message) "
-        "VALUES ('x1', 'web_request', '5.6.7.8', datetime('now', '-10 seconds'), "
+    mem_db.execute(
+        "INSERT INTO normalized_logs "
+        "(log_id, source_type, timestamp, event_action, source_ip, message) "
+        "VALUES ('x1', 'syslog', NOW() - INTERVAL '10 seconds', 'web_request', '5.6.7.8', "
         "'GET /search?q=union select * FROM users')"
     )
-    memory_db.commit()
+    mem_db.commit()
 
     rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
     ex = SigmaExecutor(str(rules_dir))
     sqli_rule = next((r for r in ex.rules if "injection" in r.title.lower()), None)
     assert sqli_rule is not None
 
-    rows = ex.execute_rule(sqli_rule, memory_db)
+    rows = ex.execute_rule(sqli_rule, mem_db)
     assert len(rows) == 1
 
 

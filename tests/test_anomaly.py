@@ -1,9 +1,8 @@
 """Anomaly detection modülü testleri."""
 
 import math
-import os
-import tempfile
 from datetime import datetime, timezone
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -22,23 +21,18 @@ from server.anomaly.store import AnomalyResultStore
 
 
 @pytest.fixture
-def anomaly_db_path(tmp_path):
-    return str(tmp_path / "test_anomaly.db")
+def baseline_store(tmp_db):
+    return BaselineStore(tmp_db)
 
 
 @pytest.fixture
-def baseline_store(anomaly_db_path):
-    return BaselineStore(anomaly_db_path)
+def result_store(tmp_db):
+    return AnomalyResultStore(tmp_db)
 
 
 @pytest.fixture
-def result_store(anomaly_db_path):
-    return AnomalyResultStore(anomaly_db_path)
-
-
-@pytest.fixture
-def engine(anomaly_db_path):
-    return AnomalyEngine(anomaly_db_path)
+def engine(tmp_db):
+    return AnomalyEngine(tmp_db)
 
 
 # ── BaselinePoint: Welford algoritması ────────────────────────────────────────
@@ -239,7 +233,6 @@ class TestStatisticalDetector:
 
     def test_detects_high_conn_rate(self):
         det = StatisticalDetector()
-        # conn_rate mean=10, std≈1, observed=14 → z≈4
         bps = self._warmed_baselines(mean=10.0, std_m2_ratio=29.0)
         snap = self._snap(conn_rate=14.0)
         results = det.detect(snap, bps)
@@ -319,8 +312,8 @@ class TestAnomalyEngine:
         engine._cycle()   # boş DB'de çalışmalı, hata vermemeli
         assert engine._cycle_count == 1
 
-    def test_cycle_writes_normalized_log_on_anomaly(self, anomaly_db_path, monkeypatch):
-        engine = AnomalyEngine(anomaly_db_path)
+    def test_cycle_writes_normalized_log_on_anomaly(self, tmp_db, monkeypatch):
+        engine = AnomalyEngine(tmp_db)
 
         snap = MetricSnapshot(
             entity_id="1.2.3.4",
@@ -344,11 +337,8 @@ class TestAnomalyEngine:
         monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
 
         saved_logs: list = []
-        from unittest.mock import MagicMock
-        import server.anomaly.engine as eng_module
         mock_db = MagicMock()
         mock_db.save_normalized_log.side_effect = lambda log, tenant_id="default": saved_logs.append(log)
-        monkeypatch.setattr(eng_module, "_netguard_db", mock_db)
         engine._db = mock_db
 
         engine._cycle()
@@ -360,9 +350,9 @@ class TestAnomalyEngine:
         assert anomaly_log is not None
         assert anomaly_log.source_ip == "1.2.3.4"
 
-    def test_cycle_records_kill_chain_on_anomaly(self, anomaly_db_path, monkeypatch):
+    def test_cycle_records_kill_chain_on_anomaly(self, tmp_db, monkeypatch):
         """F4: anomaly tespiti → attack_chain_tracker.record() çağrılmalı."""
-        engine = AnomalyEngine(anomaly_db_path)
+        engine = AnomalyEngine(tmp_db)
 
         snap = MetricSnapshot(
             entity_id="10.0.0.99",
@@ -383,10 +373,8 @@ class TestAnomalyEngine:
 
         import server.notifier as notifier_module
         monkeypatch.setattr(notifier_module.notifier, "notify_anomaly", lambda r: None)
-        from unittest.mock import MagicMock
-        import server.anomaly.engine as _eng_mod
+
         mock_db = MagicMock()
-        monkeypatch.setattr(_eng_mod, "_netguard_db", mock_db)
         engine._db = mock_db
 
         recorded: list = []

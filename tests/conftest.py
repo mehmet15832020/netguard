@@ -18,6 +18,7 @@ _PG_TRUNCATE_TABLES = [
     "correlated_events", "normalized_logs", "raw_logs",
     "security_events", "alerts", "db_users", "sites", "tenants",
     "alert_explanations", "saved_hunts",
+    "anomaly_baselines", "anomaly_results",
 ]
 
 
@@ -149,6 +150,7 @@ def _make_test_db(url: str, monkeypatch):
     monkeypatch.setattr("server.detectors.beaconing.db", test_db)
     monkeypatch.setattr("server.detectors.manager.db", test_db)
     monkeypatch.setattr("server.routes.hunts.db", test_db)
+    monkeypatch.setattr("server.anomaly.engine._netguard_db", test_db)
 
     tables = ", ".join(_PG_TRUNCATE_TABLES)
     with test_db._connect() as conn:

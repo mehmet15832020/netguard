@@ -32,13 +32,14 @@ class AnomalyEngine:
       5. AnomalyResultStore → sonuçları DB'ye yaz
     """
 
-    def __init__(self, db_path: str):
-        self._collector = MetricsCollector(db_path)
-        self._baselines = BaselineStore(db_path)
+    def __init__(self, db=None):
+        _db = db if db is not None else _netguard_db
+        self._collector = MetricsCollector(_db)
+        self._baselines = BaselineStore(_db)
         self._stat      = StatisticalDetector()
         self._ifd       = IsolationForestDetector()
-        self._results   = AnomalyResultStore(db_path)
-        self._db        = _netguard_db   # PostgreSQL veya SQLite — DATABASE_URL'e göre
+        self._results   = AnomalyResultStore(_db)
+        self._db        = _db
         self._cycle_count = 0
         self._task: asyncio.Task | None = None
 

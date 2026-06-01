@@ -1,61 +1,29 @@
 import json
 import logging
-import sqlite3
 from datetime import datetime, timezone
 
 from server.anomaly.models import AnomalyResult
+from server.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS anomaly_results (
-    result_id       TEXT PRIMARY KEY,
-    entity_id       TEXT    NOT NULL,
-    metric          TEXT    NOT NULL,
-    observed_value  REAL    NOT NULL,
-    baseline_mean   REAL    NOT NULL,
-    baseline_std    REAL    NOT NULL,
-    z_score         REAL    NOT NULL,
-    severity        TEXT    NOT NULL,
-    confidence      REAL    NOT NULL,
-    message         TEXT    NOT NULL,
-    detected_at     TEXT    NOT NULL,
-    extra           TEXT    NOT NULL DEFAULT '{}'
-);
-CREATE INDEX IF NOT EXISTS idx_anom_res_entity   ON anomaly_results(entity_id);
-CREATE INDEX IF NOT EXISTS idx_anom_res_detected ON anomaly_results(detected_at);
-CREATE INDEX IF NOT EXISTS idx_anom_res_severity ON anomaly_results(severity);
-"""
-
 
 class AnomalyResultStore:
-    """Anomali sonuçlarını SQLite'ta saklar."""
+    """PostgreSQL tabanlı anomali sonuç deposu."""
 
-    def __init__(self, db_path: str):
-        self._path = db_path
-        self._init()
-
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    def _init(self) -> None:
-        with self._conn() as conn:
-            for stmt in _DDL.strip().split(";"):
-                s = stmt.strip()
-                if s:
-                    conn.execute(s)
+    def __init__(self, db: DatabaseManager):
+        self._db = db
 
     def save(self, result: AnomalyResult) -> None:
-        with self._conn() as conn:
+        with self._db._connect() as conn:
             conn.execute(
                 """
-                INSERT OR IGNORE INTO anomaly_results
+                INSERT INTO anomaly_results
                     (result_id, entity_id, metric, observed_value,
                      baseline_mean, baseline_std, z_score, severity,
                      confidence, message, detected_at, extra)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (result_id) DO NOTHING
                 """,
                 (
                     result.result_id,
@@ -68,7 +36,7 @@ class AnomalyResultStore:
                     result.severity,
                     result.confidence,
                     result.message,
-                    result.detected_at.isoformat(),
+                    result.detected_at,
                     json.dumps(result.extra),
                 ),
             )
@@ -80,30 +48,26 @@ class AnomalyResultStore:
         severity: str | None = None,
         since_hours: int = 24,
     ) -> list[dict]:
-        conditions = [f"datetime(detected_at) >= datetime('now', '-{since_hours} hours')"]
+        conditions = [f"detected_at >= NOW() - {int(since_hours)} * INTERVAL '1 hour'"]
         params: list = []
         if entity_id:
-            conditions.append("entity_id = ?")
+            conditions.append("entity_id = %s")
             params.append(entity_id)
         if severity:
-            conditions.append("severity = ?")
+            conditions.append("severity = %s")
             params.append(severity)
         where = " AND ".join(conditions)
-        with self._conn() as conn:
+        params.append(limit)
+        with self._db._connect() as conn:
             rows = conn.execute(
                 f"SELECT * FROM anomaly_results WHERE {where} "
-                f"ORDER BY detected_at DESC LIMIT ?",
-                params + [limit],
+                f"ORDER BY detected_at DESC LIMIT %s",
+                params,
             ).fetchall()
-        results = []
-        for r in rows:
-            d = dict(r)
-            d["extra"] = json.loads(d.get("extra", "{}"))
-            results.append(d)
-        return results
+        return [dict(r) for r in rows]
 
     def summary(self, since_hours: int = 24) -> dict:
-        with self._conn() as conn:
+        with self._db._connect() as conn:
             row = conn.execute(
                 f"""
                 SELECT
@@ -113,7 +77,7 @@ class AnomalyResultStore:
                     SUM(CASE WHEN severity = 'warning'  THEN 1 ELSE 0 END) AS warning,
                     COUNT(DISTINCT entity_id) AS affected_entities
                 FROM anomaly_results
-                WHERE datetime(detected_at) >= datetime('now', '-{since_hours} hours')
+                WHERE detected_at >= NOW() - {int(since_hours)} * INTERVAL '1 hour'
                 """
             ).fetchone()
         return dict(row) if row else {}

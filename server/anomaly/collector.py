@@ -1,8 +1,8 @@
 import logging
-import sqlite3
 from datetime import datetime, timezone
 
 from server.anomaly.models import MetricSnapshot
+from server.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
@@ -11,19 +11,19 @@ WINDOW_MINUTES = 5
 _QUERY = f"""
 SELECT
     source_ip AS entity_id,
-    COUNT(*)                                                           AS total_events,
-    SUM(CASE WHEN event_action = 'fw_block'                   THEN 1 ELSE 0 END) AS fw_blocks,
+    COUNT(*)                                                                        AS total_events,
+    SUM(CASE WHEN event_action = 'fw_block'                              THEN 1 ELSE 0 END) AS fw_blocks,
     SUM(CASE WHEN event_action IN ('ssh_failure','auth_fail','web_auth_fail')
-                                                            THEN 1 ELSE 0 END) AS auth_failures,
-    COUNT(DISTINCT destination_ip)                                             AS unique_dsts,
-    COUNT(DISTINCT destination_port)                                           AS unique_ports
+                                                                         THEN 1 ELSE 0 END) AS auth_failures,
+    COUNT(DISTINCT destination_ip)                                                  AS unique_dsts,
+    COUNT(DISTINCT destination_port)                                                AS unique_ports
 FROM normalized_logs
 WHERE
-    datetime(timestamp) >= datetime('now', '-{WINDOW_MINUTES} minutes')
+    timestamp >= NOW() - INTERVAL '{WINDOW_MINUTES} minutes'
     AND source_ip IS NOT NULL
     AND event_category = 'network'
 GROUP BY source_ip
-HAVING total_events >= 2
+HAVING COUNT(*) >= 2
 """
 
 
@@ -33,20 +33,15 @@ class MetricsCollector:
     entity (source_ip) başına metrik değerlerini toplar.
     """
 
-    def __init__(self, db_path: str):
-        self._path = db_path
-
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn
+    def __init__(self, db: DatabaseManager):
+        self._db = db
 
     def collect(self) -> list[MetricSnapshot]:
         now = datetime.now(timezone.utc)
         try:
-            with self._conn() as conn:
+            with self._db._connect() as conn:
                 rows = conn.execute(_QUERY).fetchall()
-        except sqlite3.OperationalError:
+        except Exception:
             return []
 
         pm = float(WINDOW_MINUTES)
@@ -64,5 +59,5 @@ class MetricsCollector:
         ]
 
         if snapshots:
-            logger.debug(f"Metrik toplama: {len(snapshots)} entity, {WINDOW_MINUTES}dk pencere")
+            logger.debug("Metrik toplama: %d entity, %ddk pencere", len(snapshots), WINDOW_MINUTES)
         return snapshots

@@ -275,8 +275,7 @@ async def lifespan(app: FastAPI):
     netflow_receiver = NetFlowReceiver()
     await netflow_receiver.start()
     from server.anomaly import AnomalyEngine
-    db_path = os.getenv("NETGUARD_DB_PATH", "netguard.db")
-    anomaly_engine = AnomalyEngine(db_path)
+    anomaly_engine = AnomalyEngine()
     anomaly_route.set_engine(anomaly_engine)
     await anomaly_engine.start()
     logger.info("Anomaly detection motoru başlatıldı.")

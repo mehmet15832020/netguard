@@ -391,8 +391,7 @@ def _collect_metrics(db) -> dict:
                 row = conn.execute(sql).fetchone()
                 if not row:
                     return 0
-                # PostgreSQL dict_row → dict; SQLite → sqlite3.Row (positional)
-                return list(row.values())[0] if isinstance(row, dict) else row[0]
+                return list(row.values())[0]
         except Exception:
             return 0
 

@@ -819,7 +819,6 @@ class TestSigmaExecutorPipeline:
         """
         Tenant A'nın verileri Tenant B'nin kuralını tetiklememeli.
         """
-        import sqlite3
         from pathlib import Path
         from server.sigma_executor import SigmaExecutor
 
@@ -857,7 +856,6 @@ class TestSigmaExecutorPipeline:
         """
         Korelasyon kuralı çalıştırınca first_ts ve last_ts dönmeli.
         """
-        import sqlite3
         from pathlib import Path
         from server.sigma_executor import SigmaExecutor
 

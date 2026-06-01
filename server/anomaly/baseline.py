@@ -1,51 +1,24 @@
 import logging
-import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
 from server.anomaly.models import BaselinePoint
+from server.database import DatabaseManager
 
 logger = logging.getLogger(__name__)
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS anomaly_baselines (
-    entity_id    TEXT    NOT NULL,
-    metric       TEXT    NOT NULL,
-    hour_bucket  INTEGER NOT NULL,
-    mean         REAL    NOT NULL DEFAULT 0.0,
-    m2           REAL    NOT NULL DEFAULT 0.0,
-    sample_count INTEGER NOT NULL DEFAULT 0,
-    last_updated TEXT    NOT NULL,
-    PRIMARY KEY (entity_id, metric, hour_bucket)
-);
-CREATE INDEX IF NOT EXISTS idx_anom_bl_entity ON anomaly_baselines(entity_id);
-"""
-
 
 class BaselineStore:
-    """SQLite tabanlı entity-metric-saat baseline deposu."""
+    """PostgreSQL tabanlı entity-metric-saat baseline deposu."""
 
-    def __init__(self, db_path: str):
-        self._path = db_path
-        self._init()
-
-    def _conn(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self._path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn
-
-    def _init(self) -> None:
-        with self._conn() as conn:
-            for stmt in _DDL.strip().split(";"):
-                s = stmt.strip()
-                if s:
-                    conn.execute(s)
+    def __init__(self, db: DatabaseManager):
+        self._db = db
 
     def get(self, entity_id: str, metric: str, hour: int) -> Optional[BaselinePoint]:
-        with self._conn() as conn:
+        with self._db._connect() as conn:
             row = conn.execute(
                 "SELECT * FROM anomaly_baselines "
-                "WHERE entity_id=? AND metric=? AND hour_bucket=?",
+                "WHERE entity_id=%s AND metric=%s AND hour_bucket=%s",
                 (entity_id, metric, hour),
             ).fetchone()
         if not row:
@@ -57,7 +30,7 @@ class BaselineStore:
             mean         = row["mean"],
             m2           = row["m2"],
             sample_count = row["sample_count"],
-            last_updated = datetime.fromisoformat(row["last_updated"]),
+            last_updated = row["last_updated"],
         )
 
     def get_or_create(self, entity_id: str, metric: str, hour: int) -> BaselinePoint:
@@ -69,26 +42,25 @@ class BaselineStore:
         )
 
     def save(self, bp: BaselinePoint) -> None:
-        now = (bp.last_updated or datetime.now(timezone.utc)).isoformat()
-        with self._conn() as conn:
+        now = bp.last_updated or datetime.now(timezone.utc)
+        with self._db._connect() as conn:
             conn.execute(
                 """
                 INSERT INTO anomaly_baselines
                     (entity_id, metric, hour_bucket, mean, m2, sample_count, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(entity_id, metric, hour_bucket) DO UPDATE SET
-                    mean         = excluded.mean,
-                    m2           = excluded.m2,
-                    sample_count = excluded.sample_count,
-                    last_updated = excluded.last_updated
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (entity_id, metric, hour_bucket) DO UPDATE SET
+                    mean         = EXCLUDED.mean,
+                    m2           = EXCLUDED.m2,
+                    sample_count = EXCLUDED.sample_count,
+                    last_updated = EXCLUDED.last_updated
                 """,
                 (bp.entity_id, bp.metric, bp.hour_bucket,
                  bp.mean, bp.m2, bp.sample_count, now),
             )
 
     def list_entities(self) -> list[dict]:
-        """Tüm entity'leri baseline özeti ile döndür."""
-        with self._conn() as conn:
+        with self._db._connect() as conn:
             rows = conn.execute(
                 """
                 SELECT
@@ -105,11 +77,10 @@ class BaselineStore:
         return [dict(r) for r in rows]
 
     def warmup_status(self, entity_id: str, min_samples: int = 20) -> dict:
-        """Entity'nin warm-up durumunu döndür."""
-        with self._conn() as conn:
+        with self._db._connect() as conn:
             rows = conn.execute(
                 "SELECT metric, hour_bucket, sample_count "
-                "FROM anomaly_baselines WHERE entity_id=?",
+                "FROM anomaly_baselines WHERE entity_id=%s",
                 (entity_id,),
             ).fetchall()
         if not rows:
