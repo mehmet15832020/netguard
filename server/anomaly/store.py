@@ -72,12 +72,12 @@ class AnomalyResultStore:
                 f"""
                 SELECT
                     COUNT(*) AS total,
-                    SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END) AS critical,
-                    SUM(CASE WHEN severity = 'high'     THEN 1 ELSE 0 END) AS high,
-                    SUM(CASE WHEN severity = 'warning'  THEN 1 ELSE 0 END) AS warning,
+                    COALESCE(SUM(CASE WHEN severity = 'critical' THEN 1 ELSE 0 END), 0) AS critical,
+                    COALESCE(SUM(CASE WHEN severity = 'high'     THEN 1 ELSE 0 END), 0) AS high,
+                    COALESCE(SUM(CASE WHEN severity = 'warning'  THEN 1 ELSE 0 END), 0) AS warning,
                     COUNT(DISTINCT entity_id) AS affected_entities
                 FROM anomaly_results
                 WHERE detected_at >= NOW() - {int(since_hours)} * INTERVAL '1 hour'
                 """
             ).fetchone()
-        return dict(row) if row else {}
+        return dict(row) if row else {"total": 0, "critical": 0, "high": 0, "warning": 0, "affected_entities": 0}
