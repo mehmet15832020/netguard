@@ -1,7 +1,7 @@
 """
 NetGuard — AI Alert Explainer (F4)
 
-Correlated event'leri Claude API ile analiz eder.
+Correlated event'leri Groq API (Llama 3.3 70B) ile analiz eder.
 24 saatlik DB cache, tenant isolation, rate limit'ler route katmanında.
 
 Prompt injection koruması: kullanıcı verisi instruction string'ine
@@ -11,38 +11,58 @@ eklenmez — JSON context bloğuna izole edilir.
 import json
 import logging
 import os
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_ANTHROPIC_KEY   = os.getenv("ANTHROPIC_API_KEY", "")
-_ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-haiku-4-5-20251001")
-_MAX_OUTPUT_TOKENS = 600
+_GROQ_KEY          = os.getenv("GROQ_API_KEY", "")
+_GROQ_MODEL        = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+_MAX_OUTPUT_TOKENS = 1200
 
 _SYSTEM_PROMPT = """\
-You are a security analyst assistant for NetGuard, a network security monitoring platform.
-Your task is to explain a security alert in clear, concise language for a network security analyst.
+Sen NetGuard ağ güvenlik izleme platformu için kıdemli bir SOC analistisin.
+SANS Incident Handler's Handbook, NIST SP 800-61 ve endüstri SOC playbook standartlarına
+göre tetiklenen alerti Türkçe olarak analiz et.
 
-Structure your response in exactly these four sections (use the exact headers):
-**What Happened**
-One or two sentences: what the detection rule observed.
+Yanıtını TAM OLARAK şu altı bölümde yaz (başlıkları değiştirme):
 
-**Why It Matters**
-One or two sentences: security relevance, attack stage, and potential impact.
+**Triage Kararı**
+İlk satır: `🔴 ESKALASYONa AL` / `🟡 İZLE` / `🟢 KAPAT` — hangisi uygunsa.
+İkinci satır: Güven seviyesi: Yüksek / Orta / Düşük — ve kısa gerekçe (1 cümle).
+Üçüncü satır: Aciliyet: "X dakika/saat içinde müdahale gerekli" veya "Rutin izleme yeterli".
+
+**Ne Oldu**
+5W1H formatında: Kim (kaynak IP/sistem), Ne (event_action, tetiklenme sayısı),
+Nerede (hedef IP/port/protokol), Ne Zaman (zaman dilimi, süre), Nasıl (saldırı vektörü),
+Neden (muhtemel amaç). Somut sayılar ve değerler kullan.
+
+**Log Korelasyonu**
+Sağlanan log kayıtlarını kronolojik sırayla analiz et. Her log grubundan ne çıkarıyorsun?
+Zaman damgaları arasındaki boşluklar, tekrarlanan IP'ler, port pattern'leri ve
+anormal davranış işaretlerini belirt. Loglar arası ilişki varsa bağla.
+Log yoksa: "Eşleşen log kaydı mevcut değil — kural tetiklendi ancak ham log korelasyonu yapılamıyor."
+
+**Risk Değerlendirmesi**
+Yanlış pozitif olasılığı ve gerekçesi (1-2 cümle).
+Gerçek tehdit ise: etkilenebilecek sistemler, potansiyel lateral movement yönü,
+veri sızıntısı riski, iş etkisi. Kill chain'deki konum (SANS Kill Chain / MITRE aşaması).
 
 **MITRE ATT&CK**
-If techniques are present, name each one and what it means in this context (one line each).
-If empty, write "No MITRE mapping."
+Her teknik: `TechniqueID — Teknik Adı`: Bu alert bağlamında ne anlama geliyor (1-2 cümle).
+Mapping yoksa: "MITRE eşleşmesi tanımlanmamış."
 
-**Recommended Actions**
-Three to five bullet points: concrete next steps for the analyst.
+**Müdahale Adımları**
+Öncelik sırasına göre 5-7 madde. Her madde somut ve araç/komut belirten:
+- Hangi NetGuard sayfasında ne bakılacak (ör. "Kill Chain Timeline'da bu IP'yi filtrele")
+- Hangi firewall/switch üzerinde hangi kuralı kontrol et
+- Yanlış pozitif kapama kriteri (ne görürsen kapat)
+- Escalation eşiği (ne görürsen eskalasyon yap, kime)
+- Blok/karantina önerisi varsa: NetGuard Aktif Yanıt üzerinden veya manuel
 
-Rules:
-- Be direct and factual. No fluff.
-- Do not repeat information verbatim from the context.
-- Use security terminology appropriate for a mid-level SOC analyst.
-- Write in English regardless of input language.
-- Maximum 400 words total.
+Kurallar:
+- Yalnızca Türkçe yaz. Teknik terimler (MITRE ID, protokol, log alanı adları) İngilizce kalabilir.
+- Bağlamı yorumla, tekrar etme. Analist için katma değer üret.
+- Gereksiz giriş cümlesi yazma, direkt bölümlerle başla.
+- Maksimum 700 kelime.
 """
 
 
@@ -97,39 +117,41 @@ def explain_event(
     if cached is not None:
         return cached
 
-    if not _ANTHROPIC_KEY:
-        raise RuntimeError("ANTHROPIC_API_KEY tanımlı değil")
+    if not _GROQ_KEY:
+        raise RuntimeError("GROQ_API_KEY tanımlı değil")
 
     try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=_ANTHROPIC_KEY)
+        from groq import Groq
+        client = Groq(api_key=_GROQ_KEY)
         user_msg = _build_user_message(event_data, recent_logs)
-        response = client.messages.create(
-            model=_ANTHROPIC_MODEL,
+        response = client.chat.completions.create(
+            model=_GROQ_MODEL,
             max_tokens=_MAX_OUTPUT_TOKENS,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": user_msg}],
+            messages=[
+                {"role": "system", "content": _SYSTEM_PROMPT},
+                {"role": "user",   "content": user_msg},
+            ],
         )
     except Exception as exc:
-        logger.error(f"Claude API hatası: {exc}")
+        logger.error(f"Groq API hatası: {exc}")
         raise RuntimeError(f"AI açıklama üretilemedi: {exc}") from exc
 
-    explanation   = response.content[0].text
-    input_tokens  = response.usage.input_tokens
-    output_tokens = response.usage.output_tokens
+    explanation   = response.choices[0].message.content
+    input_tokens  = response.usage.prompt_tokens
+    output_tokens = response.usage.completion_tokens
 
     db.save_alert_explanation(
         corr_id=corr_id,
         tenant_id=tenant_id,
         explanation=explanation,
-        model=_ANTHROPIC_MODEL,
+        model=_GROQ_MODEL,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
     )
 
     return {
         "explanation":    explanation,
-        "model":          _ANTHROPIC_MODEL,
+        "model":          _GROQ_MODEL,
         "input_tokens":   input_tokens,
         "output_tokens":  output_tokens,
         "created_at":     None,

@@ -152,32 +152,37 @@ class TestAlertExplanationCache:
 
 # ─── explain_event function ───────────────────────────────────────────────────
 
+def _mock_groq_response(text: str, in_tokens: int = 150, out_tokens: int = 80):
+    mock_response = MagicMock()
+    mock_response.choices[0].message.content = text
+    mock_response.usage.prompt_tokens = in_tokens
+    mock_response.usage.completion_tokens = out_tokens
+    return mock_response
+
+
 class TestExplainEvent:
     def test_returns_cached_without_api_call(self, tmp_db):
         corr_id = "cached-corr-001"
-        tmp_db.save_alert_explanation(corr_id, "default", "Cached explanation", "haiku", 0, 0)
-        with patch("server.alert_explainer._ANTHROPIC_KEY", "dummy-key"):
-            with patch("anthropic.Anthropic") as mock_client:
+        tmp_db.save_alert_explanation(corr_id, "default", "Cached explanation", "llama-3.3-70b-versatile", 0, 0)
+        with patch("server.alert_explainer._GROQ_KEY", "dummy-key"):
+            with patch("groq.Groq") as mock_client:
                 result = explain_event(_corr_event(corr_id=corr_id), [], tmp_db, "default", corr_id)
         mock_client.assert_not_called()
         assert result["cached"] is True
         assert result["explanation"] == "Cached explanation"
 
     def test_raises_without_api_key(self, tmp_db):
-        with patch("server.alert_explainer._ANTHROPIC_KEY", ""):
-            with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+        with patch("server.alert_explainer._GROQ_KEY", ""):
+            with pytest.raises(RuntimeError, match="GROQ_API_KEY"):
                 explain_event(_corr_event(), [], tmp_db, "default", "new-corr-001")
 
     def test_calls_api_on_cache_miss(self, tmp_db):
         corr_id = "new-corr-002"
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="AI explanation here")]
-        mock_response.usage.input_tokens = 150
-        mock_response.usage.output_tokens = 80
+        mock_resp = _mock_groq_response("AI explanation here", 150, 80)
 
-        with patch("server.alert_explainer._ANTHROPIC_KEY", "sk-test-key"):
-            with patch("anthropic.Anthropic") as MockClient:
-                MockClient.return_value.messages.create.return_value = mock_response
+        with patch("server.alert_explainer._GROQ_KEY", "gsk-test-key"):
+            with patch("groq.Groq") as MockClient:
+                MockClient.return_value.chat.completions.create.return_value = mock_resp
                 result = explain_event(_corr_event(corr_id=corr_id), [], tmp_db, "default", corr_id)
 
         assert result["explanation"] == "AI explanation here"
@@ -186,14 +191,11 @@ class TestExplainEvent:
 
     def test_explanation_saved_to_cache_after_api_call(self, tmp_db):
         corr_id = "new-corr-003"
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="Saved explanation")]
-        mock_response.usage.input_tokens = 100
-        mock_response.usage.output_tokens = 60
+        mock_resp = _mock_groq_response("Saved explanation", 100, 60)
 
-        with patch("server.alert_explainer._ANTHROPIC_KEY", "sk-test-key"):
-            with patch("anthropic.Anthropic") as MockClient:
-                MockClient.return_value.messages.create.return_value = mock_response
+        with patch("server.alert_explainer._GROQ_KEY", "gsk-test-key"):
+            with patch("groq.Groq") as MockClient:
+                MockClient.return_value.chat.completions.create.return_value = mock_resp
                 explain_event(_corr_event(corr_id=corr_id), [], tmp_db, "default", corr_id)
 
         cached = tmp_db.get_alert_explanation(corr_id, "default")
@@ -202,9 +204,9 @@ class TestExplainEvent:
 
     def test_api_error_raises_runtime_error(self, tmp_db):
         corr_id = "error-corr-001"
-        with patch("server.alert_explainer._ANTHROPIC_KEY", "sk-test"):
-            with patch("anthropic.Anthropic") as MockClient:
-                MockClient.return_value.messages.create.side_effect = Exception("API down")
+        with patch("server.alert_explainer._GROQ_KEY", "gsk-test"):
+            with patch("groq.Groq") as MockClient:
+                MockClient.return_value.chat.completions.create.side_effect = Exception("API down")
                 with pytest.raises(RuntimeError, match="AI açıklama üretilemedi"):
                     explain_event(_corr_event(corr_id=corr_id), [], tmp_db, "default", corr_id)
 
@@ -254,7 +256,7 @@ class TestExplainRoute:
     def test_returns_503_without_api_key(self, tmp_db, admin_token):
         ev = _corr_event()
         _insert_corr_event(tmp_db, ev)
-        with patch("server.alert_explainer._ANTHROPIC_KEY", ""):
+        with patch("server.alert_explainer._GROQ_KEY", ""):
             r = client.post(
                 f"/api/v1/correlation/events/{ev['corr_id']}/explain",
                 headers={"Authorization": f"Bearer {admin_token}"},
@@ -264,15 +266,11 @@ class TestExplainRoute:
     def test_returns_explanation_from_mock_api(self, tmp_db, admin_token):
         ev = _corr_event()
         _insert_corr_event(tmp_db, ev)
+        mock_resp = _mock_groq_response("## SSH Brute Force\n\nDetected 47 login attempts.", 200, 90)
 
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="## SSH Brute Force\n\nDetected 47 login attempts.")]
-        mock_response.usage.input_tokens = 200
-        mock_response.usage.output_tokens = 90
-
-        with patch("server.alert_explainer._ANTHROPIC_KEY", "sk-test"):
-            with patch("anthropic.Anthropic") as MockClient:
-                MockClient.return_value.messages.create.return_value = mock_response
+        with patch("server.alert_explainer._GROQ_KEY", "gsk-test"):
+            with patch("groq.Groq") as MockClient:
+                MockClient.return_value.chat.completions.create.return_value = mock_resp
                 r = client.post(
                     f"/api/v1/correlation/events/{ev['corr_id']}/explain",
                     headers={"Authorization": f"Bearer {admin_token}"},
@@ -287,15 +285,11 @@ class TestExplainRoute:
     def test_second_call_returns_cached(self, tmp_db, admin_token):
         ev = _corr_event()
         _insert_corr_event(tmp_db, ev)
+        mock_resp = _mock_groq_response("First call explanation", 100, 50)
 
-        mock_response = MagicMock()
-        mock_response.content = [MagicMock(text="First call explanation")]
-        mock_response.usage.input_tokens = 100
-        mock_response.usage.output_tokens = 50
-
-        with patch("server.alert_explainer._ANTHROPIC_KEY", "sk-test"):
-            with patch("anthropic.Anthropic") as MockClient:
-                MockClient.return_value.messages.create.return_value = mock_response
+        with patch("server.alert_explainer._GROQ_KEY", "gsk-test"):
+            with patch("groq.Groq") as MockClient:
+                MockClient.return_value.chat.completions.create.return_value = mock_resp
                 r1 = client.post(
                     f"/api/v1/correlation/events/{ev['corr_id']}/explain",
                     headers={"Authorization": f"Bearer {admin_token}"},
@@ -310,7 +304,7 @@ class TestExplainRoute:
         d1, d2 = r1.json(), r2.json()
         assert d1["cached"] is False
         assert d2["cached"] is True
-        assert MockClient.return_value.messages.create.call_count == 1
+        assert MockClient.return_value.chat.completions.create.call_count == 1
 
     def test_response_shape(self, tmp_db, admin_token):
         ev = _corr_event()
