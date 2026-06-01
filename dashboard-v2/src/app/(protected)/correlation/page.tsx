@@ -1,13 +1,14 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { GitMerge, Play, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Circle } from 'lucide-react'
+import { GitMerge, Play, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Circle, Sparkles, X } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
-import { correlationApi } from '@/lib/api'
+import { correlationApi, type AlertExplanation } from '@/lib/api'
 import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import { SeverityBadge } from '@/components/ui/severity-badge'
 import { SkeletonTable } from '@/components/ui/skeleton'
+import { cn } from '@/lib/utils'
 import type { CorrelatedEvent, Severity } from '@/types/models'
 
 function formatDate(iso: string) {
@@ -101,12 +102,71 @@ function SeverityDistBar({ events }: { events: CorrelatedEvent[] }) {
   )
 }
 
+function ExplainPanel({ corr_id, onClose }: { corr_id: string; onClose: () => void }) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['explain', corr_id],
+    queryFn: () => correlationApi.explainEvent(corr_id),
+    retry: false,
+    staleTime: 24 * 60 * 60 * 1000,
+  })
+
+  return (
+    <div className="bg-[#080f1e] border border-violet-500/30 rounded-xl p-4 space-y-3 mt-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles size={13} className="text-violet-400" />
+          <span className="text-xs font-semibold text-violet-300">AI Analiz</span>
+          {data?.cached && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-500">
+              önbellekten
+            </span>
+          )}
+        </div>
+        <button onClick={onClose} className="text-slate-600 hover:text-slate-400 transition-colors">
+          <X size={13} />
+        </button>
+      </div>
+
+      {isLoading && (
+        <div className="space-y-2 animate-pulse">
+          <div className="h-3 bg-slate-800 rounded w-3/4" />
+          <div className="h-3 bg-slate-800 rounded w-full" />
+          <div className="h-3 bg-slate-800 rounded w-5/6" />
+          <div className="h-3 bg-slate-800 rounded w-2/3" />
+        </div>
+      )}
+
+      {isError && (
+        <p className="text-xs text-red-400">
+          {(error as Error)?.message?.includes('503')
+            ? 'ANTHROPIC_API_KEY tanımlı değil veya servis erişilemez.'
+            : 'Açıklama üretilemedi. Tekrar deneyin.'}
+        </p>
+      )}
+
+      {data && (
+        <div className="space-y-3">
+          <div className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+            {data.explanation}
+          </div>
+          <div className="flex items-center gap-3 pt-1 border-t border-violet-900/20 text-[10px] text-slate-600">
+            <span>{data.model.split('-').slice(0, 2).join('-')}</span>
+            <span>{data.input_tokens} in / {data.output_tokens} out tokens</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EventRow({ ev }: { ev: CorrelatedEvent }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen]       = useState(false)
+  const [showAI, setShowAI]   = useState(false)
+
   return (
     <>
       <tr
-        className={`cursor-pointer transition-colors ${open ? 'bg-sky-950/20' : 'hover:bg-sky-950/20'}`}
+        className={cn('cursor-pointer transition-colors', open ? 'bg-sky-950/20' : 'hover:bg-sky-950/20')}
         onClick={() => setOpen((o) => !o)}
       >
         <td className="ui-td w-6">
@@ -165,6 +225,25 @@ function EventRow({ ev }: { ev: CorrelatedEvent }) {
                   ))}
                 </div>
               )}
+
+              {/* AI Explain button + panel */}
+              <div className="pt-1">
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowAI((s) => !s) }}
+                  className={cn(
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors',
+                    showAI
+                      ? 'bg-violet-500/15 border-violet-500/30 text-violet-300'
+                      : 'bg-sky-950/20 border-sky-900/20 text-slate-500 hover:text-slate-300 hover:border-sky-800/40',
+                  )}
+                >
+                  <Sparkles size={11} />
+                  {showAI ? 'Kapat' : 'AI ile Açıkla'}
+                </button>
+                {showAI && (
+                  <ExplainPanel corr_id={ev.corr_id} onClose={() => setShowAI(false)} />
+                )}
+              </div>
             </div>
           </td>
         </tr>

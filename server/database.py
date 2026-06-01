@@ -870,10 +870,14 @@ class DatabaseManager:
             ).fetchall()
         return [self._row_to_correlated_event(r) for r in rows]
 
-    def get_correlated_event_by_id(self, corr_id: str) -> Optional[CorrelatedEvent]:
+    def get_correlated_event_by_id(self, corr_id: str, tenant_id: Optional[str] = None) -> Optional[CorrelatedEvent]:
+        params: list = [corr_id]
+        extra = " AND tenant_id=%s" if tenant_id is not None else ""
+        if tenant_id is not None:
+            params.append(tenant_id)
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT * FROM correlated_events WHERE corr_id=%s", (corr_id,)
+                f"SELECT * FROM correlated_events WHERE corr_id=%s{extra}", params
             ).fetchone()
         return self._row_to_correlated_event(row) if row else None
 
@@ -921,6 +925,49 @@ class DatabaseManager:
                 (since,),
             ).fetchall()
         return [{"rule_id": r["rule_id"], "cnt": r["cnt"]} for r in rows]
+
+    # ------------------------------------------------------------------ #
+    #  ALERT EXPLANATIONS (F4 AI Explainer cache)
+    # ------------------------------------------------------------------ #
+
+    def get_alert_explanation(self, corr_id: str, tenant_id: str, ttl_hours: int = 24) -> Optional[dict]:
+        """Cache hit döner, 24 saat TTL aşıldıysa None."""
+        since = _now() - timedelta(hours=ttl_hours)
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM alert_explanations WHERE corr_id=%s AND tenant_id=%s AND created_at>=%s",
+                (corr_id, tenant_id, since),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "explanation":    row["explanation"],
+            "model":          row["model"],
+            "input_tokens":   row["input_tokens"],
+            "output_tokens":  row["output_tokens"],
+            "created_at":     row["created_at"].isoformat(),
+            "cached":         True,
+        }
+
+    def save_alert_explanation(
+        self,
+        corr_id: str,
+        tenant_id: str,
+        explanation: str,
+        model: str,
+        input_tokens: int,
+        output_tokens: int,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO alert_explanations
+                       (corr_id, tenant_id, explanation, model, input_tokens, output_tokens)
+                   VALUES (%s, %s, %s, %s, %s, %s)
+                   ON CONFLICT (corr_id, tenant_id)
+                   DO UPDATE SET explanation=%s, model=%s, input_tokens=%s, output_tokens=%s, created_at=NOW()""",
+                (corr_id, tenant_id, explanation, model, input_tokens, output_tokens,
+                 explanation, model, input_tokens, output_tokens),
+            )
 
     # ------------------------------------------------------------------ #
     #  ATTACK CHAIN STATE

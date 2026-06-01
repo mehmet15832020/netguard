@@ -29,6 +29,7 @@ from server.auth import User, get_current_user, require_admin, tenant_scope
 from server.correlator import correlator, _VALID_GROUP_COLS
 from server.database import db
 from server.limiter import limiter, _auth_key
+from server.alert_explainer import explain_event
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -122,6 +123,68 @@ class RulesUpdateRequest(BaseModel):
 
 
 # ─── Events ──────────────────────────────────────────────────────────────────
+
+@router.get("/correlation/events/{corr_id}")
+@limiter.limit("60/minute", key_func=_auth_key)
+def get_correlated_event(
+    request: Request,
+    response: Response,
+    corr_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    scope = tenant_scope(current_user)
+    event = db.get_correlated_event_by_id(corr_id, tenant_id=scope)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Olay bulunamadı")
+    return event
+
+
+@router.post("/correlation/events/{corr_id}/explain")
+@limiter.limit("5/minute", key_func=_auth_key)
+def explain_correlated_event(
+    request: Request,
+    response: Response,
+    corr_id: str,
+    current_user: User = Depends(get_current_user),
+):
+    scope = tenant_scope(current_user)
+    tid   = scope or "default"
+
+    event = db.get_correlated_event_by_id(corr_id, tenant_id=scope)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Olay bulunamadı")
+
+    recent_logs = db.get_normalized_logs(
+        event_action=event.event_action,
+        source_ip=event.group_value if _is_ip(event.group_value) else None,
+        since=event.first_seen,
+        limit=5,
+        tenant_id=tid,
+    )
+    log_dicts = [lg.model_dump(mode="json") for lg in recent_logs]
+
+    try:
+        result = explain_event(
+            event_data=event.model_dump(mode="json"),
+            recent_logs=log_dicts,
+            db=db,
+            tenant_id=tid,
+            corr_id=corr_id,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    return result
+
+
+def _is_ip(value: str) -> bool:
+    import ipaddress
+    try:
+        ipaddress.ip_address(value)
+        return True
+    except (ValueError, TypeError):
+        return False
+
 
 @router.get("/correlation/events")
 def list_correlated_events(

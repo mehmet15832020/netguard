@@ -333,6 +333,21 @@ export const correlationApi = {
       `/correlation/rules/${rule_id}/toggle`,
       { method: 'PATCH' },
     ),
+
+  getEvent: (corr_id: string) =>
+    request<CorrelatedEvent>(`/correlation/events/${corr_id}`),
+
+  explainEvent: (corr_id: string) =>
+    request<AlertExplanation>(`/correlation/events/${corr_id}/explain`, { method: 'POST' }),
+}
+
+export interface AlertExplanation {
+  explanation: string
+  model: string
+  input_tokens: number
+  output_tokens: number
+  created_at: string | null
+  cached: boolean
 }
 
 // ------------------------------------------------------------------ //

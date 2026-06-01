@@ -267,7 +267,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **F2** — Live Log Stream (WebSocket + TanStack Virtual) — 6 test ✓
 - [x] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi
   - **Teslim:** `config/mitre_techniques.json` (13 taktik, ~100 teknik+alt teknik, ATT&CK v17); `server/mitre.py` `get_matrix()` + `load_technique_db()` (per-teknik coverage/hit/rules, top_gaps risk sıralı); `GET /api/v1/mitre/matrix?days=N`; `MitreMatrix` TS tipleri + `mitreApi.matrix()`; MITRE sayfası yeniden yazıldı (taktik başlık satırı, teknik hücreleri hit renk kodlaması, tek taktik genişletme, teknik detay panel, gap analizi panel, Navigator layer indirme); 19 test ✓
-- [ ] **F4** — AI Alert Explainer (Claude API, rate limit, 24h cache) — 1 hafta
+- [x] **F4** — AI Alert Explainer (Claude API, rate limit, 24h cache)
+  - **Teslim:** `server/alert_explainer.py` (prompt builder, DB cache, Anthropic SDK çağrısı, prompt injection isolation); Alembic 014 `alert_explanations` tablo; `db.get/save_alert_explanation()` 24s TTL tenant-isolated; `GET /api/v1/correlation/events/{id}` + `POST /api/v1/correlation/events/{id}/explain` (5/min rate limit, 503 key yok); `correlationApi.explainEvent()` + `AlertExplanation` TS tipi; Correlation sayfasında "AI ile Açıkla" butonu + `ExplainPanel` (loading/error/cached badge); `.env.example` `ANTHROPIC_API_KEY`/`ANTHROPIC_MODEL`; 24 test ✓
 - [ ] **F5** — Threat Hunt Workbench (no-code sorgu builder, saved hunts) — 2 hafta
 
 ---

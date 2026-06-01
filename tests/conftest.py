@@ -17,6 +17,7 @@ _PG_TRUNCATE_TABLES = [
     "service_checks", "snmp_poll_history", "snmp_devices", "devices",
     "correlated_events", "normalized_logs", "raw_logs",
     "security_events", "alerts", "db_users", "sites", "tenants",
+    "alert_explanations",
 ]
 
 
