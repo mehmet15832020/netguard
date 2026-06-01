@@ -274,6 +274,69 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 ---
 
+### AŞAMA 4.7 — NSM Veri Kapsamı Genişletme (Haziran 2026 Araştırması)
+
+> **Analiz:** 11 kaynak + NIST SP 800-94, CIS Controls v8.1, Gartner NDR 2025, SANS NSM, Verizon DBIR 2025, MITRE ATT&CK v17, NSA Event-Forwarding-Guidance, Malcolm/CISA. Mevcut skor: **62/100** → P1+P2+P3 tamamlanınca **~98/100** (Security Onion eşdeğer). Detaylı araştırma: `memory/nsm_improvement_roadmap.md`.
+
+#### P1 — Kısa Vadeli (Ay 1-2, Yüksek Etki / Düşük Maliyet)
+
+- [ ] **N1** — Windows EID 12 → 60+ (3-5 gün) | +5% skor
+  - Eklenecek kritik EID'ler: 4104 (PowerShell ScriptBlock), 4776 (NTLM/PtH), 4698 (Scheduled Task), 7045 (New Service), 4740 (Lockout), 1102 (Log Cleared), 4672 (Special Priv), 5140 (Net Share), 4657 (Registry), 4771 (Krb Pre-Auth), Sysmon 6/7/11/12-14
+  - GPO zorunlu: "Script Block Logging" + "Process Command Line Auditing"
+  - **Entegrasyon:** `evtx_parser.py` + `parsers/windows.py` + `sigma_rules_v2/windows_events.yml` + STAGE_MAP
+- [ ] **N2** — Zeek weird.log + dpd.log + files.log (2-3 gün) | +3%
+  - `weird.log`: `bad_HTTP_request` (T1190), `unknown_protocol` (C2 T1071), `TCP_seq_underflow` (IDS evasion)
+  - `dpd.log`: port 443'te non-TLS protokol = C2 tüneli
+  - `files.log`: MD5/SHA256 → threat intel çapraz kontrol
+  - **Entegrasyon:** `zeek_collector.py` + `parsers/zeek.py` + `zeek_advanced.yml` — `_IGNORE_WEIRDS` whitelist zorunlu
+- [ ] **N3** — Honeypot (OpenCanary) (3-5 gün) | +4%
+  - Docker `thinkst/opencanary` — SSH/HTTP/FTP/SMB/MySQL/MSSQL/Redis/RDP/SNMP taklit
+  - İç ağda honeypot bağlantısı = sıfır false positive (MITRE ATT&CK Engage)
+  - STAGE_MAP: `honeypot_ssh` → weaponize, `honeypot_smb` → lateral, `honeypot_http` → recon
+  - **Entegrasyon:** `parsers/opencanary.py` + `sigma_rules_v2/honeypot.yml` + `docker-compose.yml` opsiyonel servis
+- [ ] **N4** — Suricata ET Otomatik Kural Güncelleme (2-3 gün) | +4%
+  - `suricata-update` + `kill -USR2` (live reload, restart yok) — günlük cron 03:00
+  - `disable.conf` + `modify.conf` false positive yönetimi
+  - **Entegrasyon:** `scripts/suricata-update-cron.sh` + `routes/maintenance.py` son güncelleme endpoint
+- [ ] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC (5-7 gün) | +5%
+  - `rdp.log`: RDP brute-force T1021.001 — `kerberos.log`: Kerberoasting (rc4-hmac TGS) T1558.003, AS-REP Roasting T1558.004
+  - `smb_files.log`: \\admin$ yazma = lateral T1021.002, ransomware yayılım
+  - `dce_rpc.log`: `drsuapi/DsGetNCChanges` = DCSync T1003.006
+  - MITRE BZAR projesini referans al — notice.log çıktısını tüket (parser mevcut)
+  - **Entegrasyon:** `zeek_collector.py` + `parsers/zeek.py` 4 parser + `zeek_advanced.yml` + STAGE_MAP
+- [ ] **W1** — Windows Agent (psutil tabanlı, Windows Service) — Bağımlılık: N1 sonrası daha güçlü
+  - Mevcut Ubuntu agent'ı Windows'a port et; `pywin32` + `win32evtlog` ile EID streaming
+  - `nssm` veya `pywin32.servicemanager` ile Windows Service; `pyinstaller` ile tek EXE
+
+#### P2 — Orta Vadeli (Ay 3-5)
+
+- [ ] **N6** — IPFIX/NetFlow v10 + sFlow (6-9 gün) | +3%
+  - `netflow` PyPI paketi (v1/v5/v9/IPFIX) — `parsers/netflow.py` extend; `sflow_receiver.py` UDP 6343
+  - Neden: Cisco 15.4+/Juniper/VMware NSX IPFIX üretiyor; Arista/HP switch sFlow; NetFlow v5 counter ~4GB'da taşıyor
+- [ ] **N7** — Kural Kalitesi + CISA KEV Entegrasyonu (8-12 gün) | +2%
+  - Dead rule tespiti (30 günde sıfır hit) — mevcut `backtest` endpoint extend
+  - `collectors/kev_monitor.py`: CISA KEV JSON feed → yeni CVE bildirimi
+- [ ] **N8** — Microsoft 365 + Google Workspace (7-10 gün) | +6%
+  - Microsoft Purview Audit Search Graph API + MSAL; Google Admin SDK Reports API
+  - BEC sinyalleri: `New-InboxRule`, credential stuffing burst→success, bulk FileDownload, RBAC role assignment
+  - **Entegrasyon:** `collectors/m365_collector.py` + `collectors/gworkspace_collector.py` + `parsers/cloud.py`
+
+#### P3 — Stratejik (Ay 5-12)
+
+- [ ] **N9** — Cloud Log Parser AWS/Azure/GCP (10-14 gün) | +5%
+  - AWS CloudTrail: `GetSecretValue`, `RunInstances` (farklı region), `AssumeRoleWithWebIdentity`
+  - Azure: `roleAssignments/write` — GCP: `SetIamPolicy`, `CreateServiceAccountKey`
+  - **Entegrasyon:** N8'in `parsers/cloud.py` altyapısı üzerine inşa
+- [ ] **N10** — UEBA Temeli (30+ gün) | +7%
+  - 5 sinyal: login zaman anomalisi, yeni konum, 4625 burst→4624, yeni process (user bazlı), veri hacmi spike
+  - Mevcut `asset_baseline.py` (per-IP Welford) → per-user genişletme; 60-90g baseline süre
+  - **Bağımlılık:** N1 tamamlanmış + 60g veri; **KVKK:** DPO onayı zorunlu
+- [ ] **N11** — Arkime Tam PCAP (Ay 9+) | +4%
+  - NetGuard metadata odaklı kalır, Arkime'a Community ID üzerinden link verir — ayrı donanım
+  - Depolama: KOBİ 100-500 Mbps → **7-35 TB SSD** — mevcut VM yetmez, önce donanım kararı
+
+---
+
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
 - [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle)
