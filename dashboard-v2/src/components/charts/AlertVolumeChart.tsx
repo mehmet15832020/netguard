@@ -30,17 +30,11 @@ const SEVERITY_LABELS: Record<string, string> = {
 
 function fmtTime(iso: string, bucketMinutes: number): string {
   const d = new Date(iso)
-  if (bucketMinutes <= 15) {
-    const hh = String(d.getUTCHours()).padStart(2, '0')
-    const mm = String(d.getUTCMinutes()).padStart(2, '0')
-    return `${hh}:${mm}`
-  }
   if (bucketMinutes <= 60) {
-    const hh = String(d.getUTCHours()).padStart(2, '0')
-    return `${hh}:00`
+    return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
   }
-  const day = d.getUTCDate()
-  const hh  = String(d.getUTCHours()).padStart(2, '0')
+  const day = d.getDate()
+  const hh  = String(d.getHours()).padStart(2, '0')
   return `${day}. ${hh}:00`
 }
 

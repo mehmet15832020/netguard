@@ -19,8 +19,7 @@ const HOURS_OPTIONS = [
 
 function fmtHour(iso: string): string {
   const d = new Date(iso)
-  const hh = String(d.getUTCHours()).padStart(2, '0')
-  return `${hh}:00`
+  return d.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function FailedAuthPage() {
