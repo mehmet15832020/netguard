@@ -1,0 +1,306 @@
+{
+  "_meta": {
+    "version": "17",
+    "source": "MITRE ATT&CK Enterprise v17",
+    "scope": "Network-observable techniques relevant to NSM/NDR"
+  },
+  "tactics": [
+    {
+      "id": "TA0043",
+      "slug": "reconnaissance",
+      "label": "Reconnaissance",
+      "techniques": [
+        {"id": "T1595", "name": "Active Scanning", "subtechniques": [
+          {"id": "T1595.001", "name": "Scanning IP Blocks"},
+          {"id": "T1595.002", "name": "Vulnerability Scanning"},
+          {"id": "T1595.003", "name": "Wordlist Scanning"}
+        ]},
+        {"id": "T1590", "name": "Gather Victim Network Information", "subtechniques": [
+          {"id": "T1590.001", "name": "Domain Properties"},
+          {"id": "T1590.004", "name": "Network Topology"},
+          {"id": "T1590.005", "name": "IP Addresses"}
+        ]},
+        {"id": "T1592", "name": "Gather Victim Host Information", "subtechniques": [
+          {"id": "T1592.002", "name": "Software"},
+          {"id": "T1592.004", "name": "Client Configurations"}
+        ]},
+        {"id": "T1589", "name": "Gather Victim Identity Information", "subtechniques": [
+          {"id": "T1589.001", "name": "Credentials"},
+          {"id": "T1589.002", "name": "Email Addresses"}
+        ]},
+        {"id": "T1596", "name": "Search Open Technical Databases", "subtechniques": [
+          {"id": "T1596.001", "name": "DNS/Passive DNS"},
+          {"id": "T1596.005", "name": "Scan Databases"}
+        ]},
+        {"id": "T1598", "name": "Phishing for Information", "subtechniques": [
+          {"id": "T1598.002", "name": "Spearphishing Attachment"},
+          {"id": "T1598.003", "name": "Spearphishing Link"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0001",
+      "slug": "initial_access",
+      "label": "Initial Access",
+      "techniques": [
+        {"id": "T1190", "name": "Exploit Public-Facing Application", "subtechniques": []},
+        {"id": "T1133", "name": "External Remote Services", "subtechniques": []},
+        {"id": "T1566", "name": "Phishing", "subtechniques": [
+          {"id": "T1566.001", "name": "Spearphishing Attachment"},
+          {"id": "T1566.002", "name": "Spearphishing Link"},
+          {"id": "T1566.003", "name": "Spearphishing via Service"}
+        ]},
+        {"id": "T1078", "name": "Valid Accounts", "subtechniques": [
+          {"id": "T1078.001", "name": "Default Accounts"},
+          {"id": "T1078.002", "name": "Domain Accounts"},
+          {"id": "T1078.003", "name": "Local Accounts"}
+        ]},
+        {"id": "T1189", "name": "Drive-by Compromise", "subtechniques": []},
+        {"id": "T1195", "name": "Supply Chain Compromise", "subtechniques": [
+          {"id": "T1195.002", "name": "Compromise Software Supply Chain"}
+        ]},
+        {"id": "T1199", "name": "Trusted Relationship", "subtechniques": []}
+      ]
+    },
+    {
+      "id": "TA0002",
+      "slug": "execution",
+      "label": "Execution",
+      "techniques": [
+        {"id": "T1059", "name": "Command and Scripting Interpreter", "subtechniques": [
+          {"id": "T1059.001", "name": "PowerShell"},
+          {"id": "T1059.003", "name": "Windows Command Shell"},
+          {"id": "T1059.004", "name": "Unix Shell"},
+          {"id": "T1059.006", "name": "Python"}
+        ]},
+        {"id": "T1203", "name": "Exploitation for Client Execution", "subtechniques": []},
+        {"id": "T1072", "name": "Software Deployment Tools", "subtechniques": []},
+        {"id": "T1569", "name": "System Services", "subtechniques": [
+          {"id": "T1569.002", "name": "Service Execution"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0003",
+      "slug": "persistence",
+      "label": "Persistence",
+      "techniques": [
+        {"id": "T1098", "name": "Account Manipulation", "subtechniques": [
+          {"id": "T1098.001", "name": "Additional Cloud Credentials"},
+          {"id": "T1098.002", "name": "Additional Email Delegate Permissions"}
+        ]},
+        {"id": "T1136", "name": "Create Account", "subtechniques": [
+          {"id": "T1136.001", "name": "Local Account"},
+          {"id": "T1136.002", "name": "Domain Account"}
+        ]},
+        {"id": "T1053", "name": "Scheduled Task/Job", "subtechniques": [
+          {"id": "T1053.005", "name": "Scheduled Task"},
+          {"id": "T1053.003", "name": "Cron"}
+        ]},
+        {"id": "T1505", "name": "Server Software Component", "subtechniques": [
+          {"id": "T1505.003", "name": "Web Shell"}
+        ]},
+        {"id": "T1133", "name": "External Remote Services", "subtechniques": []}
+      ]
+    },
+    {
+      "id": "TA0004",
+      "slug": "privilege_escalation",
+      "label": "Privilege Escalation",
+      "techniques": [
+        {"id": "T1068", "name": "Exploitation for Privilege Escalation", "subtechniques": []},
+        {"id": "T1078", "name": "Valid Accounts", "subtechniques": [
+          {"id": "T1078.002", "name": "Domain Accounts"},
+          {"id": "T1078.003", "name": "Local Accounts"}
+        ]},
+        {"id": "T1548", "name": "Abuse Elevation Control Mechanism", "subtechniques": [
+          {"id": "T1548.002", "name": "Bypass User Account Control"}
+        ]},
+        {"id": "T1134", "name": "Access Token Manipulation", "subtechniques": [
+          {"id": "T1134.001", "name": "Token Impersonation/Theft"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0005",
+      "slug": "defense_evasion",
+      "label": "Defense Evasion",
+      "techniques": [
+        {"id": "T1036", "name": "Masquerading", "subtechniques": [
+          {"id": "T1036.005", "name": "Match Legitimate Name or Location"}
+        ]},
+        {"id": "T1070", "name": "Indicator Removal", "subtechniques": [
+          {"id": "T1070.001", "name": "Clear Windows Event Logs"},
+          {"id": "T1070.003", "name": "Clear Command History"}
+        ]},
+        {"id": "T1562", "name": "Impair Defenses", "subtechniques": [
+          {"id": "T1562.001", "name": "Disable or Modify Tools"},
+          {"id": "T1562.004", "name": "Disable or Modify System Firewall"}
+        ]},
+        {"id": "T1090", "name": "Proxy", "subtechniques": [
+          {"id": "T1090.001", "name": "Internal Proxy"},
+          {"id": "T1090.002", "name": "External Proxy"},
+          {"id": "T1090.003", "name": "Multi-hop Proxy"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0006",
+      "slug": "credential_access",
+      "label": "Credential Access",
+      "techniques": [
+        {"id": "T1110", "name": "Brute Force", "subtechniques": [
+          {"id": "T1110.001", "name": "Password Guessing"},
+          {"id": "T1110.002", "name": "Password Cracking"},
+          {"id": "T1110.003", "name": "Password Spraying"},
+          {"id": "T1110.004", "name": "Credential Stuffing"}
+        ]},
+        {"id": "T1040", "name": "Network Sniffing", "subtechniques": []},
+        {"id": "T1557", "name": "Adversary-in-the-Middle", "subtechniques": [
+          {"id": "T1557.001", "name": "LLMNR/NBT-NS Poisoning and SMB Relay"},
+          {"id": "T1557.002", "name": "ARP Cache Poisoning"}
+        ]},
+        {"id": "T1555", "name": "Credentials from Password Stores", "subtechniques": [
+          {"id": "T1555.001", "name": "Keychain"}
+        ]},
+        {"id": "T1212", "name": "Exploitation for Credential Access", "subtechniques": []},
+        {"id": "T1606", "name": "Forge Web Credentials", "subtechniques": [
+          {"id": "T1606.001", "name": "Web Cookies"},
+          {"id": "T1606.002", "name": "SAML Tokens"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0007",
+      "slug": "discovery",
+      "label": "Discovery",
+      "techniques": [
+        {"id": "T1046", "name": "Network Service Discovery", "subtechniques": []},
+        {"id": "T1018", "name": "Remote System Discovery", "subtechniques": []},
+        {"id": "T1016", "name": "System Network Configuration Discovery", "subtechniques": [
+          {"id": "T1016.001", "name": "Internet Connection Discovery"}
+        ]},
+        {"id": "T1049", "name": "System Network Connections Discovery", "subtechniques": []},
+        {"id": "T1135", "name": "Network Share Discovery", "subtechniques": []},
+        {"id": "T1087", "name": "Account Discovery", "subtechniques": [
+          {"id": "T1087.001", "name": "Local Account"},
+          {"id": "T1087.002", "name": "Domain Account"}
+        ]},
+        {"id": "T1082", "name": "System Information Discovery", "subtechniques": []},
+        {"id": "T1083", "name": "File and Directory Discovery", "subtechniques": []},
+        {"id": "T1069", "name": "Permission Groups Discovery", "subtechniques": [
+          {"id": "T1069.001", "name": "Local Groups"},
+          {"id": "T1069.002", "name": "Domain Groups"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0008",
+      "slug": "lateral_movement",
+      "label": "Lateral Movement",
+      "techniques": [
+        {"id": "T1021", "name": "Remote Services", "subtechniques": [
+          {"id": "T1021.001", "name": "Remote Desktop Protocol"},
+          {"id": "T1021.002", "name": "SMB/Windows Admin Shares"},
+          {"id": "T1021.004", "name": "SSH"},
+          {"id": "T1021.005", "name": "VNC"},
+          {"id": "T1021.006", "name": "Windows Remote Management"}
+        ]},
+        {"id": "T1210", "name": "Exploitation of Remote Services", "subtechniques": []},
+        {"id": "T1563", "name": "Remote Service Session Hijacking", "subtechniques": [
+          {"id": "T1563.001", "name": "SSH Hijacking"}
+        ]},
+        {"id": "T1570", "name": "Lateral Tool Transfer", "subtechniques": []},
+        {"id": "T1534", "name": "Internal Spearphishing", "subtechniques": []}
+      ]
+    },
+    {
+      "id": "TA0009",
+      "slug": "collection",
+      "label": "Collection",
+      "techniques": [
+        {"id": "T1005", "name": "Data from Local System", "subtechniques": []},
+        {"id": "T1039", "name": "Data from Network Shared Drive", "subtechniques": []},
+        {"id": "T1114", "name": "Email Collection", "subtechniques": [
+          {"id": "T1114.001", "name": "Local Email Collection"},
+          {"id": "T1114.002", "name": "Remote Email Collection"}
+        ]},
+        {"id": "T1040", "name": "Network Sniffing", "subtechniques": []},
+        {"id": "T1557", "name": "Adversary-in-the-Middle", "subtechniques": [
+          {"id": "T1557.002", "name": "ARP Cache Poisoning"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0011",
+      "slug": "command_and_control",
+      "label": "Command and Control",
+      "techniques": [
+        {"id": "T1071", "name": "Application Layer Protocol", "subtechniques": [
+          {"id": "T1071.001", "name": "Web Protocols"},
+          {"id": "T1071.002", "name": "File Transfer Protocols"},
+          {"id": "T1071.003", "name": "Mail Protocols"},
+          {"id": "T1071.004", "name": "DNS"}
+        ]},
+        {"id": "T1573", "name": "Encrypted Channel", "subtechniques": [
+          {"id": "T1573.001", "name": "Symmetric Cryptography"},
+          {"id": "T1573.002", "name": "Asymmetric Cryptography"}
+        ]},
+        {"id": "T1572", "name": "Protocol Tunneling", "subtechniques": []},
+        {"id": "T1571", "name": "Non-Standard Port", "subtechniques": []},
+        {"id": "T1090", "name": "Proxy", "subtechniques": [
+          {"id": "T1090.003", "name": "Multi-hop Proxy"},
+          {"id": "T1090.004", "name": "Domain Fronting"}
+        ]},
+        {"id": "T1568", "name": "Dynamic Resolution", "subtechniques": [
+          {"id": "T1568.001", "name": "Fast Flux DNS"},
+          {"id": "T1568.002", "name": "Domain Generation Algorithms"}
+        ]},
+        {"id": "T1095", "name": "Non-Application Layer Protocol", "subtechniques": []},
+        {"id": "T1219", "name": "Remote Access Software", "subtechniques": []},
+        {"id": "T1008", "name": "Fallback Channels", "subtechniques": []},
+        {"id": "T1105", "name": "Ingress Tool Transfer", "subtechniques": []},
+        {"id": "T1104", "name": "Multi-Stage Channels", "subtechniques": []}
+      ]
+    },
+    {
+      "id": "TA0010",
+      "slug": "exfiltration",
+      "label": "Exfiltration",
+      "techniques": [
+        {"id": "T1048", "name": "Exfiltration Over Alternative Protocol", "subtechniques": [
+          {"id": "T1048.001", "name": "Exfiltration Over Symmetric Encrypted Non-C2 Protocol"},
+          {"id": "T1048.002", "name": "Exfiltration Over Asymmetric Encrypted Non-C2 Protocol"},
+          {"id": "T1048.003", "name": "Exfiltration Over Unencrypted Non-C2 Protocol"}
+        ]},
+        {"id": "T1041", "name": "Exfiltration Over C2 Channel", "subtechniques": []},
+        {"id": "T1567", "name": "Exfiltration Over Web Service", "subtechniques": [
+          {"id": "T1567.002", "name": "Exfiltration to Cloud Storage"},
+          {"id": "T1567.004", "name": "Exfiltration to Text Storage Sites"}
+        ]},
+        {"id": "T1029", "name": "Scheduled Transfer", "subtechniques": []},
+        {"id": "T1030", "name": "Data Transfer Size Limits", "subtechniques": []},
+        {"id": "T1011", "name": "Exfiltration Over Other Network Medium", "subtechniques": [
+          {"id": "T1011.001", "name": "Exfiltration Over Bluetooth"}
+        ]}
+      ]
+    },
+    {
+      "id": "TA0040",
+      "slug": "impact",
+      "label": "Impact",
+      "techniques": [
+        {"id": "T1498", "name": "Network Denial of Service", "subtechniques": [
+          {"id": "T1498.001", "name": "Direct Network Flood"},
+          {"id": "T1498.002", "name": "Reflection Amplification"}
+        ]},
+        {"id": "T1499", "name": "Endpoint Denial of Service", "subtechniques": [
+          {"id": "T1499.002", "name": "Service Exhaustion Flood"}
+        ]},
+        {"id": "T1496", "name": "Resource Hijacking", "subtechniques": []},
+        {"id": "T1489", "name": "Service Stop", "subtechniques": []},
+        {"id": "T1485", "name": "Data Destruction", "subtechniques": []}
+      ]
+    }
+  ]
+}

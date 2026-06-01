@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends
 from server.auth import User, get_current_user
 from server.correlator import correlator
 from server.database import db
-from server.mitre import get_coverage, get_heatmap, parse_mitre_tags
+from server.mitre import get_coverage, get_heatmap, get_matrix, parse_mitre_tags
 
 router = APIRouter()
 
@@ -78,6 +78,27 @@ def list_techniques(_: User = Depends(get_current_user)):
                 "mitre_tactics":    parsed["mitre_tactics"],
             })
     return {"count": len(result), "rules": result}
+
+
+@router.get("/mitre/matrix")
+def mitre_matrix(days: int = 30, _: User = Depends(get_current_user)):
+    """
+    MITRE ATT&CK matrisini coverage + aktivite verisiyle döner.
+    Her teknik için: kapsanıyor mu, hangi kurallar, son N günde kaç hit.
+    Ayrıca top gap listesi (kapsanmayan yüksek riskli teknikler).
+    """
+    if days < 1 or days > 365:
+        days = 30
+
+    all_rules = list(correlator._rules) + list(correlator._sigma_executor.rules)
+
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    recent_alerts = [
+        {"rule_id": r["rule_id"], "count": r["cnt"]}
+        for r in db.get_rule_alert_counts(cutoff)
+    ]
+
+    return get_matrix(all_rules, recent_alerts)
 
 
 @router.get("/mitre/activity")

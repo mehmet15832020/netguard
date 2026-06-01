@@ -137,6 +137,7 @@ def _make_test_db(url: str, monkeypatch):
     monkeypatch.setattr("server.routes.fp_rules.db", test_db)
     monkeypatch.setattr("server.routes.compliance.db", test_db)
     monkeypatch.setattr("server.routes.sigma.db", test_db)
+    monkeypatch.setattr("server.routes.mitre.db", test_db)
     monkeypatch.setattr("server.asset_baseline.db", test_db)
     monkeypatch.setattr("server.config_monitor.db", test_db)
     monkeypatch.setattr("server.port_monitor.db", test_db)

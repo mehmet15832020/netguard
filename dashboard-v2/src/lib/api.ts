@@ -732,11 +732,56 @@ export interface MitreActivity {
   tactics: Record<string, { count_24h: number; count_7d: number }>
 }
 
+export interface MitreSubtechnique {
+  id: string
+  name: string
+  covered: boolean
+  rules: string[]
+  hits_30d: number
+}
+
+export interface MitreTechniqueRow {
+  id: string
+  name: string
+  covered: boolean
+  rules: string[]
+  hits_30d: number
+  subtechniques: MitreSubtechnique[]
+}
+
+export interface MitreTacticRow {
+  id: string
+  slug: string
+  label: string
+  coverage_pct: number
+  covered: number
+  total: number
+  techniques: MitreTechniqueRow[]
+}
+
+export interface MitreGap {
+  id: string
+  name: string
+  tactic_slug: string
+  tactic_label: string
+}
+
+export interface MitreMatrix {
+  tactics: MitreTacticRow[]
+  summary: {
+    total_techniques: number
+    covered_techniques: number
+    coverage_pct: number
+    top_gaps: MitreGap[]
+  }
+}
+
 export const mitreApi = {
-  coverage:  () => request<MitreCoverage>('/mitre/coverage'),
-  heatmap:   (days = 30) => request<Record<string, unknown>>(`/mitre/heatmap?days=${days}`),
+  coverage:   () => request<MitreCoverage>('/mitre/coverage'),
+  heatmap:    (days = 30) => request<Record<string, unknown>>(`/mitre/heatmap?days=${days}`),
   techniques: () => request<{ count: number; rules: MitreTechniqueRule[] }>('/mitre/techniques'),
-  activity:  () => request<MitreActivity>('/mitre/activity'),
+  activity:   () => request<MitreActivity>('/mitre/activity'),
+  matrix:     (days = 30) => request<MitreMatrix>(`/mitre/matrix?days=${days}`),
 }
 
 export interface ComplianceControl {

@@ -265,7 +265,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 - [x] **F1** — Sigma Rule Backtest Engine (`POST /api/v1/sigma/rules/{rule_id}/backtest`) — 23 test ✓
 - [x] **F2** — Live Log Stream (WebSocket + TanStack Virtual) — 6 test ✓
-- [ ] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi — 2-3 hafta
+- [x] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi
+  - **Teslim:** `config/mitre_techniques.json` (13 taktik, ~100 teknik+alt teknik, ATT&CK v17); `server/mitre.py` `get_matrix()` + `load_technique_db()` (per-teknik coverage/hit/rules, top_gaps risk sıralı); `GET /api/v1/mitre/matrix?days=N`; `MitreMatrix` TS tipleri + `mitreApi.matrix()`; MITRE sayfası yeniden yazıldı (taktik başlık satırı, teknik hücreleri hit renk kodlaması, tek taktik genişletme, teknik detay panel, gap analizi panel, Navigator layer indirme); 19 test ✓
 - [ ] **F4** — AI Alert Explainer (Claude API, rate limit, 24h cache) — 1 hafta
 - [ ] **F5** — Threat Hunt Workbench (no-code sorgu builder, saved hunts) — 2 hafta
 
