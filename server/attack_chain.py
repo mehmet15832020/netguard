@@ -180,6 +180,27 @@ STAGE_MAP: dict[str, str] = {
     "windows_sysmon_wmi_event":         "lateral",    # Sysmon 19 — WMI persistence T1047
     "windows_sysmon_wmi_binding":       "lateral",    # Sysmon 21 — WMI binding T1047
     "windows_sysmon_process_tamper":    "execute",    # Sysmon 25 — process tampering T1070
+    # Zeek weird.log (N2)
+    "zeek_weird_unknown_protocol":       "lateral",   # T1071 C2 tunnel
+    "zeek_weird_bad_http_request":       "execute",   # T1190 exploit
+    "zeek_weird_tcp_evasion":            "recon",     # T1089 IDS evasion
+    "zeek_weird_tcp_manipulation":       "recon",     # TCP state manipulation
+    "zeek_weird_syn_anomaly":            "recon",     # T1499 SYN state violation
+    "zeek_weird_tcp_anomaly":            "recon",     # TCP state violation
+    "zeek_weird_dns_anomaly":            "recon",     # T1071.004 DNS anomaly
+    "zeek_weird_http_anomaly":           "recon",     # T1071.001 HTTP evasion
+    "zeek_weird_protocol_corruption":    "recon",     # T1089 protocol abuse
+    "zeek_weird_protocol_evasion":       "recon",     # T1071 evasion
+    # Zeek dpd.log (N2)
+    "zeek_dpd_ssl_failure":              "lateral",   # T1071.001 non-TLS on 443
+    "zeek_dpd_http_failure":             "lateral",   # T1071.001 non-HTTP on 443
+    "zeek_dpd_dns_failure":              "lateral",   # T1071.004 DNS tunnel
+    "zeek_dpd_ssh_failure":              "weaponize", # T1021.006 SSH evasion
+    # Zeek files.log (N2)
+    "zeek_file_inbound":                 "execute",   # T1105 file download
+    "zeek_file_inbound_suspicious":      "execute",   # T1566/T1105 malicious download
+    "zeek_file_outbound":                "lateral",   # T1048 data exfiltration
+    "zeek_file_outbound_suspicious":     "lateral",   # T1048.001 exfil
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

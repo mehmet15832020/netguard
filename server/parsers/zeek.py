@@ -1,10 +1,11 @@
 """
 Zeek JSON log parsers.
 
-Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp
+Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp, weird, dpd, files
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
+import ipaddress
 import os
 import re
 import uuid
@@ -20,6 +21,36 @@ logger = logging.getLogger(__name__)
 _DNS_ENTROPY_THRESHOLD = float(os.getenv("DNS_ENTROPY_THRESHOLD", "4.0"))
 _DNS_LONG_QUERY_THRESHOLD = int(os.getenv("DNS_LONG_QUERY_THRESHOLD", "50"))
 _DNS_ENTROPY_MIN_LABEL_LEN = int(os.getenv("DNS_ENTROPY_MIN_LABEL_LEN", "20"))
+
+_IGNORE_WEIRDS: frozenset[str] = frozenset({
+    "window_recision",
+    "bad_ACK_number",
+    "DNS_RR_unknown_type",
+    "dns_A_query_answers_AAAA_question",
+    "data_before_established",
+    "inappropriate_FIN",
+    "window_scale_without_timestamping",
+    "above_hole_data_without_any_acks",
+    "line_terminated_with_single_CR",
+    "TCP_seq_gap_after_window",
+})
+
+_SUSPICIOUS_DPD_PORTS: frozenset[int] = frozenset({443, 8443, 8080, 8008, 8888, 9000})
+
+_SUSPICIOUS_DPD_ANALYZERS: frozenset[str] = frozenset({"SSL", "HTTP", "DNS"})
+
+_SUSPICIOUS_MIME_TYPES: frozenset[str] = frozenset({
+    "application/x-dosexec",
+    "application/x-msdownload",
+    "application/x-elf",
+    "application/x-mach-binary",
+    "application/x-sharedlib",
+    "application/x-java-applet",
+    "application/x-powershell",
+    "application/x-sh",
+    "application/x-bat",
+    "application/x-msaccess",
+})
 
 
 _MULTI_PART_TLD: frozenset[str] = frozenset({
@@ -60,6 +91,15 @@ def _port(val) -> Optional[int]:
         return int(val)
     except (TypeError, ValueError):
         return None
+
+
+def _is_private(ip: Optional[str]) -> bool:
+    if not ip or ip == "-":
+        return False
+    try:
+        return ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return False
 
 
 def parse_dns(row: dict) -> Optional[NormalizedLog]:
@@ -582,4 +622,188 @@ def parse_ftp(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         extra={"command": command, "arg": arg, "user": user, "reply_code": code},
         tags=["zeek", "ftp"] + (["ftp_sensitive"] if command.upper() in _SENSITIVE else []),
+    )
+
+
+def parse_weird(row: dict) -> Optional[NormalizedLog]:
+    name = (row.get("name") or "").strip()
+    if not name or name == "-":
+        return None
+
+    src_ip = row.get("id.orig_h")
+    dst_ip = row.get("id.resp_h")
+
+    if name in _IGNORE_WEIRDS and _is_private(src_ip) and _is_private(dst_ip):
+        return None
+
+    notice_raw = row.get("notice")
+    if isinstance(notice_raw, str):
+        is_notice = notice_raw.upper() in ("T", "TRUE", "1")
+    else:
+        is_notice = bool(notice_raw)
+
+    severity = "critical" if is_notice else "warning"
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    event_action = f"zeek_weird_{slug}"
+
+    addl = (row.get("addl") or "").strip()
+    if addl == "-":
+        addl = ""
+    msg = f"Protocol anomaly [{name}]"
+    if addl:
+        msg += f": {addl}"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=src_ip,
+        destination_ip=dst_ip,
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol=row.get("proto", "tcp"),
+        message=msg,
+        tags=["zeek", "weird", slug],
+    )
+
+
+def parse_dpd(row: dict) -> Optional[NormalizedLog]:
+    analyzer = (row.get("analyzer") or "").strip()
+    if not analyzer or analyzer == "-":
+        return None
+
+    resp_p = _port(row.get("id.resp_p"))
+    failure_reason = (row.get("failure_reason") or "").strip()
+    if failure_reason == "-":
+        failure_reason = ""
+
+    is_suspicious = (
+        resp_p in _SUSPICIOUS_DPD_PORTS
+        and analyzer.upper() in _SUSPICIOUS_DPD_ANALYZERS
+    )
+    severity = "critical" if is_suspicious else "warning"
+
+    slug = re.sub(r"[^a-z0-9]+", "_", analyzer.lower()).strip("_")
+    event_action = f"zeek_dpd_{slug}_failure"
+
+    msg = f"DPD [{analyzer}] analyzer failure"
+    if resp_p:
+        msg += f" on port {resp_p}"
+    if failure_reason:
+        msg += f": {failure_reason[:120]}"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=resp_p,
+        network_protocol=(row.get("proto") or "tcp"),
+        message=msg,
+        tags=["zeek", "dpd", slug],
+    )
+
+
+def parse_files(row: dict) -> Optional[NormalizedLog]:
+    sha256 = (row.get("sha256") or "").strip()
+    sha1   = (row.get("sha1")   or "").strip()
+    md5    = (row.get("md5")    or "").strip()
+
+    if sha256 == "-": sha256 = ""
+    if sha1   == "-": sha1   = ""
+    if md5    == "-": md5    = ""
+
+    if not (sha256 or sha1 or md5):
+        return None
+
+    try:
+        missing_bytes = int(row.get("missing_bytes") or 0)
+    except (ValueError, TypeError):
+        missing_bytes = 0
+    if missing_bytes > 0:
+        return None
+
+    mime_type = (row.get("mime_type") or "").strip()
+    if mime_type == "-":
+        mime_type = ""
+    filename = (row.get("filename") or "").strip()
+    if filename == "-":
+        filename = ""
+
+    local_orig_raw = row.get("local_orig")
+    is_orig_raw    = row.get("is_orig")
+    if isinstance(local_orig_raw, str):
+        local_orig = local_orig_raw.upper() in ("T", "TRUE", "1")
+    else:
+        local_orig = bool(local_orig_raw)
+    if isinstance(is_orig_raw, str):
+        is_orig = is_orig_raw.upper() in ("T", "TRUE", "1")
+    else:
+        is_orig = bool(is_orig_raw)
+
+    if not local_orig:
+        return None
+
+    direction = "outbound" if is_orig else "inbound"
+
+    is_suspicious = mime_type in _SUSPICIOUS_MIME_TYPES
+    if is_suspicious or direction == "outbound":
+        severity = "critical"
+    else:
+        severity = "warning"
+
+    event_action = f"zeek_file_{direction}_suspicious" if is_suspicious else f"zeek_file_{direction}"
+
+    tx_hosts = row.get("tx_hosts") or []
+    rx_hosts = row.get("rx_hosts") or []
+    if isinstance(tx_hosts, str):
+        tx_hosts = [tx_hosts] if tx_hosts not in ("-", "") else []
+    if isinstance(rx_hosts, str):
+        rx_hosts = [rx_hosts] if rx_hosts not in ("-", "") else []
+
+    source_ip = tx_hosts[0] if tx_hosts else None
+    dest_ip   = rx_hosts[0] if rx_hosts else None
+
+    msg = f"File {direction}"
+    if mime_type:
+        msg += f" [{mime_type}]"
+    if filename:
+        msg += f" ({filename})"
+    if sha256:
+        msg += f" sha256={sha256[:16]}…"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=source_ip,
+        destination_ip=dest_ip,
+        network_protocol="tcp",
+        message=msg,
+        extra={
+            "direction":  direction,
+            "mime_type":  mime_type,
+            "filename":   filename,
+            "sha256":     sha256,
+            "sha1":       sha1,
+            "md5":        md5,
+        },
+        tags=["zeek", "files", direction] + (["suspicious_mime"] if is_suspicious else []),
     )

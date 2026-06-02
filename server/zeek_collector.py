@@ -5,7 +5,7 @@ Zeek'in ürettiği JSON loglarını izler, NormalizedLog'a çevirir ve
 normalized_logs tablosuna yazar. Her log dosyası için byte offset saklanır
 (restart güvenli — aynı satırı iki kez işlemez).
 
-Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp
+Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp, weird, dpd, files
 """
 
 import asyncio
@@ -20,6 +20,7 @@ from server.log_store import log_store
 from server.parsers.zeek import (
     parse_conn, parse_dns, parse_ftp, parse_http,
     parse_notice, parse_smtp, parse_ssh, parse_ssl, parse_x509,
+    parse_weird, parse_dpd, parse_files,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,9 @@ _PARSERS: dict[str, Callable] = {
     "x509":   parse_x509,
     "smtp":   parse_smtp,
     "ftp":    parse_ftp,
+    "weird":  parse_weird,
+    "dpd":    parse_dpd,
+    "files":  parse_files,
 }
 
 

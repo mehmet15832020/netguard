@@ -156,3 +156,226 @@ level: high
 tags:
     - attack.lateral_movement
     - attack.t1021.004
+---
+title: Zeek Weird — Unknown Protocol (C2 Channel)
+id: a1b2c3d4-e5f6-7890-abcd-001000000001
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_weird_unknown_protocol
+    condition: selection
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071
+falsepositives:
+    - Non-standard proprietary protocols
+---
+title: Zeek Weird — Bad HTTP Request (Exploit Attempt)
+id: b2c3d4e5-f6a7-8901-bcde-002000000002
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_weird_bad_http_request
+    condition: selection
+level: high
+tags:
+    - attack.initial_access
+    - attack.t1190
+falsepositives:
+    - Misconfigured HTTP clients
+    - Legacy applications with non-standard HTTP
+---
+title: Zeek Weird — TCP IDS Evasion (Base)
+name: ng_zeek_weird_tcp_evasion_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action:
+            - zeek_weird_tcp_evasion
+            - zeek_weird_tcp_manipulation
+    condition: selection
+level: low
+---
+title: Zeek Weird — TCP Evasion Burst
+id: c3d4e5f6-a7b8-9012-cdef-003000000003
+correlation:
+    type: event_count
+    rules: ng_zeek_weird_tcp_evasion_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.defense_evasion
+    - attack.t1027
+falsepositives:
+    - Asymmetric routing
+    - Load balancers with SNAT
+---
+title: Zeek Weird — HTTP Protocol Evasion (Base)
+name: ng_zeek_weird_http_evasion_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action:
+            - zeek_weird_http_anomaly
+            - zeek_weird_protocol_evasion
+    condition: selection
+level: low
+---
+title: Zeek Weird — HTTP Evasion Burst
+id: d4e5f6a7-b8c9-0123-def0-004000000004
+correlation:
+    type: event_count
+    rules: ng_zeek_weird_http_evasion_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.defense_evasion
+    - attack.t1071.001
+falsepositives:
+    - Non-standard proxy configurations
+---
+title: Zeek DPD — Non-TLS on Port 443 (C2 Tunnel)
+id: e5f6a7b8-c9d0-1234-ef01-005000000005
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_dpd_ssl_failure
+        destination_port: 443
+    condition: selection
+level: critical
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
+    - attack.t1572
+falsepositives:
+    - Applications using port 443 for non-HTTPS traffic
+---
+title: Zeek DPD — Non-HTTP on Port 443 (Protocol Tunnel)
+id: f6a7b8c9-d0e1-2345-fa01-006000000006
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_dpd_http_failure
+        destination_port: 443
+    condition: selection
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
+falsepositives:
+    - Custom protocols over port 443
+---
+title: Zeek DPD — Analyzer Failure (Base)
+name: ng_zeek_dpd_failure_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action|startswith: zeek_dpd_
+    condition: selection
+level: low
+---
+title: Zeek DPD — Repeated Protocol Failures (Tunnel Probe)
+id: a7b8c9d0-e1f2-3456-ab02-007000000007
+correlation:
+    type: event_count
+    rules: ng_zeek_dpd_failure_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1572
+falsepositives:
+    - Misconfigured network equipment
+---
+title: Zeek Files — Suspicious Executable Download
+id: b8c9d0e1-f2a3-4567-bc03-008000000008
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_file_inbound_suspicious
+    condition: selection
+level: critical
+tags:
+    - attack.initial_access
+    - attack.t1566
+    - attack.t1105
+falsepositives:
+    - Authorized software deployment
+    - Security tooling downloads
+---
+title: Zeek Files — Data Exfiltration (Outbound)
+id: c9d0e1f2-a3b4-5678-cd04-009000000009
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_file_outbound_suspicious
+    condition: selection
+level: critical
+tags:
+    - attack.exfiltration
+    - attack.t1048
+falsepositives:
+    - Authorized file uploads
+    - Backup operations
+---
+title: Zeek Files — Script Download Base
+name: ng_zeek_files_script_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action|contains: zeek_file_
+        tags|contains: suspicious_mime
+    condition: selection
+level: low
+---
+title: Zeek Files — Script Download Burst
+id: d0e1f2a3-b4c5-6789-de05-010000000010
+correlation:
+    type: event_count
+    rules: ng_zeek_files_script_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.execution
+    - attack.t1059
+    - attack.t1105
+falsepositives:
+    - Software deployment pipelines
+    - Package managers
