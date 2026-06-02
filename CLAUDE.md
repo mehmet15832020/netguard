@@ -280,7 +280,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 
 #### P1 — Kısa Vadeli (Ay 1-2, Yüksek Etki / Düşük Maliyet)
 
-- [ ] **N1** — Windows EID 12 → 60+ (3-5 gün) | +5% skor
+- [x] **N1** — Windows EID 12 → 26 (3-5 gün) | +5% skor
   - Eklenecek kritik EID'ler: 4104 (PowerShell ScriptBlock), 4776 (NTLM/PtH), 4698 (Scheduled Task), 7045 (New Service), 4740 (Lockout), 1102 (Log Cleared), 4672 (Special Priv), 5140 (Net Share), 4657 (Registry), 4771 (Krb Pre-Auth), Sysmon 6/7/11/12-14
   - GPO zorunlu: "Script Block Logging" + "Process Command Line Auditing"
   - **Entegrasyon:** `evtx_parser.py` + `parsers/windows.py` + `sigma_rules_v2/windows_events.yml` + STAGE_MAP

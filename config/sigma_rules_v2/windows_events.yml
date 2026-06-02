@@ -316,3 +316,267 @@ tags:
 falsepositives:
     - Legitimate DNS-heavy applications
     - Automated software update checks
+---
+# ── N1 — Yeni EID Sigma Kuralları ────────────────────────────────────────────
+title: Security Audit Log Cleared
+id: a1b2c3d4-e5f6-7890-abcd-n1000000001a
+status: stable
+logsource:
+    category: system
+detection:
+    selection:
+        event_action: windows_log_cleared
+    condition: selection
+level: critical
+tags:
+    - attack.defense_evasion
+    - attack.t1070.001
+falsepositives:
+    - Authorized security testing
+---
+title: Scheduled Task Created — Non-Standard Path
+id: b2c3d4e5-f6a7-8901-bcde-n1000000002b
+status: stable
+logsource:
+    category: system
+detection:
+    selection:
+        event_action: windows_task_created
+        severity: warning
+    condition: selection
+level: high
+tags:
+    - attack.persistence
+    - attack.t1053.005
+falsepositives:
+    - Legitimate software installers
+    - Admin deployment scripts
+---
+title: Scheduled Task Base
+name: ng_win_task_base
+status: stable
+logsource:
+    category: system
+detection:
+    selection:
+        event_action: windows_task_created
+    condition: selection
+level: low
+---
+title: Scheduled Task Burst — Persistence Attempt
+id: c3d4e5f6-a7b8-9012-cdef-n1000000003c
+correlation:
+    type: event_count
+    rules: ng_win_task_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.persistence
+    - attack.t1053.005
+falsepositives:
+    - Software deployment automation
+---
+title: Account Lockout Base
+name: ng_win_lockout_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: windows_account_lockout
+    condition: selection
+level: low
+---
+title: Account Lockout Burst — Password Spray
+id: d4e5f6a7-b8c9-0123-def0-n1000000004d
+correlation:
+    type: event_count
+    rules: ng_win_lockout_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110.003
+falsepositives:
+    - Automated test systems locking accounts
+---
+title: Special Privilege — SeDebugPrivilege Assigned
+id: e5f6a7b8-c9d0-1234-ef01-n1000000005e
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: windows_special_priv
+        severity: critical
+    condition: selection
+level: critical
+tags:
+    - attack.privilege_escalation
+    - attack.credential_access
+    - attack.t1078
+    - attack.t1003.001
+falsepositives:
+    - EDR agents
+    - Authorized security tooling
+---
+title: Admin Share Access Base
+name: ng_win_share_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: windows_share_access
+        severity: warning
+    condition: selection
+level: low
+---
+title: Admin Share Access Burst — Lateral Movement
+id: f6a7b8c9-d0e1-2345-fa01-n1000000006f
+correlation:
+    type: event_count
+    rules: ng_win_share_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.lateral_movement
+    - attack.t1021.002
+falsepositives:
+    - SCCM/Ansible software deployment
+    - Backup agents
+---
+title: NTLM Auth Failure Base
+name: ng_win_ntlm_fail_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: windows_ntlm_auth
+        severity: warning
+    condition: selection
+level: low
+---
+title: NTLM Auth Failure Burst — PtH Attempt
+id: a7b8c9d0-e1f2-3456-ab02-n1000000007a
+correlation:
+    type: event_count
+    rules: ng_win_ntlm_fail_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 5
+level: critical
+tags:
+    - attack.lateral_movement
+    - attack.credential_access
+    - attack.t1550.002
+falsepositives:
+    - Legacy NTLM applications
+---
+title: Kerberos Pre-Auth Failure Burst — AS-REP Roasting
+id: b8c9d0e1-f2a3-4567-bc03-n1000000008b
+correlation:
+    type: event_count
+    rules: ng_win_ntlm_fail_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1558.004
+falsepositives:
+    - Misconfigured service accounts
+---
+title: Sysmon Unsigned Driver Load
+id: c9d0e1f2-a3b4-5678-cd04-n1000000009c
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: windows_sysmon_driver_load
+        severity: critical
+    condition: selection
+level: critical
+tags:
+    - attack.privilege_escalation
+    - attack.t1068
+falsepositives:
+    - Legitimate unsigned third-party drivers
+    - Development/test environments
+---
+title: Sysmon Suspicious File Drop Base
+name: ng_sysmon_file_drop_base
+status: stable
+logsource:
+    category: system
+detection:
+    selection:
+        event_action: windows_sysmon_file_create
+        severity: warning
+    condition: selection
+level: low
+---
+title: Sysmon Executable Drop — Temp/Public Path
+id: d0e1f2a3-b4c5-6789-de05-n100000000ad
+correlation:
+    type: event_count
+    rules: ng_sysmon_file_drop_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.defense_evasion
+    - attack.t1105
+falsepositives:
+    - Legitimate software installers writing to temp
+---
+title: Sysmon Registry Persistence Base
+name: ng_sysmon_reg_persist_base
+status: stable
+logsource:
+    category: system
+detection:
+    selection:
+        event_action: windows_sysmon_registry
+        severity: warning
+    condition: selection
+level: low
+---
+title: Sysmon Registry Run Key — Persistence
+id: e1f2a3b4-c5d6-7890-ef06-n100000000be
+correlation:
+    type: event_count
+    rules: ng_sysmon_reg_persist_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 2
+level: high
+tags:
+    - attack.persistence
+    - attack.t1547.001
+falsepositives:
+    - Legitimate software autostart configuration

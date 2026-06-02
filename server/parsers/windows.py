@@ -12,18 +12,33 @@ from typing import Optional
 from shared.models import NormalizedLog, LogSourceType, LogCategory
 
 _ACTION_TO_CATEGORY: dict[str, LogCategory] = {
-    "windows_logon_success":      LogCategory.AUTHENTICATION,
-    "windows_logon_failure":      LogCategory.AUTHENTICATION,
-    "windows_explicit_logon":     LogCategory.AUTHENTICATION,
-    "windows_kerberos_tgt":       LogCategory.AUTHENTICATION,
-    "windows_kerberos_service":   LogCategory.AUTHENTICATION,
-    "windows_user_created":       LogCategory.AUTHENTICATION,
-    "windows_group_member_added": LogCategory.AUTHENTICATION,
-    "windows_process_create":     LogCategory.SYSTEM,
-    "windows_sysmon_process":     LogCategory.SYSTEM,
-    "windows_sysmon_proc_access": LogCategory.INTRUSION,
-    "windows_sysmon_network":     LogCategory.NETWORK,
-    "windows_sysmon_dns":         LogCategory.NETWORK,
+    # Authentication
+    "windows_logon_success":         LogCategory.AUTHENTICATION,
+    "windows_logon_failure":         LogCategory.AUTHENTICATION,
+    "windows_explicit_logon":        LogCategory.AUTHENTICATION,
+    "windows_kerberos_tgt":          LogCategory.AUTHENTICATION,
+    "windows_kerberos_service":      LogCategory.AUTHENTICATION,
+    "windows_kerberos_preauth_fail": LogCategory.AUTHENTICATION,
+    "windows_ntlm_auth":             LogCategory.AUTHENTICATION,
+    "windows_account_lockout":       LogCategory.AUTHENTICATION,
+    "windows_user_created":          LogCategory.AUTHENTICATION,
+    "windows_group_member_added":    LogCategory.AUTHENTICATION,
+    "windows_special_priv":          LogCategory.AUTHENTICATION,
+    # System / Execution
+    "windows_process_create":        LogCategory.SYSTEM,
+    "windows_task_created":          LogCategory.SYSTEM,
+    "windows_task_updated":          LogCategory.SYSTEM,
+    "windows_log_cleared":           LogCategory.SYSTEM,
+    "windows_sysmon_process":        LogCategory.SYSTEM,
+    "windows_sysmon_proc_access":    LogCategory.INTRUSION,
+    "windows_sysmon_driver_load":    LogCategory.INTRUSION,
+    "windows_sysmon_image_load":     LogCategory.SYSTEM,
+    "windows_sysmon_file_create":    LogCategory.SYSTEM,
+    "windows_sysmon_registry":       LogCategory.SYSTEM,
+    # Network
+    "windows_sysmon_network":        LogCategory.NETWORK,
+    "windows_sysmon_dns":            LogCategory.NETWORK,
+    "windows_share_access":          LogCategory.NETWORK,
 }
 
 

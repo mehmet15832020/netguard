@@ -5,8 +5,9 @@ Windows .evtx formatındaki olay günlüğü dosyalarını parse eder.
 Forensik analiz ve offline inceleme için kullanılır.
 
 Desteklenen event ID'ler:
-  Windows Security: 4624, 4625, 4648, 4688, 4720, 4732, 4768, 4769
-  Sysmon:           1 (Process), 3 (Network), 10 (ProcAccess), 22 (DNS)
+  Windows Security: 4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720,
+                    4728, 4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102
+  Sysmon:           1, 3, 6, 7, 10, 11, 13, 22
 
 Gereksinim: python-evtx (pip install python-evtx)
 """
@@ -24,19 +25,32 @@ _NS = "http://schemas.microsoft.com/win/2004/08/events/event"
 # event_action → (default_severity)  — dinamik override mümkün
 _EID_MAP: dict[int, tuple[str, str]] = {
     # Windows Security Events
-    4624: ("windows_logon_success",       "info"),
-    4625: ("windows_logon_failure",       "warning"),
-    4648: ("windows_explicit_logon",      "warning"),
-    4688: ("windows_process_create",      "info"),
-    4720: ("windows_user_created",        "warning"),
-    4732: ("windows_group_member_added",  "warning"),
-    4768: ("windows_kerberos_tgt",        "info"),
-    4769: ("windows_kerberos_service",    "info"),
+    4624:  ("windows_logon_success",        "info"),
+    4625:  ("windows_logon_failure",        "warning"),
+    4648:  ("windows_explicit_logon",       "warning"),
+    4672:  ("windows_special_priv",         "warning"),
+    4688:  ("windows_process_create",       "info"),
+    4698:  ("windows_task_created",         "warning"),
+    4702:  ("windows_task_updated",         "warning"),
+    4720:  ("windows_user_created",         "warning"),
+    4728:  ("windows_group_member_added",   "warning"),
+    4732:  ("windows_group_member_added",   "warning"),
+    4740:  ("windows_account_lockout",      "warning"),
+    4768:  ("windows_kerberos_tgt",         "info"),
+    4769:  ("windows_kerberos_service",     "info"),
+    4771:  ("windows_kerberos_preauth_fail","warning"),
+    4776:  ("windows_ntlm_auth",            "info"),
+    5140:  ("windows_share_access",         "info"),
+    1102:  ("windows_log_cleared",          "critical"),
     # Sysmon Events
-    1:    ("windows_sysmon_process",      "info"),
-    3:    ("windows_sysmon_network",      "info"),
-    10:   ("windows_sysmon_proc_access",  "warning"),
-    22:   ("windows_sysmon_dns",          "info"),
+    1:     ("windows_sysmon_process",       "info"),
+    3:     ("windows_sysmon_network",       "info"),
+    6:     ("windows_sysmon_driver_load",   "warning"),
+    7:     ("windows_sysmon_image_load",    "info"),
+    10:    ("windows_sysmon_proc_access",   "warning"),
+    11:    ("windows_sysmon_file_create",   "info"),
+    13:    ("windows_sysmon_registry",      "info"),
+    22:    ("windows_sysmon_dns",           "info"),
 }
 
 _LOGON_TYPES = {
@@ -268,6 +282,136 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "occurred_at":       occurred_at,
         }
 
+    if eid == 4672:
+        user   = _get_data(root, "SubjectUserName")
+        privs  = _get_data(root, "PrivilegeList")
+        # SeDebugPrivilege → credential dumping, process injection
+        high_risk = any(p in privs for p in ("SeDebugPrivilege", "SeImpersonatePrivilege", "SeTcbPrivilege"))
+        severity  = "critical" if high_risk else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Special privileges assigned: user={user} privs={privs[:120]}",
+            "raw_data":          f"EID=4672 user={user} privs={privs}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid in (4698, 4702):
+        actor     = _get_data(root, "SubjectUserName")
+        task_name = _get_data(root, "TaskName")
+        label     = "created" if eid == 4698 else "updated"
+        non_std   = not any(task_name.startswith(p) for p in (
+            r"\Microsoft\Windows", r"\Microsoft\Office", r"\Microsoft\Edge"
+        ))
+        severity  = "warning" if non_std else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          actor,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Scheduled task {label}: {task_name} by {actor}",
+            "raw_data":          f"EID={eid} actor={actor} task={task_name}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid in (4728, 4732):
+        member = _get_data(root, "MemberName")
+        group  = _get_data(root, "TargetUserName")
+        actor  = _get_data(root, "SubjectUserName")
+        # Admin/Domain Admins eklemesi yüksek risk
+        high_risk = any(g in group.lower() for g in ("admin", "domain admins", "enterprise admins"))
+        severity  = "critical" if high_risk else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          actor,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Group member added: {member} → {group} by {actor}",
+            "raw_data":          f"EID={eid} member={member} group={group} actor={actor}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4740:
+        locked_user = _get_data(root, "TargetUserName")
+        caller      = _get_data(root, "SubjectUserName")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          locked_user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Account locked out: {locked_user} (caller={caller})",
+            "raw_data":          f"EID=4740 locked={locked_user} caller={caller}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4771:
+        user   = _get_data(root, "TargetUserName")
+        src_ip = _clean_ip(_get_data(root, "IpAddress"))
+        status = _get_data(root, "Status")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          user,
+            "source_ip":         src_ip,
+            "observer_hostname": computer,
+            "message":           f"Kerberos pre-auth failed: {user} status={status}",
+            "raw_data":          f"EID=4771 user={user} src={src_ip} status={status}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4776:
+        user       = _get_data(root, "TargetUserName")
+        workstation = _get_data(root, "Workstation")
+        status     = _get_data(root, "Status")
+        failure    = status not in ("0x0", "")
+        severity   = "warning" if failure else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"NTLM auth {'failed' if failure else 'success'}: user={user} from={workstation}",
+            "raw_data":          f"EID=4776 user={user} workstation={workstation} status={status}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 5140:
+        user       = _get_data(root, "SubjectUserName")
+        share      = _get_data(root, "ShareName")
+        src_ip     = _clean_ip(_get_data(root, "IpAddress"))
+        admin_share = any(s in share.upper() for s in (r"ADMIN$", r"C$", r"IPC$"))
+        severity   = "warning" if admin_share else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          user,
+            "source_ip":         src_ip,
+            "observer_hostname": computer,
+            "message":           f"Network share accessed: {share} by {user} from {src_ip}",
+            "raw_data":          f"EID=5140 user={user} share={share} src={src_ip}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 1102:
+        user = _get_data(root, "SubjectUserName")
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Security audit log cleared by {user}",
+            "raw_data":          f"EID=1102 user={user}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
     # ── Sysmon Events ─────────────────────────────────────────────────────────
 
     if eid == 1:
@@ -356,6 +500,86 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "observer_hostname": computer,
             "message":           f"Sysmon DNS: {query} from {proc or '?'} status={status}",
             "raw_data":          f"EID=22 proc={proc} query={query} status={status} results={results}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 6:
+        driver  = _get_data(root, "ImageLoaded")
+        hashes  = _get_data(root, "Hashes")
+        signed  = _get_data(root, "Signed").lower()
+        sig_ok  = signed == "true"
+        severity = "info" if sig_ok else "critical"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Driver loaded: {driver} signed={signed}",
+            "raw_data":          f"EID=6 driver={driver} hashes={hashes} signed={signed}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 7:
+        proc    = _get_data(root, "Image")
+        image   = _get_data(root, "ImageLoaded")
+        hashes  = _get_data(root, "Hashes")
+        signed  = _get_data(root, "Signed").lower()
+        # System32 dışından yüklenen imzasız DLL şüpheli
+        non_sys = "system32" not in image.lower() and "syswow64" not in image.lower()
+        unsigned = signed != "true"
+        severity = "warning" if (non_sys and unsigned) else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Image loaded: {image} by {proc or '?'} signed={signed}",
+            "raw_data":          f"EID=7 proc={proc} image={image} hashes={hashes} signed={signed}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 11:
+        proc     = _get_data(root, "Image")
+        target   = _get_data(root, "TargetFilename")
+        proc_name = (proc.split("\\")[-1] if proc else "").lower()
+        # Geçici/kullanıcı dizinlerine yürütülebilir dosya bırakma
+        suspicious_path = any(p in target.lower() for p in (
+            r"\temp\\", r"\appdata\local\temp", r"\users\public\\", r"\programdata\\"
+        ))
+        suspicious_ext = target.lower().endswith((".exe", ".dll", ".bat", ".ps1", ".vbs", ".js"))
+        severity = "warning" if (suspicious_path and suspicious_ext) else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"File created: {target} by {proc or '?'}",
+            "raw_data":          f"EID=11 proc={proc} target={target}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 13:
+        proc   = _get_data(root, "Image")
+        target = _get_data(root, "TargetObject")
+        detail = _get_data(root, "Details")
+        # Run/RunOnce ve Winlogon → persistence
+        persistence_keys = (
+            r"currentversion\run", r"currentversion\runonce",
+            r"winlogon", r"userinit", r"shell",
+        )
+        is_persist = any(k in target.lower() for k in persistence_keys)
+        severity   = "warning" if is_persist else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Registry value set: {target} by {proc or '?'}",
+            "raw_data":          f"EID=13 proc={proc} key={target} val={detail}"[:500],
             "occurred_at":       occurred_at,
         }
 

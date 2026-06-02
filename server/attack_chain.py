@@ -138,16 +138,29 @@ STAGE_MAP: dict[str, str] = {
     # NetFlow Sigma korelasyon çıktı slug prefix'leri
     "netflow_large_flow_exf":"lateral",   # NetFlow Large Flow Exfiltration Burst (T1048)
     "netflow_tunnel_protoco":"lateral",   # NetFlow Tunnel Protocol Burst (T1572)
-    # Windows / Sysmon (U2)
-    "windows_explicit_logon":      "weaponize",  # 4648 — pass-the-hash göstergesi
-    "windows_user_created":        "execute",    # 4720 — persistence (yeni hesap)
-    "windows_group_member_added":  "execute",    # 4732 — privilege escalation
-    "windows_kerberos_tgt":        "weaponize",  # 4768 — credential access / AS-REP roasting
-    "windows_kerberos_service":    "lateral",    # 4769 — Kerberoasting / lateral movement
-    "windows_sysmon_proc_access":  "execute",    # Sysmon EID10 — credential dumping (mimikatz)
-    "windows_sysmon_network":      "lateral",    # Sysmon EID3 — C2 / lateral connection
-    "windows_sysmon_process":      "execute",    # Sysmon EID1 — suspicious execution
-    "windows_sysmon_dns":          "recon",      # Sysmon EID22 — DNS C2 / recon
+    # Windows / Sysmon (U2 + N1)
+    "windows_explicit_logon":         "weaponize",  # 4648 — pass-the-hash göstergesi
+    "windows_user_created":           "execute",    # 4720 — persistence (yeni hesap)
+    "windows_group_member_added":     "execute",    # 4728/4732 — privilege escalation
+    "windows_kerberos_tgt":           "weaponize",  # 4768 — credential access / AS-REP roasting
+    "windows_kerberos_service":       "lateral",    # 4769 — Kerberoasting / lateral movement
+    "windows_sysmon_proc_access":     "execute",    # Sysmon EID10 — credential dumping (mimikatz)
+    "windows_sysmon_network":         "lateral",    # Sysmon EID3 — C2 / lateral connection
+    "windows_sysmon_process":         "execute",    # Sysmon EID1 — suspicious execution
+    "windows_sysmon_dns":             "recon",      # Sysmon EID22 — DNS C2 / recon
+    # N1 — yeni EID'ler
+    "windows_special_priv":           "execute",    # 4672 — SeDebugPrivilege → credential dump
+    "windows_task_created":           "execute",    # 4698 — scheduled task persistence T1053.005
+    "windows_task_updated":           "execute",    # 4702 — scheduled task güncelleme
+    "windows_account_lockout":        "weaponize",  # 4740 — password spray / brute-force
+    "windows_kerberos_preauth_fail":  "weaponize",  # 4771 — AS-REP roasting T1558.004
+    "windows_ntlm_auth":              "weaponize",  # 4776 — NTLM PtH hazırlık T1550.002
+    "windows_share_access":           "lateral",    # 5140 — admin share erişim T1021.002
+    "windows_log_cleared":            "execute",    # 1102 — iz silme T1070.001
+    "windows_sysmon_driver_load":     "execute",    # Sysmon EID6 — BYOVD T1068
+    "windows_sysmon_image_load":      "execute",    # Sysmon EID7 — DLL injection T1055
+    "windows_sysmon_file_create":     "execute",    # Sysmon EID11 — dropper T1105
+    "windows_sysmon_registry":        "execute",    # Sysmon EID13 — persistence T1547.001
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.
