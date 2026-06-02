@@ -1,0 +1,13 @@
+[Unit]
+Description=NetGuard Suricata ET Kural Güncelleme
+After=network-online.target
+Wants=network-online.target
+Documentation=https://suricata.io/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/suricata-update-cron.sh scheduled-timer
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=netguard-suricata-update
+TimeoutStartSec=300

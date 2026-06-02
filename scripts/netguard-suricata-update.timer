@@ -1,0 +1,12 @@
+[Unit]
+Description=NetGuard Suricata ET Kural Güncelleme Zamanlayıcı
+Requires=netguard-suricata-update.service
+
+[Timer]
+OnCalendar=*-*-* 03:00:00 UTC
+OnBootSec=5min
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

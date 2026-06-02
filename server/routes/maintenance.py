@@ -1,18 +1,31 @@
 """
 NetGuard — Maintenance endpoint'leri
 
-POST /api/v1/maintenance/cleanup      → Manuel retention cleanup (admin)
-GET  /api/v1/maintenance/status       → DB tablo boyutları
-GET  /api/v1/maintenance/audit        → Audit log (admin)
-GET  /api/v1/audit-log/verify         → SHA-256 hash zinciri bütünlük kontrolü (admin)
+POST /api/v1/maintenance/cleanup                   → Manuel retention cleanup (admin)
+GET  /api/v1/maintenance/status                    → DB tablo boyutları
+GET  /api/v1/maintenance/audit                     → Audit log (admin)
+GET  /api/v1/audit-log/verify                      → SHA-256 hash zinciri bütünlük kontrolü (admin)
+GET  /api/v1/maintenance/suricata-update/status    → Son kural güncelleme durumu (admin)
+POST /api/v1/maintenance/suricata-update/trigger   → Manuel kural güncelleme tetikle (admin)
 """
 
 import asyncio
+import json
+import os
+import subprocess
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from server.auth import User, require_admin
 from server.database import db
 from server.limiter import _auth_key, limiter
+
+_SURICATA_STATE_FILE = Path(
+    os.getenv("SURICATA_UPDATE_STATE_FILE", "/var/lib/netguard/suricata_update_state.json")
+)
+_SURICATA_UPDATE_SCRIPT = Path(
+    os.getenv("SURICATA_UPDATE_SCRIPT", "/usr/local/bin/suricata-update-cron.sh")
+)
 
 router = APIRouter()
 
@@ -92,3 +105,68 @@ def audit_log(
 async def verify_audit_log(request: Request, response: Response, _: User = Depends(require_admin)):
     """SHA-256 hash zinciri bütünlüğünü doğrula (NIST SP 800-92 §3.2)."""
     return await asyncio.to_thread(db.verify_audit_chain)
+
+
+@router.get("/maintenance/suricata-update/status")
+def suricata_update_status(_: User = Depends(require_admin)):
+    """Son Suricata ET kural güncelleme durumunu döndür (CIS Controls v8.1 Safeguard 13.8)."""
+    if not _SURICATA_STATE_FILE.exists():
+        return {
+            "status": "never_run",
+            "last_updated": None,
+            "rule_count": 0,
+            "reload_status": None,
+            "error": None,
+            "sources": None,
+        }
+    try:
+        return json.loads(_SURICATA_STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        raise HTTPException(status_code=500, detail=f"State dosyası okunamadı: {exc}") from exc
+
+
+@router.post("/maintenance/suricata-update/trigger")
+@limiter.limit("2/hour", key_func=_auth_key)
+def trigger_suricata_update(
+    request: Request,
+    response: Response,
+    admin: User = Depends(require_admin),
+):
+    """Suricata ET kural güncellemesini manuel tetikle (admin, 2/hour)."""
+    if not _SURICATA_UPDATE_SCRIPT.exists():
+        raise HTTPException(
+            status_code=503,
+            detail=f"Update script bulunamadı: {_SURICATA_UPDATE_SCRIPT}",
+        )
+
+    if _SURICATA_STATE_FILE.exists():
+        try:
+            state = json.loads(_SURICATA_STATE_FILE.read_text(encoding="utf-8"))
+            if state.get("status") == "running":
+                raise HTTPException(status_code=409, detail="Güncelleme zaten çalışıyor.")
+        except (json.JSONDecodeError, OSError):
+            pass
+
+    import uuid as _uuid
+    job_id = f"api-{_uuid.uuid4().hex[:8]}"
+
+    db.save_audit_event(
+        actor=admin.username,
+        action="suricata_update.trigger",
+        resource="suricata_rules",
+        detail=f"job_id={job_id} script={_SURICATA_UPDATE_SCRIPT}",
+        ip_address=request.client.host if request.client else "",
+    )
+
+    subprocess.Popen(
+        [str(_SURICATA_UPDATE_SCRIPT), job_id],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+    return {
+        "job_id": job_id,
+        "status": "started",
+        "message": "Kural güncelleme başlatıldı. Durum için GET .../suricata-update/status",
+    }

@@ -1,0 +1,5 @@
+# NetGuard Suricata ET kural otomatik güncelleme — cron.d template
+# Kopyala: cp netguard-suricata-update.cron /etc/cron.d/netguard-suricata-update
+#
+# Her gün 03:00 UTC — düşük trafik saati (CIS Controls v8.1 Safeguard 13.8)
+0 3 * * * root /usr/local/bin/suricata-update-cron.sh cron >> /var/log/netguard/suricata-update.log 2>&1
