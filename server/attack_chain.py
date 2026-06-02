@@ -161,6 +161,25 @@ STAGE_MAP: dict[str, str] = {
     "windows_sysmon_image_load":      "execute",    # Sysmon EID7 — DLL injection T1055
     "windows_sysmon_file_create":     "execute",    # Sysmon EID11 — dropper T1105
     "windows_sysmon_registry":        "execute",    # Sysmon EID13 — persistence T1547.001
+    # N1 genişletme — yeni 17 EID
+    "windows_lateral_logon":            "lateral",    # 4624 network type=3 — lateral movement T1550.002
+    "windows_computer_account_changed": "execute",    # 4741 — persistence T1098.002
+    "windows_logon_process_registered": "execute",    # 4614 — LSA hijack T1556
+    "windows_token_privilege_adjusted": "execute",    # 4703 — token manipulation T1134
+    "windows_powershell_module":        "execute",    # 4103 — PowerShell execution T1059.001
+    "windows_powershell_scriptblock":   "execute",    # 4104 — PowerShell ScriptBlock T1059.001
+    "windows_service_installed":        "execute",    # 7045 — persistence T1543.003
+    "windows_service_crashed":          "execute",    # 7034 — defense evasion T1562.001
+    "windows_service_start_changed":    "execute",    # 7040 — persistence T1547.001
+    "windows_applocker_blocked":        "execute",    # 8004 — defense evasion T1562.001
+    "windows_sysmon_remote_thread":     "execute",    # Sysmon 8 — process injection T1055
+    "windows_sysmon_raw_access":        "execute",    # Sysmon 9 — data collection T1005
+    "windows_sysmon_ads":               "execute",    # Sysmon 15 — hide artifacts T1564.004
+    "windows_sysmon_pipe_created":      "lateral",    # Sysmon 17 — LOLBin injection T1218
+    "windows_sysmon_pipe_connected":    "lateral",    # Sysmon 18 — LOLBin injection T1218
+    "windows_sysmon_wmi_event":         "lateral",    # Sysmon 19 — WMI persistence T1047
+    "windows_sysmon_wmi_binding":       "lateral",    # Sysmon 21 — WMI binding T1047
+    "windows_sysmon_process_tamper":    "execute",    # Sysmon 25 — process tampering T1070
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

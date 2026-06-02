@@ -44,11 +44,20 @@ class TestExistingEids:
     def test_4624_logon_success(self):
         xml = _evt_xml(4624, "WIN-PC", {
             "TargetUserName": "alice", "IpAddress": "10.0.0.5",
-            "LogonType": "3",
+            "LogonType": "2",
         })
         rec = _parse_record_xml(xml)
         assert rec is not None
         assert rec["event_action"] == "windows_logon_success"
+
+    def test_4624_network_logon_is_lateral(self):
+        xml = _evt_xml(4624, "WIN-PC", {
+            "TargetUserName": "alice", "IpAddress": "10.0.0.5",
+            "LogonType": "3",
+        })
+        rec = _parse_record_xml(xml)
+        assert rec is not None
+        assert rec["event_action"] == "windows_lateral_logon"
         assert rec["source_ip"] == "10.0.0.5"
 
     def test_4624_service_logon_filtered(self):

@@ -284,6 +284,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - Eklenecek kritik EID'ler: 4104 (PowerShell ScriptBlock), 4776 (NTLM/PtH), 4698 (Scheduled Task), 7045 (New Service), 4740 (Lockout), 1102 (Log Cleared), 4672 (Special Priv), 5140 (Net Share), 4657 (Registry), 4771 (Krb Pre-Auth), Sysmon 6/7/11/12-14
   - GPO zorunlu: "Script Block Logging" + "Process Command Line Auditing"
   - **Entegrasyon:** `evtx_parser.py` + `parsers/windows.py` + `sigma_rules_v2/windows_events.yml` + STAGE_MAP
+  - **W1-B teslim (çok kanal):** `agent/windows_log_shipper.py` tamamen yeniden yazıldı — 5 kanal (Security 21 EID / Sysmon 16 EID / PowerShell 2 EID / System 3 EID / AppLocker 1 EID); her kanal için ayrı pozisyon takibi; EvtQuery/EvtNext/EvtRender XML tabanlı okuma; `_parse_record_xml()` doğrudan çağrısı; `parsers/windows.py` 18 yeni action→kategori; STAGE_MAP 18 yeni giriş; 37 yeni evtx testi + 19 shipper testi ✓
 - [ ] **N2** — Zeek weird.log + dpd.log + files.log (2-3 gün) | +3%
   - `weird.log`: `bad_HTTP_request` (T1190), `unknown_protocol` (C2 T1071), `TCP_seq_underflow` (IDS evasion)
   - `dpd.log`: port 443'te non-TLS protokol = C2 tüneli
@@ -307,11 +308,11 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [ ] **W1-A** — Windows Agent Hızlı Demo (1-2 saat) — Mevcut `agent/windows_log_shipper.py` zaten var (3 EID: 4624/4625/4688)
   - Windows VM'e Python + `pip install pywin32 httpx psutil` + env vars → agent çalıştır → dashboardda görür
   - **Sınır:** Sadece 3 EID, Sysmon kanalı yok; görsel kanıt için yeterli
-- [ ] **W1-B** — Windows Agent Tam (4-5 gün) — N1 ile paralel yapılabilir, birbirini güçlendirir
+- [x] **W1-B** — Windows Agent Tam (4-5 gün) — N1 ile paralel yapılabilir, birbirini güçlendirir
   - `windows_log_shipper.py`: 12 EID → 60+ EID + `Microsoft-Windows-Sysmon/Operational` kanalı + `Microsoft-Windows-PowerShell/Operational` kanalı
-  - `nssm` veya `pywin32.servicemanager` ile Windows Service kurulumu; `pyinstaller` ile tek `.exe` installer
-  - Multi-channel reader: Security + Sysmon + PowerShell kanalları ayrı thread'ler
-- [ ] **E1** — E-posta Bildirim Kalitesi (1-2 gün) — başlanıyor
+  - Multi-channel reader: Security/Sysmon/PowerShell/System/AppLocker kanalları `_CHANNELS` dict ile tanımlı, her kanal ayrı pozisyon takibi
+  - **Not:** `nssm`/`pyinstaller` kurulum paketleme hâlâ bekliyor (gerçek Windows ortamı gerektirir)
+- [x] **E1** — E-posta Bildirim Kalitesi (1-2 gün)
   - **Sorunlar:** Correlated event'lerde cooldown yok → dakikada 8 duplicate; microsecond timestamp; düz metin
   - **Çözüm (NIST SP 800-61 Rev 3 / PagerDuty):** Severity-bazlı cooldown (C:5dk, H:15dk, M:30dk, W:1s); ISO 8601 timestamp (microsecond yok); HTML+plain-text MIME multipart; `[SEV] NetGuard | event | ip` konu formatı
   - **Entegrasyon:** `server/notifier.py` `_CORRELATED_COOLDOWN_SECS` + `_correlated_cooldown` dict + HTML template

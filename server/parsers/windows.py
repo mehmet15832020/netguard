@@ -39,6 +39,29 @@ _ACTION_TO_CATEGORY: dict[str, LogCategory] = {
     "windows_sysmon_network":        LogCategory.NETWORK,
     "windows_sysmon_dns":            LogCategory.NETWORK,
     "windows_share_access":          LogCategory.NETWORK,
+    # Security yeni
+    "windows_lateral_logon":           LogCategory.AUTHENTICATION,
+    "windows_computer_account_changed": LogCategory.AUTHENTICATION,
+    "windows_logon_process_registered": LogCategory.INTRUSION,
+    "windows_token_privilege_adjusted": LogCategory.AUTHENTICATION,
+    # PowerShell
+    "windows_powershell_module":       LogCategory.SYSTEM,
+    "windows_powershell_scriptblock":  LogCategory.INTRUSION,
+    # System channel
+    "windows_service_installed":       LogCategory.SYSTEM,
+    "windows_service_crashed":         LogCategory.SYSTEM,
+    "windows_service_start_changed":   LogCategory.SYSTEM,
+    # AppLocker
+    "windows_applocker_blocked":       LogCategory.INTRUSION,
+    # Sysmon yeni
+    "windows_sysmon_remote_thread":    LogCategory.INTRUSION,
+    "windows_sysmon_raw_access":       LogCategory.INTRUSION,
+    "windows_sysmon_ads":              LogCategory.INTRUSION,
+    "windows_sysmon_pipe_created":     LogCategory.INTRUSION,
+    "windows_sysmon_pipe_connected":   LogCategory.INTRUSION,
+    "windows_sysmon_wmi_event":        LogCategory.INTRUSION,
+    "windows_sysmon_wmi_binding":      LogCategory.INTRUSION,
+    "windows_sysmon_process_tamper":   LogCategory.INTRUSION,
 }
 
 

@@ -6,8 +6,12 @@ Forensik analiz ve offline inceleme için kullanılır.
 
 Desteklenen event ID'ler:
   Windows Security: 4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720,
-                    4728, 4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102
-  Sysmon:           1, 3, 6, 7, 10, 11, 13, 22
+                    4728, 4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
+                    4741, 4614, 4703
+  PowerShell:       4103, 4104
+  System:           7045, 7034, 7040
+  AppLocker:        8004
+  Sysmon:           1, 3, 6, 7, 8, 9, 10, 11, 13, 15, 17, 18, 19, 21, 22, 25
 
 Gereksinim: python-evtx (pip install python-evtx)
 """
@@ -42,15 +46,36 @@ _EID_MAP: dict[int, tuple[str, str]] = {
     4776:  ("windows_ntlm_auth",            "info"),
     5140:  ("windows_share_access",         "info"),
     1102:  ("windows_log_cleared",          "critical"),
+    # Security — yeni
+    4741: ("windows_computer_account_changed", "warning"),
+    4614: ("windows_logon_process_registered", "warning"),
+    4703: ("windows_token_privilege_adjusted", "warning"),
+    # PowerShell channel
+    4103: ("windows_powershell_module",        "info"),
+    4104: ("windows_powershell_scriptblock",   "warning"),
+    # System channel
+    7045: ("windows_service_installed",        "warning"),
+    7034: ("windows_service_crashed",          "warning"),
+    7040: ("windows_service_start_changed",    "warning"),
+    # AppLocker
+    8004: ("windows_applocker_blocked",        "warning"),
     # Sysmon Events
-    1:     ("windows_sysmon_process",       "info"),
-    3:     ("windows_sysmon_network",       "info"),
-    6:     ("windows_sysmon_driver_load",   "warning"),
-    7:     ("windows_sysmon_image_load",    "info"),
-    10:    ("windows_sysmon_proc_access",   "warning"),
-    11:    ("windows_sysmon_file_create",   "info"),
-    13:    ("windows_sysmon_registry",      "info"),
-    22:    ("windows_sysmon_dns",           "info"),
+    1:     ("windows_sysmon_process",          "info"),
+    3:     ("windows_sysmon_network",          "info"),
+    6:     ("windows_sysmon_driver_load",      "warning"),
+    7:     ("windows_sysmon_image_load",       "info"),
+    8:     ("windows_sysmon_remote_thread",    "critical"),
+    9:     ("windows_sysmon_raw_access",       "warning"),
+    10:    ("windows_sysmon_proc_access",      "warning"),
+    11:    ("windows_sysmon_file_create",      "info"),
+    13:    ("windows_sysmon_registry",         "info"),
+    15:    ("windows_sysmon_ads",              "warning"),
+    17:    ("windows_sysmon_pipe_created",     "warning"),
+    18:    ("windows_sysmon_pipe_connected",   "warning"),
+    19:    ("windows_sysmon_wmi_event",        "critical"),
+    21:    ("windows_sysmon_wmi_binding",      "critical"),
+    22:    ("windows_sysmon_dns",              "info"),
+    25:    ("windows_sysmon_process_tamper",   "critical"),
 }
 
 _LOGON_TYPES = {
@@ -77,6 +102,27 @@ _LOLBAS: frozenset[str] = frozenset({
 _KNOWN_MALWARE_PROC: frozenset[str] = frozenset({
     "mimikatz.exe", "procdump.exe", "wce.exe", "fgdump.exe",
     "pwdump.exe", "gsecdump.exe", "lsadump.exe", "sekurlsa.exe",
+})
+
+_PS_DANGEROUS: frozenset[str] = frozenset({
+    "iex", "invoke-expression", "invoke-mimikatz",
+    "invoke-reflectivepeinjection", "invoke-shellcode",
+    "downloadstring", "downloadfile", "net.webclient",
+    "frombase64string", "-encodedcommand", "-enc ",
+    "bypass", "amsiutils", "set-mppreference",
+    "sekurlsa", "lsadump", "dcsync",
+    "invoke-empire", "invoke-obfuscation",
+})
+
+_SUSPICIOUS_SERVICES: frozenset[str] = frozenset({
+    "cmd.exe", "powershell.exe", "pwsh.exe",
+    "wscript.exe", "cscript.exe", "mshta.exe",
+    "regsvr32.exe", "rundll32.exe", "certutil.exe",
+})
+
+_SUSPICIOUS_PIPES: frozenset[str] = frozenset({
+    "msagent_", "postex_", "meterpreter",
+    "msse-", "status_", "netsvcs",
 })
 
 _KERBEROS_WEAK_ENC: frozenset[str] = frozenset({
@@ -156,9 +202,14 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         logon_label = _LOGON_TYPES.get(logon_type, logon_type)
         if logon_label in ("service", "batch"):
             return None
+        if logon_type == "3" and source_ip:
+            event_action = "windows_lateral_logon"
+            severity = "warning"
+        else:
+            severity = "info"
         return {
             "event_action":      event_action,
-            "severity":          "info",
+            "severity":          severity,
             "username":          username,
             "source_ip":         source_ip,
             "observer_hostname": computer,
@@ -580,6 +631,289 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "observer_hostname": computer,
             "message":           f"Registry value set: {target} by {proc or '?'}",
             "raw_data":          f"EID=13 proc={proc} key={target} val={detail}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── Security — yeni EID'ler ───────────────────────────────────────────────
+
+    if eid == 4741:
+        actor   = _get_data(root, "SubjectUserName")
+        target  = _get_data(root, "TargetUserName")
+        domain  = _get_data(root, "TargetDomainName")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          actor,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Computer account changed: {target}@{domain} by {actor}",
+            "raw_data":          f"EID=4741 actor={actor} target={target} domain={domain}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4614:
+        package = _get_data(root, "AuthenticationPackageName")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Security package registered: {package}",
+            "raw_data":          f"EID=4614 package={package}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4703:
+        actor    = _get_data(root, "SubjectUserName")
+        target   = _get_data(root, "TargetUserName")
+        enabled  = _get_data(root, "EnabledPrivilegeList")
+        disabled = _get_data(root, "DisabledPrivilegeList")
+        high_risk = any(p in (enabled + disabled) for p in (
+            "SeDebugPrivilege", "SeImpersonatePrivilege", "SeTcbPrivilege", "SeAssignPrimaryTokenPrivilege"
+        ))
+        severity = "critical" if high_risk else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          actor,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Token privileges adjusted: actor={actor} target={target} enabled={enabled[:80]}",
+            "raw_data":          f"EID=4703 actor={actor} target={target} enabled={enabled} disabled={disabled}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── PowerShell channel ────────────────────────────────────────────────────
+
+    if eid == 4103:
+        payload  = _get_data(root, "Payload")
+        host_app = _get_data(root, "HostApplication")
+        payload_lower = payload.lower()
+        dangerous = any(k in payload_lower for k in _PS_DANGEROUS)
+        severity  = "critical" if dangerous else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"PowerShell module: host={host_app[:80]} payload={payload[:120]}",
+            "raw_data":          f"EID=4103 host={host_app} payload={payload}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4104:
+        script_text = _get_data(root, "ScriptBlockText")
+        path        = _get_data(root, "Path")
+        script_lower = script_text.lower()
+        dangerous   = any(k in script_lower for k in _PS_DANGEROUS)
+        severity    = "critical" if dangerous else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"PowerShell ScriptBlock: path={path or '<interactive>'} script={script_text[:120]}",
+            "raw_data":          f"EID=4104 path={path} script={script_text}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── System channel ────────────────────────────────────────────────────────
+
+    if eid == 7045:
+        svc_name   = _get_data(root, "ServiceName")
+        image_path = _get_data(root, "ImagePath")
+        account    = _get_data(root, "AccountName")
+        img_lower  = image_path.lower()
+        suspicious = any(s in img_lower for s in _SUSPICIOUS_SERVICES)
+        severity   = "critical" if suspicious else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          account,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Service installed: {svc_name} path={image_path}",
+            "raw_data":          f"EID=7045 name={svc_name} path={image_path} account={account}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 7034:
+        svc_name = _get_data(root, "ServiceName") or _get_data(root, "param1")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Service unexpectedly terminated: {svc_name}",
+            "raw_data":          f"EID=7034 service={svc_name}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 7040:
+        svc_name     = _get_data(root, "ServiceName") or _get_data(root, "param1")
+        start_before = _get_data(root, "StartTypeBefore") or _get_data(root, "param2")
+        start_type   = _get_data(root, "StartType") or _get_data(root, "param3")
+        reactivated  = "disabled" in start_before.lower() and start_type.lower() in (
+            "auto start", "demand start", "2", "3"
+        )
+        severity = "critical" if reactivated else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Service start type changed: {svc_name} {start_before!r} → {start_type!r}",
+            "raw_data":          f"EID=7040 service={svc_name} before={start_before} after={start_type}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── AppLocker ─────────────────────────────────────────────────────────────
+
+    if eid == 8004:
+        file_path  = _get_data(root, "FilePath") or _get_data(root, "FullFilePath") or _get_data(root, "param3")
+        publisher  = _get_data(root, "Publisher") or _get_data(root, "param2")
+        user       = _get_data(root, "User") or _get_data(root, "param1")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"AppLocker blocked: {file_path} (publisher={publisher})",
+            "raw_data":          f"EID=8004 user={user} path={file_path} publisher={publisher}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── Sysmon — yeni EID'ler ─────────────────────────────────────────────────
+
+    if eid == 8:
+        src_image  = _get_data(root, "SourceImage")
+        tgt_image  = _get_data(root, "TargetImage")
+        start_addr = _get_data(root, "StartAddress")
+        start_fn   = _get_data(root, "StartFunction")
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Remote thread created: {src_image} → {tgt_image} fn={start_fn}",
+            "raw_data":          f"EID=8 src={src_image} tgt={tgt_image} addr={start_addr} fn={start_fn}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 9:
+        image  = _get_data(root, "Image")
+        device = _get_data(root, "Device")
+        proc_name = (image.split("\\")[-1] if image else "").lower()
+        severity  = "critical" if proc_name in _KNOWN_MALWARE_PROC else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Raw disk access: {image} → device={device}",
+            "raw_data":          f"EID=9 image={image} device={device}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 15:
+        proc   = _get_data(root, "Image")
+        target = _get_data(root, "TargetFilename")
+        hash_  = _get_data(root, "Hash") or _get_data(root, "Hashes")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Alternate data stream: {target} by {proc}",
+            "raw_data":          f"EID=15 proc={proc} target={target} hash={hash_}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 17:
+        image     = _get_data(root, "Image")
+        pipe_name = _get_data(root, "PipeName")
+        pipe_lower = pipe_name.lower()
+        suspicious = any(p in pipe_lower for p in _SUSPICIOUS_PIPES)
+        severity   = "critical" if suspicious else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Named pipe created: {pipe_name} by {image}",
+            "raw_data":          f"EID=17 image={image} pipe={pipe_name}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 18:
+        image     = _get_data(root, "Image")
+        pipe_name = _get_data(root, "PipeName")
+        pipe_lower = pipe_name.lower()
+        suspicious = any(p in pipe_lower for p in _SUSPICIOUS_PIPES)
+        severity   = "critical" if suspicious else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Named pipe connected: {pipe_name} by {image}",
+            "raw_data":          f"EID=18 image={image} pipe={pipe_name}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 19:
+        user      = _get_data(root, "User")
+        name      = _get_data(root, "Name")
+        query     = _get_data(root, "Query")
+        namespace = _get_data(root, "EventNamespace")
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"WMI event filter registered: {name} query={query[:80]}",
+            "raw_data":          f"EID=19 user={user} name={name} ns={namespace} query={query}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 21:
+        user     = _get_data(root, "User")
+        consumer = _get_data(root, "Consumer")
+        filter_  = _get_data(root, "Filter")
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          user,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"WMI consumer-filter binding: consumer={consumer} filter={filter_}",
+            "raw_data":          f"EID=21 user={user} consumer={consumer} filter={filter_}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 25:
+        image = _get_data(root, "Image")
+        ttype = _get_data(root, "Type")
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Process tampering detected: {image} type={ttype}",
+            "raw_data":          f"EID=25 image={image} type={ttype}"[:500],
             "occurred_at":       occurred_at,
         }
 

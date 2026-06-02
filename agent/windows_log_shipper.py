@@ -1,8 +1,17 @@
 """
-NetGuard Windows Agent — Windows Event Log okuyucu
+NetGuard Windows Agent — Multi-Channel Event Log Okuyucu
 
-Windows Security Event Log'dan 4624/4625/4688 event'lerini okur,
-NetGuard sunucusuna gönderir.
+5 kanaldan Windows event loglarını okur, NetGuard sunucusuna gönderir.
+Her kanal için ayrı pozisyon takibi yapılır.
+
+Kanallar ve EID'ler:
+  Security:   4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720, 4728,
+              4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
+              4741, 4614, 4703
+  Sysmon:     1, 3, 6, 7, 8, 9, 10, 11, 13, 15, 17, 18, 19, 21, 22, 25
+  PowerShell: 4103, 4104
+  System:     7045, 7034, 7040
+  AppLocker:  8004
 
 Gereksinim: pywin32 (pip install pywin32)
 Yalnızca Windows'ta çalışır.
@@ -14,6 +23,7 @@ import socket
 import sys
 import threading
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -24,151 +34,129 @@ logger = logging.getLogger(__name__)
 
 SHIP_INTERVAL = int(os.getenv("WIN_SHIP_INTERVAL", "15"))
 BATCH_SIZE    = 50
-POSITION_FILE = os.getenv("WIN_LOG_POSITION_FILE", r"C:\ProgramData\NetGuard\win_pos.txt")
+POSITION_DIR  = Path(os.getenv("WIN_LOG_POSITION_DIR", r"C:\ProgramData\NetGuard"))
 
-# Windows Event IDs
-EID_LOGON_SUCCESS = 4624
-EID_LOGON_FAILURE = 4625
-EID_PROCESS_CREATE = 4688
-
-WATCHED_EVENT_IDS = {EID_LOGON_SUCCESS, EID_LOGON_FAILURE, EID_PROCESS_CREATE}
-
-_LOGON_TYPES = {
-    "2":  "interactive",
-    "3":  "network",
-    "4":  "batch",
-    "5":  "service",
-    "7":  "unlock",
-    "8":  "network_cleartext",
-    "10": "remote_interactive",
-    "11": "cached_interactive",
+_CHANNELS: dict[str, tuple[str, frozenset[int]]] = {
+    "Security": (
+        "Security",
+        frozenset({
+            4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720, 4728,
+            4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
+            4741, 4614, 4703,
+        }),
+    ),
+    "Sysmon": (
+        "Microsoft-Windows-Sysmon/Operational",
+        frozenset({1, 3, 6, 7, 8, 9, 10, 11, 13, 15, 17, 18, 19, 21, 22, 25}),
+    ),
+    "PowerShell": (
+        "Microsoft-Windows-PowerShell/Operational",
+        frozenset({4103, 4104}),
+    ),
+    "System": (
+        "System",
+        frozenset({7045, 7034, 7040}),
+    ),
+    "AppLocker": (
+        "Microsoft-Windows-AppLocker/EXE and DLL",
+        frozenset({8004}),
+    ),
 }
 
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+_NS = "http://schemas.microsoft.com/win/2004/08/events/event"
 
 
-def _read_position() -> int:
+def _position_file(channel_name: str) -> Path:
+    safe = channel_name.replace("/", "_").replace(" ", "_")
+    return POSITION_DIR / f"win_pos_{safe}.txt"
+
+
+def _read_position(channel_name: str) -> int:
     try:
-        return int(Path(POSITION_FILE).read_text().strip())
+        return int(_position_file(channel_name).read_text().strip())
     except Exception:
         return 0
 
 
-def _write_position(record_number: int) -> None:
+def _write_position(channel_name: str, bookmark: int) -> None:
     try:
-        p = Path(POSITION_FILE)
+        p = _position_file(channel_name)
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(str(record_number))
+        p.write_text(str(bookmark))
     except Exception:
         pass
 
 
-def _parse_event(event) -> Optional[dict]:
-    """win32evtlog event nesnesini NetGuard formatına dönüştürür."""
-    try:
-        import win32evtlogutil
-        eid = event.EventID & 0xFFFF
-        if eid not in WATCHED_EVENT_IDS:
-            return None
-
-        strings = event.StringInserts or []
-        occurred_at = event.TimeGenerated.Format() if hasattr(event.TimeGenerated, "Format") else _now_iso()
-
-        if eid == EID_LOGON_FAILURE:
-            username  = strings[5] if len(strings) > 5 else "unknown"
-            source_ip = strings[19] if len(strings) > 19 else None
-            if source_ip in ("-", "", None):
-                source_ip = None
-            return {
-                "event_action": "windows_logon_failure",
-                "severity":   "warning",
-                "username":   username,
-                "source_ip":  source_ip,
-                "message":    f"Windows oturum açma başarısız: kullanıcı={username}",
-                "raw_data":   f"EventID=4625 user={username} src={source_ip}",
-                "occurred_at": occurred_at,
-            }
-
-        if eid == EID_LOGON_SUCCESS:
-            username    = strings[5]  if len(strings) > 5  else "unknown"
-            source_ip   = strings[18] if len(strings) > 18 else None
-            logon_type  = strings[8]  if len(strings) > 8  else "?"
-            logon_label = _LOGON_TYPES.get(logon_type, logon_type)
-            if source_ip in ("-", "", None):
-                source_ip = None
-            if logon_label in ("service", "batch"):
-                return None
-            return {
-                "event_action": "windows_logon_success",
-                "severity":   "info",
-                "username":   username,
-                "source_ip":  source_ip,
-                "message":    f"Windows oturum açıldı: kullanıcı={username} tür={logon_label}",
-                "raw_data":   f"EventID=4624 user={username} type={logon_label} src={source_ip}",
-                "occurred_at": occurred_at,
-            }
-
-        if eid == EID_PROCESS_CREATE:
-            subject_user = strings[1] if len(strings) > 1 else "unknown"
-            process_name = strings[5] if len(strings) > 5 else "unknown"
-            cmdline      = strings[8] if len(strings) > 8 else ""
-            return {
-                "event_action": "windows_process_create",
-                "severity":   "info",
-                "username":   subject_user,
-                "source_ip":  None,
-                "message":    f"Süreç oluşturuldu: {process_name}",
-                "raw_data":   f"EventID=4688 user={subject_user} process={process_name} cmd={cmdline}",
-                "occurred_at": occurred_at,
-            }
-
-    except Exception as exc:
-        logger.debug(f"Event parse hatası: {exc}")
-    return None
-
-
-def _collect_new_events() -> list[dict]:
-    """Security kanalından son okunan kaydın sonrasını okur."""
+def _render_event_xml(event_handle) -> Optional[str]:
     try:
         import win32evtlog
-        import win32con
+        xml_bytes = win32evtlog.EvtRender(event_handle, win32evtlog.EvtRenderEventXml)
+        return xml_bytes if isinstance(xml_bytes, str) else xml_bytes.decode("utf-8", errors="replace")
+    except Exception:
+        return None
 
-        last_record = _read_position()
-        handle = win32evtlog.OpenEventLog(None, "Security")
-        flags  = win32con.EVENTLOG_BACKWARDS_READ | win32con.EVENTLOG_SEQUENTIAL_READ
-        total  = win32evtlog.GetNumberOfEventLogRecords(handle)
 
-        events_out: list[dict] = []
-        max_record = last_record
+def _collect_channel(channel_name: str) -> list[dict]:
+    try:
+        import win32evtlog
+        from server.evtx_parser import _parse_record_xml
+    except ImportError:
+        logger.error("pywin32 kurulu değil veya server modülü erişilemiyor")
+        return []
+
+    log_name, watched = _CHANNELS[channel_name]
+    last_record = _read_position(channel_name)
+    max_record  = last_record
+    results: list[dict] = []
+
+    try:
+        eid_list = " or ".join(f"EventID={e}" for e in sorted(watched))
+        xpath    = f"*[System[{eid_list}]]"
+
+        flags = win32evtlog.EvtQueryChannelPath | win32evtlog.EvtQueryForwardDirection
+        query = win32evtlog.EvtQuery(log_name, flags, xpath)
+
+        if last_record > 0:
+            bookmark_xml = (
+                f'<BookmarkList><Bookmark Channel="{log_name}" '
+                f'RecordId="{last_record}" IsCurrent="true"/></BookmarkList>'
+            )
+            try:
+                bm = win32evtlog.EvtCreateBookmark(bookmark_xml)
+                win32evtlog.EvtSeek(query, 1, bm, win32evtlog.EvtSeekRelativeToBookmark)
+            except Exception:
+                pass
 
         while True:
-            records = win32evtlog.ReadEventLog(handle, flags, 0)
-            if not records:
+            events = win32evtlog.EvtNext(query, 100)
+            if not events:
                 break
-            for rec in records:
-                if rec.RecordNumber <= last_record:
-                    break
-                if rec.RecordNumber > max_record:
-                    max_record = rec.RecordNumber
-                parsed = _parse_event(rec)
+            for evt in events:
+                xml_str = _render_event_xml(evt)
+                if not xml_str:
+                    continue
+                try:
+                    root = ET.fromstring(xml_str)
+                    rec_id_el = root.find(".//{%s}EventRecordID" % _NS)
+                    rec_id = int(rec_id_el.text) if rec_id_el is not None and rec_id_el.text else 0
+                except Exception:
+                    rec_id = 0
+
+                if rec_id > max_record:
+                    max_record = rec_id
+
+                parsed = _parse_record_xml(xml_str)
                 if parsed:
-                    events_out.append(parsed)
+                    parsed["_channel"] = channel_name
+                    results.append(parsed)
 
-        win32evtlog.CloseEventLog(handle)
-
-        if max_record > last_record:
-            _write_position(max_record)
-
-        return list(reversed(events_out))
-
-    except ImportError:
-        logger.error("pywin32 kurulu değil: pip install pywin32")
-        return []
     except Exception as exc:
-        logger.warning(f"Event Log okuma hatası: {exc}")
-        return []
+        logger.warning("Kanal okuma hatası [%s]: %s", channel_name, exc)
+
+    if max_record > last_record:
+        _write_position(channel_name, max_record)
+
+    return results
 
 
 class WindowsLogShipper:
@@ -188,29 +176,33 @@ class WindowsLogShipper:
             return
         self._thread = threading.Thread(target=self._loop, daemon=True)
         self._thread.start()
-        logger.info("Windows Log Shipper başlatıldı.")
+        logger.info("Windows Log Shipper başlatıldı — %d kanal izleniyor.", len(_CHANNELS))
 
     def _loop(self) -> None:
         while True:
             try:
-                events = _collect_new_events()
-                if events:
-                    self._ship(events)
+                all_events: list[dict] = []
+                for channel_name in _CHANNELS:
+                    events = _collect_channel(channel_name)
+                    all_events.extend(events)
+                if all_events:
+                    self._ship(all_events)
             except Exception as exc:
-                logger.warning(f"Windows Log Shipper döngü hatası: {exc}")
+                logger.warning("Windows Log Shipper döngü hatası: %s", exc)
             time.sleep(SHIP_INTERVAL)
 
     def _ship(self, events: list[dict]) -> None:
         url = f"{self._server_url}/api/v1/agents/security-events"
         for i in range(0, len(events), BATCH_SIZE):
             batch = events[i:i + BATCH_SIZE]
+            clean = [{k: v for k, v in e.items() if k != "_channel"} for e in batch]
             try:
                 resp = self._client.post(
                     url,
-                    json={"hostname": self._hostname, "events": batch},
+                    json={"hostname": self._hostname, "events": clean},
                     headers={"X-API-Key": self._api_key},
                 )
                 resp.raise_for_status()
-                logger.info(f"Windows Log Shipper: {len(batch)} olay gönderildi.")
+                logger.info("Windows Log Shipper: %d olay gönderildi.", len(clean))
             except Exception as exc:
-                logger.warning(f"Windows Log Shipper gönderim hatası: {exc}")
+                logger.warning("Windows Log Shipper gönderim hatası: %s", exc)

