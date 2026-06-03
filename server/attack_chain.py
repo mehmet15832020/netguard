@@ -201,6 +201,35 @@ STAGE_MAP: dict[str, str] = {
     "zeek_file_inbound_suspicious":      "execute",   # T1566/T1105 malicious download
     "zeek_file_outbound":                "lateral",   # T1048 data exfiltration
     "zeek_file_outbound_suspicious":     "lateral",   # T1048.001 exfil
+    # ── Zeek rdp.log ──────────────────────────────────────────────────────────
+    "zeek_rdp_success":              "access",      # T1021.001 başarılı RDP
+    "zeek_rdp_failure":              "weaponize",   # T1021.001 brute-force
+    "zeek_rdp_no_cert":              "lateral",     # T1021.001 C2 tünel
+    "zeek_rdp_suspicious_client":    "lateral",     # T1021.001 saldırı aracı
+    # ── Zeek kerberos.log ─────────────────────────────────────────────────────
+    "zeek_kerberos_tgs_rc4":         "weaponize",   # T1558.003 Kerberoasting
+    "zeek_kerberos_as_nopreauth":    "weaponize",   # T1558.004 AS-REP Roasting
+    "zeek_kerberos_golden_ticket":   "execute",     # T1558.001 Golden Ticket
+    "zeek_kerberos_rc4_downgrade":   "lateral",     # T1558 RC4 downgrade
+    "zeek_kerberos_failure":         "weaponize",   # T1110 brute-force
+    # ── Zeek smb_files.log ────────────────────────────────────────────────────
+    "zeek_smb_admin_share":          "lateral",     # T1021.002 admin share
+    "zeek_smb_suspicious_file":      "lateral",     # T1570 lateral tool transfer
+    "zeek_smb_delete":               "execute",     # T1070.001 cover tracks
+    "zeek_smb_recon":                "recon",       # T1018 domain recon
+    "zeek_smb_write":                "lateral",     # T1021.002 file write
+    "zeek_smb_rename":               "execute",     # T1070 file manipulation
+    "zeek_smb_open":                 "recon",       # file access
+    "zeek_smb_operation":            "recon",       # generic SMB
+    # ── Zeek dce_rpc.log ──────────────────────────────────────────────────────
+    "zeek_dce_rpc_dcsync":           "execute",     # T1003.006 DCSync
+    "zeek_dce_rpc_psexec":           "execute",     # T1569.002 PsExec
+    "zeek_dce_rpc_wmi":              "execute",     # T1047 WMI execution
+    "zeek_dce_rpc_task":             "execute",     # T1053.005 Task Scheduler
+    "zeek_dce_rpc_registry":         "execute",     # T1112 registry modification
+    "zeek_dce_rpc_samr_enum":        "recon",       # T1087 account discovery
+    "zeek_dce_rpc_policy":           "recon",       # T1082 system discovery
+    "zeek_dce_rpc_operation":        "recon",       # generic DCE-RPC
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

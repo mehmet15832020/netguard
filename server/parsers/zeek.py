@@ -1,7 +1,8 @@
 """
 Zeek JSON log parsers.
 
-Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp, weird, dpd, files
+Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
+                         weird, dpd, files, rdp, kerberos, smb_files, dce_rpc
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
@@ -716,6 +717,51 @@ def parse_dpd(row: dict) -> Optional[NormalizedLog]:
     )
 
 
+_RDP_SUSPICIOUS_CLIENTS: frozenset[str] = frozenset({
+    "rdp-exploit", "metasploit", "scanner", "nmap", "masscan",
+    "impacket", "hydra", "medusa", "crowbar",
+})
+
+_KERBEROS_WEAK_CIPHERS: frozenset[str] = frozenset({
+    "rc4-hmac", "rc4-hmac-exp", "des-cbc-crc", "des-cbc-md5",
+    "rc4-hmac-old", "rc4-hmac-old-exp",
+})
+
+_SMB_ADMIN_SHARES: frozenset[str] = frozenset({
+    "ADMIN$", "C$", "D$", "E$", "IPC$",
+})
+
+_SMB_SUSPICIOUS_FILES: frozenset[str] = frozenset({
+    "psexec.exe", "psexesvc.exe", "plink.exe", "mimikatz.exe",
+    "procdump.exe", "procdump64.exe", "wce.exe", "fgdump.exe",
+    "pwdump.exe", "gsecdump.exe", "meterpreter", "beacon",
+})
+
+_SMB_RECON_SHARES: frozenset[str] = frozenset({
+    "SYSVOL", "NETLOGON",
+})
+
+_DCE_CRITICAL: dict[tuple[str, str], tuple[str, str]] = {
+    ("drsuapi",      "dsgetncchanges"):     ("zeek_dce_rpc_dcsync",   "critical"),
+    ("svcctl",       "createservicew"):     ("zeek_dce_rpc_psexec",   "critical"),
+    ("svcctl",       "startservicew"):      ("zeek_dce_rpc_psexec",   "critical"),
+    ("svcctl",       "createservicewow64w"):("zeek_dce_rpc_psexec",   "critical"),
+    ("iwbemservices","execmethod"):         ("zeek_dce_rpc_wmi",      "high"),
+    ("iwbemservices","execmethodasync"):    ("zeek_dce_rpc_wmi",      "high"),
+    ("atsvc",        "schrpcregistertask"): ("zeek_dce_rpc_task",     "high"),
+    ("atsvc",        "schrpcenabletask"):   ("zeek_dce_rpc_task",     "high"),
+    ("atsvc",        "schrpcrun"):          ("zeek_dce_rpc_task",     "high"),
+    ("itaskschedulerservice", "registertask"): ("zeek_dce_rpc_task",  "high"),
+    ("winreg",       "openkey"):            ("zeek_dce_rpc_registry", "high"),
+    ("winreg",       "setvalue"):           ("zeek_dce_rpc_registry", "high"),
+    ("samr",         "samrenumerateuserindomain"): ("zeek_dce_rpc_samr_enum", "warning"),
+    ("samr",         "samlookupnamesindomain"):    ("zeek_dce_rpc_samr_enum", "warning"),
+    ("samr",         "samconnect5"):               ("zeek_dce_rpc_samr_enum", "warning"),
+    ("lsarpc",       "lsarqueryinformationpolicy"):("zeek_dce_rpc_policy",    "info"),
+    ("lsarpc",       "lsarenumerateprivileges"):   ("zeek_dce_rpc_policy",    "info"),
+}
+
+
 def parse_files(row: dict) -> Optional[NormalizedLog]:
     sha256 = (row.get("sha256") or "").strip()
     sha1   = (row.get("sha1")   or "").strip()
@@ -806,4 +852,348 @@ def parse_files(row: dict) -> Optional[NormalizedLog]:
             "md5":        md5,
         },
         tags=["zeek", "files", direction] + (["suspicious_mime"] if is_suspicious else []),
+    )
+
+
+def parse_rdp(row: dict) -> Optional[NormalizedLog]:
+    result = (row.get("result") or "").strip()
+    if result == "-":
+        result = ""
+
+    try:
+        cert_count = int(row.get("cert_count") or 0)
+    except (ValueError, TypeError):
+        cert_count = 0
+
+    try:
+        client_build = int(row.get("client_build") or 0)
+    except (ValueError, TypeError):
+        client_build = 0
+
+    client_name = (row.get("client_name") or "").strip()
+    if client_name == "-":
+        client_name = ""
+
+    security_proto = (row.get("security_protocol") or "").strip()
+    if security_proto == "-":
+        security_proto = ""
+
+    is_success = bool(result) and cert_count > 0
+    client_lower = client_name.lower()
+    is_suspicious_client = any(s in client_lower for s in _RDP_SUSPICIOUS_CLIENTS)
+
+    if is_suspicious_client:
+        event_action = "zeek_rdp_suspicious_client"
+        severity = "critical"
+    elif not is_success and cert_count == 0 and (result or security_proto):
+        event_action = "zeek_rdp_no_cert"
+        severity = "critical"
+    elif not is_success:
+        event_action = "zeek_rdp_failure"
+        severity = "warning"
+    else:
+        event_action = "zeek_rdp_success"
+        severity = "info"
+
+    msg = f"RDP {event_action.replace('zeek_rdp_', '')}"
+    if client_name:
+        msg += f" client={client_name}"
+    if security_proto:
+        msg += f" proto={security_proto}"
+    if cert_count == 0 and (result or security_proto):
+        msg += " [NO_CERT]"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=msg,
+        extra={
+            "result": result,
+            "cert_count": cert_count,
+            "client_build": client_build,
+            "client_name": client_name,
+            "security_protocol": security_proto,
+        },
+        tags=["zeek", "rdp"] + (["no_cert"] if cert_count == 0 else []),
+    )
+
+
+def parse_kerberos(row: dict) -> Optional[NormalizedLog]:
+    request_type = (row.get("request_type") or "").strip()
+    if not request_type or request_type == "-":
+        return None
+
+    client = (row.get("client") or "").strip()
+    if client == "-":
+        client = ""
+    service = (row.get("service") or "").strip()
+    if service == "-":
+        service = ""
+
+    success_raw = row.get("success")
+    if isinstance(success_raw, str):
+        success = success_raw.upper() in ("T", "TRUE", "1")
+    else:
+        success = bool(success_raw)
+
+    cipher = (row.get("cipher") or "").strip().lower()
+    if cipher == "-":
+        cipher = ""
+
+    error_msg = (row.get("error_msg") or "").strip()
+    if error_msg == "-":
+        error_msg = ""
+
+    def _bool_field(key: str) -> bool:
+        v = row.get(key)
+        if isinstance(v, str):
+            return v.upper() in ("T", "TRUE", "1")
+        return bool(v)
+
+    forwardable = _bool_field("forwardable")
+    renewable   = _bool_field("renewable")
+
+    try:
+        from_ts  = float(row.get("from")  or 0)
+        till_ts  = float(row.get("till")  or 0)
+        ticket_duration = int(till_ts - from_ts) if till_ts > from_ts else 0
+    except (ValueError, TypeError):
+        ticket_duration = 0
+
+    is_rc4 = cipher in _KERBEROS_WEAK_CIPHERS
+    tags   = ["zeek", "kerberos"]
+
+    if request_type == "TGS" and is_rc4 and success:
+        event_action = "zeek_kerberos_tgs_rc4"
+        severity     = "high"
+        tags        += ["kerberoasting", "rc4"]
+
+    elif request_type == "AS" and not success and "PREAUTH" in error_msg.upper():
+        event_action = "zeek_kerberos_as_nopreauth"
+        severity     = "high"
+        tags        += ["as_rep_roasting"]
+
+    elif forwardable and renewable and ticket_duration > 604800:
+        event_action = "zeek_kerberos_golden_ticket"
+        severity     = "critical"
+        tags        += ["golden_ticket"]
+
+    elif request_type == "TGS" and is_rc4:
+        event_action = "zeek_kerberos_rc4_downgrade"
+        severity     = "warning"
+        tags        += ["rc4_downgrade"]
+
+    elif not success:
+        event_action = "zeek_kerberos_failure"
+        severity     = "warning"
+        tags        += ["failure"]
+
+    else:
+        event_action = f"zeek_kerberos_{request_type.lower()}"
+        severity     = "info"
+
+    msg = f"Kerberos {request_type}"
+    if client:
+        msg += f" client={client}"
+    if service:
+        msg += f" service={service}"
+    if cipher:
+        msg += f" cipher={cipher}"
+    if not success and error_msg:
+        msg += f" error={error_msg}"
+    if ticket_duration > 604800:
+        msg += f" duration={ticket_duration}s [SUSPICIOUS_LONG]"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.AUTHENTICATION,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=msg,
+        extra={
+            "request_type":      request_type,
+            "client":            client,
+            "service":           service,
+            "success":           success,
+            "cipher":            cipher,
+            "error_msg":         error_msg,
+            "forwardable":       forwardable,
+            "renewable":         renewable,
+            "ticket_duration_s": ticket_duration,
+        },
+        tags=tags,
+    )
+
+
+def parse_smb_files(row: dict) -> Optional[NormalizedLog]:
+    action = (row.get("action") or "").strip()
+    if not action or action == "-":
+        return None
+
+    path = (row.get("path") or "").strip()
+    if path == "-":
+        path = ""
+    name = (row.get("name") or "").strip()
+    if name == "-":
+        name = ""
+
+    if not path and not name:
+        return None
+
+    try:
+        file_size = int(row.get("size") or 0)
+    except (ValueError, TypeError):
+        file_size = 0
+
+    path_upper = path.upper()
+    name_lower = name.lower()
+
+    is_admin_share  = any(f"\\{s}" in path_upper or path_upper.endswith(s)
+                         for s in _SMB_ADMIN_SHARES)
+    is_recon_share  = any(s in path_upper for s in _SMB_RECON_SHARES)
+    is_suspicious   = any(s in name_lower for s in _SMB_SUSPICIOUS_FILES)
+
+    action_key = action.replace("SMB::", "").upper()
+
+    if action_key == "FILE_WRITE":
+        if is_admin_share or is_suspicious:
+            event_action = "zeek_smb_admin_share" if is_admin_share else "zeek_smb_suspicious_file"
+            severity = "critical"
+            tags = ["zeek", "smb", "lateral_movement"]
+        else:
+            event_action = "zeek_smb_write"
+            severity = "warning"
+            tags = ["zeek", "smb"]
+    elif action_key == "FILE_DELETE":
+        event_action = "zeek_smb_delete"
+        severity = "high"
+        tags = ["zeek", "smb", "cover_tracks"]
+    elif action_key == "FILE_RENAME":
+        event_action = "zeek_smb_rename"
+        severity = "warning"
+        tags = ["zeek", "smb"]
+    elif action_key == "FILE_OPEN":
+        if is_recon_share:
+            event_action = "zeek_smb_recon"
+            severity = "warning"
+            tags = ["zeek", "smb", "recon"]
+        else:
+            event_action = "zeek_smb_open"
+            severity = "info"
+            tags = ["zeek", "smb"]
+    else:
+        event_action = "zeek_smb_operation"
+        severity = "info"
+        tags = ["zeek", "smb"]
+
+    msg = f"SMB {action_key}"
+    if name:
+        msg += f" file={name}"
+    if path:
+        msg += f" path={path}"
+    if is_admin_share:
+        msg += " [ADMIN_SHARE]"
+    if is_suspicious:
+        msg += " [SUSPICIOUS_FILE]"
+    if is_recon_share:
+        msg += " [RECON]"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=msg,
+        extra={
+            "action":         action,
+            "path":           path,
+            "name":           name,
+            "size":           file_size,
+            "is_admin_share": is_admin_share,
+        },
+        tags=tags,
+    )
+
+
+def parse_dce_rpc(row: dict) -> Optional[NormalizedLog]:
+    endpoint  = (row.get("endpoint")  or "").strip()
+    operation = (row.get("operation") or "").strip()
+
+    if not endpoint or endpoint == "-" or not operation or operation == "-":
+        return None
+
+    named_pipe = (row.get("named_pipe") or "").strip()
+    if named_pipe == "-":
+        named_pipe = ""
+
+    try:
+        rtt = float(row.get("rtt") or 0)
+    except (ValueError, TypeError):
+        rtt = 0.0
+
+    key = (endpoint.lower(), operation.lower())
+    if key in _DCE_CRITICAL:
+        event_action, severity = _DCE_CRITICAL[key]
+        tags = ["zeek", "dce_rpc", event_action.replace("zeek_dce_rpc_", "")]
+    else:
+        event_action = "zeek_dce_rpc_operation"
+        severity     = "info"
+        tags         = ["zeek", "dce_rpc"]
+
+    msg = f"DCE-RPC {endpoint}::{operation}"
+    if named_pipe:
+        msg += f" pipe={named_pipe}"
+    if rtt > 0:
+        msg += f" rtt={rtt:.0f}ms"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.INTRUSION,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="tcp",
+        message=msg,
+        extra={
+            "endpoint":    endpoint,
+            "operation":   operation,
+            "named_pipe":  named_pipe,
+            "rtt":         rtt,
+        },
+        tags=tags,
     )

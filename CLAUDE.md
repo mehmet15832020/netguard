@@ -299,7 +299,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - `suricata-update` + `kill -USR2` (live reload, restart yok) — günlük cron 03:00
   - `disable.conf` + `modify.conf` false positive yönetimi
   - **Entegrasyon:** `scripts/suricata-update-cron.sh` + `routes/maintenance.py` son güncelleme endpoint
-- [ ] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC (5-7 gün) | +5%
+- [x] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC (5-7 gün) | +5%
   - `rdp.log`: RDP brute-force T1021.001 — `kerberos.log`: Kerberoasting (rc4-hmac TGS) T1558.003, AS-REP Roasting T1558.004
   - `smb_files.log`: \\admin$ yazma = lateral T1021.002, ransomware yayılım
   - `dce_rpc.log`: `drsuapi/DsGetNCChanges` = DCSync T1003.006
