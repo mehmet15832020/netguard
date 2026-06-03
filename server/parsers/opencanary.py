@@ -9,6 +9,7 @@ Her honeypot bağlantısı = critical severity (false positive sıfır).
 Kaynak: MITRE ATT&CK Engage, NIST SP 800-115
 """
 
+import hashlib
 import uuid
 import logging
 from datetime import datetime, timezone
@@ -170,7 +171,7 @@ def parse_opencanary_line(row: dict) -> Optional[NormalizedLog]:
             "node_id":  node_id,
             "logtype":  logtype,
             "username": username,
-            "password": password,
+            "password_sha256": hashlib.sha256(password.encode()).hexdigest() if password else None,
             "logdata":  logdata,
         },
     )

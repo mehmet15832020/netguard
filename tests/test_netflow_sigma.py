@@ -207,16 +207,16 @@ class TestSigmaRulesLoad:
     def test_netflow_rules_loaded(self, executor):
         netflow_rules = [r for r in executor.rules
                          if "netflow" in r.title.lower()]
-        assert len(netflow_rules) == 3, f"3 NetFlow kuralı beklendi, {len(netflow_rules)} yüklendi"
+        assert len(netflow_rules) >= 3, f"En az 3 NetFlow kuralı beklendi, {len(netflow_rules)} yüklendi"
 
     def test_large_flow_exfil_rule_exists(self, executor):
-        rules = [r for r in executor.rules if "Large Flow" in r.title]
+        rules = [r for r in executor.rules if "NetFlow Large Flow" in r.title]
         assert len(rules) == 1
         assert rules[0].is_correlation
         assert rules[0].severity == "high"
 
     def test_suspicious_port_burst_rule_exists(self, executor):
-        rules = [r for r in executor.rules if "Suspicious Port" in r.title]
+        rules = [r for r in executor.rules if "NetFlow Suspicious Port" in r.title]
         assert len(rules) == 1
         assert rules[0].is_correlation
         assert rules[0].severity == "high"

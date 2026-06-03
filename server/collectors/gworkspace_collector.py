@@ -67,7 +67,12 @@ async def _get_gws_token() -> str:
     await asyncio.to_thread(credentials.refresh, request)
 
     _gws_token_cache["access_token"] = credentials.token
-    _gws_token_cache["expires_at"]   = now + 3600
+    # credentials.expiry bir datetime nesnesi; gerçek süreyi kullan (varsayılan 3600s fallback)
+    import time as _time
+    if credentials.expiry:
+        _gws_token_cache["expires_at"] = _time.mktime(credentials.expiry.timetuple())
+    else:
+        _gws_token_cache["expires_at"] = now + 3600
     return credentials.token
 
 

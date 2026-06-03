@@ -948,22 +948,22 @@ class DatabaseManager:
     # ------------------------------------------------------------------ #
 
     def upsert_kev_entries(self, entries: list[dict]) -> list[str]:
-        """Yeni CVE'leri ekler, mevcutları atlar. Eklenen cve_id listesi döner."""
+        """Yeni CVE'leri ekler, mevcutları atlar. Eklenen cve_id listesi döner.
+
+        ON CONFLICT DO NOTHING + RETURNING ile N+1 sorgudan tek sorguda upsert'e geçildi.
+        """
         if not entries:
             return []
         new_ids: list[str] = []
         with self._connect() as conn:
             for e in entries:
-                existing = conn.execute(
-                    "SELECT 1 FROM kev_entries WHERE cve_id = %s", (e["cve_id"],)
-                ).fetchone()
-                if existing:
-                    continue
-                conn.execute(
+                row = conn.execute(
                     """INSERT INTO kev_entries
                        (cve_id, vendor_project, product, vulnerability_name,
                         date_added, due_date, description, required_action, seen_at)
-                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())
+                       ON CONFLICT (cve_id) DO NOTHING
+                       RETURNING cve_id""",
                     (
                         e["cve_id"],
                         e.get("vendor_project", ""),
@@ -974,8 +974,9 @@ class DatabaseManager:
                         e.get("description", ""),
                         e.get("required_action", ""),
                     ),
-                )
-                new_ids.append(e["cve_id"])
+                ).fetchone()
+                if row:
+                    new_ids.append(row["cve_id"])
         return new_ids
 
     def get_kev_entries(self, limit: int = 50, vendor: str = "") -> list[dict]:

@@ -15,6 +15,10 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+# Namespace UUID for deterministic log_id — aynı cloud event'in tekrar
+# işlenmesinde aynı log_id üretilir (overlap window duplicate koruması).
+_CLOUD_NS = uuid.UUID("a1b2c3d4-e5f6-7890-abcd-ef1234567890")
+
 from shared.models import LogCategory, LogSourceType, NormalizedLog
 
 logger = logging.getLogger(__name__)
@@ -75,8 +79,9 @@ def parse_m365_event(event: dict, observer_hostname: str = "m365") -> Optional[N
     if client_ip:
         msg += f" ip={client_ip}"
 
+    dedup_key = f"m365:{user_id}:{op_display}:{ts_str}"
     return NormalizedLog(
-        log_id            = str(uuid.uuid4()),
+        log_id            = str(uuid.uuid5(_CLOUD_NS, dedup_key)),
         raw_id            = str(uuid.uuid4()),
         source_type       = LogSourceType.M365,
         observer_hostname = observer_hostname,
@@ -142,8 +147,9 @@ def parse_gws_event(event: dict, observer_hostname: str = "gworkspace") -> Optio
     if ip_address:
         msg += f" ip={ip_address}"
 
+    dedup_key = f"gws:{user_email}:{ts_str}:{event_name}"
     return NormalizedLog(
-        log_id            = str(uuid.uuid4()),
+        log_id            = str(uuid.uuid5(_CLOUD_NS, dedup_key)),
         raw_id            = str(uuid.uuid4()),
         source_type       = LogSourceType.GWORKSPACE,
         observer_hostname = observer_hostname,

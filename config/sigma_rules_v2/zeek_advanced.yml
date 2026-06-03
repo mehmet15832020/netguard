@@ -615,7 +615,7 @@ detection:
     selection:
         event_action: zeek_smb_recon
     condition: selection
-level: warning
+level: medium
 tags:
     - attack.discovery
     - attack.t1018

@@ -184,11 +184,13 @@ _V9_FIELD_TYPES: dict[int, tuple[str, str]] = {
     16: ("src_as",      "!H"),
 }
 
-# Template store: {(source_id, template_id): [(field_type, field_length), ...]}
-_v9_templates: dict[tuple[int, int], list[tuple[int, int]]] = {}
+# Template store: {(observer, source_id, template_id): [...]}
+# observer key eklendi — farklı exporter'ların aynı template_id kullanması durumunda
+# cross-observer template karışmasını önler (RFC 3954 §5).
+_v9_templates: dict[tuple[str, int, int], list[tuple[int, int]]] = {}
 
 
-def _parse_v9_template_flowset(payload: bytes, source_id: int) -> None:
+def _parse_v9_template_flowset(payload: bytes, source_id: int, observer: str = "") -> None:
     offset = 0
     while offset + 4 <= len(payload):
         template_id = struct.unpack_from("!H", payload, offset)[0]
@@ -205,8 +207,9 @@ def _parse_v9_template_flowset(payload: bytes, source_id: int) -> None:
             fields.append((ftype, flen))
             offset += 4
         if fields:
-            _v9_templates[(source_id, template_id)] = fields
-            logger.debug(f"NetFlow v9 template kayıt: src={source_id} tpl={template_id} fields={len(fields)}")
+            _v9_templates[(observer, source_id, template_id)] = fields
+            logger.debug("NetFlow v9 template: obs=%s src=%d tpl=%d fields=%d",
+                         observer, source_id, template_id, len(fields))
 
 
 def _parse_v9_data_flowset(
@@ -216,7 +219,7 @@ def _parse_v9_data_flowset(
     unix_secs: int,
     observer_hostname: str,
 ) -> list[NormalizedLog]:
-    template = _v9_templates.get((source_id, template_id))
+    template = _v9_templates.get((observer_hostname, source_id, template_id))
     if template is None:
         return []
 
@@ -292,7 +295,7 @@ def parse_v9(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
             break
         payload = data[offset + 4: offset + length]
         if flowset_id == 0:
-            _parse_v9_template_flowset(payload, source_id)
+            _parse_v9_template_flowset(payload, source_id, observer_hostname)
         elif flowset_id >= 256:
             logs.extend(_parse_v9_data_flowset(
                 payload, flowset_id, source_id, unix_secs, observer_hostname
@@ -333,8 +336,9 @@ _IPFIX_IE: dict[int, str] = {
     258: "collectionTimeMilliseconds",
 }
 
-# Global IPFIX template cache: (obs_domain_id, template_id) → [(ie_id, ie_len, pen, is_enterprise)]
-_ipfix_templates: dict[tuple[int, int], list[tuple[int, int, int, bool]]] = {}
+# Global IPFIX template cache: (observer, obs_domain_id, template_id) → [...]
+# observer key: farklı exporter'ların aynı obs_domain_id+template_id kullanması durumunda karışma önlenir.
+_ipfix_templates: dict[tuple[str, int, int], list[tuple[int, int, int, bool]]] = {}
 
 # ── sFlow v5 ──────────────────────────────────────────────────────────────────
 
@@ -365,7 +369,7 @@ def parse_ipfix(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
         set_payload = data[offset + 4: offset + set_length]
 
         if set_id == 2:
-            _ipfix_parse_template(set_payload, obs_domain_id)
+            _ipfix_parse_template(set_payload, obs_domain_id, observer_hostname)
         elif set_id == 3:
             pass  # Options Template — şimdilik skip
         elif set_id >= 256:
@@ -380,7 +384,7 @@ def parse_ipfix(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
     return results
 
 
-def _ipfix_parse_template(payload: bytes, obs_domain_id: int) -> None:
+def _ipfix_parse_template(payload: bytes, obs_domain_id: int, observer: str = "") -> None:
     offset = 0
     while offset + _IPFIX_TMPL_HDR.size <= len(payload):
         template_id, field_count = _IPFIX_TMPL_HDR.unpack_from(payload, offset)
@@ -405,8 +409,9 @@ def _ipfix_parse_template(payload: bytes, obs_domain_id: int) -> None:
                 offset += _IPFIX_ENT_PEN.size
             fields.append((ie_type, ie_len, pen, is_enterprise))
 
-        _ipfix_templates[(obs_domain_id, template_id)] = fields
-        logger.debug("IPFIX template: domain=%d tpl=%d fields=%d", obs_domain_id, template_id, len(fields))
+        _ipfix_templates[(observer, obs_domain_id, template_id)] = fields
+        logger.debug("IPFIX template: obs=%s domain=%d tpl=%d fields=%d",
+                     observer, obs_domain_id, template_id, len(fields))
 
 
 def _ipfix_parse_data(
@@ -417,12 +422,20 @@ def _ipfix_parse_data(
     observer_hostname: str,
 ) -> list[NormalizedLog]:
     results: list[NormalizedLog] = []
-    template = _ipfix_templates.get((obs_domain_id, template_id))
+    template = _ipfix_templates.get((observer_hostname, obs_domain_id, template_id))
     if not template:
-        logger.debug("IPFIX: template not found domain=%d tpl=%d", obs_domain_id, template_id)
+        logger.debug("IPFIX: template not found obs=%s domain=%d tpl=%d",
+                     observer_hostname, obs_domain_id, template_id)
         return results
 
-    fixed_size = sum(ie_len for (_, ie_len, _, _) in template if ie_len != 65535)
+    # Variable-length IE (RFC 7011 §7, ie_len==65535) içeren template'leri
+    # şimdilik atla — yanlış byte hizalamasından korunmak için.
+    if any(ie_len == 65535 for (_, ie_len, _, _) in template):
+        logger.debug("IPFIX: variable-length IE içeren template atlandı domain=%d tpl=%d",
+                     obs_domain_id, template_id)
+        return results
+
+    fixed_size = sum(ie_len for (_, ie_len, _, _) in template)
     if fixed_size == 0 or fixed_size > len(payload):
         return results
 
@@ -453,7 +466,7 @@ def _ipfix_parse_data(
                 else:
                     record[ie_name] = int.from_bytes(raw, "big")
 
-        offset = pos
+        offset += fixed_size
 
         src_ip   = record.get("sourceIPv4Address") or record.get("sourceIPv6Address")
         dst_ip   = record.get("destinationIPv4Address") or record.get("destinationIPv6Address")
@@ -544,10 +557,14 @@ def parse_sflow(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
         if sample_end > len(data):
             break
 
-        # Flow Sample (type=1) veya Expanded Flow Sample (type=3)
-        if sample_type in (1, 3):
+        # Flow Sample (type=1) — Expanded Flow Sample (type=3) farklı header
+        # boyutuna sahip (source_id 2×4, input/output 2×4 byte); yanlış parse
+        # önlemek için type=3 şimdilik atlanıyor (RFC 3176 §5.1).
+        if sample_type == 1:
             flows = _sflow_parse_flow_sample(data[offset:sample_end], agent_ip, observer_hostname)
             results.extend(flows)
+        elif sample_type == 3:
+            logger.debug("sFlow: expanded flow sample (type=3) atlandı")
 
         offset = sample_end
 

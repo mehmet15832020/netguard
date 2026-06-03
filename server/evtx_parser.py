@@ -265,21 +265,6 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "occurred_at":       occurred_at,
         }
 
-    if eid == 4732:
-        member = _get_data(root, "MemberName")
-        group  = _get_data(root, "TargetUserName")
-        actor  = _get_data(root, "SubjectUserName")
-        return {
-            "event_action":      event_action,
-            "severity":          "warning",
-            "username":          actor,
-            "source_ip":         None,
-            "observer_hostname": computer,
-            "message":           f"Group member added: {member} → group={group} by {actor}",
-            "raw_data":          f"EID=4732 member={member} group={group} actor={actor}"[:500],
-            "occurred_at":       occurred_at,
-        }
-
     if eid == 4768:
         user      = _get_data(root, "TargetUserName")
         domain    = _get_data(root, "TargetDomainName")

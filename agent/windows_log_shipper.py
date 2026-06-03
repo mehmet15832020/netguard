@@ -164,7 +164,9 @@ class WindowsLogShipper:
         self._server_url = server_url.rstrip("/")
         self._api_key    = api_key
         self._hostname   = socket.gethostname()
-        self._client     = httpx.Client(timeout=10, verify=False)
+        _verify: bool | str = os.getenv("WIN_AGENT_CA_BUNDLE") or \
+            os.getenv("WIN_AGENT_VERIFY_TLS", "true").lower() != "false"
+        self._client     = httpx.Client(timeout=10, verify=_verify)
         self._thread: Optional[threading.Thread] = None
 
     def start(self) -> None:

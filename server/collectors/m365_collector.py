@@ -108,7 +108,10 @@ async def _list_content_blobs(
 
 async def _fetch_blob(client: httpx.AsyncClient, token: str, uri: str) -> list[dict]:
     resp = await client.get(uri, headers={"Authorization": f"Bearer {token}"})
-    return resp.json() if resp.status_code == 200 else []
+    if resp.status_code == 200:
+        return resp.json()
+    logger.warning("M365 content blob %s: HTTP %d", uri.split("?")[0][-40:], resp.status_code)
+    return []
 
 
 async def _poll_once(since: datetime, until: datetime) -> int:
