@@ -295,10 +295,8 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - İç ağda honeypot bağlantısı = sıfır false positive (MITRE ATT&CK Engage)
   - STAGE_MAP: `honeypot_ssh` → weaponize, `honeypot_smb` → lateral, `honeypot_http` → recon
   - **Entegrasyon:** `parsers/opencanary.py` + `sigma_rules_v2/honeypot.yml` + `docker-compose.yml` opsiyonel servis
-- [ ] **N4** — Suricata ET Otomatik Kural Güncelleme (2-3 gün) | +4%
-  - `suricata-update` + `kill -USR2` (live reload, restart yok) — günlük cron 03:00
-  - `disable.conf` + `modify.conf` false positive yönetimi
-  - **Entegrasyon:** `scripts/suricata-update-cron.sh` + `routes/maintenance.py` son güncelleme endpoint
+- [x] **N4** — Suricata ET Otomatik Kural Güncelleme (2-3 gün) | +4%
+  - **Teslim:** `scripts/suricata-update-cron.sh` (flock, set +e/-e, suricata-update --no-reload, suricatasc reload + USR2 fallback, state JSON); `config/suricata/disable.conf` (FP: games/chat/policy/info/JWT auth); `config/suricata/modify.conf`; systemd timer (03:00 UTC, Persistent=true); cron.d template; `routes/maintenance.py` GET/POST /maintenance/suricata-update/status+trigger (2/hour, audit log); VM'de doğrulandı: 45,343 kural aktif, reload=ok ✓
 - [x] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC (5-7 gün) | +5%
   - `rdp.log`: RDP brute-force T1021.001 — `kerberos.log`: Kerberoasting (rc4-hmac TGS) T1558.003, AS-REP Roasting T1558.004
   - `smb_files.log`: \\admin$ yazma = lateral T1021.002, ransomware yayılım
