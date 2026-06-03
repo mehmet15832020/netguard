@@ -248,6 +248,20 @@ STAGE_MAP: dict[str, str] = {
     "honeypot_tftp":    "recon",       # T1046 TFTP recon
     "honeypot_ntp":     "recon",       # T1046 NTP scanning
     "honeypot_telnet":  "weaponize",   # T1021 Telnet brute-force
+    # ── Microsoft 365 cloud audit (N8 — BEC T1114/T1098/T1530) ───────────────
+    "m365_inbox_rule":         "lateral",    # T1114.003 email forwarding rule
+    "m365_mailbox_permission": "lateral",    # T1098 mailbox full-access grant
+    "m365_delegate_access":    "lateral",    # T1098 delegate access grant
+    "m365_mail_access":        "lateral",    # T1114 email collection (MailItemsAccessed)
+    "m365_bulk_download":      "lateral",    # T1530 data from cloud storage
+    "m365_role_assignment":    "weaponize",  # T1098.003 additional cloud roles
+    "m365_login_failure":      "recon",      # T1110 brute force
+    # ── Google Workspace cloud audit (N8 — BEC T1110/T1114/T1098/T1078/T1530) ─
+    "gws_login_failure":    "recon",      # T1110 brute force
+    "gws_suspicious_login": "weaponize",  # T1078 valid accounts abuse
+    "gws_gmail_rule":       "lateral",    # T1114.003 Gmail forwarding/filter rule
+    "gws_admin_privilege":  "weaponize",  # T1098 account manipulation
+    "gws_bulk_download":    "lateral",    # T1530 data from cloud storage
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

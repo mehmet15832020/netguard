@@ -323,7 +323,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **N7** — Kural Kalitesi + CISA KEV Entegrasyonu (8-12 gün) | +2%
   - Dead rule tespiti (30 günde sıfır hit) — mevcut `backtest` endpoint extend
   - `collectors/kev_monitor.py`: CISA KEV JSON feed → yeni CVE bildirimi
-- [ ] **N8** — Microsoft 365 + Google Workspace (7-10 gün) | +6%
+- [x] **N8** — Microsoft 365 + Google Workspace (7-10 gün) | +6%
   - Microsoft Purview Audit Search Graph API + MSAL; Google Admin SDK Reports API
   - BEC sinyalleri: `New-InboxRule`, credential stuffing burst→success, bulk FileDownload, RBAC role assignment
   - **Entegrasyon:** `collectors/m365_collector.py` + `collectors/gworkspace_collector.py` + `parsers/cloud.py`

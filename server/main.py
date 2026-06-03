@@ -294,6 +294,10 @@ async def lifespan(app: FastAPI):
     from server.collectors.kev_monitor import run_kev_monitor
     kev_task = asyncio.create_task(run_kev_monitor())
     logger.info("CISA KEV monitor başlatıldı.")
+    from server.collectors.m365_collector import run_m365_collector
+    m365_task = asyncio.create_task(run_m365_collector())
+    from server.collectors.gworkspace_collector import run_gworkspace_collector
+    gws_task = asyncio.create_task(run_gworkspace_collector())
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -312,6 +316,8 @@ async def lifespan(app: FastAPI):
     opencanary_task.cancel()
     sflow_task.cancel()
     kev_task.cancel()
+    m365_task.cancel()
+    gws_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()

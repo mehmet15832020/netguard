@@ -235,6 +235,8 @@ class LogSourceType(str, Enum):
     NETFLOW      = "netflow"      # NetFlow v5/v9/IPFIX (v10) UDP akış verisi
     SFLOW        = "sflow"        # sFlow v5 sampled flow (RFC 3176)
     OPENCANARY   = "opencanary"   # Thinkst OpenCanary honeypot
+    M365         = "m365"         # Microsoft 365 audit (Office 365 Management API)
+    GWORKSPACE   = "gworkspace"   # Google Workspace Admin Reports API
 
 
 class LogCategory(str, Enum):
