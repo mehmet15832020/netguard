@@ -230,6 +230,11 @@ STAGE_MAP: dict[str, str] = {
     "zeek_dce_rpc_samr_enum":        "recon",       # T1087 account discovery
     "zeek_dce_rpc_policy":           "recon",       # T1082 system discovery
     "zeek_dce_rpc_operation":        "recon",       # generic DCE-RPC
+    # ── sFlow v5 (N6) — sampled flow (RFC 3176 / T1048 / T1572) ─────────────
+    "sflow_flow":             "recon",      # normal akış örnekleme
+    "sflow_large_flow":       "lateral",    # T1048 büyük veri exfil
+    "sflow_tunneled":         "lateral",    # T1572 protokol tüneli
+    "sflow_suspicious_port":  "weaponize",  # şüpheli port akışı
     # ── OpenCanary honeypot ───────────────────────────────────────────────────
     "honeypot_ssh":     "weaponize",   # T1110.001 SSH credential brute-force
     "honeypot_ftp":     "recon",       # T1046 FTP service enumeration

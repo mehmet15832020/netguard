@@ -1,9 +1,14 @@
-"""NetFlow v5 ve v9 binary parser testleri."""
+"""NetFlow v5 / v9 / IPFIX(v10) / sFlow v5 binary parser testleri."""
 
+import os
 import socket
 import struct
+import time
 import pytest
-from server.parsers.netflow import parse_v5, parse_v9, detect_and_parse, _v9_templates
+from server.parsers.netflow import (
+    parse_v5, parse_v9, detect_and_parse, _v9_templates,
+    parse_ipfix, parse_sflow, _ipfix_templates,
+)
 
 
 # ── Yardımcı: sentetik paket oluşturucular ───────────────────────────────────
@@ -258,3 +263,288 @@ class TestAutoDetect:
 
     def test_empty_returns_empty(self):
         assert detect_and_parse(b"", "r") == []
+
+    def test_detects_ipfix(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        logs = detect_and_parse(pkt, "r1")
+        assert len(logs) == 1
+        assert logs[0].extra["version"] == 10
+
+
+# ── IPFIX (NetFlow v10) testleri ─────────────────────────────────────────────
+
+def make_ipfix_packet(flows: list[dict], export_time: int = 1_714_000_000) -> bytes:
+    """IPFIX v10 paketi: tek template set + tek data set."""
+    obs_domain_id = 1
+    template_id   = 256
+
+    # IE listesi: (ie_id, ie_len)
+    ie_fields = [
+        (8,  4),  # sourceIPv4Address
+        (12, 4),  # destinationIPv4Address
+        (7,  2),  # sourceTransportPort
+        (11, 2),  # destinationTransportPort
+        (4,  1),  # protocolIdentifier
+        (1,  4),  # octetDeltaCount
+        (2,  4),  # packetDeltaCount
+    ]
+    record_size = sum(ie_len for _, ie_len in ie_fields)
+
+    # Template Set (set_id=2)
+    tmpl_body = struct.pack("!HH", template_id, len(ie_fields))
+    for ie_id, ie_len in ie_fields:
+        tmpl_body += struct.pack("!HH", ie_id, ie_len)
+    tmpl_set_content_len = 4 + len(tmpl_body)
+    pad = (4 - tmpl_set_content_len % 4) % 4
+    tmpl_set = struct.pack("!HH", 2, tmpl_set_content_len + pad) + tmpl_body + b"\x00" * pad
+
+    # Data Set (set_id=template_id)
+    data_body = b""
+    for f in flows:
+        data_body += socket.inet_aton(f["source_ip"])
+        data_body += socket.inet_aton(f["destination_ip"])
+        data_body += struct.pack("!H", f.get("source_port", 12345))
+        data_body += struct.pack("!H", f.get("destination_port", 80))
+        data_body += struct.pack("!B", f.get("proto", 6))
+        data_body += struct.pack("!I", f.get("bytes", 1000))
+        data_body += struct.pack("!I", f.get("pkts", 10))
+    data_set_content_len = 4 + len(data_body)
+    pad = (4 - data_set_content_len % 4) % 4
+    data_set = struct.pack("!HH", template_id, data_set_content_len + pad) + data_body + b"\x00" * pad
+
+    total_len = 16 + len(tmpl_set) + len(data_set)
+    header = struct.pack("!HHIII", 10, total_len, export_time, 1, obs_domain_id)
+    return header + tmpl_set + data_set
+
+
+class TestIPFIX:
+    def setup_method(self):
+        _ipfix_templates.clear()
+
+    def test_single_flow(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.2.3.4", "destination_ip": "5.6.7.8"}])
+        logs = parse_ipfix(pkt, "router1")
+        assert len(logs) == 1
+        assert logs[0].source_ip == "1.2.3.4"
+        assert logs[0].destination_ip == "5.6.7.8"
+
+    def test_source_type_netflow(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.source_type == "netflow"
+
+    def test_version_10_in_extra(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.extra["version"] == 10
+
+    def test_protocol_mapped(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 17}])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.network_protocol == "udp"
+
+    def test_ports_extracted(self):
+        pkt = make_ipfix_packet([{
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "source_port": 54321, "destination_port": 443,
+        }])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.source_port == 54321
+        assert log.destination_port == 443
+
+    def test_large_flow_is_warning(self):
+        large = 60 * 1024 * 1024  # 60 MB
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "bytes": large}])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.severity == "warning"
+        assert log.event_action == "netflow_large_flow"
+
+    def test_tunneled_protocol_is_warning(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 47}])  # GRE
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.severity == "warning"
+        assert log.event_action == "netflow_tunneled"
+
+    def test_suspicious_port_is_warning(self):
+        pkt = make_ipfix_packet([{
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "destination_port": 22, "proto": 6,
+        }])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.severity == "warning"
+        assert log.event_action == "netflow_suspicious_port"
+
+    def test_normal_flow_is_info(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.severity == "info"
+        assert log.event_action == "netflow_flow"
+
+    def test_observer_hostname(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_ipfix(pkt, "cisco-switch")[0]
+        assert log.observer_hostname == "cisco-switch"
+
+    def test_wrong_version_returns_empty(self):
+        bad = struct.pack("!HHIII", 9, 30, 0, 0, 0) + b"\x00" * 14
+        assert parse_ipfix(bad, "r") == []
+
+    def test_too_short_returns_empty(self):
+        assert parse_ipfix(b"\x00\x0a", "r") == []
+
+    def test_multiple_flows(self):
+        flows = [
+            {"source_ip": "10.0.0.1", "destination_ip": "8.8.8.8"},
+            {"source_ip": "10.0.0.2", "destination_ip": "1.1.1.1"},
+        ]
+        pkt = make_ipfix_packet(flows)
+        logs = parse_ipfix(pkt, "r")
+        assert len(logs) == 2
+
+    def test_network_bytes_set(self):
+        pkt = make_ipfix_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "bytes": 5000}])
+        log = parse_ipfix(pkt, "r")[0]
+        assert log.network_bytes == 5000
+
+
+# ── sFlow v5 testleri ────────────────────────────────────────────────────────
+
+def make_sflow_packet(flows: list[dict], sample_rate: int = 100) -> bytes:
+    """sFlow v5 paketi: tek Flow Sample + IPv4 flow record'ları."""
+    agent_ip_int = struct.unpack("!I", socket.inet_aton("10.0.0.1"))[0]
+
+    # IPv4 flow record'ları (record_type=3, sampled_ipv4 — RFC 3176)
+    records = b""
+    for f in flows:
+        src_int = struct.unpack("!I", socket.inet_aton(f["source_ip"]))[0]
+        dst_int = struct.unpack("!I", socket.inet_aton(f["destination_ip"]))[0]
+        ipv4_data = struct.pack(
+            "!IIIIIIII",
+            64,                          # length (sampled frame size)
+            f.get("proto", 6),           # protocol
+            src_int,                     # src_ip
+            dst_int,                     # dst_ip
+            f.get("source_port", 12345), # src_port
+            f.get("destination_port", 80), # dst_port
+            0,                           # tcp_flags
+            0,                           # tos
+        )
+        records += struct.pack("!II", 3, len(ipv4_data)) + ipv4_data
+
+    # Flow Sample body
+    flow_sample = struct.pack(
+        "!IIIIIIII",
+        1,             # seq
+        1,             # src_id
+        sample_rate,   # rate
+        0,             # pool
+        0,             # drops
+        1,             # input_if
+        2,             # output_if
+        len(flows),    # num_records
+    ) + records
+
+    # sFlow v5 header
+    header = struct.pack(
+        "!IIIIIII",
+        5,              # version
+        1,              # addr_type (IPv4)
+        agent_ip_int,   # agent_ip
+        0,              # sub_id
+        1,              # seq_number
+        0,              # uptime
+        1,              # num_samples
+    )
+    sample = struct.pack("!II", 1, len(flow_sample)) + flow_sample
+    return header + sample
+
+
+class TestSFlow:
+    def test_basic_flow(self):
+        pkt = make_sflow_packet([{"source_ip": "1.2.3.4", "destination_ip": "5.6.7.8"}])
+        logs = parse_sflow(pkt, "switch1")
+        assert len(logs) == 1
+        assert logs[0].source_ip == "1.2.3.4"
+        assert logs[0].destination_ip == "5.6.7.8"
+
+    def test_source_type_sflow(self):
+        pkt = make_sflow_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.source_type == "sflow"
+
+    def test_protocol_mapped(self):
+        pkt = make_sflow_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 17}])
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.network_protocol == "udp"
+
+    def test_ports_extracted(self):
+        pkt = make_sflow_packet([{
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "source_port": 54321, "destination_port": 443,
+        }])
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.source_port == 54321
+        assert log.destination_port == 443
+
+    def test_large_flow_is_warning(self):
+        large = 60 * 1024 * 1024
+        pkt = make_sflow_packet([{
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "proto": 6,
+        }])
+        # Override the frame length via env to keep test deterministic
+        os.environ["NETFLOW_LARGE_FLOW_BYTES"] = "1"
+        try:
+            logs = parse_sflow(pkt, "sw")
+        finally:
+            del os.environ["NETFLOW_LARGE_FLOW_BYTES"]
+        assert logs[0].event_action == "sflow_large_flow"
+        assert logs[0].severity == "warning"
+
+    def test_tunneled_protocol_warning(self):
+        pkt = make_sflow_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2", "proto": 47}])
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.event_action == "sflow_tunneled"
+        assert log.severity == "warning"
+
+    def test_suspicious_port_warning(self):
+        pkt = make_sflow_packet([{
+            "source_ip": "1.1.1.1", "destination_ip": "2.2.2.2",
+            "destination_port": 3389, "proto": 6,
+        }])
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.event_action == "sflow_suspicious_port"
+        assert log.severity == "warning"
+
+    def test_normal_flow_is_info(self):
+        pkt = make_sflow_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.event_action == "sflow_flow"
+        assert log.severity == "info"
+
+    def test_observer_hostname(self):
+        pkt = make_sflow_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}])
+        log = parse_sflow(pkt, "arista-sw-01")[0]
+        assert log.observer_hostname == "arista-sw-01"
+
+    def test_sample_rate_in_extra(self):
+        pkt = make_sflow_packet([{"source_ip": "1.1.1.1", "destination_ip": "2.2.2.2"}], sample_rate=512)
+        log = parse_sflow(pkt, "sw")[0]
+        assert log.extra["sample_rate"] == 512
+
+    def test_wrong_version_returns_empty(self):
+        bad = struct.pack("!IIIIIII", 3, 1, 0, 0, 0, 0, 0) + b"\x00" * 8
+        assert parse_sflow(bad, "sw") == []
+
+    def test_too_short_returns_empty(self):
+        assert parse_sflow(b"\x00\x00\x00\x05", "sw") == []
+
+    def test_multiple_flows(self):
+        flows = [
+            {"source_ip": "10.0.0.1", "destination_ip": "8.8.8.8"},
+            {"source_ip": "10.0.0.2", "destination_ip": "1.1.1.1"},
+            {"source_ip": "10.0.0.3", "destination_ip": "9.9.9.9"},
+        ]
+        pkt = make_sflow_packet(flows)
+        logs = parse_sflow(pkt, "sw")
+        assert len(logs) == 3

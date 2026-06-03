@@ -288,6 +288,9 @@ async def lifespan(app: FastAPI):
     from server.opencanary_collector import run_opencanary_collector
     opencanary_task = asyncio.create_task(run_opencanary_collector())
     logger.info("OpenCanary honeypot collector başlatıldı.")
+    from server.sflow_receiver import run_sflow_receiver
+    sflow_task = asyncio.create_task(run_sflow_receiver())
+    logger.info("sFlow receiver başlatıldı.")
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -304,6 +307,7 @@ async def lifespan(app: FastAPI):
     zeek_task.cancel()
     suricata_task.cancel()
     opencanary_task.cancel()
+    sflow_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()

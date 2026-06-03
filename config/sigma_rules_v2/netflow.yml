@@ -95,3 +95,101 @@ tags:
 falsepositives:
     - VPN infrastructure using GRE/ESP
     - Site-to-site tunnel endpoints
+---
+title: sFlow Large Flow (Base)
+name: ng_sflow_large_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: sflow_large_flow
+    condition: selection
+level: medium
+tags:
+    - attack.exfiltration
+    - attack.t1048
+---
+title: sFlow Large Flow Exfiltration Burst
+id: d4e5f6a7-b8c9-0123-defa-234567890123
+correlation:
+    type: event_count
+    rules: ng_sflow_large_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 2
+level: high
+tags:
+    - attack.exfiltration
+    - attack.t1048
+falsepositives:
+    - Backup jobs transferring large files
+    - Video streaming servers
+---
+title: sFlow Suspicious Port (Base)
+name: ng_sflow_suspicious_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: sflow_suspicious_port
+    condition: selection
+level: medium
+tags:
+    - attack.command_and_control
+    - attack.t1071
+---
+title: sFlow Suspicious Port Burst
+id: e5f6a7b8-c9d0-1234-efab-345678901234
+correlation:
+    type: event_count
+    rules: ng_sflow_suspicious_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.command_and_control
+    - attack.lateral_movement
+    - attack.t1071
+    - attack.t1021
+falsepositives:
+    - Authorized SSH/RDP administration
+    - Network scanners with signed-off scope
+---
+title: sFlow Tunneled Protocol (Base)
+name: ng_sflow_tunnel_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: sflow_tunneled
+    condition: selection
+level: medium
+tags:
+    - attack.command_and_control
+    - attack.t1572
+---
+title: sFlow Tunnel Protocol Burst
+id: f6a7b8c9-d0e1-2345-fabc-456789012345
+correlation:
+    type: event_count
+    rules: ng_sflow_tunnel_base
+    group-by:
+        - destination_ip
+    timespan: 1m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.command_and_control
+    - attack.t1572
+falsepositives:
+    - VPN infrastructure using GRE/ESP
+    - Site-to-site tunnel endpoints

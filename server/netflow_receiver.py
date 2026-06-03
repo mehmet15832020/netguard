@@ -2,7 +2,7 @@
 NetGuard — NetFlow UDP Receiver
 
 UDP port 2055'i asyncio ile dinler.
-Gelen her paketi NetFlow v5/v9 parser'a iletir, parse edilen akışları DB'ye kaydeder.
+Gelen her paketi NetFlow v5/v9/IPFIX(v10) parser'a iletir, parse edilen akışları DB'ye kaydeder.
 """
 
 import asyncio

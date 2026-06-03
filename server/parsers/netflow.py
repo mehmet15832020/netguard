@@ -301,6 +301,343 @@ def parse_v9(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
     return logs
 
 
+# ── IPFIX (NetFlow v10) ───────────────────────────────────────────────────────
+
+_IPFIX_HEADER   = struct.Struct("!HHIII")   # version(2)+length(2)+export_time(4)+seq(4)+obs_domain_id(4)
+_IPFIX_SET_HDR  = struct.Struct("!HH")      # set_id(2)+length(2)
+_IPFIX_TMPL_HDR = struct.Struct("!HH")      # template_id(2)+field_count(2)
+_IPFIX_FIELD    = struct.Struct("!HH")      # ie_type(2)+ie_length(2)
+_IPFIX_ENT_PEN  = struct.Struct("!I")       # enterprise_id(4)
+
+# IANA IPFIX Information Element IDs (RFC 7012)
+_IPFIX_IE: dict[int, str] = {
+    1:   "octetDeltaCount",
+    2:   "packetDeltaCount",
+    4:   "protocolIdentifier",
+    6:   "tcpControlBits",
+    7:   "sourceTransportPort",
+    8:   "sourceIPv4Address",
+    10:  "ingressInterface",
+    11:  "destinationTransportPort",
+    12:  "destinationIPv4Address",
+    14:  "egressInterface",
+    21:  "flowEndSysUpTime",
+    22:  "flowStartSysUpTime",
+    27:  "sourceIPv6Address",
+    28:  "destinationIPv6Address",
+    56:  "sourceMacAddress",
+    80:  "destinationMacAddress",
+    152: "flowStartMilliseconds",
+    153: "flowEndMilliseconds",
+    176: "icmpTypeCodeIPv4",
+    258: "collectionTimeMilliseconds",
+}
+
+# Global IPFIX template cache: (obs_domain_id, template_id) → [(ie_id, ie_len, pen, is_enterprise)]
+_ipfix_templates: dict[tuple[int, int], list[tuple[int, int, int, bool]]] = {}
+
+# ── sFlow v5 ──────────────────────────────────────────────────────────────────
+
+_SFLOW_HDR        = struct.Struct("!IIIIIII")  # version(4)+addr_type(4)+agent_ip(4)+sub_id(4)+seq(4)+uptime(4)+num_samples(4)
+_SFLOW_SAMPLE_HDR = struct.Struct("!II")        # type(4)+length(4)
+_SFLOW_FLOW_HDR   = struct.Struct("!IIIIIIII")  # seq+src_id+rate+pool+drops+input+output+num_records
+_SFLOW_RECORD_HDR = struct.Struct("!II")        # record_type(4)+record_length(4)
+_SFLOW_IPV4_FLOW  = struct.Struct("!IIIIIIII")  # length+proto+src_ip+dst_ip+src_port+dst_port+tcp_flags+tos (sFlow v5 sampled_ipv4, RFC 3176)
+
+
+def parse_ipfix(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
+    """RFC 7011 IPFIX (NetFlow v10) binary parser. Template-based, multi-domain, enterprise field support."""
+    results: list[NormalizedLog] = []
+    if len(data) < _IPFIX_HEADER.size:
+        return results
+
+    version, total_len, export_time, sequence, obs_domain_id = _IPFIX_HEADER.unpack_from(data, 0)
+    if version != 10:
+        return results
+
+    offset = _IPFIX_HEADER.size
+
+    while offset + _IPFIX_SET_HDR.size <= len(data):
+        set_id, set_length = _IPFIX_SET_HDR.unpack_from(data, offset)
+        if set_length < 4 or offset + set_length > len(data):
+            break
+
+        set_payload = data[offset + 4: offset + set_length]
+
+        if set_id == 2:
+            _ipfix_parse_template(set_payload, obs_domain_id)
+        elif set_id == 3:
+            pass  # Options Template — şimdilik skip
+        elif set_id >= 256:
+            flows = _ipfix_parse_data(set_payload, obs_domain_id, set_id, export_time, observer_hostname)
+            results.extend(flows)
+
+        offset += set_length
+        # 4-byte padding hizalama
+        if set_length % 4:
+            offset += 4 - (set_length % 4)
+
+    return results
+
+
+def _ipfix_parse_template(payload: bytes, obs_domain_id: int) -> None:
+    offset = 0
+    while offset + _IPFIX_TMPL_HDR.size <= len(payload):
+        template_id, field_count = _IPFIX_TMPL_HDR.unpack_from(payload, offset)
+        offset += _IPFIX_TMPL_HDR.size
+
+        if field_count == 0 or template_id < 256:
+            continue
+
+        fields: list[tuple[int, int, int, bool]] = []
+        for _ in range(field_count):
+            if offset + _IPFIX_FIELD.size > len(payload):
+                break
+            raw_type, ie_len = _IPFIX_FIELD.unpack_from(payload, offset)
+            offset += _IPFIX_FIELD.size
+            is_enterprise = bool(raw_type & 0x8000)
+            ie_type = raw_type & 0x7FFF
+            pen = 0
+            if is_enterprise:
+                if offset + _IPFIX_ENT_PEN.size > len(payload):
+                    break
+                pen = _IPFIX_ENT_PEN.unpack_from(payload, offset)[0]
+                offset += _IPFIX_ENT_PEN.size
+            fields.append((ie_type, ie_len, pen, is_enterprise))
+
+        _ipfix_templates[(obs_domain_id, template_id)] = fields
+        logger.debug("IPFIX template: domain=%d tpl=%d fields=%d", obs_domain_id, template_id, len(fields))
+
+
+def _ipfix_parse_data(
+    payload: bytes,
+    obs_domain_id: int,
+    template_id: int,
+    export_time: int,
+    observer_hostname: str,
+) -> list[NormalizedLog]:
+    results: list[NormalizedLog] = []
+    template = _ipfix_templates.get((obs_domain_id, template_id))
+    if not template:
+        logger.debug("IPFIX: template not found domain=%d tpl=%d", obs_domain_id, template_id)
+        return results
+
+    fixed_size = sum(ie_len for (_, ie_len, _, _) in template if ie_len != 65535)
+    if fixed_size == 0 or fixed_size > len(payload):
+        return results
+
+    offset = 0
+    while offset + fixed_size <= len(payload):
+        record: dict[str, object] = {}
+        pos = offset
+        for ie_type, ie_len, pen, is_enterprise in template:
+            if pos + ie_len > len(payload):
+                break
+            raw = payload[pos: pos + ie_len]
+            pos += ie_len
+
+            if is_enterprise:
+                record[f"pen_{pen}_{ie_type}"] = int.from_bytes(raw, "big")
+            else:
+                ie_name = _IPFIX_IE.get(ie_type, f"ie_{ie_type}")
+                if ie_len == 4 and ie_type in (8, 12):
+                    try:
+                        record[ie_name] = socket.inet_ntop(socket.AF_INET, raw)
+                    except Exception:
+                        record[ie_name] = int.from_bytes(raw, "big")
+                elif ie_len == 16 and ie_type in (27, 28):
+                    try:
+                        record[ie_name] = socket.inet_ntop(socket.AF_INET6, raw)
+                    except Exception:
+                        record[ie_name] = ""
+                else:
+                    record[ie_name] = int.from_bytes(raw, "big")
+
+        offset = pos
+
+        src_ip   = record.get("sourceIPv4Address") or record.get("sourceIPv6Address")
+        dst_ip   = record.get("destinationIPv4Address") or record.get("destinationIPv6Address")
+        proto_n  = int(record.get("protocolIdentifier", 0))
+        src_port = int(record.get("sourceTransportPort", 0)) or None
+        dst_port = int(record.get("destinationTransportPort", 0)) or None
+        bytes_   = int(record.get("octetDeltaCount", 0))
+        packets  = int(record.get("packetDeltaCount", 0))
+
+        if not src_ip or not dst_ip:
+            continue
+
+        proto_name = _PROTO_MAP.get(proto_n, str(proto_n))
+        event_action, severity = _event_action_for_ipfix(proto_n, dst_port, bytes_)
+
+        results.append(NormalizedLog(
+            log_id            = str(uuid.uuid4()),
+            raw_id            = str(uuid.uuid4()),
+            source_type       = LogSourceType.NETFLOW,
+            observer_hostname = observer_hostname,
+            timestamp         = datetime.fromtimestamp(export_time, tz=timezone.utc),
+            severity          = severity,
+            event_category    = LogCategory.NETWORK,
+            event_action      = event_action,
+            source_ip         = str(src_ip),
+            destination_ip    = str(dst_ip),
+            source_port       = src_port,
+            destination_port  = dst_port,
+            network_protocol  = proto_name,
+            network_bytes     = bytes_ or None,
+            message           = (
+                f"IPFIX {proto_name} {src_ip}:{src_port or '?'}"
+                f" → {dst_ip}:{dst_port or '?'}"
+                f" bytes={bytes_} pkts={packets}"
+            ),
+            tags  = ["ipfix", "netflow_v10"],
+            extra = {
+                "version":        10,
+                "obs_domain_id":  obs_domain_id,
+                "template_id":    template_id,
+                "packets":        packets,
+                "protocol_number": proto_n,
+            },
+        ))
+
+    return results
+
+
+def _event_action_for_ipfix(proto: int, dst_port: int | None, bytes_: int) -> tuple[str, str]:
+    large_threshold = int(os.environ.get("NETFLOW_LARGE_FLOW_BYTES", str(50 * 1024 * 1024)))
+    if bytes_ >= large_threshold:
+        return "netflow_large_flow", "warning"
+    if proto in _TUNNELED_PROTOCOLS:
+        return "netflow_tunneled", "warning"
+    if dst_port and dst_port in _SUSPICIOUS_PORTS:
+        return "netflow_suspicious_port", "warning"
+    return "netflow_flow", "info"
+
+
+def parse_sflow(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
+    """RFC 3176 / sFlow v5 sampled flow parser. Flow Sample (type=1/3) → IPv4 flow records → NormalizedLog."""
+    results: list[NormalizedLog] = []
+    if len(data) < _SFLOW_HDR.size:
+        return results
+
+    try:
+        version, addr_type, agent_ip_int, sub_id, seq, uptime, num_samples = _SFLOW_HDR.unpack_from(data, 0)
+    except struct.error:
+        return results
+
+    if version != 5:
+        return results
+
+    try:
+        agent_ip = socket.inet_ntoa(struct.pack("!I", agent_ip_int))
+    except Exception:
+        agent_ip = observer_hostname
+
+    offset = _SFLOW_HDR.size
+
+    for _ in range(num_samples):
+        if offset + _SFLOW_SAMPLE_HDR.size > len(data):
+            break
+        sample_type, sample_length = _SFLOW_SAMPLE_HDR.unpack_from(data, offset)
+        offset += _SFLOW_SAMPLE_HDR.size
+        sample_end = offset + sample_length
+
+        if sample_end > len(data):
+            break
+
+        # Flow Sample (type=1) veya Expanded Flow Sample (type=3)
+        if sample_type in (1, 3):
+            flows = _sflow_parse_flow_sample(data[offset:sample_end], agent_ip, observer_hostname)
+            results.extend(flows)
+
+        offset = sample_end
+
+    return results
+
+
+def _sflow_parse_flow_sample(payload: bytes, agent_ip: str, observer_hostname: str) -> list[NormalizedLog]:
+    results: list[NormalizedLog] = []
+    if len(payload) < _SFLOW_FLOW_HDR.size:
+        return results
+
+    try:
+        seq, src_id, rate, pool, drops, input_if, output_if, num_records = \
+            _SFLOW_FLOW_HDR.unpack_from(payload, 0)
+    except struct.error:
+        return results
+
+    offset = _SFLOW_FLOW_HDR.size
+
+    for _ in range(num_records):
+        if offset + _SFLOW_RECORD_HDR.size > len(payload):
+            break
+        record_type, record_length = _SFLOW_RECORD_HDR.unpack_from(payload, offset)
+        offset += _SFLOW_RECORD_HDR.size
+        record_end = offset + record_length
+
+        if record_end > len(payload):
+            break
+
+        # IPv4 Flow Record (type=3)
+        if record_type == 3 and record_length >= _SFLOW_IPV4_FLOW.size:
+            try:
+                length, proto, src_ip_int, dst_ip_int, src_port, dst_port, tcp_flags, tos = \
+                    _SFLOW_IPV4_FLOW.unpack_from(payload, offset)
+                src_ip = socket.inet_ntoa(struct.pack("!I", src_ip_int))
+                dst_ip = socket.inet_ntoa(struct.pack("!I", dst_ip_int))
+
+                if src_ip and dst_ip:
+                    proto_name = _PROTO_MAP.get(proto, str(proto))
+                    event_action, severity = _event_action_for_sflow(proto, dst_port, length)
+
+                    results.append(NormalizedLog(
+                        log_id            = str(uuid.uuid4()),
+                        raw_id            = str(uuid.uuid4()),
+                        source_type       = LogSourceType.SFLOW,
+                        observer_hostname = observer_hostname or agent_ip,
+                        timestamp         = datetime.now(timezone.utc),
+                        severity          = severity,
+                        event_category    = LogCategory.NETWORK,
+                        event_action      = event_action,
+                        source_ip         = src_ip,
+                        destination_ip    = dst_ip,
+                        source_port       = src_port or None,
+                        destination_port  = dst_port or None,
+                        network_protocol  = proto_name,
+                        network_bytes     = length or None,
+                        message           = (
+                            f"sFlow {proto_name} {src_ip}:{src_port or '?'}"
+                            f" → {dst_ip}:{dst_port or '?'}"
+                            f" sample_rate={rate}"
+                        ),
+                        tags  = ["sflow"],
+                        extra = {
+                            "agent_ip":   agent_ip,
+                            "sample_rate": rate,
+                            "input_if":   input_if,
+                            "output_if":  output_if,
+                            "tcp_flags":  tcp_flags,
+                            "tos":        tos,
+                        },
+                    ))
+            except struct.error:
+                pass
+
+        offset = record_end
+
+    return results
+
+
+def _event_action_for_sflow(proto: int, dst_port: int, bytes_: int) -> tuple[str, str]:
+    large_threshold = int(os.environ.get("NETFLOW_LARGE_FLOW_BYTES", str(50 * 1024 * 1024)))
+    if bytes_ >= large_threshold:
+        return "sflow_large_flow", "warning"
+    if proto in _TUNNELED_PROTOCOLS:
+        return "sflow_tunneled", "warning"
+    if dst_port and dst_port in _SUSPICIOUS_PORTS:
+        return "sflow_suspicious_port", "warning"
+    return "sflow_flow", "info"
+
+
 # ── Otomatik tespit ───────────────────────────────────────────────────────────
 
 def detect_and_parse(data: bytes, observer_hostname: str) -> list[NormalizedLog]:
@@ -311,4 +648,6 @@ def detect_and_parse(data: bytes, observer_hostname: str) -> list[NormalizedLog]
         return parse_v5(data, observer_hostname)
     if version == 9:
         return parse_v9(data, observer_hostname)
+    if version == 10:
+        return parse_ipfix(data, observer_hostname)
     return []
