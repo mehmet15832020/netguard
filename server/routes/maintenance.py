@@ -7,6 +7,8 @@ GET  /api/v1/maintenance/audit                     → Audit log (admin)
 GET  /api/v1/audit-log/verify                      → SHA-256 hash zinciri bütünlük kontrolü (admin)
 GET  /api/v1/maintenance/suricata-update/status    → Son kural güncelleme durumu (admin)
 POST /api/v1/maintenance/suricata-update/trigger   → Manuel kural güncelleme tetikle (admin)
+GET  /api/v1/maintenance/kev/status                → CISA KEV istatistik + son girişler (admin)
+POST /api/v1/maintenance/kev/fetch                 → KEV feed'ini manuel çek (admin, 2/hour)
 """
 
 import asyncio
@@ -19,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from server.auth import User, require_admin
 from server.database import db
 from server.limiter import _auth_key, limiter
+from server.collectors.kev_monitor import _MONITORED_VENDORS, fetch_kev_once
 
 _SURICATA_STATE_FILE = Path(
     os.getenv("SURICATA_UPDATE_STATE_FILE", "/var/lib/netguard/suricata_update_state.json")
@@ -170,3 +173,43 @@ def trigger_suricata_update(
         "status": "started",
         "message": "Kural güncelleme başlatıldı. Durum için GET .../suricata-update/status",
     }
+
+
+@router.get("/maintenance/kev/status")
+def kev_status(
+    limit: int = Query(20, ge=1, le=200),
+    vendor: str = Query(""),
+    _: User = Depends(require_admin),
+):
+    """CISA KEV istatistik + son girişler (CIS Controls v8.1 Safeguard 7.1)."""
+    stats = db.get_kev_stats()
+    entries = db.get_kev_entries(limit=limit, vendor=vendor)
+    return {
+        "stats":             stats,
+        "monitored_vendors": sorted(_MONITORED_VENDORS),
+        "entries":           entries,
+    }
+
+
+@router.post("/maintenance/kev/fetch")
+@limiter.limit("2/hour", key_func=_auth_key)
+async def trigger_kev_fetch(
+    request: Request,
+    response: Response,
+    admin: User = Depends(require_admin),
+):
+    """CISA KEV feed'ini manuel çek ve DB'yi güncelle (admin, 2/hour)."""
+    result = await fetch_kev_once()
+
+    db.save_audit_event(
+        actor=admin.username,
+        action="kev.fetch",
+        resource="kev_entries",
+        detail=f"new={result.get('new_count', 0)} total={result.get('total', 0)}",
+        ip_address=request.client.host if request.client else "",
+    )
+
+    if result.get("status") == "error":
+        raise HTTPException(status_code=502, detail=f"KEV fetch hatası: {result.get('detail')}")
+
+    return result

@@ -101,6 +101,70 @@ def list_sigma_rules(_: User = Depends(get_current_user)):
     return {"count": len(results), "rules": results}
 
 
+@router.get("/sigma/rules/quality")
+@limiter.limit("10/minute", key_func=_auth_key)
+def sigma_rule_quality(
+    request: Request,
+    response: Response,
+    days: int = 30,
+    _: User = Depends(get_current_user),
+):
+    """Kural kalite raporu: her kuralın son N günde hit sayısı + last_hit.
+
+    dead  = enabled, 0 hit, N günden eski
+    new   = N günden yeni oluşturulmuş (henüz değerlendirilemez)
+    active = hit var
+    """
+    if days < 1 or days > 365:
+        raise HTTPException(status_code=422, detail="days 1-365 arasında olmalı")
+
+    from datetime import timedelta
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+    hit_stats = db.get_rule_hit_stats(since)
+
+    all_rules: list[dict] = []
+    for path in _list_sigma_files():
+        meta = _parse_v2_rule(path)
+        if meta is None:
+            continue
+
+        rule_id = meta["rule_id"]
+        stats = hit_stats.get(rule_id, {})
+        hit_count = stats.get("count", 0)
+        last_hit = stats.get("last_hit")
+
+        if not meta["enabled"]:
+            quality_status = "disabled"
+        elif hit_count > 0:
+            quality_status = "active"
+        else:
+            quality_status = "dead"
+
+        all_rules.append({
+            **meta,
+            "hit_count":      hit_count,
+            "last_hit":       last_hit,
+            "quality_status": quality_status,
+            "window_days":    days,
+        })
+
+    dead    = [r for r in all_rules if r["quality_status"] == "dead"]
+    active  = [r for r in all_rules if r["quality_status"] == "active"]
+    disabled = [r for r in all_rules if r["quality_status"] == "disabled"]
+
+    return {
+        "window_days": days,
+        "summary": {
+            "total":    len(all_rules),
+            "active":   len(active),
+            "dead":     len(dead),
+            "disabled": len(disabled),
+        },
+        "dead_rules":   dead,
+        "active_rules": active,
+    }
+
+
 @router.get("/sigma/rules/{rule_id}")
 def get_sigma_rule(rule_id: str, _: User = Depends(get_current_user)):
     """Bir SIGMA V2 kuralının ham YAML içeriğini döndür."""

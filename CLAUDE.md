@@ -320,7 +320,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 - [x] **N6** — IPFIX/NetFlow v10 + sFlow (6-9 gün) | +3%
   - `netflow` PyPI paketi (v1/v5/v9/IPFIX) — `parsers/netflow.py` extend; `sflow_receiver.py` UDP 6343
   - Neden: Cisco 15.4+/Juniper/VMware NSX IPFIX üretiyor; Arista/HP switch sFlow; NetFlow v5 counter ~4GB'da taşıyor
-- [ ] **N7** — Kural Kalitesi + CISA KEV Entegrasyonu (8-12 gün) | +2%
+- [x] **N7** — Kural Kalitesi + CISA KEV Entegrasyonu (8-12 gün) | +2%
   - Dead rule tespiti (30 günde sıfır hit) — mevcut `backtest` endpoint extend
   - `collectors/kev_monitor.py`: CISA KEV JSON feed → yeni CVE bildirimi
 - [ ] **N8** — Microsoft 365 + Google Workspace (7-10 gün) | +6%

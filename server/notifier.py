@@ -118,6 +118,17 @@ Bu mesaj NetGuard tarafından otomatik olarak gönderilmiştir.
         msg.attach(MIMEText(body, "plain", "utf-8"))
         return self._send_msg(msg, f"{alert.hostname} → {self.to_emails}")
 
+    def send_custom(self, subject: str, body: str) -> bool:
+        """Serbest formatlı bildirim emaili gönderir (KEV/sistem bildirimleri için)."""
+        if not self.enabled:
+            return False
+        msg = MIMEMultipart()
+        msg["From"] = self.from_email
+        msg["To"] = ", ".join(self.to_emails)
+        msg["Subject"] = subject
+        msg.attach(MIMEText(body, "plain", "utf-8"))
+        return self._send_msg(msg, subject)
+
 
 class WebhookNotifier:
     """Discord veya Slack webhook'una bildirim gönderir."""

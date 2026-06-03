@@ -926,6 +926,91 @@ class DatabaseManager:
             ).fetchall()
         return [{"rule_id": r["rule_id"], "cnt": r["cnt"]} for r in rows]
 
+    def get_rule_hit_stats(self, since: datetime) -> dict[str, dict]:
+        """rule_id → {count, last_hit} — kural kalite analizi için."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT rule_id, COUNT(*) AS cnt, MAX(created_at) AS last_hit
+                   FROM correlated_events WHERE created_at >= %s
+                   GROUP BY rule_id""",
+                (since,),
+            ).fetchall()
+        return {
+            r["rule_id"]: {
+                "count": r["cnt"],
+                "last_hit": r["last_hit"].isoformat() if r["last_hit"] else None,
+            }
+            for r in rows
+        }
+
+    # ------------------------------------------------------------------ #
+    #  KEV ENTRIES (N7 CISA Known Exploited Vulnerabilities)
+    # ------------------------------------------------------------------ #
+
+    def upsert_kev_entries(self, entries: list[dict]) -> list[str]:
+        """Yeni CVE'leri ekler, mevcutları atlar. Eklenen cve_id listesi döner."""
+        if not entries:
+            return []
+        new_ids: list[str] = []
+        with self._connect() as conn:
+            for e in entries:
+                existing = conn.execute(
+                    "SELECT 1 FROM kev_entries WHERE cve_id = %s", (e["cve_id"],)
+                ).fetchone()
+                if existing:
+                    continue
+                conn.execute(
+                    """INSERT INTO kev_entries
+                       (cve_id, vendor_project, product, vulnerability_name,
+                        date_added, due_date, description, required_action, seen_at)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())""",
+                    (
+                        e["cve_id"],
+                        e.get("vendor_project", ""),
+                        e.get("product", ""),
+                        e.get("vulnerability_name", ""),
+                        e.get("date_added"),
+                        e.get("due_date"),
+                        e.get("description", ""),
+                        e.get("required_action", ""),
+                    ),
+                )
+                new_ids.append(e["cve_id"])
+        return new_ids
+
+    def get_kev_entries(self, limit: int = 50, vendor: str = "") -> list[dict]:
+        """KEV girdilerini döndür — isteğe bağlı vendor filtresi."""
+        with self._connect() as conn:
+            if vendor:
+                rows = conn.execute(
+                    """SELECT * FROM kev_entries
+                       WHERE LOWER(vendor_project) LIKE %s
+                       ORDER BY date_added DESC LIMIT %s""",
+                    (f"%{vendor.lower()}%", limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM kev_entries ORDER BY date_added DESC LIMIT %s",
+                    (limit,),
+                ).fetchall()
+        return [dict(r) for r in rows]
+
+    def get_kev_stats(self) -> dict:
+        """KEV özet istatistikleri."""
+        with self._connect() as conn:
+            total = conn.execute("SELECT COUNT(*) AS cnt FROM kev_entries").fetchone()["cnt"]
+            last_added = conn.execute(
+                "SELECT MAX(date_added) AS d FROM kev_entries"
+            ).fetchone()["d"]
+            last_seen = conn.execute(
+                "SELECT MAX(seen_at) AS d FROM kev_entries"
+            ).fetchone()["d"]
+        return {
+            "total_cves": total,
+            "last_cve_date": str(last_added) if last_added else None,
+            "last_fetch_at": last_seen.isoformat() if last_seen else None,
+        }
+
     # ------------------------------------------------------------------ #
     #  ALERT EXPLANATIONS (F4 AI Explainer cache)
     # ------------------------------------------------------------------ #

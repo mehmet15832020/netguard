@@ -19,6 +19,7 @@ _PG_TRUNCATE_TABLES = [
     "security_events", "alerts", "db_users", "sites", "tenants",
     "alert_explanations", "saved_hunts",
     "anomaly_baselines", "anomaly_results",
+    "kev_entries",
 ]
 
 
