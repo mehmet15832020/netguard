@@ -1,0 +1,170 @@
+title: Honeypot SSH Bağlantı Denemesi
+id: a1b2c3d4-e5f6-7890-abcd-f10000000001
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: honeypot_ssh
+    condition: selection
+level: critical
+tags:
+    - attack.credential_access
+    - attack.t1110.001
+    - attack.t1021.004
+falsepositives:
+    - None expected
+---
+title: Honeypot HTTP Web Taraması
+id: b2c3d4e5-f6a7-8901-bcde-f10000000002
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: honeypot_http
+    condition: selection
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1595
+falsepositives:
+    - None expected
+---
+title: Honeypot SMB Yanal Hareket Denemesi
+id: c3d4e5f6-a7b8-9012-cdef-f10000000003
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: honeypot_smb
+    condition: selection
+level: critical
+tags:
+    - attack.lateral_movement
+    - attack.t1021.002
+falsepositives:
+    - None expected
+---
+title: Honeypot MySQL Brute-Force / Exploit
+id: d4e5f6a7-b8c9-0123-def0-f10000000004
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action: honeypot_mysql
+    condition: selection
+level: critical
+tags:
+    - attack.credential_access
+    - attack.t1110
+    - attack.t1190
+falsepositives:
+    - None expected
+---
+title: Honeypot RDP Yanal Hareket Denemesi
+id: e5f6a7b8-c9d0-1234-ef01-f10000000005
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: honeypot_rdp
+    condition: selection
+level: critical
+tags:
+    - attack.lateral_movement
+    - attack.t1021.001
+falsepositives:
+    - None expected
+---
+title: Honeypot FTP Servis Taraması
+id: f6a7b8c9-d0e1-2345-fa01-f10000000006
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: honeypot_ftp
+    condition: selection
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1046
+falsepositives:
+    - None expected
+---
+title: Honeypot SNMP Ağ Taraması
+id: a7b8c9d0-e1f2-3456-ab02-f10000000007
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: honeypot_snmp
+    condition: selection
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1046
+    - attack.t1201
+falsepositives:
+    - None expected
+---
+title: Honeypot Hit Baz Kuralı
+name: ng_honeypot_hit_base
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action|startswith: honeypot_
+    condition: selection
+level: low
+---
+title: Honeypot Burst — Aynı Kaynaktan Çoklu Hit
+id: b8c9d0e1-f2a3-4567-bc03-f10000000008
+correlation:
+    type: event_count
+    rules: ng_honeypot_hit_base
+    group-by:
+        - source_ip
+    timespan: 10m
+    condition:
+        gte: 5
+level: critical
+tags:
+    - attack.lateral_movement
+    - attack.t1046
+falsepositives:
+    - None expected
+---
+title: Honeypot Sweep — Çoklu Servis Taraması (Base)
+name: ng_honeypot_sweep_base
+status: stable
+logsource:
+    category: intrusion
+detection:
+    selection:
+        event_action|startswith: honeypot_
+    condition: selection
+level: low
+---
+title: Honeypot Sweep — Çoklu Honeypot Servisi
+id: c9d0e1f2-a3b4-5678-cd04-f10000000009
+correlation:
+    type: event_count
+    rules: ng_honeypot_sweep_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 3
+level: critical
+tags:
+    - attack.reconnaissance
+    - attack.t1046
+falsepositives:
+    - None expected

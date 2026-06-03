@@ -14,10 +14,12 @@ services:
       - NETGUARD_INTERFACE=eth0
       - DATABASE_URL=postgresql://netguard:${POSTGRES_PASSWORD:-netguard_dev}@postgres:5432/netguard
       - ZEEK_LOG_DIR=/zeek-logs
+      - OPENCANARY_LOG_FILE=/opencanary-logs/opencanary.log
     volumes:
       - netguard_data:/data
       - ./config:/app/config:ro
       - zeek_logs:/zeek-logs:ro
+      - opencanary_logs:/opencanary-logs:ro
     ports:
       - "${SYSLOG_PORT:-5140}:5140/udp"
       - "${NETFLOW_PORT:-2055}:2055/udp"
@@ -106,6 +108,36 @@ services:
       retries: 3
       start_period: 10s
 
+  # ── OpenCanary: Honeypot Tuzak (opsiyonel — profil: honeypot) ──────────────
+  opencanary:
+    image: thinkst/opencanary:latest
+    profiles:
+      - honeypot
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - ./config/opencanary/opencanary.conf:/etc/opencanaryd/opencanary.conf:ro
+      - opencanary_logs:/var/log/opencanary
+    ports:
+      - "2000:2000/tcp"
+      - "2100:2100/tcp"
+      - "3000:3000/tcp"
+      - "5000:5000/tcp"
+      - "8001:8001/tcp"
+      - "13000:13000/udp"
+      - "13001:13001/tcp"
+    networks:
+      - netguard_net
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.10"
+          memory: 128M
+
   # ── Zeek: Ağ trafiği analiz motoru ───────────────────────────────
   zeek:
     image: zeek/zeek:lts
@@ -190,3 +222,4 @@ volumes:
   postgres_data:
   zeek_logs:
   ssl_certs:
+  opencanary_logs:

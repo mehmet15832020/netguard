@@ -230,6 +230,19 @@ STAGE_MAP: dict[str, str] = {
     "zeek_dce_rpc_samr_enum":        "recon",       # T1087 account discovery
     "zeek_dce_rpc_policy":           "recon",       # T1082 system discovery
     "zeek_dce_rpc_operation":        "recon",       # generic DCE-RPC
+    # ── OpenCanary honeypot ───────────────────────────────────────────────────
+    "honeypot_ssh":     "weaponize",   # T1110.001 SSH credential brute-force
+    "honeypot_ftp":     "recon",       # T1046 FTP service enumeration
+    "honeypot_http":    "recon",       # T1595 web active scanning
+    "honeypot_smb":     "lateral",     # T1021.002 SMB lateral movement attempt
+    "honeypot_mysql":   "lateral",     # T1190 DB exploit / T1110 brute-force
+    "honeypot_mssql":   "lateral",     # T1190 MSSQL exploit
+    "honeypot_snmp":    "recon",       # T1046 network scan / T1201 SNMP recon
+    "honeypot_rdp":     "lateral",     # T1021.001 RDP lateral movement
+    "honeypot_redis":   "lateral",     # T1190 Redis exploit
+    "honeypot_tftp":    "recon",       # T1046 TFTP recon
+    "honeypot_ntp":     "recon",       # T1046 NTP scanning
+    "honeypot_telnet":  "weaponize",   # T1021 Telnet brute-force
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.

@@ -285,6 +285,9 @@ async def lifespan(app: FastAPI):
     from server.suricata_collector import run_suricata_collector
     suricata_task = asyncio.create_task(run_suricata_collector())
     logger.info("Suricata EVE collector başlatıldı.")
+    from server.opencanary_collector import run_opencanary_collector
+    opencanary_task = asyncio.create_task(run_opencanary_collector())
+    logger.info("OpenCanary honeypot collector başlatıldı.")
     yield
     scan_task.cancel()
     ntp_task.cancel()
@@ -300,6 +303,7 @@ async def lifespan(app: FastAPI):
     beaconing_task.cancel()
     zeek_task.cancel()
     suricata_task.cancel()
+    opencanary_task.cancel()
     syslog.stop()
     trap_receiver.stop()
     netflow_receiver.stop()

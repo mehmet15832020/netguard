@@ -290,11 +290,11 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
   - `dpd.log`: port 443'te non-TLS protokol = C2 tüneli
   - `files.log`: MD5/SHA256 → threat intel çapraz kontrol
   - **Teslim:** `parsers/zeek.py` `parse_weird` (_IGNORE_WEIRDS whitelist 10 giriş, notice→severity, slug→event_action), `parse_dpd` (_SUSPICIOUS_DPD_PORTS/{443,8443,…}, _SUSPICIOUS_DPD_ANALYZERS), `parse_files` (hash zorunlu, missing_bytes guard, local_orig filtresi, _SUSPICIOUS_MIME_TYPES 10 tür, direction out/inbound); `_is_private()` helper (`ipaddress` modülü); `attack_chain.py` STAGE_MAP 20 yeni giriş (weird/dpd/files, T1071/T1190/T1048/T1105/T1572); `zeek_advanced.yml` 14 yeni Sigma kuralı (8 standalone + 6 korelasyon burst); 50 test — toplam test ✓
-- [ ] **N3** — Honeypot (OpenCanary) (3-5 gün) | +4%
+- [x] **N3** — Honeypot (OpenCanary) (3-5 gün) | +4%
   - Docker `thinkst/opencanary` — SSH/HTTP/FTP/SMB/MySQL/MSSQL/Redis/RDP/SNMP taklit
   - İç ağda honeypot bağlantısı = sıfır false positive (MITRE ATT&CK Engage)
   - STAGE_MAP: `honeypot_ssh` → weaponize, `honeypot_smb` → lateral, `honeypot_http` → recon
-  - **Entegrasyon:** `parsers/opencanary.py` + `sigma_rules_v2/honeypot.yml` + `docker-compose.yml` opsiyonel servis
+  - **Teslim:** `shared/models.py` `LogSourceType.OPENCANARY`; `parsers/opencanary.py` (12 logtype parser, credential extraction, UTC parse); `attack_chain.py` STAGE_MAP 12 honeypot girişi (T1110.001/T1046/T1595/T1021.002/T1190/T1021.001/T1572); `config/sigma_rules_v2/opencanary.yml` (7 standalone + 2 burst korelasyon kuralı); `config/opencanary/opencanary.conf` (7 servis aktif: SSH/HTTP/FTP/SMB/MySQL/RDP/SNMP)
 - [x] **N4** — Suricata ET Otomatik Kural Güncelleme (2-3 gün) | +4%
   - **Teslim:** `scripts/suricata-update-cron.sh` (flock, set +e/-e, suricata-update --no-reload, suricatasc reload + USR2 fallback, state JSON); `config/suricata/disable.conf` (FP: games/chat/policy/info/JWT auth); `config/suricata/modify.conf`; systemd timer (03:00 UTC, Persistent=true); cron.d template; `routes/maintenance.py` GET/POST /maintenance/suricata-update/status+trigger (2/hour, audit log); VM'de doğrulandı: 45,343 kural aktif, reload=ok ✓
 - [x] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC (5-7 gün) | +5%

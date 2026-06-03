@@ -232,7 +232,8 @@ class LogSourceType(str, Enum):
     VYOS      = "vyos"       # VyOS iptables/nftables kernel log
     NGINX     = "nginx"      # nginx access/error log
     APACHE    = "apache"     # Apache access/error log
-    NETFLOW   = "netflow"    # NetFlow v5/v9 UDP akış verisi
+    NETFLOW      = "netflow"      # NetFlow v5/v9 UDP akış verisi
+    OPENCANARY   = "opencanary"   # Thinkst OpenCanary honeypot
 
 
 class LogCategory(str, Enum):
