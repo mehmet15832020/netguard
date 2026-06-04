@@ -35,8 +35,16 @@ class MetricSender:
         Sona slash koyma.
         """
         self.server_url = server_url.rstrip("/")
-        self._client = httpx.Client(timeout=CONNECTION_TIMEOUT_SEC, verify=False)
+        self._client = self._make_client()
         logger.info(f"Sender başlatıldı → {self.server_url}")
+
+    @staticmethod
+    def _make_client() -> httpx.Client:
+        return httpx.Client(
+            timeout=httpx.Timeout(connect=5.0, read=None, write=10.0, pool=5.0),
+            verify=False,
+            limits=httpx.Limits(keepalive_expiry=10, max_keepalive_connections=2),
+        )
 
     def register(self, registration: AgentRegistration) -> bool:
         """
@@ -82,10 +90,16 @@ class MetricSender:
                 )
                 return True
 
-            except (httpx.ConnectError, httpx.TimeoutException):
+            except (
+                httpx.ConnectError,
+                httpx.TimeoutException,
+                httpx.RemoteProtocolError,
+                httpx.ReadError,
+            ) as e:
                 logger.warning(
-                    f"Bağlantı hatası (deneme {attempt}/{MAX_RETRY_ATTEMPTS})"
+                    f"Bağlantı hatası (deneme {attempt}/{MAX_RETRY_ATTEMPTS}): {type(e).__name__}"
                 )
+                self._client = self._make_client()
                 if attempt < MAX_RETRY_ATTEMPTS:
                     time.sleep(RETRY_BACKOFF_SEC)
 
