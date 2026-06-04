@@ -527,18 +527,40 @@ OPNsense 26.1.2  (10.0.30.1)  ← aktif yanıt hedefi
 VyOS rolling     (192.168.203.200 / 10.0.30.2)
     ├── DMZ → Alpine WebServer (10.0.10.2)
     └── LAN → Host1, Host2, Kali (192.168.203.132)
-NetGuard Server  (192.168.203.134)
+NetGuard Server  (192.168.203.134)  ← ens3/LAN + ens4/MGMT (172.18.0.134)
 Agent VM         (192.168.203.142)
 ```
 
 ```bash
-ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134        # server
+ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134        # server (birincil)
+ssh -i ~/.ssh/id_ed25519 netguard@172.18.0.134           # server (yedek MGMT)
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.142        # agent
 ssh vyos@192.168.203.200                                  # VyOS (vyos/vyos)
 ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense (root/netguard123)
+# VNC konsol: localhost:5901 (şifre: netguard123)
 ```
 
-**Doğrulanan senaryolar:** Reboot otomasyon ✅ · SSH brute force → WEAPONIZE ✅ · Port scan → RECON ✅ · RECON+WEAPONIZE+ACCESS → FULL_ATTACK_CHAIN + email ✅
+### GNS3 Lab Ağ Mimarisi (QEMU/KVM, VMware bağımlılığı yok)
+
+```
+Host (192.168.203.1 / vmnet8)                    Host (172.18.0.1 / br-44b4e83253ed)
+        │ [route + proxy-ARP]                              │ [gns3tap1-0]
+        ▼                                                  ▼
+  LAN-Switch (GNS3 internal)              MGMT-Bridge (br-44b4e83253ed cloud node)
+        │                                                  │
+   NetGuard ens3 (192.168.203.134)    NetGuard ens4 (172.18.0.134)
+```
+
+**Startup sonrası zorunlu komutlar** (GNS3 restart / host reboot sonrası):
+```bash
+# 1. MGMT-Bridge ubridge fix (otomatik: systemd user service gns3-mgmt-fix)
+~/fix-gns3-mgmt-bridge.sh
+
+# 2. Host route (otomatik: systemd user service gns3-host-routes)
+sudo ip route replace 192.168.203.134/32 dev br-44b4e83253ed
+```
+
+**Doğrulanan senaryolar:** Reboot otomasyon ✅ · SSH brute force → WEAPONIZE ✅ · Port scan → RECON ✅ · RECON+WEAPONIZE+ACCESS → FULL_ATTACK_CHAIN + email ✅ · GNS3 QEMU migration ✅
 
 ---
 
