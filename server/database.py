@@ -1918,24 +1918,29 @@ class DatabaseManager:
 
     def save_audit_event(self, actor: str, action: str, resource: str, detail: str = "", ip_address: str = "") -> None:
         import hashlib
+        from server.crypto import encrypt
         event_id = str(_uuid_mod.uuid4())
         now = datetime.now(timezone.utc).isoformat()
+        detail_plain = detail or ""
+        ip_plain = ip_address or ""
         with self._connect() as conn:
             conn.execute("SELECT pg_advisory_xact_lock(%s)", (_AUDIT_CHAIN_LOCK_ID,))
             row = conn.execute(
                 "SELECT entry_hash FROM audit_log WHERE entry_hash IS NOT NULL ORDER BY id DESC LIMIT 1"
             ).fetchone()
             previous_hash = row["entry_hash"] if row else _AUDIT_CHAIN_GENESIS
-            content = _audit_content(event_id, actor, action, resource, detail or "", ip_address or "", now, previous_hash)
+            # Hash computed on plaintext — chain integrity preserved regardless of encryption
+            content = _audit_content(event_id, actor, action, resource, detail_plain, ip_plain, now, previous_hash)
             entry_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
             conn.execute(
                 "INSERT INTO audit_log "
                 "(event_id, actor, action, resource, detail, ip_address, timestamp, previous_hash, entry_hash) "
                 "VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)",
-                (event_id, actor, action, resource, detail, ip_address, now, previous_hash, entry_hash),
+                (event_id, actor, action, resource, encrypt(detail_plain), encrypt(ip_plain), now, previous_hash, entry_hash),
             )
 
     def get_audit_log(self, limit: int = 100, actor: str = "") -> list[dict]:
+        from server.crypto import decrypt
         with self._connect() as conn:
             if actor:
                 rows = conn.execute(
@@ -1946,11 +1951,18 @@ class DatabaseManager:
                 rows = conn.execute(
                     "SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT %s", (limit,)
                 ).fetchall()
-        return [dict(r) for r in rows]
+        result = []
+        for row in rows:
+            r = dict(row)
+            r["detail"] = decrypt(r.get("detail"))
+            r["ip_address"] = decrypt(r.get("ip_address"))
+            result.append(r)
+        return result
 
     def verify_audit_chain(self) -> dict:
         """SHA-256 hash zincirini baştan sona doğrula. NIST SP 800-92 §3.2."""
         import hashlib
+        from server.crypto import decrypt
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT id, event_id, actor, action, resource, detail, ip_address, "
@@ -1978,9 +1990,12 @@ class DatabaseManager:
                 }
             ts = row["timestamp"]
             ts_str = ts.astimezone(timezone.utc).isoformat() if hasattr(ts, "astimezone") else str(ts)
+            # Decrypt before hashing — hash was computed on plaintext at write time
+            detail_plain = decrypt(row["detail"]) or ""
+            ip_plain = decrypt(row["ip_address"]) or ""
             content = _audit_content(
                 row["event_id"], row["actor"], row["action"], row["resource"],
-                row["detail"] or "", row["ip_address"] or "", ts_str, previous_hash,
+                detail_plain, ip_plain, ts_str, previous_hash,
             )
             computed = hashlib.sha256(content.encode("utf-8")).hexdigest()
             if computed != entry_hash:
