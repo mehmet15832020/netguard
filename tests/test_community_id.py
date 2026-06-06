@@ -247,6 +247,14 @@ class TestNetflowCommunityId:
         assert a == b
         assert a is not None
 
+    def test_community_id_bidirectional(self):
+        """A→B ve B→A yönleri aynı community_id üretmeli (Corelight spec: cross-source pivot garantisi)."""
+        from server.parsers.netflow import _community_id
+        forward  = _community_id(6, "192.168.1.10", "10.0.0.1", 54321, 80)
+        backward = _community_id(6, "10.0.0.1", "192.168.1.10", 80, 54321)
+        assert forward is not None
+        assert forward == backward
+
 
 # ─── NormalizedLog modeli ─────────────────────────────────────────────────────
 
