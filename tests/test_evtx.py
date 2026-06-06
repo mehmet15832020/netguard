@@ -79,6 +79,32 @@ class TestParseRecordXml:
         assert result["username"] == "administrator"
         assert "cmd.exe" in result["message"]
 
+    def test_4648_explicit_logon_local_no_ip(self):
+        xml = _make_xml(4648, SubjectUserName="SYSTEM", AccountName="admin",
+                        ServerName="localhost", ProcessName="C:\\Windows\\System32\\svchost.exe",
+                        IpAddress="-")
+        result = _parse_record_xml(xml)
+        assert result is not None
+        assert result["event_action"] == "windows_explicit_logon"
+        assert result["source_ip"] is None
+
+    def test_4648_explicit_logon_remote_has_ip(self):
+        xml = _make_xml(4648, SubjectUserName="attacker", AccountName="Administrator",
+                        ServerName="DC01", ProcessName="C:\\Windows\\System32\\cmd.exe",
+                        IpAddress="10.20.0.50")
+        result = _parse_record_xml(xml)
+        assert result is not None
+        assert result["event_action"] == "windows_explicit_logon"
+        assert result["source_ip"] == "10.20.0.50"
+
+    def test_4648_explicit_logon_loopback_no_ip(self):
+        xml = _make_xml(4648, SubjectUserName="svc", AccountName="admin",
+                        ServerName="localhost", ProcessName="C:\\Windows\\System32\\lsass.exe",
+                        IpAddress="::1")
+        result = _parse_record_xml(xml)
+        assert result is not None
+        assert result["source_ip"] is None
+
     def test_unknown_event_id_ignored(self):
         xml = _make_xml(9999)  # Desteklenmeyen EID
         result = _parse_record_xml(xml)

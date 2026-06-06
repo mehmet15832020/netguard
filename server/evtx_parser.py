@@ -223,11 +223,12 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         tgt_user  = _get_data(root, "AccountName")
         server    = _get_data(root, "ServerName")
         process   = _get_data(root, "ProcessName")
+        source_ip = _clean_ip(_get_data(root, "IpAddress"))
         return {
             "event_action":      event_action,
             "severity":          "warning",
             "username":          subj_user,
-            "source_ip":         None,
+            "source_ip":         source_ip,
             "observer_hostname": computer,
             "message":           f"Explicit logon: {subj_user} → {tgt_user}@{server} via {process}",
             "raw_data":          f"EID=4648 subj={subj_user} tgt={tgt_user} server={server}"[:500],

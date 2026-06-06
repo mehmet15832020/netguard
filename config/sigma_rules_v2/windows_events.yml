@@ -67,11 +67,22 @@ detection:
     condition: selection
 level: low
 ---
+title: Windows Lateral Logon Base
+name: ng_win_lateral_logon_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: windows_lateral_logon
+    condition: selection
+level: low
+---
 title: Windows Pass-the-Hash
 id: b8c9d0e1-f2a3-4567-bcd2-678901234567
 correlation:
     type: event_count
-    rules: ng_win_logon_success_base
+    rules: ng_win_lateral_logon_base
     group-by:
         - source_ip
     timespan: 2m
@@ -90,7 +101,7 @@ title: Windows Lateral Movement
 id: c9d0e1f2-a3b4-5678-cde3-789012345678
 correlation:
     type: event_count
-    rules: ng_win_logon_success_base
+    rules: ng_win_lateral_logon_base
     group-by:
         - source_ip
     timespan: 10m
@@ -815,17 +826,6 @@ tags:
     - attack.t1218
 falsepositives:
     - High-throughput IPC applications
----
-title: Windows Lateral Logon Base
-name: ng_win_lateral_logon_base
-status: stable
-logsource:
-    category: authentication
-detection:
-    selection:
-        event_action: windows_lateral_logon
-    condition: selection
-level: low
 ---
 title: Windows Lateral Logon Burst — Pass-the-Hash
 id: f2a3b4c5-d6e7-8901-fa07-462400000001
