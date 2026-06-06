@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 BASELINE_WINDOW_DAYS    = 7     # Kaç günlük geçmişten profil hesaplanır
 DEVIATION_WINDOW_HOURS  = 1     # Kaç saatlik mevcut pencere (sapma tespiti)
 TOP_N                   = 5     # Kaç tipik değer saklanır
-MIN_EVENTS_FOR_BASELINE = 10    # Profil oluşturmak için minimum olay sayısı
-TRAFFIC_SPIKE_FACTOR    = 3.0   # avg * 3x → uyarı
+MIN_EVENTS_FOR_BASELINE       = 10   # Profil oluşturmak için minimum olay sayısı
+MIN_SAMPLE_HOURS_FOR_DEVIATION = 1   # Sapma tespiti için minimum distinct saat
+TRAFFIC_SPIKE_FACTOR           = 3.0  # avg * 3x → uyarı
 
 _VALID_COLUMNS = frozenset({"destination_port", "destination_ip", "event_action", "network_protocol"})
 
@@ -95,7 +96,7 @@ def check_deviations(tenant_id: str = "default") -> int:
         if not bl:
             continue
 
-        if bl["sample_hours"] < MIN_EVENTS_FOR_BASELINE:
+        if bl["sample_hours"] < MIN_SAMPLE_HOURS_FOR_DEVIATION:
             continue
 
         # Trafik spike
