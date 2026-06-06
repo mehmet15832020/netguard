@@ -68,6 +68,26 @@ def list_normalized_logs(
     return {"count": len(logs), "logs": logs}
 
 
+@router.get("/logs/by-community-id/{community_id:path}")
+@limiter.limit("30/minute", key_func=_auth_key)
+def get_logs_by_community_id(
+    community_id: str,
+    request: Request,
+    response: Response,
+    hours: int = Query(default=24, ge=1, le=168),
+    current_user: User = Depends(get_current_user),
+):
+    """Community ID üzerinden cross-source pivot — aynı TCP bağlantısına ait Zeek/Suricata/NetFlow kayıtları."""
+    if len(community_id) > 60 or not community_id.startswith("1:"):
+        raise HTTPException(status_code=400, detail="Geçersiz Community ID formatı")
+    logs = db.get_logs_by_community_id(
+        community_id=community_id,
+        tenant_id=tenant_scope(current_user),
+        hours=hours,
+    )
+    return {"community_id": community_id, "hours": hours, "count": len(logs), "logs": logs}
+
+
 @router.get("/logs/search")
 @limiter.limit("30/minute", key_func=_auth_key)
 def search_logs(

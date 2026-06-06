@@ -156,6 +156,7 @@ def parse_dns(row: dict) -> Optional[NormalizedLog]:
         network_protocol=row.get("proto", "udp"),
         message=message,
         tags=["zeek", "dns"],
+        community_id=row.get("community_id"),
     )
 
 
@@ -202,6 +203,7 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
         message=f"HTTP {method} {host}{uri} → {status_int or '-'}",
         tags=["zeek", "http"],
         network_bytes=resp_body_len or None,
+        community_id=row.get("community_id"),
     )
 
 
@@ -247,6 +249,7 @@ def parse_conn(row: dict) -> Optional[NormalizedLog]:
         ),
         tags=["zeek", "conn"],
         network_bytes=total_bytes or None,
+        community_id=row.get("community_id"),
     )
 
 
@@ -290,6 +293,7 @@ def parse_ssh(row: dict) -> Optional[NormalizedLog]:
         network_protocol="tcp",
         message=f"SSH {event_action} {row.get('id.orig_h')} {label}{detail}",
         tags=["zeek", "ssh"],
+        community_id=row.get("community_id"),
     )
 
 
@@ -325,6 +329,7 @@ def parse_notice(row: dict) -> Optional[NormalizedLog]:
         network_protocol=row.get("proto"),
         message=f"Zeek Notice [{note}]: {msg}",
         tags=["zeek", "notice"],
+        community_id=row.get("community_id"),
     )
 
 
@@ -488,6 +493,7 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         message=" ".join(msg_parts),
         extra=extra,
         tags=tags,
+        community_id=row.get("community_id"),
     )
 
 
@@ -537,6 +543,7 @@ def parse_x509(row: dict) -> Optional[NormalizedLog]:
             "self_signed": self_signed,
         },
         tags=["zeek", "x509"] + (["self_signed"] if self_signed else []),
+        community_id=row.get("community_id"),
     )
 
 
@@ -574,6 +581,7 @@ def parse_smtp(row: dict) -> Optional[NormalizedLog]:
         message=f"SMTP from={mailfrom} to={rcptto_str}" + (f" subj={subject[:60]}" if subject else ""),
         extra={"mailfrom": mailfrom, "rcptto": rcptto_str, "subject": subject},
         tags=["zeek", "smtp"],
+        community_id=row.get("community_id"),
     )
 
 
@@ -623,6 +631,7 @@ def parse_ftp(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         extra={"command": command, "arg": arg, "user": user, "reply_code": code},
         tags=["zeek", "ftp"] + (["ftp_sensitive"] if command.upper() in _SENSITIVE else []),
+        community_id=row.get("community_id"),
     )
 
 
@@ -670,6 +679,7 @@ def parse_weird(row: dict) -> Optional[NormalizedLog]:
         network_protocol=row.get("proto", "tcp"),
         message=msg,
         tags=["zeek", "weird", slug],
+        community_id=row.get("community_id"),
     )
 
 
@@ -714,6 +724,7 @@ def parse_dpd(row: dict) -> Optional[NormalizedLog]:
         network_protocol=(row.get("proto") or "tcp"),
         message=msg,
         tags=["zeek", "dpd", slug],
+        community_id=row.get("community_id"),
     )
 
 
@@ -852,6 +863,7 @@ def parse_files(row: dict) -> Optional[NormalizedLog]:
             "md5":        md5,
         },
         tags=["zeek", "files", direction] + (["suspicious_mime"] if is_suspicious else []),
+        community_id=row.get("community_id"),
     )
 
 
@@ -926,6 +938,7 @@ def parse_rdp(row: dict) -> Optional[NormalizedLog]:
             "security_protocol": security_proto,
         },
         tags=["zeek", "rdp"] + (["no_cert"] if cert_count == 0 else []),
+        community_id=row.get("community_id"),
     )
 
 
@@ -1041,6 +1054,7 @@ def parse_kerberos(row: dict) -> Optional[NormalizedLog]:
             "ticket_duration_s": ticket_duration,
         },
         tags=tags,
+        community_id=row.get("community_id"),
     )
 
 
@@ -1140,6 +1154,7 @@ def parse_smb_files(row: dict) -> Optional[NormalizedLog]:
             "is_admin_share": is_admin_share,
         },
         tags=tags,
+        community_id=row.get("community_id"),
     )
 
 
@@ -1196,4 +1211,5 @@ def parse_dce_rpc(row: dict) -> Optional[NormalizedLog]:
             "rtt":         rtt,
         },
         tags=tags,
+        community_id=row.get("community_id"),
     )

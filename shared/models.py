@@ -295,6 +295,7 @@ class NormalizedLog(BaseModel):
     tags: list[str] = Field(default_factory=list, description="Ek etiketler")
     extra: dict = Field(default_factory=dict, description="Kaynağa özgü ek alanlar")
     network_bytes: Optional[int] = None
+    community_id: Optional[str] = None
     processed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

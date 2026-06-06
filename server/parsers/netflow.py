@@ -15,7 +15,19 @@ import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
+import communityid as _cid_mod
+
 from shared.models import LogCategory, LogSourceType, NormalizedLog
+
+_CID = _cid_mod.CommunityID()
+
+
+def _community_id(proto_num: int, src_ip: str, dst_ip: str, src_port: int, dst_port: int) -> Optional[str]:
+    try:
+        tpl = _cid_mod.FlowTuple(proto_num, src_ip, dst_ip, src_port, dst_port)
+        return _CID.calc(tpl)
+    except Exception:
+        return None
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +118,7 @@ def _make_log(
         tags        = [proto, f"dst:{destination_port}"],
         extra       = {**extra, "packets": packets, "bytes": octets},
         network_bytes = octets or None,
+        community_id  = _community_id(proto_num, source_ip, destination_ip, source_port, destination_port),
     )
 
 
@@ -510,6 +523,7 @@ def _ipfix_parse_data(
                 "packets":        packets,
                 "protocol_number": proto_n,
             },
+            community_id = _community_id(proto_n, str(src_ip), str(dst_ip), src_port or 0, dst_port or 0),
         ))
 
     return results
@@ -635,6 +649,7 @@ def _sflow_parse_flow_sample(payload: bytes, agent_ip: str, observer_hostname: s
                             "tcp_flags":  tcp_flags,
                             "tos":        tos,
                         },
+                        community_id = _community_id(proto, src_ip, dst_ip, src_port or 0, dst_port or 0),
                     ))
             except struct.error:
                 pass

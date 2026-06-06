@@ -148,6 +148,7 @@ def parse_alert(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         tags=tags,
         extra={"sid": sid, "category": category, "action": action, "priority": priority},
+        community_id=row.get("community_id"),
     )
 
 
@@ -187,6 +188,7 @@ def parse_dns(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         tags=["suricata", "dns"],
         extra={"rrtype": rrtype, "rcode": rcode, "dns_type": dtype},
+        community_id=row.get("community_id"),
     )
 
 
@@ -237,6 +239,7 @@ def parse_http(row: dict) -> Optional[NormalizedLog]:
         extra={"method": method, "status": status, "length": length,
                "hostname": hostname, "user_agent": user_agent[:200]},
         network_bytes=length or None,
+        community_id=row.get("community_id"),
     )
 
 
@@ -319,6 +322,7 @@ def parse_tls(row: dict) -> Optional[NormalizedLog]:
               + (["suspicious_fingerprint"] if event_action == "tls_suspicious_fingerprint" else [])
               + (["tls_anomaly"] if event_action == "suricata_tls_anomaly" else [])),
         extra={"sni": sni, "ja3": ja3_hash, "ja4": ja4_hash, "version": version},
+        community_id=row.get("community_id"),
     )
 
 
@@ -363,6 +367,7 @@ def parse_flow(row: dict) -> Optional[NormalizedLog]:
                "pkts_toserver": pkts_ts, "pkts_toclient": pkts_tc,
                "state": state, "reason": reason, "app_proto": app_proto},
         network_bytes=total_bytes or None,
+        community_id=row.get("community_id"),
     )
 
 
@@ -398,6 +403,7 @@ def parse_smtp(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         tags=["suricata", "smtp"],
         extra={"mail_from": mail_from, "rcpt_to": rcpt_to, "helo": helo},
+        community_id=row.get("community_id"),
     )
 
 
@@ -442,6 +448,7 @@ def parse_fileinfo(row: dict) -> Optional[NormalizedLog]:
         tags=["suricata", "fileinfo"],
         extra={"filename": filename, "magic": magic, "md5": md5, "size": size, "state": state},
         network_bytes=size or None,
+        community_id=row.get("community_id"),
     )
 
 
@@ -486,6 +493,7 @@ def parse_ssh(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         tags=["suricata", "ssh"] + (["suspicious_client"] if suspicious else []),
         extra={"client_sw": c_sw, "proto_version": c_proto, "server_sw": s_sw},
+        community_id=row.get("community_id"),
     )
 
 
@@ -520,6 +528,7 @@ def parse_anomaly(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         tags=["suricata", "anomaly"],
         extra={"type": atype, "event": event, "layer": layer},
+        community_id=row.get("community_id"),
     )
 
 

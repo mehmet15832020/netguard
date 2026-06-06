@@ -377,8 +377,9 @@ class DatabaseManager:
                      received_at, severity, event_category, event_action,
                      source_ip, destination_ip, source_hostname, destination_hostname,
                      source_port, destination_port, network_protocol,
-                     username, message, tags, extra, network_bytes, processed_at, tenant_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     username, message, tags, extra, network_bytes, community_id,
+                     processed_at, tenant_id)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                 ON CONFLICT (log_id, received_at) DO NOTHING
             """, (
                 log.log_id,
@@ -402,6 +403,7 @@ class DatabaseManager:
                 json.dumps(log.tags),
                 json.dumps(log.extra),
                 log.network_bytes,
+                log.community_id,
                 log.processed_at,
                 tenant_id,
             ))
@@ -421,6 +423,28 @@ class DatabaseManager:
                 logger.debug("update_log_hostnames: log_id bulunamadı: %s", log_id)
                 return False
             return True
+
+    def get_logs_by_community_id(
+        self,
+        community_id: str,
+        tenant_id: str = "default",
+        hours: int = 24,
+    ) -> list[dict]:
+        since = _now() - timedelta(hours=hours)
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT log_id, source_type, observer_hostname, timestamp, severity,
+                       event_category, event_action, source_ip, destination_ip,
+                       source_port, destination_port, network_protocol,
+                       message, tags, community_id
+                FROM normalized_logs
+                WHERE community_id = %s
+                  AND tenant_id = %s
+                  AND received_at >= %s
+                ORDER BY timestamp DESC
+                LIMIT 200
+            """, (community_id, tenant_id, since)).fetchall()
+        return [dict(r) for r in rows]
 
     def get_normalized_logs(
         self,
