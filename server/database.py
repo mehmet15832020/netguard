@@ -448,6 +448,31 @@ class DatabaseManager:
         results = [dict(r) for r in rows]
         return {"logs": results, "truncated": len(results) == limit}
 
+    def get_event_context_logs(
+        self,
+        ip: str,
+        since: datetime,
+        until: datetime,
+        tenant_id: str = "default",
+        limit: int = 500,
+    ) -> dict:
+        with self._connect() as conn:
+            rows = conn.execute("""
+                SELECT log_id, source_type, observer_hostname, timestamp, severity,
+                       event_category, event_action, source_ip, destination_ip,
+                       source_port, destination_port, network_protocol,
+                       message, tags, community_id
+                FROM normalized_logs
+                WHERE (source_ip = %s OR destination_ip = %s)
+                  AND tenant_id = %s
+                  AND timestamp >= %s
+                  AND timestamp <= %s
+                ORDER BY timestamp ASC
+                LIMIT %s
+            """, (ip, ip, tenant_id, since, until, limit)).fetchall()
+        results = [dict(r) for r in rows]
+        return {"logs": results, "truncated": len(results) == limit}
+
     def get_normalized_logs(
         self,
         source_type: Optional[str] = None,

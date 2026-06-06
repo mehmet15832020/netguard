@@ -186,6 +186,72 @@ def _is_ip(value: str) -> bool:
         return False
 
 
+@router.get("/correlation/events/{corr_id}/context")
+@limiter.limit("30/minute", key_func=_auth_key)
+def get_event_context(
+    request: Request,
+    response: Response,
+    corr_id: str,
+    window_minutes: int = 5,
+    current_user: User = Depends(get_current_user),
+):
+    """Alert bağlam pivot: aynı IP + zaman diliminden Zeek/Suricata/NetFlow kayıtları."""
+    from datetime import timedelta
+    if window_minutes < 1 or window_minutes > 60:
+        raise HTTPException(status_code=400, detail="window_minutes 1-60 arasında olmalı")
+
+    scope = tenant_scope(current_user)
+    tid = scope or "default"
+
+    event = db.get_correlated_event_by_id(corr_id, tenant_id=scope)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Olay bulunamadı")
+
+    if not _is_ip(event.group_value):
+        return {
+            "corr_id": corr_id,
+            "pivot_ip": None,
+            "window_minutes": window_minutes,
+            "logs_by_source": {},
+            "community_ids": [],
+            "truncated": False,
+            "message": "IP tabanlı korelasyon değil — bağlam pivot desteklenmiyor",
+        }
+
+    delta = timedelta(minutes=window_minutes)
+    since = event.first_seen - delta
+    until = event.last_seen + delta
+
+    result = db.get_event_context_logs(
+        ip=event.group_value,
+        since=since,
+        until=until,
+        tenant_id=tid,
+    )
+    logs = result["logs"]
+
+    logs_by_source: dict[str, list] = {}
+    community_ids: set[str] = set()
+    for log in logs:
+        src = (log.get("source_type") or "unknown").lower()
+        logs_by_source.setdefault(src, []).append(log)
+        cid = log.get("community_id")
+        if cid:
+            community_ids.add(cid)
+
+    return {
+        "corr_id": corr_id,
+        "pivot_ip": event.group_value,
+        "window_minutes": window_minutes,
+        "first_seen": event.first_seen,
+        "last_seen": event.last_seen,
+        "logs_by_source": logs_by_source,
+        "community_ids": sorted(community_ids),
+        "total_logs": len(logs),
+        "truncated": result["truncated"],
+    }
+
+
 @router.get("/correlation/events")
 def list_correlated_events(
     rule_id: str = None,
