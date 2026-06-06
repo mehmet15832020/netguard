@@ -44,7 +44,7 @@ _VALID_GROUP_COLS: frozenset[str] = frozenset({
 _VALID_COUNT_EXPRS: frozenset[str] = frozenset(
     {"COUNT(*)"} | {f"COUNT(DISTINCT {col})" for col in _VALID_GROUP_COLS}
 )
-_VALID_TOP_VALUE_COLS: frozenset[str] = frozenset({"destination_port", "destination_ip", "event_action"})
+_VALID_TOP_VALUE_COLS: frozenset[str] = frozenset({"destination_port", "destination_ip", "event_action", "network_protocol"})
 _RETENTION_ALLOWED: dict[str, str] = {
     "normalized_logs":   "timestamp",
     "raw_logs":          "received_at",
@@ -680,6 +680,32 @@ class DatabaseManager:
             ).fetchall()
         return [dict(r) for r in rows]
 
+    def get_distinct_values_by_ip(
+        self,
+        source_ip: str,
+        column: str,
+        since: datetime,
+        tenant_id: str,
+        limit: int = 50,
+    ) -> list[str]:
+        """source_ip için bir kolondaki distinct değerler — C3 yeni port/protokol tespiti."""
+        if column not in _VALID_TOP_VALUE_COLS:
+            raise ValueError(f"get_distinct_values_by_ip: geçersiz column '{column}'")
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT DISTINCT {column} AS val
+                FROM normalized_logs
+                WHERE source_ip = %s
+                  AND {column} IS NOT NULL
+                  AND timestamp >= %s
+                  AND tenant_id = %s
+                LIMIT %s
+                """,
+                (source_ip, since, tenant_id, limit),
+            ).fetchall()
+        return [str(r["val"]) for r in rows]
+
     def query_correlated_log_groups(
         self,
         event_action_prefix: str,
@@ -1233,20 +1259,22 @@ class DatabaseManager:
         typical_destinations: list,
         typical_event_actions: list,
         sample_hours: int,
+        typical_protocols: list | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO asset_baselines
                    (source_ip, tenant_id, first_seen_at, last_seen_at,
                     avg_events_per_hour, typical_ports, typical_destinations,
-                    typical_event_actions, sample_hours, updated_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    typical_event_actions, typical_protocols, sample_hours, updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (source_ip, tenant_id) DO UPDATE SET
                        last_seen_at          = EXCLUDED.last_seen_at,
                        avg_events_per_hour   = EXCLUDED.avg_events_per_hour,
                        typical_ports         = EXCLUDED.typical_ports,
                        typical_destinations  = EXCLUDED.typical_destinations,
                        typical_event_actions = EXCLUDED.typical_event_actions,
+                       typical_protocols     = EXCLUDED.typical_protocols,
                        sample_hours          = EXCLUDED.sample_hours,
                        updated_at            = EXCLUDED.updated_at""",
                 (
@@ -1255,6 +1283,7 @@ class DatabaseManager:
                     json.dumps(typical_ports),
                     json.dumps(typical_destinations),
                     json.dumps(typical_event_actions),
+                    json.dumps(typical_protocols or []),
                     sample_hours, _now(),
                 ),
             )
@@ -1275,6 +1304,7 @@ class DatabaseManager:
                 "typical_ports":         json.loads(r["typical_ports"] or "[]"),
                 "typical_destinations":  json.loads(r["typical_destinations"] or "[]"),
                 "typical_event_actions": json.loads(r["typical_event_actions"] or "[]"),
+                "typical_protocols":     json.loads(r.get("typical_protocols") or "[]"),
                 "sample_hours":          r["sample_hours"],
                 "updated_at":            r["updated_at"].isoformat() if r["updated_at"] else None,
             }
@@ -1297,6 +1327,7 @@ class DatabaseManager:
             "typical_ports":         json.loads(row["typical_ports"] or "[]"),
             "typical_destinations":  json.loads(row["typical_destinations"] or "[]"),
             "typical_event_actions": json.loads(row["typical_event_actions"] or "[]"),
+            "typical_protocols":     json.loads(row.get("typical_protocols") or "[]"),
             "sample_hours":          row["sample_hours"],
             "updated_at":            row["updated_at"].isoformat() if row["updated_at"] else None,
         }

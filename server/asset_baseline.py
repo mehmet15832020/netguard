@@ -23,7 +23,7 @@ TOP_N                   = 5     # Kaç tipik değer saklanır
 MIN_EVENTS_FOR_BASELINE = 10    # Profil oluşturmak için minimum olay sayısı
 TRAFFIC_SPIKE_FACTOR    = 3.0   # avg * 3x → uyarı
 
-_VALID_COLUMNS = frozenset({"destination_port", "destination_ip", "event_action"})
+_VALID_COLUMNS = frozenset({"destination_port", "destination_ip", "event_action", "network_protocol"})
 
 
 def update_baselines(tenant_id: str = "default") -> int:
@@ -42,20 +42,22 @@ def update_baselines(tenant_id: str = "default") -> int:
         hours    = max(row["distinct_hours"], 1)
         avg_ph   = round(total / hours, 2)
 
-        ports   = _top_values(ip, "destination_port", since_dt, tenant_id)
-        dests   = _top_values(ip, "destination_ip",   since_dt, tenant_id)
-        actions = _top_values(ip, "event_action",     since_dt, tenant_id)
+        ports     = _top_values(ip, "destination_port", since_dt, tenant_id)
+        dests     = _top_values(ip, "destination_ip",   since_dt, tenant_id)
+        actions   = _top_values(ip, "event_action",     since_dt, tenant_id)
+        protocols = _top_values(ip, "network_protocol", since_dt, tenant_id)
 
         db.upsert_asset_baseline(
-            source_ip            = ip,
-            tenant_id            = tenant_id,
-            first_seen_at        = row["first_seen"],
-            last_seen_at         = row["last_seen"],
-            avg_events_per_hour  = avg_ph,
-            typical_ports        = ports,
-            typical_destinations = dests,
-            typical_event_actions= actions,
-            sample_hours         = hours,
+            source_ip             = ip,
+            tenant_id             = tenant_id,
+            first_seen_at         = row["first_seen"],
+            last_seen_at          = row["last_seen"],
+            avg_events_per_hour   = avg_ph,
+            typical_ports         = ports,
+            typical_destinations  = dests,
+            typical_event_actions = actions,
+            typical_protocols     = protocols,
+            sample_hours          = hours,
         )
         updated += 1
 
@@ -92,10 +94,13 @@ def check_deviations(tenant_id: str = "default") -> int:
         bl    = baselines.get(ip)
         if not bl:
             continue
-        avg = bl["avg_events_per_hour"]
-        if avg < 1:
+
+        if bl["sample_hours"] < MIN_EVENTS_FOR_BASELINE:
             continue
-        if count > avg * TRAFFIC_SPIKE_FACTOR:
+
+        # Trafik spike
+        avg = bl["avg_events_per_hour"]
+        if avg >= 1 and count > avg * TRAFFIC_SPIKE_FACTOR:
             _write_anomaly(
                 source_ip    = ip,
                 event_action = "asset_anomaly_detected",
@@ -103,10 +108,46 @@ def check_deviations(tenant_id: str = "default") -> int:
                     f"Trafik spike: {ip} — son 1s içinde {count} olay, "
                     f"baseline ort. {avg:.1f}/saat (eşik: {TRAFFIC_SPIKE_FACTOR}x)"
                 ),
-                severity     = "warning",
-                tenant_id    = tenant_id,
+                severity  = "warning",
+                tenant_id = tenant_id,
             )
             detected += 1
+
+        # Yeni port tespiti
+        if bl["typical_ports"]:
+            known_ports = set(bl["typical_ports"])
+            current_ports = db.get_distinct_values_by_ip(ip, "destination_port", since_dt, tenant_id)
+            for port in current_ports:
+                if port not in known_ports:
+                    _write_anomaly(
+                        source_ip    = ip,
+                        event_action = "new_port_detected",
+                        message      = (
+                            f"Yeni port: {ip} → port {port} baseline'da görülmemiş "
+                            f"(bilinen portlar: {', '.join(sorted(known_ports)[:5])})"
+                        ),
+                        severity  = "warning",
+                        tenant_id = tenant_id,
+                    )
+                    detected += 1
+
+        # Yeni protokol tespiti
+        if bl["typical_protocols"]:
+            known_protos = set(bl["typical_protocols"])
+            current_protos = db.get_distinct_values_by_ip(ip, "network_protocol", since_dt, tenant_id)
+            for proto in current_protos:
+                if proto not in known_protos:
+                    _write_anomaly(
+                        source_ip    = ip,
+                        event_action = "new_protocol_detected",
+                        message      = (
+                            f"Yeni protokol: {ip} → {proto} baseline'da görülmemiş "
+                            f"(bilinen protokoller: {', '.join(sorted(known_protos)[:5])})"
+                        ),
+                        severity  = "warning",
+                        tenant_id = tenant_id,
+                    )
+                    detected += 1
 
     if detected:
         logger.warning("Asset sapma tespit edildi: %d IP, tenant=%s", detected, tenant_id)

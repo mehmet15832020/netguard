@@ -229,10 +229,8 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] **C2** — Alert → bağlam pivot workflow — 12 test ✓
   - **Teslim:** `get_event_context_logs()`, `GET /api/v1/correlation/events/{id}/context`, Correlation sayfasında ContextPanel (kaynak sekmeleri + CID pivot)
 
-- [ ] **C3** — Network behavioral baseline genişletme (3-4 gün)
-  - Mevcut `asset_baseline.py` per-IP Welford sadece trafik hacmini izliyor
-  - Port/protokol/peer profil ekleme: "Bu IP daha önce hiç SMB kullanmadı" anomali tespiti
-  - NIST SP 800-94 §4.1: behavioral profiling zorunlu bileşen
+- [x] **C3** — Network behavioral baseline genişletme — 15 test ✓
+  - **Teslim:** Alembic 019 `typical_protocols`, `get_distinct_values_by_ip()`, `new_port_detected` + `new_protocol_detected` anomali tespiti (NIST SP 800-94 §4.1)
 
 - [ ] **C4** — Sensor sağlık metrikleri (1-2 gün)
   - Zeek paket kaybı (`zeek_stats.log`), Suricata capture_kernel_drops, arayüz ring buffer doluluk
