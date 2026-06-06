@@ -226,10 +226,8 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
     - Frontend: Alert detay → Community ID göster + pivot butonu (aynı akışın Zeek/Suricata/NetFlow kayıtları)
   - **Beklenen:** ~25-30 test
 
-- [ ] **C2** — Alert → bağlam pivot workflow (2-3 gün) — Bağımlılık: C1
-  - Alert detay sayfasından, aynı zaman dilimine ait tüm Zeek/Suricata/NetFlow kayıtları
-  - `GET /api/v1/correlation/events/{id}/context` → Community ID + IP + zaman bazlı sorgular
-  - Frontend: Correlation sayfasında "Bağlam" yan paneli
+- [x] **C2** — Alert → bağlam pivot workflow — 12 test ✓
+  - **Teslim:** `get_event_context_logs()`, `GET /api/v1/correlation/events/{id}/context`, Correlation sayfasında ContextPanel (kaynak sekmeleri + CID pivot)
 
 - [ ] **C3** — Network behavioral baseline genişletme (3-4 gün)
   - Mevcut `asset_baseline.py` per-IP Welford sadece trafik hacmini izliyor

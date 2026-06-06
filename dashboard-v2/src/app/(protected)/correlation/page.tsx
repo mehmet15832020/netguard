@@ -1,10 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { GitMerge, Play, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Circle, Sparkles, X } from 'lucide-react'
+import { GitMerge, Play, RefreshCw, ChevronDown, ChevronRight, AlertTriangle, CheckCircle2, Circle, Sparkles, X, Network } from 'lucide-react'
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import ReactECharts from 'echarts-for-react'
-import { correlationApi, type AlertExplanation } from '@/lib/api'
+import { correlationApi, type AlertExplanation, type EventContext, type ContextLog } from '@/lib/api'
 import { TOOLTIP_BASE } from '@/lib/echarts-theme'
 import { SeverityBadge } from '@/components/ui/severity-badge'
 import { SkeletonTable } from '@/components/ui/skeleton'
@@ -159,9 +159,135 @@ function ExplainPanel({ corr_id, onClose }: { corr_id: string; onClose: () => vo
   )
 }
 
+const SOURCE_COLORS: Record<string, string> = {
+  zeek:     'text-sky-400 border-sky-500/30 bg-sky-500/10',
+  suricata: 'text-orange-400 border-orange-500/30 bg-orange-500/10',
+  netflow:  'text-emerald-400 border-emerald-500/30 bg-emerald-500/10',
+  sflow:    'text-violet-400 border-violet-500/30 bg-violet-500/10',
+}
+
+function ContextLogRow({ log }: { log: ContextLog }) {
+  return (
+    <div className="grid grid-cols-[80px_1fr_auto] gap-2 items-start py-1 border-b border-sky-900/10 last:border-0 text-[11px]">
+      <span className="text-slate-500 font-mono">{new Date(log.timestamp).toLocaleTimeString('tr-TR')}</span>
+      <span className="text-slate-300 truncate">{log.message}</span>
+      {log.community_id && (
+        <span className="font-mono text-sky-600 text-[10px] truncate max-w-[120px]" title={log.community_id}>
+          {log.community_id.slice(0, 14)}…
+        </span>
+      )}
+    </div>
+  )
+}
+
+function ContextPanel({ corr_id, onClose }: { corr_id: string; onClose: () => void }) {
+  const [activeTab, setActiveTab] = useState<string | null>(null)
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['context', corr_id],
+    queryFn: () => correlationApi.getEventContext(corr_id),
+    retry: false,
+    staleTime: 60_000,
+  })
+
+  const sources = data ? Object.keys(data.logs_by_source) : []
+
+  const currentTab = activeTab ?? sources[0] ?? null
+
+  return (
+    <div className="bg-[#080f1e] border border-sky-500/25 rounded-xl p-4 space-y-3 mt-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Network size={13} className="text-sky-400" />
+          <span className="text-xs font-semibold text-sky-300">Bağlam Pivot</span>
+          {data?.pivot_ip && (
+            <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-950/50 border border-sky-900/30 text-sky-500">
+              {data.pivot_ip}
+            </span>
+          )}
+          {data?.truncated && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/30 border border-amber-800/30 text-amber-500">
+              ≥500 kayıt (kırpıldı)
+            </span>
+          )}
+        </div>
+        <button onClick={onClose} className="text-slate-600 hover:text-slate-400 transition-colors">
+          <X size={13} />
+        </button>
+      </div>
+
+      {isLoading && (
+        <div className="space-y-2 animate-pulse">
+          {[1,2,3].map(i => <div key={i} className="h-3 bg-slate-800 rounded" style={{width: `${70+i*8}%`}} />)}
+        </div>
+      )}
+
+      {isError && <p className="text-xs text-red-400">Bağlam verileri alınamadı.</p>}
+
+      {data && data.pivot_ip === null && (
+        <p className="text-xs text-slate-500">{data.message ?? 'IP tabanlı korelasyon değil.'}</p>
+      )}
+
+      {data && data.pivot_ip && sources.length === 0 && (
+        <p className="text-xs text-slate-500">Bu zaman penceresinde ilgili log bulunamadı.</p>
+      )}
+
+      {data && data.pivot_ip && sources.length > 0 && (
+        <div className="space-y-2">
+          {/* Source tabs */}
+          <div className="flex gap-1.5 flex-wrap">
+            {sources.map(src => (
+              <button
+                key={src}
+                onClick={() => setActiveTab(src)}
+                className={cn(
+                  'px-2 py-0.5 rounded text-[11px] border transition-colors capitalize',
+                  currentTab === src
+                    ? (SOURCE_COLORS[src] ?? 'text-slate-300 border-slate-500/30 bg-slate-500/10')
+                    : 'text-slate-600 border-slate-800 hover:text-slate-400',
+                )}
+              >
+                {src} ({data.logs_by_source[src].length})
+              </button>
+            ))}
+          </div>
+
+          {/* Log list */}
+          {currentTab && (
+            <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-sky-900/50">
+              {data.logs_by_source[currentTab].map(log => (
+                <ContextLogRow key={log.log_id} log={log} />
+              ))}
+            </div>
+          )}
+
+          {/* Community IDs */}
+          {data.community_ids.length > 0 && (
+            <div className="pt-1 border-t border-sky-900/15">
+              <p className="text-[10px] text-slate-600 mb-1">Community ID pivot</p>
+              <div className="flex flex-wrap gap-1">
+                {data.community_ids.map(cid => (
+                  <span key={cid} className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-sky-950/30 border border-sky-900/20 text-sky-600" title={cid}>
+                    {cid.slice(0, 16)}…
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <p className="text-[10px] text-slate-700 pt-1">
+            Toplam {data.total_logs} kayıt · ±{data.window_minutes} dk pencere
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EventRow({ ev }: { ev: CorrelatedEvent }) {
-  const [open, setOpen]       = useState(false)
-  const [showAI, setShowAI]   = useState(false)
+  const [open, setOpen]         = useState(false)
+  const [showAI, setShowAI]     = useState(false)
+  const [showCtx, setShowCtx]   = useState(false)
 
   return (
     <>
@@ -226,10 +352,22 @@ function EventRow({ ev }: { ev: CorrelatedEvent }) {
                 </div>
               )}
 
-              {/* AI Explain button + panel */}
-              <div className="pt-1">
+              {/* Action buttons */}
+              <div className="pt-1 flex gap-2 flex-wrap">
                 <button
-                  onClick={(e) => { e.stopPropagation(); setShowAI((s) => !s) }}
+                  onClick={(e) => { e.stopPropagation(); setShowCtx((s) => !s); setShowAI(false) }}
+                  className={cn(
+                    'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors',
+                    showCtx
+                      ? 'bg-sky-500/15 border-sky-500/30 text-sky-300'
+                      : 'bg-sky-950/20 border-sky-900/20 text-slate-500 hover:text-slate-300 hover:border-sky-800/40',
+                  )}
+                >
+                  <Network size={11} />
+                  {showCtx ? 'Kapat' : 'Bağlam'}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setShowAI((s) => !s); setShowCtx(false) }}
                   className={cn(
                     'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] border transition-colors',
                     showAI
@@ -240,10 +378,13 @@ function EventRow({ ev }: { ev: CorrelatedEvent }) {
                   <Sparkles size={11} />
                   {showAI ? 'Kapat' : 'AI ile Açıkla'}
                 </button>
-                {showAI && (
-                  <ExplainPanel corr_id={ev.corr_id} onClose={() => setShowAI(false)} />
-                )}
               </div>
+              {showCtx && (
+                <ContextPanel corr_id={ev.corr_id} onClose={() => setShowCtx(false)} />
+              )}
+              {showAI && (
+                <ExplainPanel corr_id={ev.corr_id} onClose={() => setShowAI(false)} />
+              )}
             </div>
           </td>
         </tr>

@@ -341,6 +341,38 @@ export const correlationApi = {
 
   explainEvent: (corr_id: string) =>
     request<AlertExplanation>(`/correlation/events/${corr_id}/explain`, { method: 'POST' }),
+
+  getEventContext: (corr_id: string, window_minutes = 5) =>
+    request<EventContext>(`/correlation/events/${corr_id}/context?window_minutes=${window_minutes}`),
+}
+
+export interface ContextLog {
+  log_id: string
+  source_type: string
+  observer_hostname: string
+  timestamp: string
+  severity: string
+  event_action: string
+  source_ip: string | null
+  destination_ip: string | null
+  source_port: number | null
+  destination_port: number | null
+  network_protocol: string | null
+  message: string
+  community_id: string | null
+}
+
+export interface EventContext {
+  corr_id: string
+  pivot_ip: string | null
+  window_minutes: number
+  first_seen: string
+  last_seen: string
+  logs_by_source: Record<string, ContextLog[]>
+  community_ids: string[]
+  total_logs: number
+  truncated: boolean
+  message?: string
 }
 
 export interface AlertExplanation {
