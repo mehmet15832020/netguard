@@ -221,17 +221,8 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 > **NSM referans mimarisine göre (SANS NSM, Malcolm/CISA, Security Onion) en kritik eksik:** Zeek + Suricata + NetFlow kayıtları arasında aynı TCP bağlantısını pivot eden Community ID yok. Bu olmadan üç kaynağın aynı olayı farklı kayıtlarda görmesi mümkün değil.
 
-- [ ] **C1** — Community ID cross-source korelasyon (1-2 gün)
-  - *Corelight Community ID Spec + SANS NSM: "de-facto standard for cross-tool flow pivoting". Zeek 3.0+ ve Suricata 5.0+ zaten üretiyor — NetGuard parse etmiyor.*
-  - **Plan:**
-    - Alembic 018: `normalized_logs.community_id VARCHAR(50)` + `idx_norm_logs_community_id` index
-    - `requirements.txt`: `community-id>=1.4` (PyPI, pure Python)
-    - `shared/models.py`: `community_id: Optional[str] = None`
-    - `parsers/zeek.py`: tüm parser'larda `row.get("community_id")`
-    - `parsers/suricata.py`: tüm parser'larda `row.get("community_id")`
-    - `parsers/netflow.py`: `community-id` paketi ile 5-tuple'dan hesaplama (IPv4+IPv6)
-    - `database.py`: `get_logs_by_community_id(cid, tenant_id, hours)` metodu
-    - `routes/logs.py`: `GET /api/v1/logs/by-community-id/{cid}?hours=24`
+- [x] **C1** — Community ID cross-source korelasyon — 33 test ✓
+  - **Teslim:** Alembic 018, `communityid` paketi, 16 Zeek + 9 Suricata + v5/v9/IPFIX/sFlow NetFlow parser, `get_logs_by_community_id()`, `GET /api/v1/logs/by-community-id/{cid:path}`
     - Frontend: Alert detay → Community ID göster + pivot butonu (aynı akışın Zeek/Suricata/NetFlow kayıtları)
   - **Beklenen:** ~25-30 test
 
@@ -350,7 +341,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### Alembic Migrations
 
-`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 — bekliyor)**
+`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)**
 
 ### Frontend Sayfaları (dashboard-v2)
 
