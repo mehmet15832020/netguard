@@ -36,19 +36,7 @@ def _parse_zeek_ts(ts_str: str) -> Optional[str]:
     try:
         return datetime.fromtimestamp(float(ts_str), tz=timezone.utc).isoformat()
     except (ValueError, OSError, OverflowError):
-        return ts_str
-
-
-def _read_zeek_tsv_headers(stats_path: Path) -> list[str]:
-    try:
-        with stats_path.open("r", encoding="utf-8", errors="replace") as fh:
-            for line in fh:
-                line = line.strip()
-                if line.startswith("#fields"):
-                    return line.split("\t")[1:]
-    except Exception:
-        pass
-    return []
+        return None
 
 
 def get_zeek_stats(stats_path: Path = ZEEK_STATS_LOG) -> dict:
@@ -67,11 +55,20 @@ def get_zeek_stats(stats_path: Path = ZEEK_STATS_LOG) -> dict:
             result["error"] = "stats.log bulunamadı"
             return result
 
-        last_line = None
+        # Single-pass read: headers and last data line in the same file open.
+        # Two separate opens (old _read_zeek_tsv_headers) would misalign columns
+        # if the log rotates between the two reads (TOCTOU hazard).
+        headers: list[str] = []
+        last_line: Optional[str] = None
+
         with stats_path.open("r", encoding="utf-8", errors="replace") as fh:
             for raw in fh:
                 raw = raw.strip()
-                if raw and not raw.startswith("#"):
+                if not raw:
+                    continue
+                if raw.startswith("#fields"):
+                    headers = raw.split("\t")[1:]
+                elif not raw.startswith("#"):
                     last_line = raw
 
         if not last_line:
@@ -80,13 +77,22 @@ def get_zeek_stats(stats_path: Path = ZEEK_STATS_LOG) -> dict:
 
         try:
             data = json.loads(last_line)
-            pkts_proc    = int(data.get("pkts_proc", 0))
-            drop_rate    = float(data.get("pkt_drop_rate", 0.0))
+            pkts_proc = int(data.get("pkts_proc", 0))
+            # Absent pkt_drop_rate means sensor state is unknown, not a safe 0.0
+            if "pkt_drop_rate" not in data:
+                result["error"] = "pkt_drop_rate alanı eksik"
+                result["pkts_proc"] = pkts_proc
+                return result
+            drop_rate    = float(data["pkt_drop_rate"])
             bytes_recv   = int(data.get("bytes_recv", 0))
             last_updated = _parse_zeek_ts(str(data["ts"])) if "ts" in data else None
         except (json.JSONDecodeError, ValueError):
-            headers = _read_zeek_tsv_headers(stats_path)
-            parts   = last_line.split("\t")
+            if not headers:
+                result["error"] = "TSV #fields başlığı bulunamadı"
+                logger.warning("Zeek stats.log TSV başlığı okunamadı: %s", stats_path)
+                return result
+
+            parts = last_line.split("\t")
 
             def _col(name: str, default: str = "0") -> str:
                 try:
@@ -134,7 +140,8 @@ def get_suricata_stats(eve_path: Path = SURICATA_EVE_LOG) -> dict:
             return result
 
         file_size  = eve_path.stat().st_size
-        read_from  = max(0, file_size - 512 * 1024)
+        # 4MB tail window; full Suricata stats entries with all counters can exceed 512KB
+        read_from  = max(0, file_size - 4 * 1024 * 1024)
         last_stats = None
 
         with eve_path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -189,18 +196,22 @@ def get_interface_stats() -> list[dict]:
         for iface, s in counters.items():
             if iface in _IFACE_SKIP or iface.startswith(("veth", "docker", "br-")):
                 continue
-            total     = s.packets_recv + s.dropin
-            drop_rate = (s.dropin / total) if total > 0 else 0.0
-            results.append({
-                "interface":   iface,
-                "status":      _status(drop_rate),
-                "packets_recv": s.packets_recv,
-                "dropin":      s.dropin,
-                "dropout":     s.dropout,
-                "drop_rate":   round(drop_rate, 4),
-                "bytes_recv":  s.bytes_recv,
-                "bytes_sent":  s.bytes_sent,
-            })
+            # Per-item isolation: one malformed counter must not abort remaining interfaces
+            try:
+                total     = s.packets_recv + s.dropin
+                drop_rate = (s.dropin / total) if total > 0 else 0.0
+                results.append({
+                    "interface":    iface,
+                    "status":       _status(drop_rate),
+                    "packets_recv": s.packets_recv,
+                    "dropin":       s.dropin,
+                    "dropout":      s.dropout,
+                    "drop_rate":    round(drop_rate, 4),
+                    "bytes_recv":   s.bytes_recv,
+                    "bytes_sent":   s.bytes_sent,
+                })
+            except Exception as exc:
+                logger.warning("Arayüz istatistiği alınamadı (%s): %s", iface, exc)
     except Exception as exc:
         logger.warning("Arayüz istatistikleri alınamadı: %s", exc)
     return results

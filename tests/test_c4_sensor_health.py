@@ -118,6 +118,22 @@ class TestGetZeekStats:
         assert result["status"] == "unknown"
         assert result["error"] is not None
 
+    def test_absent_pkt_drop_rate_json_returns_unknown(self, tmp_path):
+        from server.sensor_health import get_zeek_stats
+        f = tmp_path / "stats.log"
+        f.write_text(json.dumps({"ts": 1.0, "pkts_proc": 500, "bytes_recv": 1024}) + "\n")
+        result = get_zeek_stats(f)
+        assert result["status"] == "unknown"
+        assert result["error"] is not None
+
+    def test_tsv_without_fields_header_returns_error(self, tmp_path):
+        from server.sensor_health import get_zeek_stats
+        f = tmp_path / "stats.log"
+        f.write_text("not-json-no-header\t500\t1024\t0.01\n")
+        result = get_zeek_stats(f)
+        assert result["status"] == "unknown"
+        assert result["error"] is not None
+
 
 # ─── get_suricata_stats ───────────────────────────────────────────────────────
 
@@ -217,6 +233,20 @@ class TestGetInterfaceStats:
         names = [r["interface"] for r in result]
         assert "docker0" not in names
         assert "eth0" in names
+
+    def test_bad_interface_does_not_abort_loop(self):
+        from server.sensor_health import get_interface_stats
+
+        bad = MagicMock()
+        bad.packets_recv = MagicMock(side_effect=AttributeError("broken"))
+        good = MagicMock(packets_recv=500, dropin=0, dropout=0, bytes_recv=0, bytes_sent=0)
+
+        fake_stats = {"eth0": bad, "eth1": good}
+        with patch("server.sensor_health.psutil.net_io_counters", return_value=fake_stats):
+            result = get_interface_stats()
+
+        names = [r["interface"] for r in result]
+        assert "eth1" in names
 
 
 # ─── get_all_sensor_health ────────────────────────────────────────────────────
