@@ -20,16 +20,16 @@ import communityid as _cid_mod
 from shared.models import LogCategory, LogSourceType, NormalizedLog
 
 _CID = _cid_mod.CommunityID()
+logger = logging.getLogger(__name__)
 
 
 def _community_id(proto_num: int, src_ip: str, dst_ip: str, src_port: int, dst_port: int) -> Optional[str]:
     try:
         tpl = _cid_mod.FlowTuple(proto_num, src_ip, dst_ip, src_port, dst_port)
         return _CID.calc(tpl)
-    except Exception:
+    except Exception as exc:
+        logger.debug("community_id hesaplanamadı proto=%s src=%s dst=%s: %s", proto_num, src_ip, dst_ip, exc)
         return None
-
-logger = logging.getLogger(__name__)
 
 # ── NetFlow v5 ────────────────────────────────────────────────────────────────
 

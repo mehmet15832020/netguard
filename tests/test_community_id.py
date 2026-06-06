@@ -255,6 +255,37 @@ class TestNetflowCommunityId:
         assert forward is not None
         assert forward == backward
 
+    def test_community_id_ipv6(self):
+        """IPv6 adresleri community_id hesaplamasında desteklenmeli (Corelight spec IPv4+IPv6)."""
+        from server.parsers.netflow import _community_id
+        result = _community_id(6, "2001:db8::1", "2001:db8::2", 54321, 80)
+        assert result is not None
+        assert result.startswith("1:")
+
+    def test_parse_sflow_has_community_id(self):
+        """sFlow v5 IPv4 flow kaydı community_id içermeli."""
+        from server.parsers.netflow import parse_sflow
+        # sFlow v5 header: version=5, addr_type=1(IPv4), agent_ip, sub_id, seq, uptime, num_samples=1
+        agent_ip = socket.inet_aton("10.0.0.100")
+        sflow_hdr = struct.pack("!IIIIIII",
+            5, 1, int.from_bytes(agent_ip, "big"), 0, 1, 0, 1)
+        # Flow sample header: type=1, length=<flow_hdr+record_hdr+ipv4_record>=72
+        # Flow sample body: seq+src_id+rate+pool+drops+input+output+num_records
+        flow_hdr = struct.pack("!IIIIIIII", 1, 0, 512, 0, 0, 1, 2, 1)
+        # Record header: type=3(IPv4), length=32
+        record_hdr = struct.pack("!II", 3, 32)
+        # IPv4 flow: length+proto+src_ip+dst_ip+src_port+dst_port+tcp_flags+tos
+        src_ip = int.from_bytes(socket.inet_aton("192.168.1.10"), "big")
+        dst_ip = int.from_bytes(socket.inet_aton("10.0.0.1"), "big")
+        ipv4_flow = struct.pack("!IIIIIIII", 1500, 6, src_ip, dst_ip, 54321, 80, 0x18, 0)
+        sample_body = flow_hdr + record_hdr + ipv4_flow
+        sample_hdr = struct.pack("!II", 1, len(sample_body))
+        data = sflow_hdr + sample_hdr + sample_body
+        logs = parse_sflow(data, "router1")
+        assert len(logs) == 1
+        assert logs[0].community_id is not None
+        assert logs[0].community_id.startswith("1:")
+
 
 # ─── NormalizedLog modeli ─────────────────────────────────────────────────────
 
@@ -299,10 +330,11 @@ class TestCommunityIdRoute:
 
     def test_get_by_community_id_valid(self, admin_token):
         with patch("server.routes.logs.db") as mock_db:
-            mock_db.get_logs_by_community_id.return_value = [
-                {"log_id": "abc", "source_type": "ZEEK", "community_id": self.CID,
-                 "message": "test", "timestamp": _ts()}
-            ]
+            mock_db.get_logs_by_community_id.return_value = {
+                "logs": [{"log_id": "abc", "source_type": "zeek", "community_id": self.CID,
+                          "message": "test", "timestamp": _ts()}],
+                "truncated": False,
+            }
             resp = client.get(
                 f"/api/v1/logs/by-community-id/{self.CID}?hours=24",
                 headers={"Authorization": f"Bearer {admin_token}"},
@@ -311,6 +343,7 @@ class TestCommunityIdRoute:
         data = resp.json()
         assert data["community_id"] == self.CID
         assert data["count"] == 1
+        assert data["truncated"] is False
 
     def test_get_by_community_id_invalid_format(self, admin_token):
         resp = client.get(
@@ -321,7 +354,7 @@ class TestCommunityIdRoute:
 
     def test_get_by_community_id_empty(self, admin_token):
         with patch("server.routes.logs.db") as mock_db:
-            mock_db.get_logs_by_community_id.return_value = []
+            mock_db.get_logs_by_community_id.return_value = {"logs": [], "truncated": False}
             resp = client.get(
                 f"/api/v1/logs/by-community-id/{self.CID}",
                 headers={"Authorization": f"Bearer {admin_token}"},
@@ -347,9 +380,10 @@ class TestDatabaseGetByCommunityId:
     CID = "1:K2Z9rgZl/kbRXxTe32amzRohiJo="
 
     def test_get_logs_by_community_id_empty(self, tmp_db):
-        results = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=24)
-        assert isinstance(results, list)
-        assert len(results) == 0
+        result = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=24)
+        assert isinstance(result, dict)
+        assert result["logs"] == []
+        assert result["truncated"] is False
 
     def test_get_logs_by_community_id_returns_matching(self, tmp_db):
         from shared.models import NormalizedLog, LogSourceType, LogCategory
@@ -366,10 +400,11 @@ class TestDatabaseGetByCommunityId:
             community_id=self.CID,
         )
         tmp_db.save_normalized_log(log, tenant_id="default")
-        results = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1)
-        assert len(results) == 1
-        assert results[0]["community_id"] == self.CID
-        assert results[0]["source_type"] == "zeek"
+        result = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1)
+        assert len(result["logs"]) == 1
+        assert result["logs"][0]["community_id"] == self.CID
+        assert result["logs"][0]["source_type"] == "zeek"
+        assert result["truncated"] is False
 
     def test_get_logs_by_community_id_tenant_isolation(self, tmp_db):
         from shared.models import NormalizedLog, LogSourceType, LogCategory
@@ -386,10 +421,10 @@ class TestDatabaseGetByCommunityId:
             community_id=self.CID,
         )
         tmp_db.save_normalized_log(log, tenant_id="other_tenant")
-        results = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1)
-        assert all(r.get("community_id") == self.CID for r in results)
-        # other_tenant'a ait kayıt default tenant'ta görünmemeli
-        for r in results:
+        result = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1)
+        logs = result["logs"]
+        assert all(r.get("community_id") == self.CID for r in logs)
+        for r in logs:
             assert r.get("log_id") != "cid-test-2"
 
     def test_get_logs_by_community_id_null_not_returned(self, tmp_db):
@@ -407,6 +442,27 @@ class TestDatabaseGetByCommunityId:
             community_id=None,
         )
         tmp_db.save_normalized_log(log, tenant_id="default")
-        results = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1)
-        for r in results:
+        result = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1)
+        for r in result["logs"]:
             assert r["log_id"] != "no-cid-1"
+
+    def test_truncated_flag_when_limit_hit(self, tmp_db):
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        import uuid as _uuid
+        for i in range(3):
+            log = NormalizedLog(
+                log_id=f"trunc-{i}-{_uuid.uuid4()}",
+                raw_id=str(_uuid.uuid4()),
+                source_type=LogSourceType.ZEEK,
+                observer_hostname="zeek",
+                timestamp=datetime.now(timezone.utc),
+                severity="info",
+                event_category=LogCategory.NETWORK,
+                event_action="test",
+                message="trunc test",
+                community_id=self.CID,
+            )
+            tmp_db.save_normalized_log(log, tenant_id="default")
+        result = tmp_db.get_logs_by_community_id(self.CID, tenant_id="default", hours=1, limit=2)
+        assert len(result["logs"]) == 2
+        assert result["truncated"] is True

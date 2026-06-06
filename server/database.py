@@ -429,7 +429,8 @@ class DatabaseManager:
         community_id: str,
         tenant_id: str = "default",
         hours: int = 24,
-    ) -> list[dict]:
+        limit: int = 200,
+    ) -> dict:
         since = _now() - timedelta(hours=hours)
         with self._connect() as conn:
             rows = conn.execute("""
@@ -442,9 +443,10 @@ class DatabaseManager:
                   AND tenant_id = %s
                   AND received_at >= %s
                 ORDER BY timestamp DESC
-                LIMIT 200
-            """, (community_id, tenant_id, since)).fetchall()
-        return [dict(r) for r in rows]
+                LIMIT %s
+            """, (community_id, tenant_id, since, limit)).fetchall()
+        results = [dict(r) for r in rows]
+        return {"logs": results, "truncated": len(results) == limit}
 
     def get_normalized_logs(
         self,

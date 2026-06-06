@@ -11,11 +11,14 @@ POST /api/v1/logs/webserver/batch     → Toplu web server log gönder
 """
 
 import logging
+import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 from typing import List
+
+_CID_RE = re.compile(r'^1:[A-Za-z0-9+/]{27}=$')
 
 from server.auth import User, get_current_user, get_agent_from_api_key, tenant_scope
 from server.limiter import limiter, _auth_key
@@ -78,14 +81,20 @@ def get_logs_by_community_id(
     current_user: User = Depends(get_current_user),
 ):
     """Community ID üzerinden cross-source pivot — aynı TCP bağlantısına ait Zeek/Suricata/NetFlow kayıtları."""
-    if len(community_id) > 60 or not community_id.startswith("1:"):
+    if not _CID_RE.match(community_id):
         raise HTTPException(status_code=400, detail="Geçersiz Community ID formatı")
-    logs = db.get_logs_by_community_id(
+    result = db.get_logs_by_community_id(
         community_id=community_id,
         tenant_id=tenant_scope(current_user),
         hours=hours,
     )
-    return {"community_id": community_id, "hours": hours, "count": len(logs), "logs": logs}
+    return {
+        "community_id": community_id,
+        "hours": hours,
+        "count": len(result["logs"]),
+        "truncated": result["truncated"],
+        "logs": result["logs"],
+    }
 
 
 @router.get("/logs/search")
