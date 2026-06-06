@@ -1575,6 +1575,45 @@ export interface HuntResult {
   }
 }
 
+export interface SensorEntry {
+  name: string
+  status: 'ok' | 'warning' | 'critical' | 'unknown'
+  drop_rate: number | null
+  last_updated: string | null
+  error: string | null
+  pkts_proc?: number | null
+  bytes_recv?: number | null
+  kernel_packets?: number | null
+  kernel_drops?: number | null
+  decoder_packets?: number | null
+}
+
+export interface InterfaceEntry {
+  interface: string
+  status: 'ok' | 'warning' | 'critical'
+  packets_recv: number
+  dropin: number
+  dropout: number
+  drop_rate: number
+  bytes_recv: number
+  bytes_sent: number
+}
+
+export interface SensorHealthResponse {
+  overall: 'ok' | 'warning' | 'critical' | 'unknown'
+  timestamp: string
+  sensors: {
+    zeek: SensorEntry
+    suricata: SensorEntry
+  }
+  interfaces: InterfaceEntry[]
+  thresholds: { warn: number; critical: number }
+}
+
+export const healthApi = {
+  sensors: () => request<SensorHealthResponse>('/health/sensors'),
+}
+
 export const huntsApi = {
   list: () =>
     request<{ count: number; hunts: SavedHunt[] }>('/hunts'),

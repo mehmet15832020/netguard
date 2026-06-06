@@ -13,8 +13,8 @@ import { useAgents, useLatestSnapshot } from '@/hooks/useMetrics'
 import { useAlerts } from '@/hooks/useAlerts'
 import {
   securityApi, correlationApi, reportsApi, analyticsApi,
-  attackChainsApi, incidentApi, anomalyApi,
-  type SourceHealthItem,
+  attackChainsApi, incidentApi, anomalyApi, healthApi,
+  type SourceHealthItem, type SensorHealthResponse,
 } from '@/lib/api'
 import type {
   AlertVolumeResponse, AssetRiskEntry,
@@ -395,6 +395,92 @@ function AnomalyPanel() {
           ))}
         </div>
       </div>
+    </Panel>
+  )
+}
+
+// ─────────────────────────────────────────────
+//  Sensor Health Panel (C4 — CIS Control 13.1)
+// ─────────────────────────────────────────────
+
+const STATUS_CFG = {
+  ok:      { dot: 'bg-emerald-500', text: 'text-emerald-400', label: 'Normal' },
+  warning: { dot: 'bg-yellow-500',  text: 'text-yellow-400',  label: 'Uyarı'  },
+  critical:{ dot: 'bg-red-500',     text: 'text-red-400',     label: 'Kritik' },
+  unknown: { dot: 'bg-slate-600',   text: 'text-slate-500',   label: 'Bilinmiyor' },
+} as const
+
+function SensorHealthPanel() {
+  const { data, isLoading } = useQuery<SensorHealthResponse>({
+    queryKey: ['sensor-health'],
+    queryFn:  healthApi.sensors,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  })
+
+  const overall = data?.overall ?? 'unknown'
+  const cfg = STATUS_CFG[overall]
+
+  const sensors = data ? [
+    { key: 'zeek',     label: 'Zeek',     ...data.sensors.zeek },
+    { key: 'suricata', label: 'Suricata', ...data.sensors.suricata },
+  ] : []
+
+  return (
+    <Panel title="Sensör Sağlığı" icon={Radio}>
+      {isLoading ? (
+        <div className="p-4 space-y-2">
+          {[0, 1, 2].map(i => <Skeleton key={i} style={{ height: 20 }} className="w-full" />)}
+        </div>
+      ) : (
+        <div className="p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot, overall !== 'ok' && overall !== 'unknown' ? 'animate-pulse' : '')} />
+            <span className={cn('text-sm font-semibold', cfg.text)}>{cfg.label}</span>
+            {data?.timestamp && (
+              <span className="ml-auto text-[10px] text-slate-600">
+                {new Date(data.timestamp).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+          </div>
+          <div className="space-y-2 pt-1">
+            {sensors.map(s => {
+              const sc = STATUS_CFG[s.status as keyof typeof STATUS_CFG] ?? STATUS_CFG.unknown
+              return (
+                <div key={s.key} className="flex items-center gap-2">
+                  <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', sc.dot)} />
+                  <span className="text-[11px] text-slate-400 w-16">{s.label}</span>
+                  {s.drop_rate !== null ? (
+                    <span className={cn('text-[11px] font-mono', sc.text)}>
+                      {(s.drop_rate * 100).toFixed(1)}% kayıp
+                    </span>
+                  ) : (
+                    <span className="text-[11px] text-slate-600">{s.error ? 'Erişilemiyor' : '—'}</span>
+                  )}
+                  <span className={cn('ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded')}>
+                    <span className={sc.text}>{sc.label}</span>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+          {(data?.interfaces ?? []).length > 0 && (
+            <div className="pt-1 border-t border-sky-900/20">
+              <p className="text-[10px] text-slate-600 mb-1.5 uppercase tracking-wide">Arayüzler</p>
+              {data!.interfaces.slice(0, 3).map(ifc => {
+                const ic = STATUS_CFG[ifc.status] ?? STATUS_CFG.unknown
+                return (
+                  <div key={ifc.interface} className="flex items-center gap-1.5 mb-1">
+                    <span className={cn('w-1 h-1 rounded-full flex-shrink-0', ic.dot)} />
+                    <span className="text-[11px] text-slate-500 font-mono">{ifc.interface}</span>
+                    <span className={cn('text-[11px] ml-auto', ic.text)}>{(ifc.drop_rate * 100).toFixed(1)}%</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </Panel>
   )
 }
@@ -905,12 +991,13 @@ export default function OverviewPage() {
         {/* ── Section: Operasyon ──────────────────────────────────────── */}
         <SectionLabel label="Operasyon" icon={Activity} />
 
-        {/* ┌── Zone D: Operational trifecta — 3 equal panels ────────────┐ */}
+        {/* ┌── Zone D: Operational 4 panels ─────────────────────────────┐ */}
         {/* └─────────────────────────────────────────────────────────────┘ */}
-        <div className="col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3">
+        <div className="col-span-12 grid grid-cols-1 lg:grid-cols-4 gap-3">
           <FailedAuthPanel data={failedAuthData} />
           <DnsAnomalyPanel data={dnsData} />
           <AnomalyPanel />
+          <SensorHealthPanel />
         </div>
 
         {/* ── Section: Ağ İzleme ──────────────────────────────────────── */}
