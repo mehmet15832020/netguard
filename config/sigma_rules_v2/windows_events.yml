@@ -133,7 +133,7 @@ correlation:
     type: event_count
     rules: ng_win_proc_create_base
     group-by:
-        - source_ip
+        - observer_hostname
     timespan: 5m
     condition:
         gte: 3
@@ -286,7 +286,7 @@ correlation:
     type: event_count
     rules: ng_sysmon_proc_create_base
     group-by:
-        - source_ip
+        - observer_hostname
     timespan: 5m
     condition:
         gte: 3
@@ -316,7 +316,7 @@ correlation:
     type: event_count
     rules: ng_sysmon_dns_base
     group-by:
-        - source_ip
+        - observer_hostname
     timespan: 5m
     condition:
         gte: 5
@@ -505,7 +505,7 @@ correlation:
     type: event_count
     rules: ng_win_ntlm_fail_base
     group-by:
-        - source_ip
+        - observer_hostname
     timespan: 5m
     condition:
         gte: 5
@@ -584,7 +584,7 @@ correlation:
         - observer_hostname
     timespan: 5m
     condition:
-        gte: 2
+        gte: 3
 level: high
 tags:
     - attack.persistence
@@ -826,25 +826,6 @@ tags:
     - attack.t1218
 falsepositives:
     - High-throughput IPC applications
----
-title: Windows Lateral Logon Burst — Pass-the-Hash
-id: f2a3b4c5-d6e7-8901-fa07-462400000001
-correlation:
-    type: event_count
-    rules: ng_win_lateral_logon_base
-    group-by:
-        - source_ip
-    timespan: 5m
-    condition:
-        gte: 3
-level: critical
-tags:
-    - attack.lateral_movement
-    - attack.credential_access
-    - attack.t1550.002
-falsepositives:
-    - Legitimate admin remote operations
-    - SCCM/Ansible deployment
 ---
 title: Windows Token Privilege Escalation
 id: a3b4c5d6-e7f8-9012-ab08-470300000001

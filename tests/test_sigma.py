@@ -160,6 +160,62 @@ def test_windows_event_rules_load():
     assert "Windows Suspicious Process" in titles
 
 
+def test_windows_fp_rules_use_observer_hostname_not_source_ip():
+    """EID 4688, Sysmon EID 1/22, EID 4776 için source_ip her zaman None —
+    bu nedenle ilgili korelasyon kuralları observer_hostname üzerinden gruplanmalı."""
+    rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+    raw = (rules_dir / "windows_events.yml").read_text()
+    docs = list(yaml.safe_load_all(raw))
+
+    def _group_by(doc):
+        corr = doc.get("correlation", {})
+        return corr.get("group-by", [])
+
+    by_title = {d.get("title"): d for d in docs if isinstance(d, dict) and d.get("title")}
+
+    suspicious_proc = by_title.get("Windows Suspicious Process", {})
+    assert _group_by(suspicious_proc) == ["observer_hostname"], (
+        "EID 4688 source_ip=None: grup observer_hostname olmalı"
+    )
+
+    sysmon_proc_burst = by_title.get("Sysmon Process Create Anomaly Burst", {})
+    assert _group_by(sysmon_proc_burst) == ["observer_hostname"], (
+        "Sysmon EID 1 source_ip=None: grup observer_hostname olmalı"
+    )
+
+    asrep = by_title.get("Kerberos Pre-Auth Failure Burst — AS-REP Roasting", {})
+    assert _group_by(asrep) == ["observer_hostname"], (
+        "EID 4776 source_ip=None: grup observer_hostname olmalı"
+    )
+
+    dns_c2 = by_title.get("Sysmon DNS C2 Burst", {})
+    assert _group_by(dns_c2) == ["observer_hostname"], (
+        "Sysmon EID 22 source_ip=None: grup observer_hostname olmalı"
+    )
+
+
+def test_windows_no_duplicate_lateral_logon_burst():
+    """'Windows Lateral Logon Burst — Pass-the-Hash' kaldırıldı — 'Windows Pass-the-Hash' yeterli."""
+    rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+    raw = (rules_dir / "windows_events.yml").read_text()
+    docs = list(yaml.safe_load_all(raw))
+    titles = [d.get("title", "") for d in docs if isinstance(d, dict)]
+    assert "Windows Lateral Logon Burst — Pass-the-Hash" not in titles, (
+        "Duplikasyon kaldırılmalı — Windows Pass-the-Hash kuralı zaten var"
+    )
+
+
+def test_windows_registry_burst_threshold_not_too_low():
+    """Registry persistence burst gte: 2 çok düşük — yazılım installer'ları tetikler."""
+    rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
+    raw = (rules_dir / "windows_events.yml").read_text()
+    docs = list(yaml.safe_load_all(raw))
+    by_title = {d.get("title"): d for d in docs if isinstance(d, dict) and d.get("title")}
+    reg_rule = by_title.get("Sysmon Registry Run Key — Persistence", {})
+    gte_val = reg_rule.get("correlation", {}).get("condition", {}).get("gte", 0)
+    assert gte_val >= 3, f"Registry burst eşiği en az 3 olmalı, şu an: {gte_val}"
+
+
 def test_auth_and_web_rules_load():
     rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
     ex = SigmaExecutor(str(rules_dir))
