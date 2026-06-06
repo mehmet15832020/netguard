@@ -232,7 +232,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] **C3** — Network behavioral baseline genişletme — 15 test ✓
   - **Teslim:** Alembic 019 `typical_protocols`, `get_distinct_values_by_ip()`, `new_port_detected` + `new_protocol_detected` anomali tespiti (NIST SP 800-94 §4.1)
 
-- [x] **C4** — Sensor sağlık metrikleri — 29 test ✓
+- [x] **C4** — Sensor sağlık metrikleri — 32 test ✓
   - **Teslim:** `server/sensor_health.py` (Zeek JSON/TSV, Suricata EVE stats, psutil arayüz), `GET /api/v1/health/sensors`, Overview `SensorHealthPanel` (Zone D 4. panel)
   - CIS Control 13.1: Zeek `pkt_drop_rate`, Suricata `capture_kernel_drops`, 5%/15% uyarı/kritik eşikleri
 
