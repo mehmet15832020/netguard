@@ -139,8 +139,8 @@ function ExplainPanel({ corr_id, onClose }: { corr_id: string; onClose: () => vo
       {isError && (
         <p className="text-xs text-red-400">
           {(error as Error)?.message?.includes('503')
-            ? 'ANTHROPIC_API_KEY tanımlı değil veya servis erişilemez.'
-            : 'Açıklama üretilemedi. Tekrar deneyin.'}
+            ? 'GROQ_API_KEY tanımlı değil veya Groq servisi erişilemez.'
+            : (error as Error)?.message ?? 'Açıklama üretilemedi. Tekrar deneyin.'}
         </p>
       )}
 

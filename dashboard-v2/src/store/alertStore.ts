@@ -10,6 +10,7 @@ interface AlertStore {
   addAlert: (alert: Alert) => void
   markAllRead: () => void
   clearResolved: () => void
+  clearAll: () => void
 }
 
 export const useAlertStore = create<AlertStore>((set) => ({
@@ -36,4 +37,6 @@ export const useAlertStore = create<AlertStore>((set) => ({
     set((state) => ({
       liveAlerts: state.liveAlerts.filter((a) => a.status === 'active'),
     })),
+
+  clearAll: () => set({ liveAlerts: [], unreadCount: 0 }),
 }))

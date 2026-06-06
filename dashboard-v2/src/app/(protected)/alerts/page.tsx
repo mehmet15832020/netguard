@@ -56,8 +56,9 @@ export default function AlertsPage() {
   const [statusFilter, setStatusFilter]     = useState('all')
   const [severityFilter, setSeverityFilter] = useState('all')
 
-  const liveAlerts = useAlertStore((s) => s.liveAlerts)
+  const liveAlerts  = useAlertStore((s) => s.liveAlerts)
   const markAllRead = useAlertStore((s) => s.markAllRead)
+  const clearAll    = useAlertStore((s) => s.clearAll)
 
   const { data, isLoading, isFetching } = useQuery({
     queryKey: ['alerts', 'all'],
@@ -99,6 +100,7 @@ export default function AlertsPage() {
   const resolveAllMutation = useMutation({
     mutationFn: () => alertsApi.resolveAll(),
     onSuccess: () => {
+      clearAll()
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
       queryClient.invalidateQueries({ queryKey: ['security-status'] })
     },
