@@ -61,6 +61,16 @@ const PROTO_COLORS = ['#38bdf8', '#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8
 //  Shared primitives
 // ─────────────────────────────────────────────
 
+function SectionLabel({ label, icon: Icon }: { label: string; icon?: React.ElementType }) {
+  return (
+    <div className="col-span-12 flex items-center gap-2 -mt-1 -mb-1">
+      {Icon && <Icon size={10} className="text-sky-900/50 flex-shrink-0" />}
+      <span className="text-[9px] font-semibold text-sky-900/50 uppercase tracking-[0.2em]">{label}</span>
+      <div className="flex-1 h-px bg-gradient-to-r from-sky-900/25 to-transparent" />
+    </div>
+  )
+}
+
 function Panel({ title, icon: Icon, href, children, className }: {
   title: string; icon: React.ElementType; href?: string
   children: React.ReactNode; className?: string
@@ -115,40 +125,42 @@ function SecurityStatusBanner() {
   })
   if (!data) return null
   const cfg = {
-    safe:    { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10', text: 'text-emerald-400', dot: 'bg-emerald-500' },
-    warning: { border: 'border-yellow-500/30',  bg: 'bg-yellow-500/10',  text: 'text-yellow-400',  dot: 'bg-yellow-500' },
-    danger:  { border: 'border-red-500/40',     bg: 'bg-red-500/10',     text: 'text-red-400',     dot: 'bg-red-500' },
+    safe:    { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10',  text: 'text-emerald-400', dot: 'bg-emerald-500', accent: 'from-emerald-500/60 to-emerald-500/0', glow: 'shadow-emerald-900/30' },
+    warning: { border: 'border-yellow-500/30',  bg: 'bg-yellow-500/10',   text: 'text-yellow-400',  dot: 'bg-yellow-500',  accent: 'from-yellow-500/60 to-yellow-500/0',  glow: 'shadow-yellow-900/30' },
+    danger:  { border: 'border-red-500/40',     bg: 'bg-red-500/10',      text: 'text-red-400',     dot: 'bg-red-500',     accent: 'from-red-500/60 to-red-500/0',        glow: 'shadow-red-900/30' },
   }[data.status]
 
   return (
-    <div className={cn('rounded-lg border p-4 flex items-center gap-6', cfg.border, cfg.bg)}>
-      <div className="flex items-center gap-4 flex-shrink-0">
+    <div className={cn('relative rounded-lg border overflow-hidden p-4 flex items-center gap-6 shadow-lg', cfg.border, cfg.bg, cfg.glow)}>
+      {/* gradient accent top bar */}
+      <div className={cn('absolute inset-x-0 top-0 h-[2px] bg-gradient-to-r', cfg.accent)} />
+      <div className="flex items-center gap-5 flex-shrink-0">
         <div className="text-center">
-          <p className={cn('text-5xl font-bold tabular-nums', cfg.text)}>{data.risk_score}</p>
-          <p className="text-[10px] text-slate-500 mt-0.5 uppercase tracking-wide">Risk Skoru</p>
+          <p className={cn('text-6xl font-bold tabular-nums leading-none', cfg.text)}>{data.risk_score}</p>
+          <p className="text-[10px] text-slate-500 mt-1.5 uppercase tracking-widest">Risk Skoru</p>
         </div>
-        <div className="w-px h-12 bg-sky-900/30" />
+        <div className="w-px h-14 bg-sky-900/40" />
         <div>
           <div className="flex items-center gap-2">
-            <span className={cn('w-2 h-2 rounded-full flex-shrink-0', cfg.dot)} />
-            <span className={cn('text-lg font-semibold', cfg.text)}>{data.label}</span>
+            <span className={cn('w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse', cfg.dot)} />
+            <span className={cn('text-xl font-bold', cfg.text)}>{data.label}</span>
           </div>
-          <p className="text-[11px] text-slate-500 mt-1">
+          <p className="text-[11px] text-slate-500 mt-1.5">
             {new Date(data.updated_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })} güncellendi
           </p>
         </div>
       </div>
       <div className="flex-1 hidden sm:block"><RiskGauge score={data.risk_score} /></div>
-      <div className="hidden md:flex items-center gap-5 flex-shrink-0 text-center">
+      <div className="hidden md:flex items-center gap-6 flex-shrink-0 text-center">
         {[
           { label: 'Kritik Alert',   value: data.critical_alerts,  href: '/alerts',      color: data.critical_alerts  > 0 ? 'text-red-400'    : 'text-slate-400' },
           { label: 'Açık Incident',  value: data.open_incidents,   href: '/incidents',   color: data.open_incidents   > 0 ? 'text-orange-400' : 'text-slate-400' },
           { label: 'Korelasyon 24s', value: data.corr_events_24h,  href: '/correlation', color: data.corr_events_24h  > 0 ? 'text-yellow-400' : 'text-slate-400' },
           { label: 'Anomali 24s',    value: data.anomalies_24h,    href: '/anomaly',     color: data.anomalies_24h    > 0 ? 'text-yellow-400' : 'text-slate-400' },
         ].map(({ label, value, href, color }) => (
-          <Link key={label} href={href} className="hover:opacity-80 transition-opacity">
-            <p className={cn('text-3xl font-bold leading-none tabular-nums', color)}>{value}</p>
-            <p className="text-[10px] text-slate-600 mt-0.5 whitespace-nowrap">{label}</p>
+          <Link key={label} href={href} className="hover:opacity-80 transition-opacity group">
+            <p className={cn('text-4xl font-bold leading-none tabular-nums', color)}>{value}</p>
+            <p className="text-[10px] text-slate-600 mt-1 whitespace-nowrap group-hover:text-slate-500 transition-colors">{label}</p>
           </Link>
         ))}
       </div>
@@ -635,7 +647,7 @@ function AlertTrendPanel({ data }: { data: AlertVolumeResponse | undefined }) {
         <Empty text="Bu dönemde alert yok" />
       ) : (
         <div className="px-1 py-2">
-          <ReactECharts option={buildAlertTrendOption(data)} notMerge style={{ height: 160 }} />
+          <ReactECharts option={buildAlertTrendOption(data)} notMerge style={{ height: 220 }} />
         </div>
       )}
     </Panel>
@@ -824,6 +836,9 @@ export default function OverviewPage() {
           </div>
         </div>
 
+        {/* ── Section: Tespit ─────────────────────────────────────────── */}
+        <SectionLabel label="Tespit" icon={ShieldAlert} />
+
         {/* ┌── Zone B: Alert Trend HERO (8 cols) + right stack (4 cols) ─┐ */}
         {/* └─────────────────────────────────────────────────────────────┘ */}
 
@@ -868,13 +883,16 @@ export default function OverviewPage() {
           </Panel>
         </div>
 
+        {/* ── Section: Varlıklar ──────────────────────────────────────── */}
+        <SectionLabel label="Varlıklar" icon={Server} />
+
         {/* ┌── Zone C: Topology 7/12 + Risk & MTTD 5/12 (asymmetric) ───┐ */}
         {/* └─────────────────────────────────────────────────────────────┘ */}
 
         {/* C-left: network topology map */}
         <div className="col-span-12 xl:col-span-7">
           <Panel title="Ağ Topolojisi" icon={Share2} href="/topology">
-            <div className="h-64"><MiniTopology /></div>
+            <div className="h-80"><MiniTopology /></div>
           </Panel>
         </div>
 
@@ -884,6 +902,9 @@ export default function OverviewPage() {
           <MttdRow />
         </div>
 
+        {/* ── Section: Operasyon ──────────────────────────────────────── */}
+        <SectionLabel label="Operasyon" icon={Activity} />
+
         {/* ┌── Zone D: Operational trifecta — 3 equal panels ────────────┐ */}
         {/* └─────────────────────────────────────────────────────────────┘ */}
         <div className="col-span-12 grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -891,6 +912,9 @@ export default function OverviewPage() {
           <DnsAnomalyPanel data={dnsData} />
           <AnomalyPanel />
         </div>
+
+        {/* ── Section: Ağ İzleme ──────────────────────────────────────── */}
+        <SectionLabel label="Ağ İzleme" icon={Wifi} />
 
         {/* ┌── Zone E: Agents (4) + Alerts (5) + Protocol (3) ──────────┐ */}
         {/* └─────────────────────────────────────────────────────────────┘ */}

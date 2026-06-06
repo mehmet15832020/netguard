@@ -7,28 +7,35 @@ Tamamlanan adımlar `[x]` ile işaretlenir.
 
 ## Ürün Kimliği
 
-**NetGuard: Orta ölçekli şirketler için açık kaynak NSM platformu (NDR-lite).**
+**NetGuard: Orta ölçekli şirketler için açık kaynak NSM (Network Security Monitoring) platformu.**
 
 > "Splunk 50K$/yıl. QRadar 30K$/yıl. NetGuard: açık kaynak, Docker ile 30 dakikada kurulum."
 
 - **Hedef kitle:** 50–500 çalışanlı, siber güvenlik bütçesi kısıtlı şirketlerin IT yöneticileri
 - **Rekabet konumu:** Wazuh endpoint/HIDS odaklı → NetGuard network/NSM odaklı (bu gap gerçek)
-- **Ne değildir:** Wireshark (PCAP), Zabbix (NMS), Splunk (log), Wazuh (EDR), Darktrace (full NDR)
+- **Ne değildir:** Wireshark (PCAP), Zabbix (NMS), Splunk (log), Wazuh (EDR), Darktrace (full NDR), CloudSIEM
+- **NSM kapsamı:** Ağ trafiği toplama + davranışsal analiz + imza tespiti + akış korelasyonu + alert + sınırlı IP blokajı. Full NDR (cloud entegrasyon, UEBA, otomatik playbook) değildir.
+
+> **Pozisyonlama kararı (6 Haziran 2026 — Seçenek A):** NetGuard saf NSM platform olarak konumlandırıldı. Cloud log parser (N9), UEBA (N10), Arkime PCAP (N11) kapsam dışı veya ertelenmiş. IP blokajı NSM'in yardımcı özelliğidir, NDR'ın tanımlayıcı özelliği değildir.
 
 ---
 
 ## Mimari
 
 ```
-COLLECT                 DETECT                      RESPOND
-───────                 ──────                      ───────
-Syslog (firewall)       JSON korelasyon motoru       Incident yönetimi
-SNMP v2c/v3             pySigma v2 (30+ kural)       Kill chain timeline
-NetFlow v5/v9           Kill chain (5 aşama)         Email + webhook
-pyshark (SYN/BPF)       IsolationForest anomaly      OPNsense REST blok
-Agent (psutil)          MITRE ATT&CK mapping         VyOS SSH fallback
-Zeek TAP                Threat intel (AbuseIPDB)     Audit log
-EVTX (Windows)          ARP/DNS/ICMP/port_scan det.
+COLLECT                      DETECT                       RESPOND
+───────                      ──────                       ───────
+Syslog (firewall)            JSON korelasyon motoru        Incident yönetimi
+SNMP v2c/v3                  pySigma v2 (50+ kural)        Kill chain timeline
+NetFlow v5/v9/IPFIX/sFlow    Kill chain (5 aşama)          Email + webhook
+pyshark (SYN/BPF)            IsolationForest anomaly       OPNsense REST blok
+Agent (psutil)               MITRE ATT&CK mapping          VyOS SSH fallback
+Zeek TAP (14 log tipi)       ARP/DNS/ICMP/port_scan det.   Audit log
+Suricata EVE JSON            Beaconing (IAT/C2)
+EVTX (Windows 60+ EID)       Threat intel (composite 0-100)
+OpenCanary (honeypot)        Community ID pivot (C1)
+Windows Agent (5 kanal)
+CISA KEV, M365, Workspace
 ```
 
 **Pipeline:** Kaynak → `normalized_logs` → correlator/detectors → kill chain → incident → aktif yanıt
@@ -39,17 +46,17 @@ EVTX (Windows)          ARP/DNS/ICMP/port_scan det.
 
 | Ortam | Veritabanı | Koşul |
 |-------|-----------|-------|
-| Production | PostgreSQL 16 (VM'de TimescaleDB YOK — O1 görevi) | `DATABASE_URL` env set |
+| Production | PostgreSQL 16 + TimescaleDB (O1 tamamlandı) | `DATABASE_URL` env set |
 | Test (tmp_db / pg_db) | PostgreSQL + TimescaleDB (testcontainers) | Docker daemon erişilebilir |
 
-**Not:** F2-1 tamamlandı — `database.py` PostgreSQL-only, `database_pg.py` kaldırıldı. Production VM'de TimescaleDB kurulumu O1 görevi olarak planlandı.
+**Durum:** `database.py` PostgreSQL-only (`database_pg.py` kaldırıldı — F2-1/F2-2). VM'de TimescaleDB kurulu, `normalized_logs` hypertable (received_at/1d, compression 7d).
 
 ---
 
 ## Mimari Kararlar
 
 - **Event pipeline:** Her kaynak → `normalized_logs` (tek merkezi tablo)
-- **Sigma engine:** Yalnızca pySigma v2 — `config/sigma_rules_v2/` (11 dosya, 30+ kural)
+- **Sigma engine:** Yalnızca pySigma v2 — `config/sigma_rules_v2/` (14 dosya, 50+ kural)
 - **Korelasyon:** JSON (`correlation_rules.json`) + pySigma v2 — iki katmanlı
 - **Token:** `verify_token(token, token_type=)` — tip karıştırma engeli
 - **API key:** SHA-256 hash saklanır, plaintext asla DB'ye yazılmaz
@@ -59,14 +66,13 @@ EVTX (Windows)          ARP/DNS/ICMP/port_scan det.
 - **Break-glass:** `BREAK_GLASS_TOKEN` env — JWT bypass, sadece unblock
 - **Placeholder:** Her yerde `%s` — dialect flag yok
 - **dict_row:** `row["kolon"]` kullan, `row[0]` asla
+- **Community ID:** Zeek/Suricata/NetFlow aynı TCP bağlantısını `community_id` üzerinden pivot eder — `normalized_logs.community_id VARCHAR(50)` (C1 tamamlandığında)
 
 ---
 
 ## Yol Haritası — Öncelik Sırası
 
-Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, CIS Controls v8.1, NIST SP 800-94, OWASP API Security 2023, Gartner NDR Market Guide 2025.
-
-> **Üretim eşiği notu (Mayıs 2026):** Tahmini kapasite ~%65 (Security Onion benchmark). G2+U2+F4 tamamlanırsa ~%82, U3+U4+T2-3 ile ~%88. Bu 3 görev olmadan production pilot için kritik kör nokta kalır.
+Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, CIS Controls v8.1, NIST SP 800-94, OWASP API Security 2023, Gartner NDR Market Guide 2025, SANS NSM Course, Corelight Community ID Spec.
 
 ### AŞAMA 1 — Acil Güvenlik (Tamamlandı)
 
@@ -79,290 +85,190 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] **G4** — DNS tunneling: entropi (4.0 bit), uzun sorgu (>50c), NXDOMAIN 2 katmanlı spike
 - [x] **G3** — Çoklu threat intel: Feodo Tracker + ThreatFox + GreyNoise + composite score 0-100
 
-### AŞAMA 2.5 — Kritik Tespit Eksikleri (ÜRETİM ÖNCESİ ZORUNLU)
-
-> Bu üç görev olmadan NetGuard %65 kapasitede kalır. Sırayla yapılır, paralel değil — G2 bağımsız, U2 bağımsız, F4 ikisinden beslenirse daha güçlü.
-
----
+### AŞAMA 2.5 — Kritik Tespit Eksikleri (Tamamlandı)
 
 - [x] **G2** — Suricata EVE JSON collector
-  - *CIS Controls v8.1 Safeguard 13.8 zorunlu. Zeek behavioral + Suricata imza = altın standart NSM. Zeek'in göremediği TLS içi payload, exploit kit imzaları Suricata yakalar.*
-  - **Teslim:** `server/parsers/suricata.py` (9 event_type parser), `server/suricata_collector.py` (inode rotation-safe offset), `config/sigma_rules_v2/suricata_ids.yml` (6 kural), 60 test — 1271 toplam test ✓
+  - **Teslim:** `server/parsers/suricata.py` (9 event_type parser), `server/suricata_collector.py` (inode rotation-safe offset), `config/sigma_rules_v2/suricata_ids.yml` (6 kural), 60 test ✓
 
 - [x] **U2** — Sysmon / Windows HIDS entegrasyonu
-  - *Verizon DBIR 2025: ihlallerin %32'si credential compromise — Windows host blind spot. EVTX parser var ama Sysmon event mapping yok.*
-  - **Teslim:** `evtx_parser.py` 12 EID (Sysmon 1/3/10/22 + Security 4648/4720/4732/4768/4769); `parsers/windows.py` NormalizedLog dönüşümü; `routes/evtx.py` normalized_logs yazımı; 8 Sysmon sigma kuralı; 39 test — STAGE_MAP Sysmon eventi kill chain'e bağlandı ✓
+  - **Teslim:** `evtx_parser.py` 12 EID (Sysmon 1/3/10/22 + Security 4648/4720/4732/4768/4769); `parsers/windows.py` NormalizedLog dönüşümü; `routes/evtx.py` normalized_logs yazımı; 8 Sysmon sigma kuralı; 39 test ✓
 
 - [x] **F4** — Anomaly engine → kill chain entegrasyonu
-  - *Gartner NDR: ML anomali behavioral context'te değerlendirilmeli. Slow-and-low saldırılar Sigma eşiğini geçer, IsolationForest yakalar — ama şu an kill chain'e beslenmiyor.*
-  - **Teslim:** `engine.py` anomaly tespitinde trigger yakalanıyor → `chain_trigger_to_correlated_event()` çağrısı, FULL_ATTACK_CHAIN alerti/auto-block tetikleniyor; IP doğrulaması; quality audit düzeltmeleri (F4+U2 kritik bulgular) — 1311 toplam test ✓
+  - **Teslim:** `engine.py` anomaly → `chain_trigger_to_correlated_event()`, FULL_ATTACK_CHAIN alert/auto-block; 1311 toplam test ✓
 
-- [x] **G7** — Suricata Tespit Katmanı Genişletme — Bağımlılık: G2 ✓
-  - *G2 ile collector tamamlandı (9 event_type parser). Ancak yalnızca `alert` + `anomaly` event_type'ları Sigma kuralı ve kill chain mapping'e sahip. 7 event_type (dns/http/tls/flow/ssh/smtp/fileinfo) normalize edilip yazılıyor ama tespit yok — bu Suricata'nın %78'ini blind spot bırakıyor.*
-  - *MITRE ATT&CK v17: T1071 (HTTP/TLS C2), T1046 (network service scanning), T1048 (exfiltration over alt protocol), T1071.004 (DNS C2). Suricata HTTP/TLS/SSH logları bu teknikleri coverage'a alır.*
-  - **Teslim:** `parsers/suricata.py` HTTP/TLS/SSH anomaly tespiti (token-bazlı UA, self-signed/old TLS, scanning SSH client); `suricata_ids.yml` 4 yeni Sigma kuralı (HTTP anomaly, TLS anomaly, SSH suspicious client, HTTP burst korelasyon); STAGE_MAP `suricata_http_anomaly: "recon"`, `suricata_tls_anomaly: "lateral"`, `suricata_ssh_anomaly: "weaponize"`; quality audit düzeltmeleri (token FP, STAGE_MAP semantik, tip güvenliği); 51 yeni test — toplam test ✓
+- [x] **G7** — Suricata Tespit Katmanı Genişletme
+  - **Teslim:** `parsers/suricata.py` HTTP/TLS/SSH anomaly; `suricata_ids.yml` 4 yeni kural; STAGE_MAP 3 yeni giriş; 51 test ✓
 
 ---
 
-### AŞAMA 2.6 — Dashboard Görselleştirme
+### AŞAMA 2.6 — Dashboard Görselleştirme (Tamamlandı)
 
-Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 13, NIST SP 800-94, Security Onion 2.4, Malcolm/CISA, ntopng, Arkime, Grafana Best Practices 2024, ArmorPoint SOC KPIs 2025.
+#### Blok A — Hızlı Kazanımlar
 
-**Uygulama sırası:** Blok A (bağımsız, ~4 gün) → Blok B (G4/G3/G2 sonrası) → Blok C (ertelenebilir)
+- [x] **D1** — Top Talkers Panel — `GET /api/v1/analytics/top-talkers`; 20 test ✓
+- [x] **D5** — Alert Volume Stacked Area Chart — `GET /api/v1/analytics/alert-volume`; 23 test ✓
+- [x] **D2** — Protocol Distribution Donut — `GET /api/v1/analytics/protocol-distribution`; 20 test ✓
+- [x] **D3** — Traffic Volume Area Chart (east-west/north-south) — `GET /api/v1/analytics/traffic-volume`; 21 test ✓
 
-**Altyapı durumu:** Next.js dashboard ✓, api.ts ✓, TanStack Query ✓ — analytics route YOK (yazılacak), top-talkers endpoint YOK (yazılacak)
+#### Blok B — Bağımlı Dashboard Görselleri
 
-#### Blok A — Hızlı Kazanımlar (~4 gün, bağımsız)
+- [x] **D4** — Kill Chain Swimlane Timeline — SVG swimlane, saat seçici; 17 test ✓
+- [x] **D8** — DNS Analiz Derinleştirme ✓
+- [x] **D6** — Threat Intel Geo Harita + Composite Score ✓
 
-- [x] **D1** — Top Talkers Panel
-  - Top src/dst IP + top dst port → horizontal ranked bar; `GET /api/v1/analytics/top-talkers?hours=24&limit=20`
-  - **Teslim:** `server/routes/analytics.py`, `TopTalkersChart.tsx`, `/top-talkers` sayfası, sidebar eklendi; 20 test — 1389 toplam test ✓
-- [x] **D5** — Alert Volume Stacked Area Chart
-  - `alerts` GROUP BY hour × severity → critical/high/warning/info renk kodlaması
-  - **Teslim:** `GET /api/v1/analytics/alert-volume`, `AlertVolumeChart.tsx`, `/alert-volume` sayfası; zero-fill (eksik saatler sıfırla), triggered_at <= NOW() guard, Alembic 007 (idx_alerts_tenant_time); 23 test — 1456 toplam test ✓
-- [x] **D2** — Protocol Distribution Donut
-  - `normalized_logs.network_protocol` GROUP BY; CIS Control 13.6
-  - **Teslim:** `GET /api/v1/analytics/protocol-distribution`, `ProtocolDonutChart.tsx`, `/protocol-distribution` sayfası; LOWER() case-insensitive, NULL/empty dışlama, yüzde hesabı; 20 test — 1456 toplam test ✓
-- [x] **D3** — Traffic Volume Area Chart (east-west / north-south)
-  - RFC1918 kaynak → iç/dış ayrımı, stacked area; Gartner NDR zorunlu
-  - **Teslim:** `GET /api/v1/analytics/traffic-volume`, `TrafficVolumeChart.tsx`, `/traffic-volume` sayfası; CASE WHEN LIKE RFC1918 sınıflandırması (SQLite+PG uyumlu), zero-fill; 21 test — 88 analytics testi ✓
+#### Blok C — Karmaşık Görseller
 
-#### Blok B — Bağımlı Dashboard Görselleri (~4-5 gün)
+- [x] **D7** — East-West Connection Matrix Heatmap — ECharts heatmap; 20 test ✓
+- [x] **D9** — Asset Risk Heatmap — 3 risk boyutu; 21 test ✓
+- [x] **D10** — MTTD/MTTR Metrik Paneli — SLA uyumu (SANS 2023); 27 test ✓
 
-- [x] **D4** — Kill Chain Swimlane Timeline — Bağımlılık: G1 ✓
-  - **Teslim:** `GET /api/v1/analytics/kill-chain-timeline`, SVG swimlane (X=zaman, Y=IP, renkli aşama noktaları), saat seçici (6s/24s/48s/7g), tooltip; 17 test — 1550 toplam test ✓
-- [x] **D8** — DNS Analiz Derinleştirme — Bağımlılık: G4 ✓
-- [x] **D6** — Threat Intel Geo Harita + Composite Score — Bağımlılık: G3 ✓
+### AŞAMA 3 — Güvenlik Derinleştirme (Tamamlandı)
 
-#### Blok C — Karmaşık Görseller (ertelenebilir, F4 sonrası)
+- [x] **U3** — Tamperproof audit log (SHA-256 zinciri) — NIST SP 800-92 §3.2; 24 test ✓
+- [x] **U4** — Beaconing detection (C2 inter-arrival time) — IAT algoritması, Bessel stddev; 35 test ✓
+- [x] **T2-3** — MFA / TOTP — pyotp, Alembic 010; 30 test ✓
 
-- [x] **D7** — East-West Connection Matrix Heatmap — Bağımlılık: F4
-  - **Teslim:** `GET /api/v1/analytics/east-west-matrix` (RFC1918→RFC1918, top-N, hours, tenant isolation); `EastWestHeatmapChart.tsx` (ECharts heatmap, visualMap, tooltip); `/east-west-matrix` sayfası (saat seçici, özet stats); sidebar eklendi; 20 test — 1624 toplam test ✓
-- [x] **D9** — Asset Risk Heatmap — Bağımlılık: F4
-  - **Teslim:** `GET /api/v1/analytics/asset-risk` (RFC1918 IP bazında 3 risk boyutu: activity_score/chain_score/block_score, weighted total, tenant isolation); `AssetRiskHeatmapChart.tsx` (ECharts heatmap, Y=IP, X=boyutlar, kırmızı ton); `/asset-risk` sayfası (saat seçici, blok sayısı, en riskli IP özeti, legend); sidebar eklendi; 21 test — 1645 toplam test ✓
-- [x] **D10** — MTTD/MTTR Metrik Paneli — Bağımlılık: incident lifecycle
-  - **Teslim:** `GET /api/v1/analytics/mttd-mttr` (days, tenant isolation, overall MTTD/MTTR, resolution_rate, günlük trend, severity breakdown + SLA uyumu); SLA hedefleri SANS 2023 + Prophet Security: Critical 15dk/60dk, High 60dk/120dk; negatif diff + outlier >30g guard; `MttdMttrChart.tsx` (ECharts çift çizgi, MTTD mavi MTTR turuncu); `/mttd-mttr` sayfası (3 KPI kartı, trend grafik, severity SLA tablosu, kaynak notu); 27 test (basic/hesaplama/veri kalitesi/sla/tenant) — 1672 toplam test ✓
+### AŞAMA 4 — Mimari Temizlik (Tamamlandı)
 
-### AŞAMA 3 — Güvenlik Derinleştirme
+- [x] **F2-1** — `database.py` → sadece PostgreSQL (SQLite sınıfı silindi)
+- [x] **F2-2** — `database_pg.py` kaldırıldı
+- [x] **F2-3** — 9 test dosyasını PG uyumlu hale getir (`tmp_db` fixture); 1914 test ✓
+- [x] **F3** — Ham SQL → DB metodları (8 yeni DatabaseManager metodu); 28 raw SQL kaldırıldı ✓
+- [x] **F2-6** — Alembic migration notları güncellendi (DATABASE_URL zorunlu)
 
-- [x] **U3** — Tamperproof audit log (SHA-256 zinciri)
-  - *NIST SP 800-92 §3.2 + NIS2 Article 21(2)(i): log bütünlüğü yasal gereklilik. Attacker PG'ye erişirse audit siler.*
-  - **Teslim:** `audit_log` tablosuna `previous_hash + entry_hash` (Alembic 006); JSON canonical hash input (log forging önlemi); SQLite thread-lock + PG advisory lock serialization; `GET /api/v1/audit-log/verify` (rate-limited, async); PG smoke test dahil 24 test — 1330 toplam test ✓
+### AŞAMA 4.5 — Kural Yönetimi UI (Tamamlandı)
 
-- [x] **U4** — Beaconing detection (C2 inter-arrival time)
-  - *MITRE ATT&CK T1071: Cobalt Strike default 60s, APT1 5m jitter ±%10-15. Zeek conn logs akar ama analiz yok.*
-  - **Teslim:** `server/detectors/beaconing.py` (IAT algoritması, Bessel stddev, thread-safe _alerted, LRU pruning, FP suppression); STAGE_MAP `"c2_beaconing": "lateral"` (TA0011 C&C); `_beaconing_loop()` 300s aralık, ilk iterasyon anında; 35 test — 1369 toplam test ✓
-
-- [x] **T2-3** — MFA / TOTP
-  - *Verizon DBIR 2025: kimlik ihlallerinin %32'si. NIS2 Article 21(2)(i) zorunlu.*
-  - **Teslim:** `pyotp>=2.9.0` requirements; Alembic 010 (totp_secret + totp_enabled); SQLite migration `_migrate_db_users_totp_columns()`; `create_mfa_token()` + `Token.mfa_required/mfa_token`; 4 yeni route (setup/confirm/verify/disable); rate limit 5/min; 30 test — 1604 toplam test ✓
-
-### AŞAMA 4 — Mimari Temizlik
-
-- [x] **F2-3** — 9 test dosyasını PG uyumlu hale getir (`tmp_db` fixture; Docker yoksa skip)
-  - **Teslim:** 12 test dosyası; `DatabaseManager(db_path=...)` kaldırıldı; `sqlite3.connect(tmp_db._path)` → `tmp_db._connect()` + `%s` placeholder; `pg_db` fixture'ına 5 eksik patch + tenants tablosu eklendi; 1914 test ✓
-- [x] **F2-1** — `database.py` → sadece PostgreSQL (SQLite sınıfını sil, `database_pg.py` merge)
-- [x] **F2-2** — `database_pg.py` kaldır — Bağımlılık: F2-1
-- [x] **F3** — Ham SQL → DB metodları (correlator, asset_baseline, retention, mitre, network_intel)
-  - **Teslim:** 8 yeni DatabaseManager metodu (get_rule_alert_counts, get_log_aggregates_by_ip, get_top_values_by_ip, get_event_counts_by_ip, query_correlated_log_groups, get_network_intelligence, fetch_table_rows_before, delete_table_rows_before); 5 modülden 28 raw SQL kaldırıldı; test_retention.py dict_row fix ✓
-- [x] **F2-6** — Alembic migration notları güncelle (DATABASE_URL zorunlu)
-  - **Teslim:** `alembic/env.py` DATABASE_URL yoksa sys.exit(1) + hata mesajı; README.md `database_pg.py` referansı kaldırıldı, `database.py` açıklaması güncellendi, test/alembic komutları PG bağımlılığını açıkça belirtiyor
-
-### AŞAMA 4.5 — Kural Yönetimi UI (Aşama 3/4 sonrası)
-
-- [x] **R1** — Korelasyon Kuralları CRUD UI (4-5 gün, düşük risk)
-  - **Teslim:** `GET/POST/PUT/DELETE/PATCH /api/v1/correlation/rules[/{rule_id}[/toggle]]` (CorrelationRuleIn Pydantic validation: slug regex, frozenset sev/group_by, window 10-86400, threshold 1-10000, 409 duplicate, 404 missing, hot-reload via correlator.load_rules()); `/correlation-rules` liste sayfası (Power toggle, Pencil edit, Trash2 sil, delete confirm dialog, stats bar); `RuleFormModal.tsx` (tüm alanlar, create/update mutations, enabled toggle); sidebar "Kural Yönetimi"; `correlationApi` 5 yeni metod; 30 test — 1702 toplam test ✓
-  - **Quality audit düzeltmeleri:** atomik yazma (tempfile+fsync+os.replace), threading.Lock, correlator._rules_path tek kaynak, _VALID_GROUP_COLS import, max_length sınırları, bulk PUT tam validasyon, boundary testleri (50 test)
-- [x] **R2** — Sigma Rule Wizard (6-7 gün, orta risk) — Bağımlılık: R1
-  - **Teslim:** `PATCH /api/v1/sigma/rules/{rule_id}/toggle` (.yml ↔ .yml.disabled hot-reload); `_list_sigma_files()` disabled dosyaları da listeler; `/sigma-rules` liste sayfası (Power toggle, Trash2 sil, level badge, tag'lar); `/sigma-wizard` 4 adımlı form (Tespit→Korelasyon→Metadata→Önizleme); TypeScript YAML üretici (event_action, modifier, extra_filters, group_by, timespan, threshold, MITRE ATT&CK v17, false positives); doğrula + kaydet akışı; `sigmaApi` 6 metod; sidebar 2 yeni giriş; 28 test — MITRE ATT&CK v17, Sigma HQ spec, pySigma v2 kaynaklı
-- [x] **R3** — Sigma YAML Monaco Editör (8-10 gün, yüksek risk, isteğe bağlı)
-  - **Teslim:** `@monaco-editor/react` kurulumu; `/sigma-editor` sayfası (Monaco Editor ssr:false, YAML dili, vs-dark tema, 6 şablon); `?rule_id=` ile mevcut kural yükleme + üzerine yazma; Doğrula→Kaydet akışı (POST /sigma/rules/validate → POST /sigma/rules); `/sigma-rules` listesine Pencil edit butonu; sidebar "YAML Editör" (FileCode2); test_sigma_editor.py 16 test; test_correlation_routes.py RULES_PATH→correlator instance fix — 1766 toplam test ✓
+- [x] **R1** — Korelasyon Kuralları CRUD UI — 5 endpoint, atomik yazma, 50 test ✓
+- [x] **R2** — Sigma Rule Wizard — 4 adımlı form, TypeScript YAML üretici; 28 test ✓
+- [x] **R3** — Sigma YAML Monaco Editör — `@monaco-editor/react`; 16 test ✓
 
 ### AŞAMA 2.7 — Dashboard Modernizasyon (Tamamlandı)
 
 - [x] **Sprint 1+2** — Deep Navy Visual Identity + Hover-Expand Sidebar
-  - **globals.css:** oklch deep-navy palette (`#060c17` bg, `#0d1526` panel, `#040911` sidebar), cyber cyan primary (sky-400 `#38bdf8`), dot-grid body texture, glow utilities (lamp-online/critical, glow-cyber-sm, topbar-glow-bottom), pulse-glow animations
-  - **Sidebar:** VS Code inner-panel hover-expand (48px icon-only → 228px overlay, content area never shifts), pin/unpin persistence via localStorage, cyan active states + glow accent bar, navy flyout menus, gradient logo badge, slate section labels
-  - **Topbar:** `DataLiveIndicator` (sourceHealth query + Wifi icon + glow lamp), section breadcrumb, dual-line clock, cy-tinted border + bottom glow
-  - **Overview:** Panel/StatCard/KpiCard → navy bg + cyan borders, all `zinc-*`→`slate-*`, ECharts tooltips/axes/splitlines updated to cyber palette
-  - **`src/lib/echarts-theme.ts`:** centralized CHART_COLORS, SEVERITY_COLORS, TOOLTIP_BASE, AXIS_BASE, GRID_DEFAULT, `lineSeries()` helper — Sprint 4 foundation
-- [x] **Sprint 3** — Overview Bento Grid Layout
-  - 8 lineer satır → 6 asimetrik zona dönüşümü (12-col CSS grid)
-  - Zone A (8+4): StatCards sol + KPI compact panel sağ
-  - Zone B (8+4): Alert Trend hero sol + [Threat Intel + Kill Chain] sağ stack
-  - Zone C (7+5): Topology sol + [Risk Assets + MTTD] sağ stack
-  - Zone D (3×4): Failed Auth + DNS Anomali + Anomali Detection
-  - Zone E (4+5+3): Agents + Alerts + Protocol Donut
-  - Zone F (12): Traffic Volume full-width alt
-- [x] **Sprint 4** — ECharts Tema Merkezileştirme
-  - **`src/lib/echarts-theme.ts`:** CHART_COLORS, SEVERITY_COLORS, SERIES_PALETTE, TOOLTIP_BASE, AXIS_BASE, CATEGORY_AXIS, VALUE_AXIS, LEGEND_TEXT, GRID_DEFAULT, GRID_SPARKLINE, `lineSeries()` helper
-  - **10 chart bileşeni güncellendi:** AlertVolumeChart, AssetRiskHeatmapChart, CPUChart, EastWestHeatmapChart, MemoryGauge, MttdMttrChart, ProtocolDonutChart, TimeSeriesChart, TopTalkersChart, TrafficVolumeChart
-  - **10 sayfa güncellendi:** anomaly, failed-auth, dns-analysis, correlation, mitre, logs, threat-intel-summary, topology, kill-chain-timeline, beaconing
-  - **Bug fix:** CPUChart + TimeSeriesChart xAxis `type: 'event_category'` → `'category'`
-  - Zinc/neutral palette tamamen kaldırıldı (0 kalan); TypeScript: 0 hata
-- [x] **Sprint 5** — Badge Glassmorphism + Skeleton Loading
-  - **SeverityBadge:** backdrop-blur-sm + tinted bg (*/10) + glowing border (*/30) + inset highlight + dot indicator (critical/high glow)
-  - **ThreatBadge:** aynı glassmorphism + navy tooltip (#0a1120, sky-900/30 border, slate tokens)
-  - **`src/components/ui/skeleton.tsx`:** Skeleton, SkeletonChart, SkeletonStatGrid, SkeletonTable
-  - **`globals.css`:** `@keyframes shimmer` + `.animate-shimmer` (left-to-right highlight, 1.8s)
-  - **20 sayfa güncellendi** — crude `bg-zinc-800 animate-pulse` kalıpları kaldırıldı; TypeScript: 0 hata
-- [x] **Sprint 6** — Ctrl+K Command Palette (keyboard navigation)
-  - **`src/store/commandPaletteStore.ts`:** Zustand store (isOpen/open/close)
-  - **`src/components/layout/CommandPalette.tsx`:** 39 komut (6 bölüm), grouped view (query yok) + filtered flat view (section badge), ArrowUp/Down/Enter/Esc, flatIndex DOM ref eşlemesi, `max-h-[55vh] overflow-y-auto`, footer kbd hints
-  - **`layout-client.tsx`:** Ctrl+K / Cmd+K global dinleyici, `<CommandPalette />` portal
-  - **`Topbar.tsx`:** "Ara... Ctrl K" search pill (`hidden lg:flex`); TypeScript: 0 hata
+  - `#060c17` bg, `#0d1526` panel, cyber cyan primary (sky-400), dot-grid texture, glow utilities
+  - VS Code hover-expand (48px → 228px overlay, localStorage pin), gradient logo badge
+- [x] **Sprint 3** — Overview Bento Grid Layout (6 asimetrik zona, 12-col CSS grid)
+  - Zone A: StatCards + KPI (grid-cols-3) · Zone B: Alert Trend + [Threat Intel + Kill Chain]
+  - Zone C: Topology + [Risk Assets + MTTD] · Zone D: 3×4 mini paneller
+  - Zone E: Agents + Alerts + Protocol Donut · Zone F: Traffic Volume full-width
+  - **CSS Grid notu:** KPI grid-cols-2 → 3 satır (~250px), StatCards ~90px → Zone A gap. grid-cols-3 = 2 satır (~170px), dengeli.
+- [x] **Sprint 4** — ECharts Tema Merkezileştirme (`src/lib/echarts-theme.ts`) — 10 chart, 10 sayfa ✓
+- [x] **Sprint 5** — Badge Glassmorphism + Skeleton Loading — 20 sayfa, shimmer animation ✓
+- [x] **Sprint 6** — Ctrl+K Command Palette — 39 komut, 6 bölüm, Zustand store ✓
 
-### AŞAMA 4.6 — Mimari Sağlamlaştırma (ÜRETİM ÖNCESİ ZORUNLU)
+### AŞAMA 4.6 — Mimari Sağlamlaştırma (Tamamlandı)
 
-> Kod analizi + derin araştırma (31 Mayıs 2026) ile tespit edildi. Bu sorunlar kapatılmadan pilot müşteriye gidilemez.
+#### Kritik Buglar
+- [x] **B1** — Agent SecurityEvents → `normalized_logs`'a yazılmıyor; 14 test ✓
+- [x] **B2** — `GET /agents` rate limit yok → `@limiter.limit("120/minute")` ✓
+- [x] **B3** — Silent `except` kill chain dispatch'i kesiyor → `logger.warning` ✓
 
-#### Kritik Buglar (1-2 Gün)
+#### Mimari Bütünleşme
+- [x] **A1** — BeaconingDetector `DetectorManager`'a entegre; 9 test ✓
+  - **Mimari karar:** Beaconing 300s cadence korundu (RITA BlackHat 2018); `run_beaconing()` `run_all()`'dan ayrı (C2 tespiti 60s correlator gecikmesini kaldıramaz)
+- [x] **A2** — `log_store.count_by_group()` implement — OWASP A3 whitelist; 16 test ✓
+- [x] **A3** — Lateral movement 28 test — TOCTOU fix, thread safety ✓
 
-- [x] **B1** — Agent SecurityEvents → `normalized_logs`'a yazılmıyor
-  - `server/routes/agents.py:157` — `receive_security_events()` sadece `security_events` tablosuna yazıyor
-  - **Teslim:** `_security_event_to_normalized_log()` helper (12 WIN + AUTH_LOG + NETGUARD source_type mapping); `log_store.save()` çağrısı; 14 birim testi — `test_agents_security_events.py` ✓
-- [x] **B2** — `GET /agents` ve `GET /agents/{id}/latest` endpoint'lerinde rate limit yok
-  - `server/routes/agents.py` — `@limiter.limit("120/minute")` + `Request/Response` parametreleri eklendi
-- [x] **B3** — Silent `except Exception: pass` kill chain dispatch'i sessizce kesiyor
-  - `server/routes/agents.py` — `logger.warning(f"Kill chain dispatch hatası ...")` ile replace edildi; 2 test ✓
+#### Operasyonel Hazırlık
+- [x] **O1** — TimescaleDB production VM kurulumu — hypertable received_at/1d, compression 7d; 20 test ✓
+- [x] **O2** — Docker Compose tek kurulum paketi — 6 servis, CIS resource limits; 47 test ✓
+- [x] **O3** — Backup/restore prosedürü — RPO ~24s, RTO ~30dk (NIST SP 800-34); 52 test ✓
 
-#### Mimari Bütünleşme (3-5 Gün)
-
-- [x] **A1** — BeaconingDetector `DetectorManager`'a entegre edilmeli
-  - `server/detectors/manager.py` — 5 dedektör var, beaconing yok; `main.py`'de ayrı `_beaconing_loop()` çalışıyor
-  - **Teslim:** `BeaconingDetector` → `detector_manager._beaconing` (singleton); `DetectorManager.run_beaconing()` metodu (normalized_logs + security_events + kill chain `db_save=True`); `_EVENT_TYPE_MAP`'e `c2_beaconing` eklendi; `SecurityEventType.C2_BEACONING` enum eklendi; `_beaconing_loop()` sadeleşti (3 satır); 9 yeni test — toplam test ✓
-  - **Mimari karar (RITA BlackHat 2018 + MITRE T1071):** Beaconing 300s cadence korundu — IAT istatistik analizi için 5 dakikalık örnekleme yeterli; 30s'de çalıştırmak 10× gereksiz DB sorgusu; `run_beaconing()` `run_all()`'dan ayrı çünkü C2 tespiti doğrudan kill chain feed gerektirir (60s correlator gecikmesi kabul edilemez)
-- [x] **A2** — `log_store.count_by_group()` implement edilmeli
-  - `server/log_store.py:134` — `raise NotImplementedError("Faz 3'te implement edilecek")` — Sigma backtest, analitik, retention çağırınca runtime crash
-  - **Teslim:** PostgreSQL `GROUP BY` + OWASP A3 whitelist (`_VALID_LOG_GROUP_COLS`); NULL grup dışlama (`IS NOT NULL`); port → `str()` dönüşümü; ILIKE `%/_` escape; `since` None guard (NIST SP 800-94 §6.1); 16 test (basic/filters/edge-cases/security) — toplam test ✓
-- [x] **A3** — Lateral movement dedektörü test yok
-  - `tests/` — `test_lateral*.py` yok; pyshark bağımlı, thread-based, en karmaşık dedektör
-  - **Teslim:** `tests/test_lateral_movement.py` — 28 test (8 RFC1918 edge, 3 LATERAL_PORTS, 5 sniffer hata senaryosu, 6 paket işleme, 2 window cleanup deterministik, 2 alerted reset, 2 thread safety); `lateral.py` TOCTOU fix (alerted check+add atomik lock altında); `except (AttributeError, ValueError, TypeError, KeyError)` genişletildi + debug log eklendi — toplam test ✓
-
-#### Operasyonel Hazırlık (1-2 Hafta)
-
-- [x] **O1** — TimescaleDB production VM'e kurulumu
-  - VM'de sadece `plpgsql` var, TimescaleDB yok; `normalized_logs` düz tablo; büyük log hacminde ciddi yavaşlama
-  - **Teslim:** `scripts/setup_timescaledb.sh` (Ubuntu 24.04 + PG16 kurulum; signed-by APT; shared_preload_libraries runtime doğrulama); Alembic `013_timescaledb_hypertable.py` (extension runtime check + ValueError, idempotent unique constraint cleanup, create_hypertable received_at/1d/migrate_data, compression policy 7d tenant_id segmentby); `database.py` `ON CONFLICT (log_id, received_at)` + `_check_hypertable_schema()` startup guard; 20 test (extension, hypertable, compression, unique index compat, operations, migration reliability) — toplam test ✓
-  - **VM'de çalıştırılacak:** `sudo bash scripts/setup_timescaledb.sh` → `alembic upgrade head`
-- [x] **O2** — Docker Compose tek kurulum paketi
-  - Şu an GNS3 lab'a özel konfigürasyon; müşteriye götürülemez
-  - **Teslim:** `docker-compose.yml` (6 servis: backend/frontend/nginx/postgres/influxdb/zeek; resource limits CIS Benchmark; `no-new-privileges:true` tüm servislere; healthcheck status code doğrulama; nginx healthcheck; InfluxDB `service_started` bağımlılığı; start_period 120s migration için; InfluxDB healthcheck `/ping` endpoint); `install.sh` (--host validation regex; placeholder guard; `docker inspect` health wait; prerequisites check; HOST_ARG + CORS update; build false-negative fix; ~120 bit admin parola); 47 test (TestComposeStructure/Dockerfiles/Healthchecks/Dependencies/ResourceLimits/EnvExample/InstallScript/ZeekConfig/SecurityHardening) — toplam test ✓
-- [x] **O3** — Backup/restore prosedürü
-  - DB yedekleme, config yedekleme, felaket kurtarma dökümantasyonu yok
-  - **Teslim:** `scripts/backup.sh` (pg_dump -Fc + config tar + .env AES-256-CBC PBKDF2 şifreli + ssl_certs/netguard_data volume; SHA-256 manifest; 7 günlük + 4 haftalık retention); `scripts/restore.sh` (manifest doğrulama → servis durdur → pg_restore → config → .env → volume → servis başlat; dry-run + skip-db/skip-volumes + --date/--set/--dir); `scripts/verify-backup.sh` (manifest checksum + pg_restore --list + tar bütünlük + boyut + yaş kontrolü); 52 test (TestScriptExistence/StrictMode/BackupComponents/Retention/RestoreComponents/VerifyScript/Security/Integration); RPO: ~24s, RTO: ~30dk (NIST SP 800-34 Rev 1)
-
-#### Tespit Genişletme (1-2 Hafta)
-
-- [x] **D1** — NetFlow Sigma kuralları
-  - NetFlow `normalized_logs`'a `source_type=NETFLOW` ile yazılıyor ama **sıfır Sigma kuralı** kapsamıyor
-  - **Teslim:** `parsers/netflow.py` `_event_action_for_flow()` (öncelik sırası: large_flow → tunneled → suspicious_port → normal; `NETFLOW_LARGE_FLOW_BYTES` env, varsayılan 50MB; `_TUNNELED_PROTOCOLS` {47 GRE, 50 ESP, 41 IPv6-in-IPv4}); `config/sigma_rules_v2/netflow.yml` 6 kural (3 base + 3 korelasyon: Large Flow Exfil Burst/Suspicious Port Burst/Tunnel Burst); `attack_chain.py` STAGE_MAP 5 yeni giriş; 34 test — toplam test ✓
-- [x] **D2** — `network_bytes` alanı Zeek + Suricata parser'larına eklenmeli
-  - `migration 009` ile kolon eklendi ama sadece `parsers/netflow.py:84` dolduruyor
-  - **Teslim:** `zeek.parse_conn()` (orig_bytes+resp_bytes), `zeek.parse_http()` (response_body_len), `suricata.parse_flow()` (bytes_toserver+bytes_toclient), `suricata.parse_http()` (http.length), `suricata.parse_fileinfo()` (fileinfo.size); 0/None guard for missing/zero; 23 test — toplam test ✓
+#### Tespit Genişletme
+- [x] **D1** — NetFlow Sigma kuralları — 6 kural (Large Flow/Suspicious Port/Tunnel burst); 34 test ✓
+- [x] **D2** — `network_bytes` Zeek + Suricata parser'larına eklendi; 23 test ✓
 
 #### İleri Özellikler (Baklog)
-
-- [x] **F1** — Sigma Rule Backtest Engine (`POST /api/v1/sigma/rules/{rule_id}/backtest`) — 23 test ✓
+- [x] **F1** — Sigma Rule Backtest Engine — 23 test ✓
 - [x] **F2** — Live Log Stream (WebSocket + TanStack Virtual) — 6 test ✓
-- [x] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi
-  - **Teslim:** `config/mitre_techniques.json` (13 taktik, ~100 teknik+alt teknik, ATT&CK v17); `server/mitre.py` `get_matrix()` + `load_technique_db()` (per-teknik coverage/hit/rules, top_gaps risk sıralı); `GET /api/v1/mitre/matrix?days=N`; `MitreMatrix` TS tipleri + `mitreApi.matrix()`; MITRE sayfası yeniden yazıldı (taktik başlık satırı, teknik hücreleri hit renk kodlaması, tek taktik genişletme, teknik detay panel, gap analizi panel, Navigator layer indirme); 19 test ✓
-- [x] **F4** — AI Alert Explainer (Groq Llama 3.3 70B, rate limit, 24h cache)
-  - **Teslim:** `server/alert_explainer.py` (prompt builder, DB cache, Groq SDK çağrısı, prompt injection isolation); Alembic 014 `alert_explanations` tablo; `db.get/save_alert_explanation()` 24s TTL tenant-isolated; `GET /api/v1/correlation/events/{id}` + `POST /api/v1/correlation/events/{id}/explain` (5/min rate limit, 503 key yok); `correlationApi.explainEvent()` + `AlertExplanation` TS tipi; Correlation sayfasında "AI ile Açıkla" butonu + `ExplainPanel` (loading/error/cached badge); `.env.example` `GROQ_API_KEY`/`GROQ_MODEL`; Türkçe 6-bölüm SOC prompt (SANS/NIST SP 800-61 standardı: Triage Kararı + 5W1H + Log Korelasyonu + Risk + MITRE + Müdahale); 24 test ✓
-- [x] **F5** — Threat Hunt Workbench (no-code sorgu builder, saved hunts) — 2 hafta
-  - **Teslim:** Alembic `015_saved_hunts.py` (saved_hunts tablosu: hunt_id/tenant_id/filter_params/tags/run_count); `server/database.py` 6 hunt metodu (create/get/list/update/delete/record_run); `server/routes/hunts.py` 8 endpoint (CRUD + favorite toggle + saved execute + adhoc execute); `server/main.py` router eklendi; `HuntFilters` (10 filtre alanı, frozenset validasyon), `_execute_filters()` (log_store.search + client-side severity/source_type/protocol filtre, istatistik hesabı); `/hunts` sayfası (split-pane: saved hunts sol sidebar + filtre formu + TanStack Virtual log tablosu + stats panel + CSV export); sidebar "Threat Hunt" (Target icon); 33 test — `_PG_TRUNCATE_TABLES` + monkeypatch güncellendi ✓
+- [x] **F3** — MITRE ATT&CK Navigator matrix + coverage gap analizi — 19 test ✓
+- [x] **F4** — AI Alert Explainer (Groq Llama 3.3 70B, 24h cache) — 24 test ✓
+- [x] **F5** — Threat Hunt Workbench (no-code sorgu builder, saved hunts) — 33 test ✓
 
 ---
 
-### AŞAMA 4.7 — NSM Veri Kapsamı Genişletme (Haziran 2026 Araştırması)
+### AŞAMA 4.7 — NSM Veri Kapsamı Genişletme (Tamamlandı)
 
-> **Analiz:** 11 kaynak + NIST SP 800-94, CIS Controls v8.1, Gartner NDR 2025, SANS NSM, Verizon DBIR 2025, MITRE ATT&CK v17, NSA Event-Forwarding-Guidance, Malcolm/CISA. Mevcut skor: **62/100** → P1+P2+P3 tamamlanınca **~98/100** (Security Onion eşdeğer). Detaylı araştırma: `memory/nsm_improvement_roadmap.md`.
+> Mevcut skor: 62/100 → P1+P2 tamamlanınca ~92/100 (Security Onion eşdeğer seviyeye yakın).
 
-#### P1 — Kısa Vadeli (Ay 1-2, Yüksek Etki / Düşük Maliyet)
+#### P1 — Kısa Vadeli (Tamamlandı)
 
-- [x] **N1** — Windows EID 12 → 26 (3-5 gün) | +5% skor
-  - Eklenecek kritik EID'ler: 4104 (PowerShell ScriptBlock), 4776 (NTLM/PtH), 4698 (Scheduled Task), 7045 (New Service), 4740 (Lockout), 1102 (Log Cleared), 4672 (Special Priv), 5140 (Net Share), 4657 (Registry), 4771 (Krb Pre-Auth), Sysmon 6/7/11/12-14
-  - GPO zorunlu: "Script Block Logging" + "Process Command Line Auditing"
-  - **Entegrasyon:** `evtx_parser.py` + `parsers/windows.py` + `sigma_rules_v2/windows_events.yml` + STAGE_MAP
-  - **W1-B teslim (çok kanal):** `agent/windows_log_shipper.py` tamamen yeniden yazıldı — 5 kanal (Security 21 EID / Sysmon 16 EID / PowerShell 2 EID / System 3 EID / AppLocker 1 EID); her kanal için ayrı pozisyon takibi; EvtQuery/EvtNext/EvtRender XML tabanlı okuma; `_parse_record_xml()` doğrudan çağrısı; `parsers/windows.py` 18 yeni action→kategori; STAGE_MAP 18 yeni giriş; 37 yeni evtx testi + 19 shipper testi ✓
-- [x] **N2** — Zeek weird.log + dpd.log + files.log (2-3 gün) | +3%
-  - `weird.log`: `bad_HTTP_request` (T1190), `unknown_protocol` (C2 T1071), `TCP_seq_underflow` (IDS evasion)
-  - `dpd.log`: port 443'te non-TLS protokol = C2 tüneli
-  - `files.log`: MD5/SHA256 → threat intel çapraz kontrol
-  - **Teslim:** `parsers/zeek.py` `parse_weird` (_IGNORE_WEIRDS whitelist 10 giriş, notice→severity, slug→event_action), `parse_dpd` (_SUSPICIOUS_DPD_PORTS/{443,8443,…}, _SUSPICIOUS_DPD_ANALYZERS), `parse_files` (hash zorunlu, missing_bytes guard, local_orig filtresi, _SUSPICIOUS_MIME_TYPES 10 tür, direction out/inbound); `_is_private()` helper (`ipaddress` modülü); `attack_chain.py` STAGE_MAP 20 yeni giriş (weird/dpd/files, T1071/T1190/T1048/T1105/T1572); `zeek_advanced.yml` 14 yeni Sigma kuralı (8 standalone + 6 korelasyon burst); 50 test — toplam test ✓
-- [x] **N3** — Honeypot (OpenCanary) (3-5 gün) | +4%
-  - Docker `thinkst/opencanary` — SSH/HTTP/FTP/SMB/MySQL/MSSQL/Redis/RDP/SNMP taklit
-  - İç ağda honeypot bağlantısı = sıfır false positive (MITRE ATT&CK Engage)
-  - STAGE_MAP: `honeypot_ssh` → weaponize, `honeypot_smb` → lateral, `honeypot_http` → recon
-  - **Teslim:** `shared/models.py` `LogSourceType.OPENCANARY`; `parsers/opencanary.py` (12 logtype parser, credential extraction, UTC parse); `attack_chain.py` STAGE_MAP 12 honeypot girişi (T1110.001/T1046/T1595/T1021.002/T1190/T1021.001/T1572); `config/sigma_rules_v2/opencanary.yml` (7 standalone + 2 burst korelasyon kuralı); `config/opencanary/opencanary.conf` (7 servis aktif: SSH/HTTP/FTP/SMB/MySQL/RDP/SNMP)
-- [x] **N4** — Suricata ET Otomatik Kural Güncelleme (2-3 gün) | +4%
-  - **Teslim:** `scripts/suricata-update-cron.sh` (flock, set +e/-e, suricata-update --no-reload, suricatasc reload + USR2 fallback, state JSON); `config/suricata/disable.conf` (FP: games/chat/policy/info/JWT auth); `config/suricata/modify.conf`; systemd timer (03:00 UTC, Persistent=true); cron.d template; `routes/maintenance.py` GET/POST /maintenance/suricata-update/status+trigger (2/hour, audit log); VM'de doğrulandı: 45,343 kural aktif, reload=ok ✓
-- [x] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC (5-7 gün) | +5%
-  - `rdp.log`: RDP brute-force T1021.001 — `kerberos.log`: Kerberoasting (rc4-hmac TGS) T1558.003, AS-REP Roasting T1558.004
-  - `smb_files.log`: \\admin$ yazma = lateral T1021.002, ransomware yayılım
-  - `dce_rpc.log`: `drsuapi/DsGetNCChanges` = DCSync T1003.006
-  - MITRE BZAR projesini referans al — notice.log çıktısını tüket (parser mevcut)
-  - **Entegrasyon:** `zeek_collector.py` + `parsers/zeek.py` 4 parser + `zeek_advanced.yml` + STAGE_MAP
-- [ ] **W1-A** — Windows Agent Hızlı Demo (1-2 saat) — Mevcut `agent/windows_log_shipper.py` zaten var (3 EID: 4624/4625/4688)
-  - Windows VM'e Python + `pip install pywin32 httpx psutil` + env vars → agent çalıştır → dashboardda görür
-  - **Sınır:** Sadece 3 EID, Sysmon kanalı yok; görsel kanıt için yeterli
-- [x] **W1-B** — Windows Agent Tam (4-5 gün) — N1 ile paralel yapılabilir, birbirini güçlendirir
-  - `windows_log_shipper.py`: 12 EID → 60+ EID + `Microsoft-Windows-Sysmon/Operational` kanalı + `Microsoft-Windows-PowerShell/Operational` kanalı
-  - Multi-channel reader: Security/Sysmon/PowerShell/System/AppLocker kanalları `_CHANNELS` dict ile tanımlı, her kanal ayrı pozisyon takibi
-  - **Not:** `nssm`/`pyinstaller` kurulum paketleme hâlâ bekliyor (gerçek Windows ortamı gerektirir)
-- [x] **E1** — E-posta Bildirim Kalitesi (1-2 gün)
-  - **Sorunlar:** Correlated event'lerde cooldown yok → dakikada 8 duplicate; microsecond timestamp; düz metin
-  - **Çözüm (NIST SP 800-61 Rev 3 / PagerDuty):** Severity-bazlı cooldown (C:5dk, H:15dk, M:30dk, W:1s); ISO 8601 timestamp (microsecond yok); HTML+plain-text MIME multipart; `[SEV] NetGuard | event | ip` konu formatı
-  - **Entegrasyon:** `server/notifier.py` `_CORRELATED_COOLDOWN_SECS` + `_correlated_cooldown` dict + HTML template
+- [x] **N1** — Windows EID 12 → 60+ EID (5 kanal: Security/Sysmon/PowerShell/System/AppLocker)
+  - **Teslim:** `agent/windows_log_shipper.py` 5 kanal, `parsers/windows.py` 18 yeni action; STAGE_MAP 18 giriş; 37+19 test ✓
+- [x] **N2** — Zeek weird.log + dpd.log + files.log — STAGE_MAP 20 yeni giriş; 50 test ✓
+- [x] **N3** — Honeypot (OpenCanary) — 12 logtype, STAGE_MAP 12 giriş; 7+2 Sigma kural ✓
+- [x] **N4** — Suricata ET Otomatik Kural Güncelleme — 45,343 kural aktif, systemd timer ✓
+- [x] **N5** — Zeek RDP + Kerberos + SMB/DCE-RPC — 4 parser + Sigma; STAGE_MAP ✓
+- [x] **W1-A** — Windows Agent Hızlı Demo — WIN-9DUCSU7LDJ0 (192.168.203.150) aktif ✓
+- [x] **W1-B** — Windows Agent Tam (5 kanal, 60+ EID) ✓
+- [x] **E1** — E-posta Bildirim Kalitesi — severity cooldown, HTML multipart ✓
 
-#### P2 — Orta Vadeli (Ay 3-5)
+#### P2 — Orta Vadeli (Tamamlandı)
 
-- [x] **N6** — IPFIX/NetFlow v10 + sFlow (6-9 gün) | +3%
-  - `netflow` PyPI paketi (v1/v5/v9/IPFIX) — `parsers/netflow.py` extend; `sflow_receiver.py` UDP 6343
-  - Neden: Cisco 15.4+/Juniper/VMware NSX IPFIX üretiyor; Arista/HP switch sFlow; NetFlow v5 counter ~4GB'da taşıyor
-- [x] **N7** — Kural Kalitesi + CISA KEV Entegrasyonu (8-12 gün) | +2%
-  - Dead rule tespiti (30 günde sıfır hit) — mevcut `backtest` endpoint extend
-  - `collectors/kev_monitor.py`: CISA KEV JSON feed → yeni CVE bildirimi
-- [x] **N8** — Microsoft 365 + Google Workspace (7-10 gün) | +6%
-  - Microsoft Purview Audit Search Graph API + MSAL; Google Admin SDK Reports API
-  - BEC sinyalleri: `New-InboxRule`, credential stuffing burst→success, bulk FileDownload, RBAC role assignment
-  - **Entegrasyon:** `collectors/m365_collector.py` + `collectors/gworkspace_collector.py` + `parsers/cloud.py`
+- [x] **N6** — IPFIX/NetFlow v10 + sFlow ✓
+- [x] **N7** — Kural Kalitesi + CISA KEV Entegrasyonu ✓
+- [x] **N8** — Microsoft 365 + Google Workspace — `collectors/m365_collector.py` + `collectors/gworkspace_collector.py` + `parsers/cloud.py` ✓
 
-#### P3 — Stratejik (Ay 5-12)
+#### P3 — Stratejik (Kapsam Kararı Verildi)
 
-- [ ] **N9** — Cloud Log Parser AWS/Azure/GCP (10-14 gün) | +5%
-  - AWS CloudTrail: `GetSecretValue`, `RunInstances` (farklı region), `AssumeRoleWithWebIdentity`
-  - Azure: `roleAssignments/write` — GCP: `SetIamPolicy`, `CreateServiceAccountKey`
-  - **Entegrasyon:** N8'in `parsers/cloud.py` altyapısı üzerine inşa
-- [ ] **N10** — UEBA Temeli (30+ gün) | +7%
-  - 5 sinyal: login zaman anomalisi, yeni konum, 4625 burst→4624, yeni process (user bazlı), veri hacmi spike
-  - Mevcut `asset_baseline.py` (per-IP Welford) → per-user genişletme; 60-90g baseline süre
-  - **Bağımlılık:** N1 tamamlanmış + 60g veri; **KVKK:** DPO onayı zorunlu
-- [ ] **N11** — Arkime Tam PCAP (Ay 9+) | +4%
-  - NetGuard metadata odaklı kalır, Arkime'a Community ID üzerinden link verir — ayrı donanım
-  - Depolama: KOBİ 100-500 Mbps → **7-35 TB SSD** — mevcut VM yetmez, önce donanım kararı
+- [ ] **N9** — ❌ KAPSAM DIŞI (Cloud SIEM alanı, NSM değil — 6 Haziran 2026 kararı)
+- [ ] **N10** — UEBA Temeli — 60-90g veri gerektirir; **Bağımlılık:** N1 + 60g üretim verisi; **KVKK:** DPO onayı zorunlu
+- [ ] **N11** — Arkime Tam PCAP — Ayrı donanım: KOBİ 100-500 Mbps → 7-35 TB SSD; mevcut VM yetmez
+
+---
+
+### AŞAMA 4.8 — NSM Çekirdek Güçlendirme (Haziran 2026 — Onaylandı)
+
+> **NSM referans mimarisine göre (SANS NSM, Malcolm/CISA, Security Onion) en kritik eksik:** Zeek + Suricata + NetFlow kayıtları arasında aynı TCP bağlantısını pivot eden Community ID yok. Bu olmadan üç kaynağın aynı olayı farklı kayıtlarda görmesi mümkün değil.
+
+- [ ] **C1** — Community ID cross-source korelasyon (1-2 gün)
+  - *Corelight Community ID Spec + SANS NSM: "de-facto standard for cross-tool flow pivoting". Zeek 3.0+ ve Suricata 5.0+ zaten üretiyor — NetGuard parse etmiyor.*
+  - **Plan:**
+    - Alembic 018: `normalized_logs.community_id VARCHAR(50)` + `idx_norm_logs_community_id` index
+    - `requirements.txt`: `community-id>=1.4` (PyPI, pure Python)
+    - `shared/models.py`: `community_id: Optional[str] = None`
+    - `parsers/zeek.py`: tüm parser'larda `row.get("community_id")`
+    - `parsers/suricata.py`: tüm parser'larda `row.get("community_id")`
+    - `parsers/netflow.py`: `community-id` paketi ile 5-tuple'dan hesaplama (IPv4+IPv6)
+    - `database.py`: `get_logs_by_community_id(cid, tenant_id, hours)` metodu
+    - `routes/logs.py`: `GET /api/v1/logs/by-community-id/{cid}?hours=24`
+    - Frontend: Alert detay → Community ID göster + pivot butonu (aynı akışın Zeek/Suricata/NetFlow kayıtları)
+  - **Beklenen:** ~25-30 test
+
+- [ ] **C2** — Alert → bağlam pivot workflow (2-3 gün) — Bağımlılık: C1
+  - Alert detay sayfasından, aynı zaman dilimine ait tüm Zeek/Suricata/NetFlow kayıtları
+  - `GET /api/v1/correlation/events/{id}/context` → Community ID + IP + zaman bazlı sorgular
+  - Frontend: Correlation sayfasında "Bağlam" yan paneli
+
+- [ ] **C3** — Network behavioral baseline genişletme (3-4 gün)
+  - Mevcut `asset_baseline.py` per-IP Welford sadece trafik hacmini izliyor
+  - Port/protokol/peer profil ekleme: "Bu IP daha önce hiç SMB kullanmadı" anomali tespiti
+  - NIST SP 800-94 §4.1: behavioral profiling zorunlu bileşen
+
+- [ ] **C4** — Sensor sağlık metrikleri (1-2 gün)
+  - Zeek paket kaybı (`zeek_stats.log`), Suricata capture_kernel_drops, arayüz ring buffer doluluk
+  - `GET /api/v1/health/sensors` → Overview sayfasında sensör durum paneli
+  - CIS Control 13.1: Sürekli ağ izleme kapasitesinin doğrulanması
 
 ---
 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
-- [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle)
-  - **Altyapı:** `server/notifier.py` webhook VAR ✓; TheHive endpoint YOK; `THEHIVE_URL/THEHIVE_API_KEY` env eklenecek
-  - Bağımlılık: U3 + F4 tamamlanmalı (incident volume stabil olmalı)
+- [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle) — `notifier.py` webhook VAR ✓; TheHive endpoint YOK
 - [ ] **U6** — Multi-tenant PostgreSQL RLS — Bağımlılık: F2 + U3 + T1
 - [ ] **U1** — East-West görünürlük (L3 switch NetFlow) — NetFlow altyapısı VAR ✓, GNS3 L3 konfig gerekli
 - [ ] **T1** — Hukuki altyapı (şirket, KVKK DPA, Tech E&O sigortası)
-- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme ✓T2-2, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting ✓T2-5)
+- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting ✓T2-5)
 - [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — Bağımlılık: T2
 - [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
-- [x] **T2-5** — Sistematik rate limiting middleware (tüm endpoint'ler) — G5 point fix'ini genelleştirir
-  - **Teslim:** SlowAPI `default_limits=["60/minute"]` + `_auth_key` (JWT→user:x, fallback IP); 10 route dosyası; kategori limitleri: discovery 2/min, reports 10/min, logs 30/min, agents 120/min, sigma/correlation 20/min, incidents 30/min, threat-intel 10/min; `response: Response` enjeksiyonu (X-RateLimit-* header'ları); 27 test — 1834 toplam test ✓
+- [x] **T2-5** — Sistematik rate limiting middleware — SlowAPI `default_limits=["60/minute"]`; 27 test ✓
 
 ### Küçük Kod Sorunları (Herhangi Bir Anda)
 
 - [x] `correlator.py:178` — Yanıltıcı yorum düzeltildi ✓
 - [x] `correlator.py:244` — Sessiz `except: pass` → `logger.debug` ✓
 - [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓, Port/protocol input (P7) ✓
+- [x] **Windows Sigma FP** — 4 korelasyon kuralında `group-by: source_ip` → `observer_hostname` (EID 4688/Sysmon 1/4776/Sysmon 22 kaynaklı event'lerde source_ip her zaman None); commit db46ca4 ✓
 
 ---
 
@@ -376,7 +282,7 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 1931 test, 0 hata (31 Mayıs 2026) — PostgreSQL uyumluluk düzeltmeleri + JA4/JA4S hash doğrulaması
+**Test durumu:** 2644 test, 0 hata (6 Haziran 2026)
 
 ---
 
@@ -388,61 +294,67 @@ Araştırma kaynakları: Gartner NDR Market Guide 2024, CIS Controls v8 Control 
 |-------|-----|
 | `server/active_response.py` | OPNsense REST + VyOS SSH IP bloklama (P1-P8) |
 | `server/alert_engine.py` | Ajan alert motoru |
-| `server/anomaly/` | IsolationForest + Welford — kill chain bağlantısı F4'te |
+| `server/alert_explainer.py` | Groq Llama 3.3 70B, 24h cache, prompt injection isolation |
+| `server/anomaly/` | IsolationForest + Welford — kill chain entegre (F4) |
 | `server/asset_baseline.py` | Per-IP 7 günlük davranış profili + spike |
 | `server/attack_chain.py` | Kill chain (RECON/WEAPONIZE/ACCESS/LATERAL/FULL) |
 | `server/auth.py` | JWT access/refresh + API key (SHA-256) |
 | `server/compliance.py` | 26 güvenlik kontrolü |
 | `server/config_monitor.py` | Konfigürasyon değişiklik tespiti |
 | `server/correlator.py` | 60s döngü, JSON + pySigma v2 |
-| `server/database.py` | Factory: PG (prod) / SQLite (test) — F2'de birleşecek |
-| `server/database_pg.py` | PostgreSQL + TimescaleDB, psycopg3 pool — F2'de kalkacak |
-| `server/detectors/` | port_scan, arp, dns, icmp, lateral |
+| `server/database.py` | PostgreSQL-only (F2-1); factory: PG prod / testcontainers test |
+| `server/detectors/` | port_scan, arp, dns, icmp, lateral, beaconing (A1) |
 | `server/discovery/` | fingerprinter.py + subnet_scanner.py |
 | `server/dns_resolver.py` | PTR lookup, TTL cache (300s/60s) |
-| `server/evtx_parser.py` | Windows EVTX log ayrıştırıcı |
+| `server/evtx_parser.py` | Windows EVTX — 60+ EID (Security/Sysmon/PowerShell/System/AppLocker) |
 | `server/fp_manager.py` | False positive suppression (CIDR + 30gün TTL) |
 | `server/incident_enricher.py` | MITRE + related logs + threat intel |
 | `server/incident_priority.py` | Severity formula, priority_score |
 | `server/influx_writer.py` | InfluxDB metrics yazıcı |
 | `server/log_normalizer.py` | syslog/netflow/zeek/agent/EVTX parser |
 | `server/log_store.py` | LogStore Protocol + PostgreSQLLogStore |
-| `server/mitre.py` | MITRE ATT&CK yardımcı modülü |
-| `server/netflow_receiver.py` | NetFlow v5/v9 UDP 2055 |
-| `server/notifier.py` | Email + webhook, retry |
+| `server/mitre.py` | MITRE ATT&CK yardımcı modülü + Navigator layer |
+| `server/netflow_receiver.py` | NetFlow v5/v9/IPFIX UDP 2055 |
+| `server/notifier.py` | Email (HTML+plain MIME, severity cooldown) + webhook, retry |
 | `server/ntp_validator.py` | Log timestamp NTP doğrulama |
 | `server/port_monitor.py` | Yerel port değişiklik tespiti |
 | `server/retention.py` | hot/warm/cold veri tutma |
 | `server/security_log_parser.py` | auth.log parser (SSH/sudo/PAM) |
-| `server/sigma_executor.py` | pySigma v2, 30+ çalıştırılabilir kural |
+| `server/sigma_executor.py` | pySigma v2, 50+ çalıştırılabilir kural |
 | `server/snmp_auth.py` | SNMP auth helper |
 | `server/snmp_collector.py` | SNMP v2c/v3 poll + trap |
 | `server/snmp_trap_receiver.py` | SNMP trap UDP alıcısı |
 | `server/storage.py` | RAM snapshot cache (metrics/health) |
+| `server/suricata_collector.py` | Suricata EVE JSON (inode rotation-safe) |
 | `server/syslog_receiver.py` | UDP 514 syslog alıcı |
-| `server/threat_intel.py` | AbuseIPDB cache (score ≥ 70 → critical) |
+| `server/threat_intel.py` | AbuseIPDB + Feodo + ThreatFox + GreyNoise composite 0-100 |
 | `server/uptime_checker.py` | Cihaz uptime / ICMP ping |
 | `server/ws_manager.py` | WebSocket bağlantı yöneticisi |
-| `server/zeek_collector.py` | Zeek log tail (DNS/HTTP/SSL/Conn/SSH/Notice/x509/SMTP/FTP) |
-| `server/parsers/` | firewall.py, web_log.py, zeek.py, netflow.py |
+| `server/zeek_collector.py` | Zeek log tail (14 log tipi: conn/dns/http/ssl/ssh/notice/smtp/ftp/rdp/kerberos/smb/dce_rpc/weird/dpd/files) |
+| `server/parsers/` | zeek.py, suricata.py, netflow.py, windows.py, opencanary.py, cloud.py, firewall.py, web_log.py |
+| `server/collectors/` | m365_collector.py, gworkspace_collector.py, kev_monitor.py |
 
-### Route'lar (30 dosya)
+### Route'lar (31 dosya)
 
 | Grup | Dosyalar |
 |------|---------|
 | Güvenlik çekirdeği | auth, incidents, active_response, sigma, correlation, mitre, attack_chains |
-| Veri toplama | logs, alerts, agents, devices, snmp, netflow, evtx |
-| Analiz | network_intel, anomaly, assets, fp_rules, threat_intel, topology |
+| Veri toplama | logs, alerts, agents, devices, snmp, netflow, evtx, hunts |
+| Analiz | network_intel, anomaly, assets, fp_rules, threat_intel, topology, analytics |
 | Platform | health, metrics, maintenance, compliance, security, reports |
 | Altyapı | discovery, tenants, ws |
 
-### Sigma Kuralları (`config/sigma_rules_v2/` — 11 dosya)
+### Sigma Kuralları (`config/sigma_rules_v2/` — 14 dosya)
 
-`anomaly_and_impact`, `auth_and_web`, `c2_and_exfil`, `device_and_snmp`, `network_community`, `port_scan`, `sql_injection`, `ssh_brute_force`, `web_attacks`, `windows_events`, `zeek_advanced`
+`anomaly_and_impact`, `auth_and_web`, `c2_and_exfil`, `device_and_snmp`, `network_community`, `netflow`, `opencanary`, `port_scan`, `sql_injection`, `ssh_brute_force`, `suricata_ids`, `web_attacks`, `windows_events`, `zeek_advanced`
+
+### Alembic Migrations
+
+`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 — bekliyor)**
 
 ### Frontend Sayfaları (dashboard-v2)
 
-Overview, Logs, Incidents, Aktif Bloklar, Alerts, Agents, Correlation, Network Intelligence, MITRE ATT&CK, Timeline, Topology, Devices/SNMP/Discovery, Settings/Audit, Reports/Security, Uyumluluk (Compliance)
+Overview (bento grid), Logs (live stream), Incidents, Aktif Bloklar, Alerts, Agents, Correlation (AI Explainer), Network Intelligence, MITRE ATT&CK (Navigator), Timeline (Kill Chain), Topology, Devices/SNMP/Discovery, Settings/Audit, Reports/Security, Uyumluluk, Threat Hunt, Sigma Rules/Wizard/Editor, Correlation Rules, Top Talkers, Alert Volume, Protocol Distribution, Traffic Volume, East-West Matrix, Asset Risk, MTTD/MTTR
 
 ---
 
@@ -458,7 +370,8 @@ VYOS_FW_NAME=BLOCK-LIST
 PROTECTED_CIDRS=10.0.30.1/32,192.168.203.134/32
 BLOCK_MIN_SEVERITY=high        BLOCK_PROGRESSIVE_TTL=1,4,24,168
 BREAK_GLASS_TOKEN=<rastgele>   BLOCK_EXPIRY_INTERVAL=60
-AUTO_BLOCK_ON_FULL_CHAIN=0     # G1 sonrası: 1 yapılır
+AUTO_BLOCK_ON_FULL_CHAIN=0     # 1 yapınca otomatik blok açılır
+GROQ_API_KEY=<key>             GROQ_MODEL=llama-3.3-70b-versatile
 ```
 
 ### Blok Akışı (Bu Sıra Değişmez)
@@ -474,16 +387,11 @@ POST /api/v1/response/block
   7. audit_log zorunlu
 ```
 
-### Alembic Migrations
-
-`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1
-
 ---
 
 ## Dashboard Deploy (Laptop → Production VM)
 
 **Laptop** (`192.168.203.1`) geliştirme ortamı, **Production VM** (`192.168.203.134`) ayrı codebase'dir.
-Docker rebuild'lar SADECE laptop'ı etkiler. Production'a değişiklik göndermek için:
 
 ```bash
 # 1. Değişen dosyaları rsync ile VM'e gönder (--relative zorunlu)
@@ -496,21 +404,20 @@ rsync -av --relative --checksum \
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
   "cd ~/netguard/dashboard-v2 && npm run build"
 
-# 3a. Frontend service restart (Next.js)
+# 3a. Frontend service restart
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
   "sudo systemctl restart netguard-dashboard"
 
-# 3b. Backend service restart (uvicorn) — server/routes/*.py değiştiyse ZORUNLU
-#     Python yeni kodu ancak restart sonrası yükler
+# 3b. Backend service restart (server/routes/*.py değiştiyse ZORUNLU)
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134 \
   "sudo systemctl restart netguard"
 
-# 4. Doğrula — beklenen: Cache-Control: no-cache, no-store, must-revalidate
+# 4. Doğrula
 curl -sk -I https://192.168.203.134/overview | grep -i cache-control
 ```
 
 **VM servis:** `systemctl status netguard-dashboard` — WorkingDirectory: `/home/netguard/netguard/dashboard-v2/`
-**VM nginx:** `/etc/nginx/sites-enabled/netguard` — `location /` → no-cache, `/_next/static/` → immutable
+**VM nginx:** `location /` → no-cache; `/_next/static/` → immutable
 
 ### Next.js 16 Kuralları (proxy.ts)
 - `middleware.ts` → `src/proxy.ts` (dosya adı değişti)
@@ -529,18 +436,21 @@ VyOS rolling     (192.168.203.200 / 10.0.30.2)
     └── LAN → Host1, Host2, Kali (192.168.203.132)
 NetGuard Server  (192.168.203.134)  ← ens3/LAN + ens4/MGMT (172.18.0.134)
 Agent VM         (192.168.203.142)
+Windows Server   (192.168.203.150, WIN-9DUCSU7LDJ0)  ← W1-A aktif
 ```
 
 ```bash
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134        # server (birincil)
 ssh -i ~/.ssh/id_ed25519 netguard@172.18.0.134           # server (yedek MGMT)
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.142        # agent
+ssh windows-vm                                            # Windows Server 2022
 ssh vyos@192.168.203.200                                  # VyOS (vyos/vyos)
 ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense (root/netguard123)
+ssh -J netguard@192.168.203.134 root@10.0.10.2           # Alpine WebServer
 # VNC konsol: localhost:5901 (şifre: netguard123)
 ```
 
-### GNS3 Lab Ağ Mimarisi (QEMU/KVM, VMware bağımlılığı yok)
+### GNS3 Lab Ağ Mimarisi (QEMU/KVM)
 
 ```
 Host (192.168.203.1 / vmnet8)                    Host (172.18.0.1 / br-44b4e83253ed)
@@ -553,14 +463,12 @@ Host (192.168.203.1 / vmnet8)                    Host (172.18.0.1 / br-44b4e8325
 
 **Startup sonrası zorunlu komutlar** (GNS3 restart / host reboot sonrası):
 ```bash
-# 1. MGMT-Bridge ubridge fix (otomatik: systemd user service gns3-mgmt-fix)
+# Otomatik: systemd user service gns3-mgmt-fix + gns3-host-routes
 ~/fix-gns3-mgmt-bridge.sh
-
-# 2. Host route (otomatik: systemd user service gns3-host-routes)
 sudo ip route replace 192.168.203.134/32 dev br-44b4e83253ed
 ```
 
-**Doğrulanan senaryolar:** Reboot otomasyon ✅ · SSH brute force → WEAPONIZE ✅ · Port scan → RECON ✅ · RECON+WEAPONIZE+ACCESS → FULL_ATTACK_CHAIN + email ✅ · GNS3 QEMU migration ✅
+**Doğrulanan senaryolar:** Reboot otomasyon ✅ · SSH brute force → WEAPONIZE ✅ · Port scan → RECON ✅ · FULL_ATTACK_CHAIN + email ✅ · Windows Agent (W1-A) ✅
 
 ---
 
@@ -592,7 +500,7 @@ Bu adım atlanamaz. "Basit değişiklik" veya "küçük ekleme" olsa bile araşt
 
 ### Test
 ```bash
-pytest tests/ -q   # → 1335 passed (21 Mayıs 2026)
+pytest tests/ -q   # → 2644 passed (6 Haziran 2026)
 ```
 Test piramidi: birim + çapraz (iki modül arası) + entegrasyon (tam pipeline)
 
@@ -607,7 +515,9 @@ Test piramidi: birim + çapraz (iki modül arası) + entegrasyon (tam pipeline)
 |--------|-----------|
 | Vulnerability scanner (OpenVAS/Nessus) | Farklı ürün kategorisi |
 | FIM / Rootkit tespiti | EDR alanı |
-| Full PCAP desteği | Storage altyapısı gerektirir, kapsam dışı |
+| Full PCAP desteği | Storage altyapısı gerektirir, Arkime N11 ile ertelendi |
 | Compliance raporu iyileştirmesi | Sahte skorlama |
 | ECS şema değişikliği | V1-1 tamamlandı, dokunma |
 | NDR'ye tam dönüşüm | Security Onion zaten var, rekabet edilemez |
+| Cloud log parser (AWS/Azure/GCP) | N9 — Cloud SIEM alanı, NSM değil (6 Haziran 2026 kararı) |
+| IP blokajının ötesinde otomatik yanıt | SOAR alanı (U5 ile TheHive entegrasyonu bekliyor) |
