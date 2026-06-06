@@ -241,10 +241,10 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 ### AŞAMA 5 — Ticari Hazırlık (6-12 Ay, Teknikle Paralel)
 
 - [ ] **U5** — SOAR entegrasyonu (TheHive/Shuffle) — `notifier.py` webhook VAR ✓; TheHive endpoint YOK
-- [ ] **U6** — Multi-tenant PostgreSQL RLS — Bağımlılık: F2 + U3 + T1
-- [ ] **U1** — East-West görünürlük (L3 switch NetFlow) — NetFlow altyapısı VAR ✓, GNS3 L3 konfig gerekli
+- [x] **U6** — Multi-tenant PostgreSQL RLS — Alembic 021, 11 tablo, `_connect_as_tenant()`, 15 test ✓
+- [x] **U1** — East-West görünürlük (L3 switch NetFlow) — VyOS NetFlow v9 aktif, 146.490+ kayıt ✓
 - [ ] **T1** — Hukuki altyapı (şirket, KVKK DPA, Tech E&O sigortası)
-- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme ✓, T2-3 MFA ✓T2-3, T2-4 RLS, T2-5 rate limiting ✓T2-5)
+- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme ✓, T2-3 MFA ✓T2-3, T2-4 RLS ✓U6, T2-5 rate limiting ✓T2-5)
 - [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — Bağımlılık: T2
 - [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
 - [x] **T2-5** — Sistematik rate limiting middleware — SlowAPI `default_limits=["60/minute"]`; 27 test ✓
@@ -268,7 +268,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 2644 test, 0 hata (6 Haziran 2026)
+**Test durumu:** 2788 test, 0 hata (7 Haziran 2026)
 
 ---
 
@@ -336,7 +336,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### Alembic Migrations
 
-`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)** · `019` asset_baseline_protocols · **`020` audit_log at-rest şifreleme (T2-2 ✓)**
+`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)** · `019` asset_baseline_protocols · **`020` audit_log at-rest şifreleme (T2-2 ✓)** · **`021` RLS tenant isolation (U6 ✓)**
 
 ### Frontend Sayfaları (dashboard-v2)
 

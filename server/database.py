@@ -138,6 +138,17 @@ class DatabaseManager:
         with self._pool.connection() as conn:
             yield conn
 
+    @contextmanager
+    def _connect_as_tenant(self, tenant_id: str):
+        """tenant_id bağlamında bağlantı — RLS politikaları tenant_id'e kilitlenir.
+
+        SET LOCAL transaction-scoped'dur; commit/rollback sonrası otomatik temizlenir.
+        Kaynak: PostgreSQL RLS §5.8, NIST SP 800-162, CIS PostgreSQL §6.2
+        """
+        with self._pool.connection() as conn:
+            conn.execute("SELECT set_config('app.current_tenant', %s, true)", [tenant_id])
+            yield conn
+
     def get_schema_version(self) -> int:
         try:
             with self._connect() as conn:
@@ -222,6 +233,45 @@ class DatabaseManager:
                 (_now(), tenant_id),
             )
             return cur.rowcount
+
+    def auto_age_alerts(self, older_than_hours: int = 24, tenant_id: Optional[str] = None) -> int:
+        """older_than_hours saatten eski aktif alertleri otomatik çöz (QRadar/Splunk auto-close pattern).
+
+        Kaynak: QRadar Offense Management §4.2, Splunk ES Risk Framework TTL
+        """
+        cutoff = _now() - timedelta(hours=older_than_hours)
+        clauses = ["status = 'active'", "triggered_at < %s"]
+        params: list = [cutoff]
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        with self._connect() as conn:
+            cur = conn.execute(
+                f"UPDATE alerts SET status='resolved', resolved_at=%s WHERE {' AND '.join(clauses)}",
+                [_now()] + params,
+            )
+            return cur.rowcount
+
+    def count_active_alerts_since(self, hours: int, tenant_id: Optional[str] = None) -> dict:
+        """Son N saatteki aktif alert sayılarını severity'ye göre döndür."""
+        since = _now() - timedelta(hours=hours)
+        clauses = ["status = 'active'", "triggered_at >= %s"]
+        params: list = [since]
+        if tenant_id is not None:
+            clauses.append("tenant_id = %s")
+            params.append(tenant_id)
+        with self._connect() as conn:
+            rows = conn.execute(
+                f"SELECT severity, COUNT(*) AS cnt FROM alerts WHERE {' AND '.join(clauses)} GROUP BY severity",
+                params,
+            ).fetchall()
+        counts = {r["severity"]: r["cnt"] for r in rows}
+        return {
+            "critical": counts.get("critical", 0),
+            "high":     counts.get("high", 0),
+            "warning":  counts.get("warning", 0),
+            "info":     counts.get("info", 0),
+        }
 
     # ------------------------------------------------------------------ #
     #  SECURITY EVENTS

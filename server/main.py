@@ -30,6 +30,8 @@ PURGE_INTERVAL                  = 300    # saniye (5 dakika)
 ASSET_BASELINE_UPDATE_INTERVAL  = 21600  # saniye (6 saat)
 ASSET_DEVIATION_CHECK_INTERVAL  = 300    # saniye (5 dakika)
 BLOCK_EXPIRY_INTERVAL           = 60     # saniye (1 dakika)
+ALERT_AUTO_AGE_INTERVAL         = 3600   # saniye (1 saat)
+ALERT_AUTO_AGE_HOURS            = 24     # 24 saatten eski aktif alertler otomatik kapanır
 
 
 async def _detector_loop():
@@ -190,6 +192,19 @@ async def _block_expiry_loop():
             logger.error("Block expiry hatası: %s", exc)
 
 
+async def _alert_auto_age_loop():
+    """Her saatte bir 24 saatten eski aktif alertleri otomatik çöz (QRadar/Splunk TTL pattern)."""
+    from server.database import db as _db
+    while True:
+        await asyncio.sleep(ALERT_AUTO_AGE_INTERVAL)
+        try:
+            count = await asyncio.to_thread(_db.auto_age_alerts, ALERT_AUTO_AGE_HOURS)
+            if count > 0:
+                logger.info("Alert auto-age: %d eski alert otomatik çözüldü (>%dh)", count, ALERT_AUTO_AGE_HOURS)
+        except Exception as exc:
+            logger.error("Alert auto-age hatası: %s", exc)
+
+
 async def _asset_deviation_loop():
     """Her 5 dakikada bir asset davranışını baseline ile karşılaştır."""
     from server.asset_baseline import check_deviations
@@ -263,6 +278,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Asset baseline döngüsü başlatıldı (güncelleme: {ASSET_BASELINE_UPDATE_INTERVAL}s, sapma: {ASSET_DEVIATION_CHECK_INTERVAL}s)")
     block_expiry_task = asyncio.create_task(_block_expiry_loop())
     logger.info(f"Block expiry döngüsü başlatıldı (her {BLOCK_EXPIRY_INTERVAL}s)")
+    alert_auto_age_task = asyncio.create_task(_alert_auto_age_loop())
+    logger.info(f"Alert auto-age döngüsü başlatıldı (her {ALERT_AUTO_AGE_INTERVAL}s, >{ALERT_AUTO_AGE_HOURS}h)")
     beaconing_task = asyncio.create_task(_beaconing_loop())
     logger.info(f"C2 beaconing dedektörü başlatıldı (her {BEACONING_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver

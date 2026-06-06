@@ -10,6 +10,7 @@ GET /api/v1/reports/topology.csv      → Topoloji kenarları CSV
 
 import csv
 import io
+import math
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Request, Response
 from fastapi.responses import StreamingResponse
@@ -51,13 +52,13 @@ def security_status(request: Request, response: Response, current_user: User = D
     """Anlık güvenlik durumu ve risk skoru — overview sayfası için."""
     tid = tenant_scope(current_user)
 
-    critical_alerts = len([
-        a for a in _db_mod.db.get_alerts(status="active", limit=500, tenant_id=tid)
-        if (a.severity.value if hasattr(a.severity, "value") else str(a.severity)) == "critical"
-    ])
-    open_incidents  = _db_mod.db.count_incidents(status="open",          tenant_id=tid)
-    inv_incidents   = _db_mod.db.count_incidents(status="investigating",  tenant_id=tid)
-    corr            = _db_mod.db.count_correlated_events_since(hours=24,  tenant_id=tid)
+    # Son 6 saatteki aktif alertler — eski lab gürültüsünü filtrele (QRadar/Splunk TTL pattern)
+    recent = _db_mod.db.count_active_alerts_since(hours=6, tenant_id=tid)
+    recent_critical = recent["critical"]
+
+    open_incidents = _db_mod.db.count_incidents(status="open",         tenant_id=tid)
+    inv_incidents  = _db_mod.db.count_incidents(status="investigating", tenant_id=tid)
+    corr           = _db_mod.db.count_correlated_events_since(hours=24, tenant_id=tid)
 
     anomaly_high = 0
     try:
@@ -68,19 +69,30 @@ def security_status(request: Request, response: Response, current_user: User = D
     except Exception:
         pass
 
-    score = min(100,
-        critical_alerts * 20 +
-        (open_incidents + inv_incidents) * 15 +
-        corr["high_plus"] * 8 +
-        anomaly_high * 5,
-    )
+    # Log-scale formula — mutlak sayılar yerine kademeli bantlar
+    # Kaynak: Splunk ES Risk Framework, QRadar Offense scoring, Darktrace anomaly score
+    inc_score  = min(50, (open_incidents + inv_incidents) * 12)
+    crit_score = min(30, int(math.log1p(recent_critical) * 8))
+    corr_score = min(15, int(math.log1p(corr["high_plus"]) * 3))
+    anom_score = min(10, anomaly_high * 2)
+    score = min(100, inc_score + crit_score + corr_score + anom_score)
 
     if score == 0:
-        status, label = "safe",    "Güvende"
-    elif score <= 40:
-        status, label = "warning", "Dikkat Gerekli"
+        status, label = "safe",     "Güvende"
+    elif score <= 25:
+        status, label = "low",      "Düşük Risk"
+    elif score <= 55:
+        status, label = "warning",  "Dikkat Gerekli"
+    elif score <= 80:
+        status, label = "elevated", "Yüksek Risk"
     else:
-        status, label = "danger",  "Tehlike Altında"
+        status, label = "danger",   "Tehlike Altında"
+
+    # critical_alerts: tüm aktif (display için), recent_critical: skor için
+    critical_alerts = len([
+        a for a in _db_mod.db.get_alerts(status="active", limit=500, tenant_id=tid)
+        if (a.severity.value if hasattr(a.severity, "value") else str(a.severity)) == "critical"
+    ])
 
     return {
         "risk_score":       score,

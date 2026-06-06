@@ -103,7 +103,7 @@ function Empty({ text }: { text: string }) {
 
 function RiskGauge({ score }: { score: number }) {
   const pct = Math.min(100, Math.max(0, score))
-  const color = pct === 0 ? 'bg-emerald-500' : pct <= 40 ? 'bg-yellow-500' : 'bg-red-500'
+  const color = pct === 0 ? 'bg-emerald-500' : pct <= 25 ? 'bg-sky-400' : pct <= 55 ? 'bg-yellow-500' : pct <= 80 ? 'bg-orange-500' : 'bg-red-500'
   return (
     <div className="w-full mt-2">
       <div className="flex items-center justify-between mb-1">
@@ -124,11 +124,14 @@ function SecurityStatusBanner() {
     refetchInterval: 30_000,
   })
   if (!data) return null
-  const cfg = {
-    safe:    { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10',  text: 'text-emerald-400', dot: 'bg-emerald-500', accent: 'from-emerald-500/60 to-emerald-500/0', glow: 'shadow-emerald-900/30' },
-    warning: { border: 'border-yellow-500/30',  bg: 'bg-yellow-500/10',   text: 'text-yellow-400',  dot: 'bg-yellow-500',  accent: 'from-yellow-500/60 to-yellow-500/0',  glow: 'shadow-yellow-900/30' },
-    danger:  { border: 'border-red-500/40',     bg: 'bg-red-500/10',      text: 'text-red-400',     dot: 'bg-red-500',     accent: 'from-red-500/60 to-red-500/0',        glow: 'shadow-red-900/30' },
-  }[data.status]
+  const cfg = ({
+    safe:     { border: 'border-emerald-500/30', bg: 'bg-emerald-500/10',  text: 'text-emerald-400', dot: 'bg-emerald-500', accent: 'from-emerald-500/60 to-emerald-500/0', glow: 'shadow-emerald-900/30' },
+    low:      { border: 'border-sky-500/30',     bg: 'bg-sky-500/10',      text: 'text-sky-400',     dot: 'bg-sky-400',     accent: 'from-sky-500/60 to-sky-500/0',         glow: 'shadow-sky-900/30' },
+    warning:  { border: 'border-yellow-500/30',  bg: 'bg-yellow-500/10',   text: 'text-yellow-400',  dot: 'bg-yellow-500',  accent: 'from-yellow-500/60 to-yellow-500/0',   glow: 'shadow-yellow-900/30' },
+    elevated: { border: 'border-orange-500/30',  bg: 'bg-orange-500/10',   text: 'text-orange-400',  dot: 'bg-orange-500',  accent: 'from-orange-500/60 to-orange-500/0',   glow: 'shadow-orange-900/30' },
+    danger:   { border: 'border-red-500/40',     bg: 'bg-red-500/10',      text: 'text-red-400',     dot: 'bg-red-500',     accent: 'from-red-500/60 to-red-500/0',         glow: 'shadow-red-900/30' },
+  } as Record<string, { border: string; bg: string; text: string; dot: string; accent: string; glow: string }>)[data.status]
+    ?? { border: 'border-slate-500/30', bg: 'bg-slate-500/10', text: 'text-slate-400', dot: 'bg-slate-500', accent: 'from-slate-500/60 to-slate-500/0', glow: 'shadow-slate-900/30' }
 
   return (
     <div className={cn('relative rounded-lg border overflow-hidden p-4 flex items-center gap-6 shadow-lg', cfg.border, cfg.bg, cfg.glow)}>
