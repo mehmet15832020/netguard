@@ -182,7 +182,7 @@ def _collect_connections() -> ConnectionStats:
             time_wait=stats["TIME_WAIT"],
             listen=stats["LISTEN"],
         )
-    except psutil.AccessDenied:
+    except Exception:
         return ConnectionStats(total=0, established=0, time_wait=0, listen=0)
 
 def _collect_processes() -> ProcessSnapshot:

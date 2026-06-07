@@ -11,12 +11,39 @@ eklenmez — JSON context bloğuna izole edilir.
 import json
 import logging
 import os
+import socket
 
 logger = logging.getLogger(__name__)
 
 _GROQ_KEY          = os.getenv("GROQ_API_KEY", "")
 _GROQ_MODEL        = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 _MAX_OUTPUT_TOKENS = 1200
+_GROQ_TIMEOUT      = 30.0
+_GROQ_HOST         = "api.groq.com"
+_GROQ_FALLBACK_IP  = "172.64.149.20"
+
+
+def _ensure_groq_resolvable() -> None:
+    """
+    api.groq.com sistüm DNS ile çözümlenemiyorsa /etc/hosts'a fallback IP ekler.
+    Cloudflare anycast (172.64.x.x) çok nadiren değişir; üretimde DoH ile doğrulama önerilir.
+    """
+    try:
+        socket.getaddrinfo(_GROQ_HOST, 443, proto=socket.IPPROTO_TCP)
+        return
+    except OSError:
+        pass
+
+    try:
+        hosts_path = "/etc/hosts"
+        with open(hosts_path) as f:
+            if _GROQ_HOST in f.read():
+                return
+        with open(hosts_path, "a") as f:
+            f.write(f"\n{_GROQ_FALLBACK_IP} {_GROQ_HOST}\n")
+        logger.warning(f"DNS çözümlenemedi; /etc/hosts'a {_GROQ_FALLBACK_IP} {_GROQ_HOST} eklendi")
+    except OSError as e:
+        logger.error(f"/etc/hosts güncellenemedi: {e}")
 
 _SYSTEM_PROMPT = """\
 Sen NetGuard ağ güvenlik izleme platformu için kıdemli bir SOC analistisin.
@@ -120,9 +147,11 @@ def explain_event(
     if not _GROQ_KEY:
         raise RuntimeError("GROQ_API_KEY tanımlı değil")
 
+    _ensure_groq_resolvable()
+
     try:
         from groq import Groq
-        client = Groq(api_key=_GROQ_KEY)
+        client = Groq(api_key=_GROQ_KEY, timeout=_GROQ_TIMEOUT, max_retries=1)
         user_msg = _build_user_message(event_data, recent_logs)
         response = client.chat.completions.create(
             model=_GROQ_MODEL,

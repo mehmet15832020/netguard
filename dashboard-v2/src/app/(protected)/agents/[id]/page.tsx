@@ -79,11 +79,20 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   const diskMax   = snapshot.disks.reduce((m, d) => d.usage_percent > m ? d.usage_percent : m, 0)
   const diskStatus: Severity = diskMax >= 90 ? 'critical' : diskMax >= 70 ? 'warning' : 'info'
 
+  const influxLoaded   = influx !== undefined
   const influxAvailable = influx?.available === true
   const cpuData    = influxAvailable ? (influx!.cpu    ?? []) : []
   const memData    = influxAvailable ? (influx!.memory ?? []) : []
   const netInData  = influxAvailable ? (influx!.net_in  ?? []) : []
   const netOutData = influxAvailable ? (influx!.net_out ?? []) : []
+
+  const rangeLabel = RANGES.find(r => r.value === range)?.label ?? range
+
+  const noDataMsg = !influxLoaded
+    ? 'Yükleniyor...'
+    : !influxAvailable
+      ? 'InfluxDB yapılandırılmamış'
+      : `Son ${rangeLabel}'de veri yok`
 
   return (
     <div className="p-6 space-y-5">
@@ -123,9 +132,17 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             ))}
           </div>
         </div>
-        <p className="text-xs text-slate-700 mt-1 ml-[22px]">
-          Son veri: {new Date(snapshot.collected_at).toLocaleString('tr-TR')}
-        </p>
+        <div className="flex items-center gap-3 mt-1 ml-[22px]">
+          <p className="text-xs text-slate-700">
+            Son veri: {new Date(snapshot.collected_at).toLocaleString('tr-TR')}
+          </p>
+          {!isOnline && (
+            <span className="flex items-center gap-1 text-xs text-amber-500/80">
+              <AlertTriangle size={11} />
+              Agent çevrimdışı — grafikler son anlık görüntüyü gösteriyor
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Metric cards */}
@@ -175,7 +192,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             ) : history.length > 1 ? (
               <CPUChart snapshots={history} />
             ) : (
-              <p className="text-slate-700 text-xs text-center py-12">Grafik için veri bekleniyor...</p>
+              <p className="text-slate-700 text-xs text-center py-12">{noDataMsg}</p>
             )}
           </div>
         </div>
@@ -201,7 +218,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             {influxAvailable && netInData.length > 1 ? (
               <TimeSeriesChart data={netInData} label="Gelen" color="#f59e0b" unit=" B/s" />
             ) : (
-              <p className="text-slate-700 text-xs text-center py-12">InfluxDB bağlantısı bekleniyor...</p>
+              <p className="text-slate-700 text-xs text-center py-12">{noDataMsg}</p>
             )}
           </div>
         </div>
@@ -214,7 +231,7 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
             {influxAvailable && netOutData.length > 1 ? (
               <TimeSeriesChart data={netOutData} label="Giden" color="#ec4899" unit=" B/s" />
             ) : (
-              <p className="text-slate-700 text-xs text-center py-12">InfluxDB bağlantısı bekleniyor...</p>
+              <p className="text-slate-700 text-xs text-center py-12">{noDataMsg}</p>
             )}
           </div>
         </div>
