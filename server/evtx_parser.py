@@ -26,6 +26,11 @@ logger = logging.getLogger(__name__)
 
 _NS = "http://schemas.microsoft.com/win/2004/08/events/event"
 
+_WINDOWS_SYSTEM_ACCOUNTS = frozenset({
+    "SYSTEM", "LOCAL SERVICE", "NETWORK SERVICE",
+    "ANONYMOUS LOGON", "IUSR", "-", "",
+})
+
 # event_action → (default_severity)  — dinamik override mümkün
 _EID_MAP: dict[int, tuple[str, str]] = {
     # Windows Security Events
@@ -322,9 +327,12 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
     if eid == 4672:
         user   = _get_data(root, "SubjectUserName")
         privs  = _get_data(root, "PrivilegeList")
-        # SeDebugPrivilege → credential dumping, process injection
         high_risk = any(p in privs for p in ("SeDebugPrivilege", "SeImpersonatePrivilege", "SeTcbPrivilege"))
-        severity  = "critical" if high_risk else "warning"
+        is_system = user.upper() in _WINDOWS_SYSTEM_ACCOUNTS or user.endswith("$")
+        if is_system:
+            severity = "info"
+        else:
+            severity = "critical" if high_risk else "warning"
         return {
             "event_action":      event_action,
             "severity":          severity,

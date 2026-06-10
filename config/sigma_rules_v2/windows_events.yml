@@ -56,17 +56,6 @@ falsepositives:
     - Automated test systems
     - Authorized LDAP discovery tools
 ---
-title: Windows Logon Success Base
-name: ng_win_logon_success_base
-status: stable
-logsource:
-    category: authentication
-detection:
-    selection:
-        event_action: windows_logon_success
-    condition: selection
-level: low
----
 title: Windows Lateral Logon Base
 name: ng_win_lateral_logon_base
 status: stable
@@ -124,6 +113,9 @@ logsource:
 detection:
     selection:
         event_action: windows_process_create
+        severity:
+            - warning
+            - critical
     condition: selection
 level: low
 ---
@@ -428,7 +420,14 @@ detection:
     selection:
         event_action: windows_special_priv
         severity: critical
-    condition: selection
+    filter_system:
+        username|contains:
+            - SYSTEM
+            - LOCAL SERVICE
+            - NETWORK SERVICE
+            - ANONYMOUS LOGON
+            - IUSR
+    condition: selection and not filter_system
 level: critical
 tags:
     - attack.privilege_escalation

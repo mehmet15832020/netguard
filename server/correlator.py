@@ -486,10 +486,12 @@ class Correlator:
 
     def _is_fp_suppressed(self, event: CorrelatedEvent, tenant_id: str = "default") -> bool:
         """FP kuralı eşleşirse True döner ve hit_count arttırır."""
-        source_ip = event.group_value if event.group_by_field == "source_ip" else None
+        source_ip         = event.group_value if event.group_by_field == "source_ip"         else None
+        observer_hostname = event.group_value if event.group_by_field == "observer_hostname" else None
         rule_id = fp_manager.is_suppressed(
             event_action=event.event_action,
             source_ip=source_ip,
+            observer_hostname=observer_hostname,
             tenant_id=tenant_id,
         )
         if rule_id:
