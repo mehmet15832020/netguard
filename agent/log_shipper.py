@@ -20,6 +20,8 @@ from typing import Optional
 import httpx
 import psutil
 
+from agent.tls_config import resolve_tls_verify
+
 logger = logging.getLogger(__name__)
 
 AUTH_LOG_PATH  = os.getenv("AUTH_LOG_PATH", "/var/log/auth.log")
@@ -195,7 +197,7 @@ class LogShipper:
         self._server_url = server_url.rstrip("/")
         self._api_key    = api_key
         self._hostname   = socket.gethostname()
-        self._client     = httpx.Client(timeout=10, verify=False)
+        self._client     = httpx.Client(timeout=10, verify=resolve_tls_verify())
         self._thread     = threading.Thread(target=self._loop, daemon=True)
         self._stop       = threading.Event()
 

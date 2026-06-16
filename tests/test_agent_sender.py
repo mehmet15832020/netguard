@@ -48,3 +48,25 @@ class TestSendSnapshotApiKeyHeader:
     def test_default_api_key_is_empty_string(self):
         sender = MetricSender(server_url="http://localhost:8000")
         assert sender._api_key == ""
+
+
+class TestSenderTlsVerification:
+    def test_verifies_tls_by_default(self, monkeypatch):
+        monkeypatch.delenv("NETGUARD_CA_BUNDLE", raising=False)
+        monkeypatch.delenv("NETGUARD_VERIFY_TLS", raising=False)
+        with patch("agent.sender.httpx.Client") as mock_client:
+            MetricSender(server_url="https://localhost:8000")
+        assert mock_client.call_args.kwargs["verify"] is True
+
+    def test_verify_false_passed_through_when_disabled(self, monkeypatch):
+        monkeypatch.delenv("NETGUARD_CA_BUNDLE", raising=False)
+        monkeypatch.setenv("NETGUARD_VERIFY_TLS", "false")
+        with patch("agent.sender.httpx.Client") as mock_client:
+            MetricSender(server_url="https://localhost:8000")
+        assert mock_client.call_args.kwargs["verify"] is False
+
+    def test_ca_bundle_path_passed_through(self, monkeypatch):
+        monkeypatch.setenv("NETGUARD_CA_BUNDLE", "/etc/netguard/ca.pem")
+        with patch("agent.sender.httpx.Client") as mock_client:
+            MetricSender(server_url="https://localhost:8000")
+        assert mock_client.call_args.kwargs["verify"] == "/etc/netguard/ca.pem"
