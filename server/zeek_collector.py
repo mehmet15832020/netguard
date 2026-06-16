@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 ZEEK_LOG_DIR    = Path(os.getenv("ZEEK_LOG_DIR", "/zeek-logs"))
 POLL_INTERVAL   = int(os.getenv("ZEEK_POLL_INTERVAL", "5"))
 TENANT_ID       = "default"
-ZEEK_OFFSET_FILE = Path(os.getenv("ZEEK_OFFSET_FILE", "/tmp/netguard_zeek_offsets.json"))
+ZEEK_OFFSET_FILE = Path(os.getenv("ZEEK_OFFSET_FILE", "/var/lib/netguard/zeek_offsets.json"))
 
 _PARSERS: dict[str, Callable] = {
     "dns":    parse_dns,

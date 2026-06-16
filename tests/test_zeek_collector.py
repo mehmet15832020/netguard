@@ -1264,12 +1264,15 @@ class TestCollectOnce:
         zc.collect_once()
         assert len(saved) == 1
 
-        # Rotation: dosya silinip yeni inode ile yeniden oluşturuluyor, daha büyük içerik
-        log_file.unlink()
+        # Rotation: yeni içerik ayrı dosyaya yazılıp rename ile taşınır —
+        # tmpfs inode geri dönüşümüne karşı garantili farklı inode (logrotate gerçek davranışı)
         row2 = {"ts": 1700000100.0, "id.orig_h": "2.2.2.2", "id.resp_h": "8.8.8.8",
                 "proto": "udp", "query": "second.com", "qtype_name": "A",
                 "answers": [], "rcode_name": "NOERROR"}
-        log_file.write_text(json.dumps(row1) + "\n" + json.dumps(row2) + "\n")
+        new_file = tmp_path / "_new_dns.log"
+        new_file.write_text(json.dumps(row1) + "\n" + json.dumps(row2) + "\n")
+        log_file.unlink()
+        new_file.rename(log_file)
 
         zc.collect_once()
         # İnode değiştiği için offset sıfırlanıp dosya baştan okunmalı → 2 yeni satır
