@@ -267,6 +267,7 @@ class LogSourceType(str, Enum):
     OPENCANARY   = "opencanary"   # Thinkst OpenCanary honeypot
     M365         = "m365"         # Microsoft 365 audit (Office 365 Management API)
     GWORKSPACE   = "gworkspace"   # Google Workspace Admin Reports API
+    DHCP         = "dhcp"         # ISC dhcpd / Kea / FortiGate DHCP lease syslog (F1, marka bağımsız)
 
 
 class LogCategory(str, Enum):

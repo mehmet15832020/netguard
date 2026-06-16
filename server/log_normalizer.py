@@ -21,6 +21,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from server.database import db
+from server.dhcp_baseline import check_dhcp_mac_baseline
 from server.dns_resolver import resolve_and_update_bg
 from server.log_store import log_store
 from server.ntp_validator import ntp_validator
@@ -54,6 +55,13 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     (LogSourceType.CISCO_ASA, re.compile(r'%ASA-')),
     (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
     (LogSourceType.VYOS,      re.compile(r'kernel:.*SRC=[\d.]+.*DST=[\d.]+')),
+    # DHCP syslog — F1, marka bağımsız (ISC dhcpd/Kea/FortiGate). AUTH_LOG'dan
+    # önce: "dhcpd" pattern'i sshd/sudo/su ile çakışmaz ama sıralama tutarlılığı için burada.
+    (LogSourceType.DHCP,      re.compile(
+        r'dhcpd(?:\[\d+\])?:\s+DHCP(?:ACK|NAK|DECLINE)\b'
+        r'|DHCP4_LEASE_(?:ALLOC|RENEW)\b'
+        r'|subtype="?dhcp"?\b',
+    )),
     # nginx access/error log — "nginx:" process tag + combined log format IP
     (LogSourceType.NGINX,     re.compile(r'\bnginx\b.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')),
     # auth.log — sshd veya sudo içerir
@@ -328,6 +336,7 @@ _PARSERS = {
     LogSourceType.CISCO_ASA : _parse_firewall,
     LogSourceType.FORTIGATE : _parse_firewall,
     LogSourceType.VYOS      : _parse_firewall,
+    LogSourceType.DHCP      : _parse_firewall,
     LogSourceType.NGINX     : _parse_web_log,
 }
 
@@ -397,6 +406,16 @@ def process_and_store(raw_content: str, observer_hostname: str) -> Optional[Norm
 
     # 3. Normalize logu kaydet (hostname'ler henüz boş — arka planda doldurulacak)
     log_store.save(norm)
+
+    # 3b. Firewall DHCP lease kaydı — Zeek dhcp.log (C1) ile aynı MAC baseline'ı
+    # paylaşır (F1, server/dhcp_baseline.py)
+    if norm.event_action == "dhcp_lease":
+        try:
+            extra_log = check_dhcp_mac_baseline(norm)
+            if extra_log is not None:
+                log_store.save(extra_log)
+        except Exception as exc:
+            logger.error(f"DHCP MAC baseline hatası: {exc}")
 
     # 4. DNS arka planda çöz ve DB'yi güncelle (event loop'u bloklamaz)
     resolve_and_update_bg(norm.log_id, norm.source_ip, norm.destination_ip)

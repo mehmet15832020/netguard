@@ -4,6 +4,7 @@ import pytest
 from server.parsers.firewall import (
     parse_pfsense, parse_cisco_asa, parse_fortigate,
     parse_opnsense, parse_vyos, detect_and_parse,
+    parse_isc_dhcpd, parse_kea_dhcp, parse_fortigate_dhcp, parse_dhcp_syslog,
 )
 
 
@@ -213,3 +214,156 @@ class TestAutoDetect:
 
     def test_unknown_returns_none(self):
         assert detect_and_parse("this is not a firewall log") is None
+
+    def test_detects_isc_dhcpd_via_detect_and_parse(self):
+        log = detect_and_parse(
+            "Apr 24 10:00:01 opnsense dhcpd: DHCPACK on 192.168.1.50 to "
+            "aa:bb:cc:dd:ee:ff (myhost) via igb0"
+        )
+        assert log is not None
+        assert log.source_type == "dhcp"
+        assert log.event_action == "dhcp_lease"
+
+
+# ── F1 — DHCP syslog parser'ları (marka bağımsız) ──────────────────────────
+
+ISC_DHCPD_ACK = (
+    "Apr 24 10:00:01 opnsense dhcpd: DHCPACK on 192.168.1.50 to "
+    "aa:bb:cc:dd:ee:ff (myhost) via igb0"
+)
+ISC_DHCPD_NAK = (
+    "Apr 24 10:00:01 opnsense dhcpd: DHCPNAK on 192.168.1.50 to "
+    "aa:bb:cc:dd:ee:ff via igb0"
+)
+ISC_DHCPD_DECLINE = (
+    "Apr 24 10:00:01 vyos dhcpd: DHCPDECLINE of 192.168.1.50 from "
+    "aa:bb:cc:dd:ee:ff via eth0"
+)
+ISC_DHCPD_DISCOVER = (
+    "Apr 24 10:00:01 opnsense dhcpd: DHCPDISCOVER from aa:bb:cc:dd:ee:ff via igb0"
+)
+KEA_LEASE_ALLOC = (
+    "Apr 24 10:00:01 opnsense kea-dhcp4: INFO  [kea-dhcp4.leases] "
+    "DHCP4_LEASE_ALLOC [hwtype=1 aa:bb:cc:dd:ee:ff], cid=[no info], tid=0x1: "
+    "lease 192.168.1.60 has been allocated"
+)
+KEA_LEASE_RENEW = (
+    "Apr 24 10:00:01 opnsense kea-dhcp4: INFO  [kea-dhcp4.leases] "
+    "DHCP4_LEASE_RENEW [hwtype=1 aa:bb:cc:dd:ee:ff], cid=[no info], tid=0x1: "
+    "lease 192.168.1.60 has been renewed"
+)
+FORTI_DHCP = (
+    'date=2026-06-16 time=10:00:01 devname="FG1" type="event" subtype="dhcp" '
+    'action="lease" ip=192.168.1.70 mac="aa:bb:cc:dd:ee:ff" hostname="forti-host"'
+)
+FORTI_DHCP_DECLINE = (
+    'date=2026-06-16 time=10:00:01 devname="FG1" type="event" subtype="dhcp" '
+    'action="decline" ip=192.168.1.70 mac="aa:bb:cc:dd:ee:ff"'
+)
+
+
+class TestIscDhcpdParser:
+    def test_ack_parsed(self):
+        log = parse_isc_dhcpd(ISC_DHCPD_ACK)
+        assert log is not None
+        assert log.source_type == "dhcp"
+        assert log.event_action == "dhcp_lease"
+        assert log.source_ip == "192.168.1.50"
+        assert log.extra["mac"] == "aa:bb:cc:dd:ee:ff"
+        assert log.extra["hostname"] == "myhost"
+        assert log.severity == "info"
+
+    def test_nak_is_warning(self):
+        log = parse_isc_dhcpd(ISC_DHCPD_NAK)
+        assert log.severity == "warning"
+        assert log.extra["hostname"] == ""
+
+    def test_decline_is_warning(self):
+        log = parse_isc_dhcpd(ISC_DHCPD_DECLINE)
+        assert log.severity == "warning"
+        assert log.source_ip == "192.168.1.50"
+
+    def test_discover_skipped_as_noise(self):
+        """DISCOVER/OFFER/REQUEST/RELEASE protokol adımı — lease sonucu taşımaz."""
+        assert parse_isc_dhcpd(ISC_DHCPD_DISCOVER) is None
+
+    def test_observer_hostname_extracted(self):
+        log = parse_isc_dhcpd(ISC_DHCPD_ACK)
+        assert log.observer_hostname == "opnsense"
+
+    def test_vyos_observer_hostname(self):
+        log = parse_isc_dhcpd(ISC_DHCPD_DECLINE)
+        assert log.observer_hostname == "vyos"
+
+    def test_no_mac_returns_none(self):
+        assert parse_isc_dhcpd("dhcpd: DHCPACK on 192.168.1.50 via igb0") is None
+
+    def test_tags(self):
+        log = parse_isc_dhcpd(ISC_DHCPD_ACK)
+        assert "dhcp" in log.tags
+        assert "isc-dhcpd" in log.tags
+
+
+class TestKeaDhcpParser:
+    def test_alloc_parsed(self):
+        log = parse_kea_dhcp(KEA_LEASE_ALLOC)
+        assert log is not None
+        assert log.source_type == "dhcp"
+        assert log.event_action == "dhcp_lease"
+        assert log.source_ip == "192.168.1.60"
+        assert log.extra["mac"] == "aa:bb:cc:dd:ee:ff"
+        assert "kea" in log.tags
+
+    def test_renew_parsed(self):
+        log = parse_kea_dhcp(KEA_LEASE_RENEW)
+        assert log is not None
+        assert "renew" in log.tags
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_kea_dhcp("some unrelated kea log line") is None
+
+    def test_severity_always_info(self):
+        log = parse_kea_dhcp(KEA_LEASE_ALLOC)
+        assert log.severity == "info"
+
+
+class TestFortiGateDhcpParser:
+    def test_lease_parsed(self):
+        log = parse_fortigate_dhcp(FORTI_DHCP)
+        assert log is not None
+        assert log.source_type == "dhcp"
+        assert log.source_ip == "192.168.1.70"
+        assert log.extra["mac"] == "aa:bb:cc:dd:ee:ff"
+        assert log.extra["hostname"] == "forti-host"
+        assert log.severity == "info"
+
+    def test_decline_is_warning(self):
+        log = parse_fortigate_dhcp(FORTI_DHCP_DECLINE)
+        assert log.severity == "warning"
+
+    def test_non_dhcp_subtype_returns_none(self):
+        assert parse_fortigate_dhcp(FORTI_DENY) is None
+
+    def test_missing_mac_returns_none(self):
+        line = FORTI_DHCP.replace('mac="aa:bb:cc:dd:ee:ff" ', '')
+        assert parse_fortigate_dhcp(line) is None
+
+
+class TestDhcpSyslogDispatcher:
+    def test_dispatches_isc_dhcpd(self):
+        log = parse_dhcp_syslog(ISC_DHCPD_ACK)
+        assert log is not None
+        assert "isc-dhcpd" in log.tags
+
+    def test_dispatches_kea(self):
+        log = parse_dhcp_syslog(KEA_LEASE_ALLOC)
+        assert log is not None
+        assert "kea" in log.tags
+
+    def test_dispatches_fortigate(self):
+        log = parse_dhcp_syslog(FORTI_DHCP)
+        assert log is not None
+        assert "fortigate" in log.tags
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_dhcp_syslog("this is not a dhcp log") is None

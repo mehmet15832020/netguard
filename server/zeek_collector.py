@@ -16,10 +16,10 @@ import logging
 import os
 import tempfile
 import time
-import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
+from server.dhcp_baseline import check_dhcp_mac_baseline
 from server.file_watch import DebouncedDirectoryWatcher
 from server.log_store import log_store
 from server.parsers.zeek import (
@@ -29,7 +29,7 @@ from server.parsers.zeek import (
     parse_rdp, parse_kerberos, parse_smb_files, parse_dce_rpc, parse_dhcp,
     parse_tunnel, parse_pe, parse_smb_mapping, parse_software, parse_ntp,
 )
-from shared.models import LogCategory, LogSourceType, NormalizedLog
+from shared.models import NormalizedLog
 
 logger = logging.getLogger(__name__)
 
@@ -67,45 +67,10 @@ _PARSERS: dict[str, Callable] = {
 # Parser'lar saf kalır (DB erişimi yok) — bu hook'lar collector katmanında.
 _POST_SAVE_HOOKS: dict[str, Callable[[NormalizedLog], Optional[NormalizedLog]]] = {}
 
-
-def _check_dhcp_mac_baseline(log_entry: NormalizedLog) -> Optional[NormalizedLog]:
-    """
-    Bir IP için daha önce farklı bir MAC görülmüşse uyarı üretir
-    (DHCP spoofing / cihaz değişimi — NIST SP 800-94 §3.3).
-
-    IP hiç görülmemişse (ilk kayıt) alert üretmez — DHCP havuzunda yeni
-    adres dağıtımı normaldir, sadece *değişim* ilginçtir.
-    """
-    ip = log_entry.source_ip
-    mac = log_entry.extra.get("mac")
-    if not ip or not mac:
-        return None
-
-    from server.database import db
-    known_macs = db.get_known_macs_for_ip(ip)
-    db.record_dhcp_mac(ip, mac)
-
-    if known_macs and mac not in known_macs:
-        return NormalizedLog(
-            log_id=str(uuid.uuid4()),
-            raw_id=str(uuid.uuid4()),
-            source_type=LogSourceType.ZEEK,
-            observer_hostname="zeek",
-            timestamp=log_entry.timestamp,
-            severity="warning",
-            event_category=LogCategory.NETWORK,
-            event_action="dhcp_new_mac_detected",
-            source_ip=ip,
-            message=(
-                f"IP {ip} için yeni MAC görüldü: {mac} "
-                f"(önceki: {', '.join(known_macs)})"
-            ),
-            tags=["zeek", "dhcp", "mac_change"],
-            extra={"mac": mac, "previous_macs": known_macs},
-        )
-    return None
-
-
+# C1 + F1 aynı MAC baseline mantığını paylaşır (server/dhcp_baseline.py) —
+# Zeek (pasif) ve firewall syslog (yetkili) DHCP kaynakları birlikte tam
+# IP→MAC geçmişi oluşturur.
+_check_dhcp_mac_baseline = check_dhcp_mac_baseline
 _POST_SAVE_HOOKS["dhcp"] = _check_dhcp_mac_baseline
 
 

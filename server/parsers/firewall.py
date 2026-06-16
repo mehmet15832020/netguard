@@ -355,6 +355,168 @@ def parse_vyos(line: str) -> Optional[NormalizedLog]:
 
 
 # ──────────────────────────────────────────────────────────────────
+#  DHCP syslog parser'ları (F1) — marka bağımsız
+#  Firewall'lar LAN'ın yetkili DHCP sunucusudur; bu loglar IP→MAC→hostname
+#  eşlemesi sağlar (NIST SP 800-94 §3.3, CIS Controls v8 Control 12.2).
+#  Zeek dhcp.log (C1, pasif gözlem) ile tamamlayıcıdır — server/dhcp_baseline.py
+#  aynı dhcp_mac_history tablosunu paylaşır.
+#
+#  Sadece lease SONUCU taşıyan mesaj tipleri işlenir (ACK/NAK/DECLINE) —
+#  DISCOVER/OFFER/REQUEST/RELEASE protokol adımları, tek başına IP→MAC
+#  bilgisi taşımaz, gürültü.
+# ──────────────────────────────────────────────────────────────────
+
+_DHCPD_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+dhcpd')
+_DHCPD_LINE_RE = re.compile(r'dhcpd(?:\[\d+\])?:\s+(DHCPACK|DHCPNAK|DHCPDECLINE)\s+(.*)$')
+_DHCP_IP_RE    = re.compile(r'\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b')
+_DHCP_MAC_RE   = re.compile(r'\b([0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2})\b')
+_DHCP_VIA_RE   = re.compile(r'\bvia\s+(\S+)')
+_DHCP_PAREN_RE = re.compile(r'\(([^)]+)\)')
+
+
+def parse_isc_dhcpd(line: str) -> Optional[NormalizedLog]:
+    """
+    ISC dhcpd — OPNsense/pfSense/VyOS hepsi bu daemon'u kullanır (kb.isc.org doğrulandı).
+    Örnek: "dhcpd: DHCPACK on 192.168.1.10 to aa:bb:cc:dd:ee:ff (hostname) via eth0"
+    """
+    lm = _DHCPD_LINE_RE.search(line)
+    if not lm:
+        return None
+    msg_type, rest = lm.group(1), lm.group(2)
+
+    mac_m = _DHCP_MAC_RE.search(rest)
+    if not mac_m:
+        return None
+    mac = mac_m.group(1)
+
+    ip_matches = _DHCP_IP_RE.findall(rest)
+    assigned_ip = ip_matches[0] if ip_matches else None
+    if not assigned_ip:
+        return None
+
+    hostname = ""
+    for paren in _DHCP_PAREN_RE.findall(rest):
+        if not _DHCP_IP_RE.fullmatch(paren):
+            hostname = paren
+            break
+
+    iface_m = _DHCP_VIA_RE.search(rest)
+    interface = iface_m.group(1) if iface_m else ""
+
+    hm = _DHCPD_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "dhcp-server"
+
+    severity = "warning" if msg_type in ("DHCPNAK", "DHCPDECLINE") else "info"
+    msg = f"DHCP {msg_type}: {assigned_ip} ↔ {mac}"
+    if hostname:
+        msg += f" ({hostname})"
+
+    return _make_log(
+        source_type = LogSourceType.DHCP,
+        observer_hostname = observer_hostname,
+        event_action  = "dhcp_lease",
+        severity    = severity,
+        event_category    = LogCategory.NETWORK,
+        message     = msg,
+        raw_content = line,
+        source_ip      = assigned_ip,
+        tags        = ["dhcp", "isc-dhcpd", msg_type.lower()],
+        extra       = {
+            "mac": mac, "hostname": hostname, "msg_type": msg_type,
+            "interface": interface, "vendor": "isc-dhcpd",
+        },
+    )
+
+
+# Kea DHCP4 — düz metin log formatı (JSON DEĞİL — orijinal varsayım hatalıydı,
+# kb.isc.org/docs/isc-dhcp-logging-compared-to-kea ile doğrulandı).
+# Örnek: "DHCP4_LEASE_ALLOC [hwtype=1 aa:bb:cc:dd:ee:ff], cid=..., tid=...: lease 192.168.1.10 has been allocated"
+_KEA_DHCP_RE = re.compile(
+    r'(DHCP4_LEASE_ALLOC|DHCP4_LEASE_RENEW)\s+\[hwtype=\d+\s+'
+    r'(?P<mac>[0-9a-fA-F:]{17})\].*?lease\s+(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
+    r'\s+has been (?:allocated|renewed)',
+    re.IGNORECASE,
+)
+
+
+def parse_kea_dhcp(line: str) -> Optional[NormalizedLog]:
+    """Kea DHCP4 (yeni OPNsense sürümleri) — sadece ALLOC/RENEW (lease sonucu)."""
+    m = _KEA_DHCP_RE.search(line)
+    if not m:
+        return None
+
+    mac = m.group("mac")
+    ip  = m.group("ip")
+    is_renew = m.group(1) == "DHCP4_LEASE_RENEW"
+
+    msg = f"DHCP {'RENEW' if is_renew else 'ALLOC'}: {ip} ↔ {mac}"
+
+    return _make_log(
+        source_type = LogSourceType.DHCP,
+        observer_hostname = "kea-dhcp4",
+        event_action  = "dhcp_lease",
+        severity    = "info",
+        event_category    = LogCategory.NETWORK,
+        message     = msg,
+        raw_content = line,
+        source_ip      = ip,
+        tags        = ["dhcp", "kea", "renew" if is_renew else "alloc"],
+        extra       = {"mac": mac, "hostname": "", "vendor": "kea-dhcp4"},
+    )
+
+
+def parse_fortigate_dhcp(line: str) -> Optional[NormalizedLog]:
+    """
+    FortiGate DHCP sunucu olayı — key=value format (parse_fortigate ile aynı
+    _FORTI_KV_RE kullanılır). Not: mac/ip/hostname alan adları Fortinet'in
+    resmi dokümantasyonunda DHCP-özel örnekle doğrulanamadı (genel KV format
+    doğrulandı) — üretimde gerçek cihaz logu ile çapraz kontrol edilmeli.
+    """
+    if "subtype=" not in line or "dhcp" not in line.lower():
+        return None
+    kv = {k: v.strip('"') for k, v in _FORTI_KV_RE.findall(line)}
+    if kv.get("subtype", "").lower() != "dhcp":
+        return None
+
+    mac = kv.get("mac")
+    ip  = kv.get("ip") or kv.get("assigned_ip") or kv.get("srcip")
+    if not mac or not ip:
+        return None
+
+    hostname = kv.get("hostname", "")
+    action   = kv.get("action", "").lower()
+    severity = "warning" if action in ("decline", "expire", "nak") else "info"
+
+    msg = f"DHCP FortiGate {action or 'lease'}: {ip} ↔ {mac}"
+    if hostname:
+        msg += f" ({hostname})"
+
+    return _make_log(
+        source_type = LogSourceType.DHCP,
+        observer_hostname = kv.get("devname", "fortigate"),
+        event_action  = "dhcp_lease",
+        severity    = severity,
+        event_category    = LogCategory.NETWORK,
+        message     = msg,
+        raw_content = line,
+        source_ip      = ip,
+        tags        = ["dhcp", "fortigate", action] if action else ["dhcp", "fortigate"],
+        extra       = {"mac": mac, "hostname": hostname, "vendor": "fortigate", "action": action},
+    )
+
+
+def parse_dhcp_syslog(line: str) -> Optional[NormalizedLog]:
+    """Marka bağımsız DHCP syslog dispatcher (F1)."""
+    if "dhcpd" in line and _DHCPD_LINE_RE.search(line):
+        return parse_isc_dhcpd(line)
+    if "DHCP4_LEASE_ALLOC" in line or "DHCP4_LEASE_RENEW" in line:
+        return parse_kea_dhcp(line)
+    if "subtype=" in line and "dhcp" in line.lower():
+        return parse_fortigate_dhcp(line)
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────
 #  Otomatik tespit + parse
 # ──────────────────────────────────────────────────────────────────
 
@@ -366,6 +528,9 @@ def detect_and_parse(line: str) -> Optional[NormalizedLog]:
         return parse_pfsense(line)
     if "%ASA-" in line:
         return parse_cisco_asa(line)
+    dhcp_result = parse_dhcp_syslog(line)
+    if dhcp_result is not None:
+        return dhcp_result
     if "type=traffic" in line or "type=utm" in line:
         return parse_fortigate(line)
     if "kernel:" in line and "SRC=" in line and "DST=" in line:

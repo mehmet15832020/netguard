@@ -291,6 +291,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/correlator.py` | 60s döngü, JSON + pySigma v2 |
 | `server/database.py` | PostgreSQL-only (F2-1); factory: PG prod / testcontainers test |
 | `server/detectors/` | port_scan, arp, dns, icmp, lateral, beaconing (A1) |
+| `server/dhcp_baseline.py` | IP→MAC değişim tespiti — Zeek (C1) + firewall syslog (F1) paylaşır |
 | `server/discovery/` | fingerprinter.py + subnet_scanner.py |
 | `server/dns_resolver.py` | PTR lookup, TTL cache (300s/60s) |
 | `server/evtx_parser.py` | Windows EVTX — 60+ EID (Security/Sysmon/PowerShell/System/AppLocker) |

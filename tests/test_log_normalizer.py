@@ -40,6 +40,20 @@ class TestIdentifySource:
         raw = "some random log message without patterns"
         assert identify_source(raw) == LogSourceType.SYSLOG
 
+    def test_isc_dhcpd_ack_detected(self):
+        raw = "Apr 24 10:00:01 opnsense dhcpd: DHCPACK on 192.168.1.50 to aa:bb:cc:dd:ee:ff (myhost) via igb0"
+        assert identify_source(raw) == LogSourceType.DHCP
+
+    def test_kea_dhcp_detected(self):
+        raw = ("Apr 24 10:00:01 opnsense kea-dhcp4: INFO [kea-dhcp4.leases] "
+               "DHCP4_LEASE_ALLOC [hwtype=1 aa:bb:cc:dd:ee:ff], cid=[no info], tid=0x1: "
+               "lease 192.168.1.60 has been allocated")
+        assert identify_source(raw) == LogSourceType.DHCP
+
+    def test_fortigate_dhcp_detected(self):
+        raw = 'date=2026-06-16 devname="FG1" type="event" subtype="dhcp" action="lease"'
+        assert identify_source(raw) == LogSourceType.DHCP
+
 
 # ------------------------------------------------------------------ #
 #  Auth.log parse
@@ -266,6 +280,63 @@ class TestProcessAndStore:
             row = conn.execute("SELECT parse_status FROM raw_logs LIMIT 1").fetchone()
         assert row is not None
         assert row["parse_status"] == "success", "Başarılı parse sonrası parse_status='success' olmalı"
+
+
+# ------------------------------------------------------------------ #
+#  F1 — Firewall DHCP syslog uçtan uca + C1 ile paylaşılan MAC baseline
+# ------------------------------------------------------------------ #
+
+class TestFirewallDhcpProcessAndStore:
+    def test_isc_dhcpd_ack_stored(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 opnsense dhcpd: DHCPACK on 192.168.1.50 to aa:bb:cc:dd:ee:ff (myhost) via igb0"
+        norm = process_and_store(raw, observer_hostname="opnsense")
+
+        assert norm is not None
+        assert norm.event_action == "dhcp_lease"
+        assert norm.source_ip == "192.168.1.50"
+
+        logs = tmp_db.get_normalized_logs(limit=10)
+        assert any(l.event_action == "dhcp_lease" for l in logs)
+
+    def test_first_sighting_no_mac_change_alert(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 opnsense dhcpd: DHCPACK on 192.168.1.51 to aa:bb:cc:dd:ee:ff (myhost) via igb0"
+        process_and_store(raw, observer_hostname="opnsense")
+
+        logs = tmp_db.get_normalized_logs(limit=10)
+        assert not any(l.event_action == "dhcp_new_mac_detected" for l in logs)
+
+    def test_mac_change_after_known_ip_triggers_alert(self, tmp_db, monkeypatch):
+        """C1 (Zeek) + F1 (firewall) aynı dhcp_mac_history'yi paylaşır."""
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        tmp_db.record_dhcp_mac("192.168.1.52", "11:11:11:11:11:11")
+
+        raw = "Apr 24 10:00:01 opnsense dhcpd: DHCPACK on 192.168.1.52 to aa:bb:cc:dd:ee:ff (myhost) via igb0"
+        process_and_store(raw, observer_hostname="opnsense")
+
+        logs = tmp_db.get_normalized_logs(limit=10)
+        alert = [l for l in logs if l.event_action == "dhcp_new_mac_detected"]
+        assert len(alert) == 1
+        assert alert[0].source_ip == "192.168.1.52"
+        assert alert[0].severity == "warning"
+
+    def test_non_dhcp_lease_event_action_no_baseline_call(self, tmp_db, monkeypatch):
+        """ssh_failure gibi olaylarda DHCP baseline hook'u tetiklenmemeli."""
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 12 10:23:45 myhost sshd[1234]: Failed password for root from 192.168.1.5 port 22 ssh2"
+        process_and_store(raw, observer_hostname="myhost")
+
+        logs = tmp_db.get_normalized_logs(limit=10)
+        assert not any(l.event_action == "dhcp_new_mac_detected" for l in logs)
 
 
 # ------------------------------------------------------------------ #
