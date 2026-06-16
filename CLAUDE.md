@@ -379,6 +379,59 @@ POST /api/v1/response/block
 
 ---
 
+## Çevre Firewall NetFlow Yapılandırması (F4 — 16 Haziran 2026)
+
+`server/netflow_receiver.py` zaten v5/v9/IPFIX/sFlow destekliyor (UDP 2055) — eksik olan firewall tarafının NetFlow göndermeye yapılandırılması. VyOS LAN tarafında zaten aktif (146.490+ kayıt); İnternet↔DMZ trafiği WAN tarafındaki firewall'dan (OPNsense/FortiGate/ASA) geçtiği için o taraf da yapılandırılmalı.
+
+**Erişim notu:** Bu görev sırasında OPNsense'e programatik erişim denendi — SSH sadece publickey kabul ediyor (uygun key yok), `.env`'deki `OPNSENSE_KEY`/`OPNSENSE_SECRET` boş (yapılandırılmamış). Aşağıdaki adımlar bu yüzden uygulanmadı, dokümante edildi — VNC konsol (localhost:5901) veya web UI üzerinden manuel uygulanmalı.
+
+### OPNsense (26.1.2)
+
+**Araştırma düzeltmesi:** Orijinal not "os-softflowd eklentisi" diyordu — bu pfSense'in eski yaklaşımı. Modern OPNsense'de **native `os-netflow` eklentisi** var, softflowd gerekmiyor (docs.opnsense.org doğrulandı):
+
+1. **System → Firmware → Plugins** → `os-netflow` kur
+2. **Services → Netflow → Settings**:
+   - Enable Netflow: ✓
+   - Listen Interfaces: WAN arayüzü (DMZ↔İnternet trafiğini gören arayüz)
+   - Destination: `192.168.203.134:2055`
+   - Version: **9** (v5 IPv6 desteklemiyor)
+3. Save → Apply
+
+### FortiGate
+
+```
+config system netflow
+    set collector-ip 192.168.203.134
+    set collector-port 2055
+    set source-ip <fortigate-source-ip>
+    set active-flow-timeout 1
+    set inactive-flow-timeout 15
+end
+```
+(docs.fortinet.com doğrulandı)
+
+### Cisco ASA (NSEL — NetFlow Secure Event Logging)
+
+ASA'da NetFlow, MPF (Modular Policy Framework) service policy'sine bağlanmadan çalışmaz — sadece `flow-export destination` yeterli değil:
+
+```
+flow-export destination inside 192.168.203.134 2055
+flow-export template timeout-rate 1
+class-map flow_export_class
+  match any
+policy-map global_policy
+  class flow_export_class
+    flow-export event-type all destination 192.168.203.134
+service-policy global_policy global
+```
+(Cisco resmi NSEL konfigürasyon kılavuzu doğrulandı — ASA NetFlow'u "NSEL" olarak adlandırır, klasik NetFlow değil, security-event odaklı bir varyanttır)
+
+### VyOS
+
+Zaten aktif ✓ — `set service netflow` LAN tarafında yapılandırılmış, referans için bakılabilir.
+
+---
+
 ## Syslog Toplama (B3 — 16 Haziran 2026)
 
 UDP 5140 yoğun trafikte sessizce paket düşürebilir (kernel/socket buffer dolduğunda) — TCP/TLS bu garantiyi transport katmanında verir. UDP eski/basit cihazlar için varsayılan açık kalır; OPNsense/VyOS gibi güvenilir teslimat istenen kaynaklar TCP/TLS'e yönlendirilebilir.
