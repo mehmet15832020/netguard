@@ -310,7 +310,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/security_log_parser.py` | auth.log parser (SSH/sudo/PAM) |
 | `server/sigma_executor.py` | pySigma v2, 50+ çalıştırılabilir kural |
 | `server/snmp_auth.py` | SNMP auth helper |
-| `server/snmp_collector.py` | SNMP v2c/v3 poll + trap |
+| `server/snmp_collector.py` | SNMP v2c/v3 poll + trap — interface octet/hata sayaçları `SNMP_COLLECT_INTERFACE_STATS=true` ile (D2, varsayılan kapalı — NetFlow zaten kapsıyor) |
 | `server/snmp_trap_receiver.py` | SNMP trap UDP alıcısı |
 | `server/storage.py` | RAM snapshot cache (metrics/health) |
 | `server/suricata_collector.py` | Suricata EVE JSON (inode rotation-safe) |

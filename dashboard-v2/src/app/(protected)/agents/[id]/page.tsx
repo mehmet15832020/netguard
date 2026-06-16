@@ -145,7 +145,10 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      {/* Metric cards */}
+      {/* Metric cards — D1: performans izleme verisi, NSM/güvenlik kapsamı dışı (NIST SP 800-94) */}
+      <p className="text-[11px] text-slate-600 -mb-1">
+        Performans izleme — CPU/Bellek/Disk güvenlik verisi değildir
+      </p>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard
           title="CPU"

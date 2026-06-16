@@ -122,3 +122,60 @@ class TestSNMPAvailable:
     def test_snmpget_accessible(self):
         import shutil
         assert shutil.which("snmpget") is not None
+
+
+class TestInterfaceStatsFlag:
+    """D2 — SNMP_COLLECT_INTERFACE_STATS varsayılan false; sadece link state toplanır."""
+
+    @staticmethod
+    def _mock_walk(_host: str, base_oid: str, *_args, **_kwargs):
+        from server.snmp_collector import IF_TABLE_OIDS
+        if base_oid == IF_TABLE_OIDS["ifDescr"]:
+            return {"1": "eth0"}
+        if base_oid == IF_TABLE_OIDS["ifOperStatus"]:
+            return {"1": "1"}
+        if base_oid in (IF_TABLE_OIDS["ifHCInOctets"], IF_TABLE_OIDS["ifHCOutOctets"]):
+            return {"1": "123456"}
+        if base_oid in (IF_TABLE_OIDS["ifInErrors"], IF_TABLE_OIDS["ifOutErrors"], IF_TABLE_OIDS["ifInDiscards"]):
+            return {"1": "0"}
+        return {}
+
+    def _run(self):
+        async def _go():
+            mock_walk = AsyncMock(side_effect=self._mock_walk)
+            with patch("server.snmp_collector._run_snmpget", AsyncMock(return_value={
+                "1.3.6.1.2.1.1.1.0": "Test Device", "1.3.6.1.2.1.1.2.0": "1.2.3",
+                "1.3.6.1.2.1.1.3.0": "12345", "1.3.6.1.2.1.1.5.0": "test-host",
+            })), patch("server.snmp_collector._run_snmpwalk", mock_walk):
+                result = await poll_device_async("127.0.0.1")
+            return result, mock_walk
+
+        return asyncio.new_event_loop().run_until_complete(_go())
+
+    def test_stats_disabled_by_default_skips_octet_walks(self):
+        with patch("server.snmp_collector.SNMP_COLLECT_INTERFACE_STATS", False):
+            result, mock_walk = self._run()
+
+        walked_oids = {call.args[1] for call in mock_walk.call_args_list}
+        from server.snmp_collector import IF_TABLE_OIDS
+        assert IF_TABLE_OIDS["ifHCInOctets"] not in walked_oids
+        assert IF_TABLE_OIDS["ifInErrors"] not in walked_oids
+        assert IF_TABLE_OIDS["ifDescr"] in walked_oids
+        assert IF_TABLE_OIDS["ifOperStatus"] in walked_oids
+
+    def test_stats_disabled_link_state_still_populated(self):
+        with patch("server.snmp_collector.SNMP_COLLECT_INTERFACE_STATS", False):
+            result, _ = self._run()
+
+        assert len(result.interfaces) == 1
+        assert result.interfaces[0].oper_status == 1
+        assert result.interfaces[0].hc_in_octets == 0
+
+    def test_stats_enabled_collects_octets(self):
+        with patch("server.snmp_collector.SNMP_COLLECT_INTERFACE_STATS", True):
+            result, mock_walk = self._run()
+
+        from server.snmp_collector import IF_TABLE_OIDS
+        walked_oids = {call.args[1] for call in mock_walk.call_args_list}
+        assert IF_TABLE_OIDS["ifHCInOctets"] in walked_oids
+        assert result.interfaces[0].hc_in_octets == 123456

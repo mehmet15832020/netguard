@@ -9,6 +9,7 @@ Desteklenen: SNMPv2c ve SNMPv3 (authPriv, authNoPriv, noAuthNoPriv)
 
 import asyncio
 import logging
+import os
 import re
 import shutil
 import time
@@ -22,6 +23,12 @@ logger = logging.getLogger(__name__)
 SNMP_AVAILABLE = bool(shutil.which("snmpget"))
 if not SNMP_AVAILABLE:
     logger.warning("snmpget bulunamadı — SNMP collector devre dışı")
+
+# D2 — Interface octet/paket/hata sayaçları NMS (Zabbix/Prometheus) alanı;
+# NetFlow zaten çok daha detaylı bant genişliği verisi sağlıyor (D3 Traffic
+# Volume). SNMP'nin NSM değeri ifOperStatus (link up/down) ve trap'lerde —
+# bunlar bu flag'den bağımsız her zaman toplanır.
+SNMP_COLLECT_INTERFACE_STATS = os.getenv("SNMP_COLLECT_INTERFACE_STATS", "false").lower() == "true"
 
 # Sistem OID'leri
 SYSTEM_OIDS = {
@@ -289,30 +296,42 @@ async def poll_device_async(
             return info
 
         # 2) Arayüz tablosu — paralel walk
-        cols = await asyncio.gather(
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifDescr"],       ver_args),
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifOperStatus"],  ver_args),
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifHCInOctets"],  ver_args),
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifHCOutOctets"], ver_args),
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifInErrors"],    ver_args),
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifOutErrors"],   ver_args),
-            _run_snmpwalk(host, IF_TABLE_OIDS["ifInDiscards"],  ver_args),
-        )
-        descr_col, status_col, hc_in_col, hc_out_col, in_err_col, out_err_col, in_disc_col = cols
-
-        # 64-bit counter yoksa 32-bit fallback
-        if not hc_in_col and not hc_out_col:
-            hc_in_col, hc_out_col = await asyncio.gather(
-                _run_snmpwalk(host, IF_TABLE_OIDS["ifInOctets"],  ver_args),
-                _run_snmpwalk(host, IF_TABLE_OIDS["ifOutOctets"], ver_args),
+        # ifDescr/ifOperStatus (link up/down) NSM değeri taşır, her zaman toplanır.
+        # Octet/hata/discard sayaçları D2 ile SNMP_COLLECT_INTERFACE_STATS'a bağlandı.
+        if SNMP_COLLECT_INTERFACE_STATS:
+            cols = await asyncio.gather(
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifDescr"],       ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifOperStatus"],  ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifHCInOctets"],  ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifHCOutOctets"], ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifInErrors"],    ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifOutErrors"],   ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifInDiscards"],  ver_args),
             )
+            descr_col, status_col, hc_in_col, hc_out_col, in_err_col, out_err_col, in_disc_col = cols
+
+            # 64-bit counter yoksa 32-bit fallback
+            if not hc_in_col and not hc_out_col:
+                hc_in_col, hc_out_col = await asyncio.gather(
+                    _run_snmpwalk(host, IF_TABLE_OIDS["ifInOctets"],  ver_args),
+                    _run_snmpwalk(host, IF_TABLE_OIDS["ifOutOctets"], ver_args),
+                )
+        else:
+            descr_col, status_col = await asyncio.gather(
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifDescr"],      ver_args),
+                _run_snmpwalk(host, IF_TABLE_OIDS["ifOperStatus"], ver_args),
+            )
+            hc_in_col = hc_out_col = in_err_col = out_err_col = in_disc_col = {}
 
         all_indices = set(descr_col) | set(status_col) | set(hc_in_col) | set(hc_out_col)
 
         for idx in sorted(all_indices, key=lambda x: int(x) if x.isdigit() else 0):
             hc_in  = int(hc_in_col.get(idx,  "0") or "0")
             hc_out = int(hc_out_col.get(idx, "0") or "0")
-            in_bps, out_bps = _calc_bandwidth(host, idx, hc_in, hc_out)
+            in_bps, out_bps = (
+                _calc_bandwidth(host, idx, hc_in, hc_out)
+                if SNMP_COLLECT_INTERFACE_STATS else (0.0, 0.0)
+            )
 
             info.interfaces.append(SNMPInterface(
                 index=idx,
