@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
     parse_x509, parse_smtp, parse_ftp, parse_dhcp, parse_tunnel, parse_pe,
-    parse_smb_mapping,
+    parse_smb_mapping, parse_software,
     _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
@@ -943,6 +943,97 @@ class TestParseSmbMapping:
         assert log.destination_port == 445
 
 
+class TestParseSoftware:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "host": "192.168.1.50",
+            "software_type": "HTTP::BROWSER",
+            "name": "Chrome",
+            "version.major": 120,
+            "version.minor": 0,
+            "version.minor2": 6099,
+            "version.minor3": 109,
+            "unparsed_version": "Chrome/120.0.6099.109",
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_software(self._row())
+        assert log is not None
+        assert log.event_action == "software_detected"
+        assert log.source_ip == "192.168.1.50"
+        assert "Chrome" in log.message
+        assert "120.0.6099.109" in log.message
+
+    def test_no_host_returns_none(self):
+        assert parse_software(self._row(host="")) is None
+        assert parse_software(self._row(host="-")) is None
+
+    def test_no_name_returns_none(self):
+        assert parse_software(self._row(name="")) is None
+        assert parse_software(self._row(name="-")) is None
+
+    def test_missing_software_type_defaults_unknown(self):
+        log = parse_software(self._row(software_type="-"))
+        assert log.extra["software_type"] == "UNKNOWN"
+
+    def test_version_built_from_components(self):
+        log = parse_software(self._row())
+        assert log.extra["version"] == "120.0.6099.109"
+
+    def test_version_falls_back_to_unparsed_when_no_components(self):
+        log = parse_software(self._row(**{
+            "version.major": "-", "version.minor": "-",
+            "version.minor2": "-", "version.minor3": "-",
+            "unparsed_version": "OpenSSH_8.9p1",
+        }))
+        assert log.extra["version"] == "OpenSSH_8.9p1"
+
+    def test_partial_version_components(self):
+        log = parse_software(self._row(**{
+            "version.major": 8, "version.minor": 9,
+            "version.minor2": "-", "version.minor3": "-",
+        }))
+        assert log.extra["version"] == "8.9"
+
+    def test_addl_appended(self):
+        log = parse_software(self._row(**{
+            "version.major": 8, "version.minor": "-",
+            "version.minor2": "-", "version.minor3": "-",
+            "version.addl": "p1",
+        }))
+        assert log.extra["version"] == "8p1"
+
+    def test_no_version_info_empty_string(self):
+        log = parse_software(self._row(**{
+            "version.major": "-", "version.minor": "-",
+            "version.minor2": "-", "version.minor3": "-",
+            "unparsed_version": "-",
+        }))
+        assert log.extra["version"] == ""
+
+    def test_severity_always_info(self):
+        log = parse_software(self._row())
+        assert log.severity == "info"
+
+    def test_tags(self):
+        log = parse_software(self._row())
+        assert "zeek" in log.tags
+        assert "software" in log.tags
+
+    def test_network_category(self):
+        from shared.models import LogCategory
+        log = parse_software(self._row())
+        assert log.event_category == LogCategory.NETWORK
+
+    def test_extra_fields(self):
+        log = parse_software(self._row())
+        assert log.extra["software_type"] == "HTTP::BROWSER"
+        assert log.extra["name"] == "Chrome"
+
+
 # ── Collector testleri ─────────────────────────────────────────────────────────
 
 class TestCollectOnce:
@@ -1390,3 +1481,123 @@ class TestSmbMappingCollectorWiring:
         assert n == 1
         assert saved[0].event_action == "zeek_smb_admin_share_mapped"
         assert saved[0].severity == "warning"
+
+
+class TestSoftwareBaselineHook:
+    def test_hook_adds_to_asset_baseline(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="software_detected",
+            source_ip="192.168.1.50", message="test",
+            extra={"software_type": "HTTP::BROWSER", "name": "Chrome", "version": "120.0"},
+        )
+        result = zc._attach_software_to_baseline(log_entry)
+        assert result is None  # her zaman None — yeni alert üretmez
+        software = tmp_db.get_detected_software("192.168.1.50")
+        assert len(software) == 1
+        assert software[0]["name"] == "Chrome"
+
+    def test_hook_dedupes_same_software(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="software_detected",
+            source_ip="192.168.1.50", message="test",
+            extra={"software_type": "HTTP::BROWSER", "name": "Chrome", "version": "120.0"},
+        )
+        zc._attach_software_to_baseline(log_entry)
+        zc._attach_software_to_baseline(log_entry)
+        software = tmp_db.get_detected_software("192.168.1.50")
+        assert len(software) == 1
+
+    def test_hook_accumulates_different_software(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        for name, ver in [("Chrome", "120.0"), ("OpenSSH", "8.9")]:
+            log_entry = NormalizedLog(
+                log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+                observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+                severity="info", event_category=LogCategory.NETWORK, event_action="software_detected",
+                source_ip="192.168.1.50", message="test",
+                extra={"software_type": "X", "name": name, "version": ver},
+            )
+            zc._attach_software_to_baseline(log_entry)
+        software = tmp_db.get_detected_software("192.168.1.50")
+        assert len(software) == 2
+
+    def test_hook_does_not_clobber_existing_baseline_fields(self, tmp_db):
+        """Periyodik asset_baseline.py hesaplamasının diğer kolonlarını ezmemeli."""
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        tmp_db.upsert_asset_baseline(
+            source_ip="192.168.1.50", tenant_id="default",
+            first_seen_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+            last_seen_at=dt.datetime.now(dt.timezone.utc).isoformat(),
+            avg_events_per_hour=42.0,
+            typical_ports=[22, 443], typical_destinations=["8.8.8.8"],
+            typical_event_actions=["ssh_success"], sample_hours=24,
+            typical_protocols=["tcp"],
+        )
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="software_detected",
+            source_ip="192.168.1.50", message="test",
+            extra={"software_type": "X", "name": "Chrome", "version": "120.0"},
+        )
+        zc._attach_software_to_baseline(log_entry)
+
+        baseline = tmp_db.get_asset_baseline("192.168.1.50")
+        assert baseline["avg_events_per_hour"] == 42.0
+        assert baseline["typical_ports"] == [22, 443]
+        assert len(baseline["detected_software"]) == 1
+
+    def test_no_name_no_db_call(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="software_detected",
+            source_ip="192.168.1.50", message="test", extra={},
+        )
+        assert zc._attach_software_to_baseline(log_entry) is None
+        assert tmp_db.get_detected_software("192.168.1.50") == []
+
+
+class TestSoftwareCollectorWiring:
+    def test_software_log_processed_via_collect_once(self, tmp_path, tmp_db, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "host": "192.168.1.60", "software_type": "SSH::SERVER",
+               "name": "OpenSSH", "version.major": 8, "version.minor": 9}
+        (tmp_path / "software.log").write_text(json.dumps(row) + "\n")
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        n = zc.collect_once()
+        assert n == 1
+        assert saved[0].event_action == "software_detected"
+
+        software = tmp_db.get_detected_software("192.168.1.60")
+        assert len(software) == 1
+        assert software[0]["name"] == "OpenSSH"

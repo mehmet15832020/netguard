@@ -3,7 +3,7 @@ Zeek JSON log parsers.
 
 Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
                          weird, dpd, files, rdp, kerberos, smb_files, dce_rpc,
-                         dhcp, tunnel, pe
+                         dhcp, tunnel, pe, smb_mapping, software
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
@@ -1484,4 +1484,72 @@ def parse_smb_mapping(row: dict) -> Optional[NormalizedLog]:
         },
         tags=tags,
         community_id=row.get("community_id"),
+    )
+
+
+def _format_software_version(row: dict) -> str:
+    """version.major/minor/minor2/minor3/addl dotted alanlarından versiyon string'i oluşturur."""
+    parts = []
+    for key in ("version.major", "version.minor", "version.minor2", "version.minor3"):
+        val = row.get(key)
+        if val is None or val == "" or val == "-":
+            break
+        parts.append(str(val))
+    numeric = ".".join(parts)
+
+    addl = row.get("version.addl")
+    if addl and addl != "-":
+        numeric = f"{numeric}{addl}" if numeric else str(addl)
+    if numeric:
+        return numeric
+
+    unparsed = row.get("unparsed_version")
+    if unparsed and unparsed != "-":
+        return str(unparsed)
+    return ""
+
+
+def parse_software(row: dict) -> Optional[NormalizedLog]:
+    """
+    software.log — C5. Zeek şeması: ts, host, software_type, name,
+    version.major/minor/minor2/minor3/addl, unparsed_version
+    (zeek.org §known-and-software.html, doğrulandı).
+
+    Pasif yazılım/versiyon parmak izi (User-Agent, Server header, SSH banner
+    vb.) — eski/savunmasız sistemleri görünür kılar (NIST SP 800-94 §4.1).
+    Server tarafında asset_baselines.detected_software'a eklenir
+    (bkz. zeek_collector.py post-save hook — parser saf/DB'siz kalır).
+    """
+    host = row.get("host")
+    if not host or host == "-":
+        return None
+
+    name = (row.get("name") or "").strip()
+    if not name or name == "-":
+        return None
+
+    software_type = (row.get("software_type") or "").strip()
+    if not software_type or software_type == "-":
+        software_type = "UNKNOWN"
+
+    version = _format_software_version(row)
+
+    msg = f"Software detected: {name}"
+    if version:
+        msg += f" {version}"
+    msg += f" [{software_type}] on {host}"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity="info",
+        event_category=LogCategory.NETWORK,
+        event_action="software_detected",
+        source_ip=host,
+        message=msg,
+        extra={"software_type": software_type, "name": name, "version": version},
+        tags=["zeek", "software"],
     )

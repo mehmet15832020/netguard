@@ -1377,6 +1377,7 @@ class DatabaseManager:
                 "typical_destinations":  json.loads(r["typical_destinations"] or "[]"),
                 "typical_event_actions": json.loads(r["typical_event_actions"] or "[]"),
                 "typical_protocols":     json.loads(r.get("typical_protocols") or "[]"),
+                "detected_software":     json.loads(r.get("detected_software") or "[]"),
                 "sample_hours":          r["sample_hours"],
                 "updated_at":            r["updated_at"].isoformat() if r["updated_at"] else None,
             }
@@ -1400,9 +1401,53 @@ class DatabaseManager:
             "typical_destinations":  json.loads(row["typical_destinations"] or "[]"),
             "typical_event_actions": json.loads(row["typical_event_actions"] or "[]"),
             "typical_protocols":     json.loads(row.get("typical_protocols") or "[]"),
+            "detected_software":     json.loads(row.get("detected_software") or "[]"),
             "sample_hours":          row["sample_hours"],
             "updated_at":            row["updated_at"].isoformat() if row["updated_at"] else None,
         }
+
+    _MAX_DETECTED_SOFTWARE = 50
+
+    def get_detected_software(self, ip: str, tenant_id: str = "default") -> list[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT detected_software FROM asset_baselines WHERE source_ip=%s AND tenant_id=%s",
+                (ip, tenant_id),
+            ).fetchone()
+        if not row:
+            return []
+        return json.loads(row["detected_software"] or "[]")
+
+    def add_detected_software(self, ip: str, entry: dict, tenant_id: str = "default") -> None:
+        """
+        C5 — Zeek software.log'dan pasif tespit edilen yazılımı IP'nin asset
+        baseline kaydına ekler. Sadece detected_software kolonunu dokunur —
+        asset_baseline.py'nin periyodik tam yeniden hesaplamasıyla (diğer
+        kolonlar) çakışmaz.
+        """
+        current = self.get_detected_software(ip, tenant_id)
+        key = (entry.get("software_type"), entry.get("name"), entry.get("version"))
+        current = [
+            e for e in current
+            if (e.get("software_type"), e.get("name"), e.get("version")) != key
+        ]
+        current.append(entry)
+        current = current[-self._MAX_DETECTED_SOFTWARE:]
+        now = _now()
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO asset_baselines
+                       (source_ip, tenant_id, first_seen_at, last_seen_at,
+                        avg_events_per_hour, typical_ports, typical_destinations,
+                        typical_event_actions, typical_protocols, detected_software,
+                        sample_hours, updated_at)
+                   VALUES (%s,%s,%s,%s,0,'[]','[]','[]','[]',%s,0,%s)
+                   ON CONFLICT (source_ip, tenant_id) DO UPDATE SET
+                       detected_software = EXCLUDED.detected_software,
+                       last_seen_at      = EXCLUDED.last_seen_at,
+                       updated_at        = EXCLUDED.updated_at""",
+                (ip, tenant_id, now, now, json.dumps(current), now),
+            )
 
     # ── False Positive Rules ──────────────────────────────────────────
 

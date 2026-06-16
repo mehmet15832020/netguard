@@ -318,7 +318,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/threat_intel.py` | AbuseIPDB + Feodo + ThreatFox + GreyNoise composite 0-100 |
 | `server/uptime_checker.py` | Cihaz uptime / ICMP ping |
 | `server/ws_manager.py` | WebSocket bağlantı yöneticisi |
-| `server/zeek_collector.py` | Zeek log tail (19 log tipi: conn/dns/http/ssl/ssh/notice/smtp/ftp/rdp/kerberos/smb/dce_rpc/weird/dpd/files/dhcp/tunnel/pe/smb_mapping) + inotify (B2) |
+| `server/zeek_collector.py` | Zeek log tail (20 log tipi: conn/dns/http/ssl/ssh/notice/smtp/ftp/rdp/kerberos/smb/dce_rpc/weird/dpd/files/dhcp/tunnel/pe/smb_mapping/software) + inotify (B2) |
 | `server/parsers/` | zeek.py, suricata.py, netflow.py, windows.py, opencanary.py, cloud.py, firewall.py, web_log.py |
 | `server/collectors/` | m365_collector.py, gworkspace_collector.py, kev_monitor.py |
 
@@ -338,7 +338,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### Alembic Migrations
 
-`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)** · `019` asset_baseline_protocols · **`020` audit_log at-rest şifreleme (T2-2 ✓)** · **`021` RLS tenant isolation (U6 ✓)** · **`022` agent_certificates (A3 ✓)**
+`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)** · `019` asset_baseline_protocols · **`020` audit_log at-rest şifreleme (T2-2 ✓)** · **`021` RLS tenant isolation (U6 ✓)** · **`022` agent_certificates (A3 ✓)** · **`023` dhcp_mac_history (yapılacaklar-C1 ✓)** · **`024` asset_baseline detected_software (yapılacaklar-C5 ✓)**
 
 ### Frontend Sayfaları (dashboard-v2)
 
