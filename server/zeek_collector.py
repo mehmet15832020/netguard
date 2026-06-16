@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
+from server.file_watch import DebouncedDirectoryWatcher
 from server.log_store import log_store
 from server.parsers.zeek import (
     parse_conn, parse_dns, parse_ftp, parse_http,
@@ -234,22 +235,40 @@ def cleanup_old_logs() -> int:
 
 
 async def run_zeek_collector() -> None:
-    """asyncio task — Zeek log poll döngüsü."""
+    """
+    asyncio task — Zeek log izleme döngüsü.
+
+    inotify (watchdog) dosya değişiminde anında tetikler; POLL_INTERVAL
+    saniyede bir de zaten çalışır (fallback — dizin henüz yoksa, inotify
+    desteklenmeyen dosya sisteminde veya event kaçırılırsa veri kaybı olmaz).
+    """
     logger.info(
         "Zeek log collector başlatıldı (dizin: %s, poll: %ss, retention: %dd)",
         ZEEK_LOG_DIR, POLL_INTERVAL, _LOG_RETENTION_DAYS,
     )
+    loop = asyncio.get_running_loop()
+    trigger = asyncio.Event()
+    watcher = DebouncedDirectoryWatcher(ZEEK_LOG_DIR, trigger.set, loop)
+    watcher.start()
+
     last_cleanup = 0.0
-    while True:
-        try:
-            collect_once()
-        except Exception as exc:
-            logger.error("Zeek collector hatası: %s", exc)
-        now = time.time()
-        if now - last_cleanup > _CLEANUP_INTERVAL:
+    try:
+        while True:
             try:
-                cleanup_old_logs()
+                collect_once()
             except Exception as exc:
-                logger.error("Zeek cleanup hatası: %s", exc)
-            last_cleanup = now
-        await asyncio.sleep(POLL_INTERVAL)
+                logger.error("Zeek collector hatası: %s", exc)
+            now = time.time()
+            if now - last_cleanup > _CLEANUP_INTERVAL:
+                try:
+                    cleanup_old_logs()
+                except Exception as exc:
+                    logger.error("Zeek cleanup hatası: %s", exc)
+                last_cleanup = now
+            trigger.clear()
+            try:
+                await asyncio.wait_for(trigger.wait(), timeout=POLL_INTERVAL)
+            except asyncio.TimeoutError:
+                pass
+    finally:
+        watcher.stop()

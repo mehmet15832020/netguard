@@ -1,5 +1,6 @@
 """Suricata EVE JSON collector ve parser testleri."""
 
+import asyncio
 import json
 import pytest
 from datetime import datetime, timezone
@@ -616,6 +617,69 @@ class TestCollectOnce:
         finally:
             sc.SURICATA_EVE_LOG = original_eve
             sc._offset = original_offset
+
+
+class TestRunSuricataCollectorInotify:
+    """B2 — run_suricata_collector() inotify ile poll aralığından çok daha hızlı tepki vermeli."""
+
+    def test_reacts_to_new_alert_faster_than_poll_interval(self, tmp_path, monkeypatch):
+        import server.suricata_collector as sc
+
+        eve_path = tmp_path / "eve.json"
+        eve_path.write_text("")
+
+        original_eve = sc.SURICATA_EVE_LOG
+        original_offset = sc._offset
+        original_inode = sc._inode
+        sc.SURICATA_EVE_LOG = eve_path
+        sc._offset = 0
+        sc._inode = 0
+        monkeypatch.setattr(sc, "POLL_INTERVAL", 30)
+
+        saved = []
+        monkeypatch.setattr(sc.log_store, "save", lambda log: saved.append(log))
+        monkeypatch.setattr(sc, "_save_offset", lambda offset, inode: None)
+
+        async def scenario():
+            task = asyncio.create_task(sc.run_suricata_collector())
+            await asyncio.sleep(0.3)
+
+            event = self._alert_event()
+            eve_path.write_text(json.dumps(event) + "\n")
+
+            for _ in range(60):
+                if saved:
+                    break
+                await asyncio.sleep(0.05)
+
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            sc.SURICATA_EVE_LOG = original_eve
+            sc._offset = original_offset
+            sc._inode = original_inode
+
+        assert len(saved) == 1
+        assert saved[0].event_action == "suricata_alert"
+
+    def _alert_event(self):
+        return {
+            "timestamp": _TS,
+            "event_type": "alert",
+            "src_ip": _SRC, "src_port": 12345,
+            "dest_ip": _DST, "dest_port": 80,
+            "proto": "TCP",
+            "alert": {
+                "signature_id": 1, "signature": "Test alert",
+                "category": "Test", "severity": 2, "action": "allowed",
+            },
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

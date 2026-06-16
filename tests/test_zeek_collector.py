@@ -1,5 +1,6 @@
 """Zeek log collector ve parser testleri."""
 
+import asyncio
 import json
 import pytest
 from datetime import timezone
@@ -836,3 +837,62 @@ class TestCollectOnce:
         assert leftover_tmp == []
         data = json.loads(offset_file.read_text())
         assert all("offset" in v and "inode" in v for v in data.values())
+
+
+class TestRunZeekCollectorInotify:
+    """B2 — run_zeek_collector() inotify ile poll aralığından çok daha hızlı tepki vermeli."""
+
+    def test_reacts_to_new_file_faster_than_poll_interval(self, tmp_path, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        monkeypatch.setattr(zc, "POLL_INTERVAL", 30)  # poll devreye girerse test zaten timeout'tan önce kanıtlamış olur
+        zc._offsets.clear()
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+
+        async def scenario():
+            task = asyncio.create_task(zc.run_zeek_collector())
+            await asyncio.sleep(0.3)  # watcher'ın başlaması için
+
+            row = {"ts": 1700000000.0, "id.orig_h": "5.5.5.5", "id.resp_h": "8.8.8.8",
+                   "proto": "udp", "query": "inotify-test.com", "qtype_name": "A",
+                   "answers": [], "rcode_name": "NOERROR"}
+            (tmp_path / "dns.log").write_text(json.dumps(row) + "\n")
+
+            for _ in range(60):  # en fazla ~3s bekle — 30s poll'a göre çok daha hızlı olmalı
+                if saved:
+                    break
+                await asyncio.sleep(0.05)
+
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(scenario())
+        assert len(saved) == 1
+        assert "inotify-test.com" in saved[0].message
+
+    def test_falls_back_to_poll_when_directory_missing_at_start(self, tmp_path, monkeypatch):
+        """Watcher dizini bulamazsa sessizce poll-only'e düşmeli, hata fırlatmamalı."""
+        import server.zeek_collector as zc
+
+        missing_dir = tmp_path / "not-yet-mounted"
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", missing_dir)
+        monkeypatch.setattr(zc, "POLL_INTERVAL", 0.2)
+        zc._offsets.clear()
+
+        async def scenario():
+            task = asyncio.create_task(zc.run_zeek_collector())
+            await asyncio.sleep(0.5)  # birkaç poll döngüsü geçsin, exception fırlamamalı
+            assert not task.done()
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+        asyncio.run(scenario())

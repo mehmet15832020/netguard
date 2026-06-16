@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from server.file_watch import DebouncedDirectoryWatcher
 from server.log_store import log_store
 from server.parsers.suricata import parse_eve_line
 
@@ -170,22 +171,42 @@ def cleanup_old_logs() -> int:
 
 
 async def run_suricata_collector() -> None:
-    """asyncio task — Suricata EVE JSON poll döngüsü."""
+    """
+    asyncio task — Suricata EVE JSON izleme döngüsü.
+
+    inotify (watchdog) dosya değişiminde anında tetikler; POLL_INTERVAL
+    saniyede bir de zaten çalışır (fallback — dizin henüz yoksa, inotify
+    desteklenmeyen dosya sisteminde veya event kaçırılırsa veri kaybı olmaz).
+    """
     logger.info(
         "Suricata EVE collector başlatıldı (dosya: %s, poll: %ss, retention: %dd)",
         SURICATA_EVE_LOG, POLL_INTERVAL, _LOG_RETENTION_DAYS,
     )
+    loop = asyncio.get_running_loop()
+    trigger = asyncio.Event()
+    watcher = DebouncedDirectoryWatcher(
+        SURICATA_EVE_LOG.parent, trigger.set, loop, watch_file=SURICATA_EVE_LOG,
+    )
+    watcher.start()
+
     last_cleanup = 0.0
-    while True:
-        try:
-            await asyncio.to_thread(collect_once)
-        except Exception as exc:
-            logger.error("Suricata collector hatası: %s", exc)
-        now = time.time()
-        if now - last_cleanup > _CLEANUP_INTERVAL:
+    try:
+        while True:
             try:
-                await asyncio.to_thread(cleanup_old_logs)
+                await asyncio.to_thread(collect_once)
             except Exception as exc:
-                logger.error("Suricata cleanup hatası: %s", exc)
-            last_cleanup = now
-        await asyncio.sleep(POLL_INTERVAL)
+                logger.error("Suricata collector hatası: %s", exc)
+            now = time.time()
+            if now - last_cleanup > _CLEANUP_INTERVAL:
+                try:
+                    await asyncio.to_thread(cleanup_old_logs)
+                except Exception as exc:
+                    logger.error("Suricata cleanup hatası: %s", exc)
+                last_cleanup = now
+            trigger.clear()
+            try:
+                await asyncio.wait_for(trigger.wait(), timeout=POLL_INTERVAL)
+            except asyncio.TimeoutError:
+                pass
+    finally:
+        watcher.stop()
