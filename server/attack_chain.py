@@ -223,6 +223,8 @@ STAGE_MAP: dict[str, str] = {
     "zeek_smb_rename":               "execute",     # T1070 file manipulation
     "zeek_smb_open":                 "recon",       # file access
     "zeek_smb_operation":            "recon",       # generic SMB
+    "zeek_smb_admin_share_mapped":   "lateral",     # C4 — T1021.002 admin share tree-connect
+    "zeek_smb_share_mapped":         "recon",       # C4 — generic share tree-connect
     # ── Zeek dce_rpc.log ──────────────────────────────────────────────────────
     "zeek_dce_rpc_dcsync":           "execute",     # T1003.006 DCSync
     "zeek_dce_rpc_psexec":           "execute",     # T1569.002 PsExec

@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
     parse_x509, parse_smtp, parse_ftp, parse_dhcp, parse_tunnel, parse_pe,
+    parse_smb_mapping,
     _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
@@ -870,6 +871,78 @@ class TestParsePe:
         assert log.destination_ip is None
 
 
+class TestParseSmbMapping:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id.orig_h": "192.168.1.100",
+            "id.orig_p": 49152,
+            "id.resp_h": "10.0.0.5",
+            "id.resp_p": 445,
+            "path": "\\\\10.0.0.5\\share",
+            "service": "DISK",
+            "native_file_system": "NTFS",
+            "share_type": "DISK",
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_smb_mapping(self._row())
+        assert log is not None
+        assert log.event_action == "zeek_smb_share_mapped"
+        assert log.source_ip == "192.168.1.100"
+        assert log.destination_ip == "10.0.0.5"
+
+    def test_no_path_returns_none(self):
+        assert parse_smb_mapping(self._row(path="")) is None
+        assert parse_smb_mapping(self._row(path="-")) is None
+
+    def test_admin_share_c_dollar_flagged(self):
+        log = parse_smb_mapping(self._row(path="\\\\10.0.0.5\\C$"))
+        assert log.event_action == "zeek_smb_admin_share_mapped"
+        assert log.severity == "warning"
+        assert "lateral_movement" in log.tags
+        assert "ADMIN_SHARE" in log.message
+
+    def test_admin_share_admin_dollar_flagged(self):
+        log = parse_smb_mapping(self._row(path="\\\\10.0.0.5\\ADMIN$"))
+        assert log.event_action == "zeek_smb_admin_share_mapped"
+
+    def test_ipc_share_flagged_in_message(self):
+        log = parse_smb_mapping(self._row(path="\\\\10.0.0.5\\IPC$"))
+        assert log.extra["is_ipc"] is True
+        assert "IPC" in log.message
+
+    def test_normal_share_not_flagged(self):
+        log = parse_smb_mapping(self._row(path="\\\\10.0.0.5\\Public"))
+        assert log.event_action == "zeek_smb_share_mapped"
+        assert log.severity == "info"
+        assert "lateral_movement" not in log.tags
+
+    def test_extra_fields(self):
+        log = parse_smb_mapping(self._row())
+        assert log.extra["path"] == "\\\\10.0.0.5\\share"
+        assert log.extra["service"] == "DISK"
+        assert log.extra["share_type"] == "DISK"
+        assert log.extra["native_file_system"] == "NTFS"
+
+    def test_tags(self):
+        log = parse_smb_mapping(self._row())
+        assert "zeek" in log.tags
+        assert "smb_mapping" in log.tags
+
+    def test_network_category(self):
+        from shared.models import LogCategory
+        log = parse_smb_mapping(self._row())
+        assert log.event_category == LogCategory.NETWORK
+
+    def test_ports(self):
+        log = parse_smb_mapping(self._row())
+        assert log.source_port == 49152
+        assert log.destination_port == 445
+
+
 # ── Collector testleri ─────────────────────────────────────────────────────────
 
 class TestCollectOnce:
@@ -1286,4 +1359,34 @@ class TestPeCollectorWiring:
         n = zc.collect_once()
         assert n == 1
         assert saved[0].event_action == "pe_metadata"
+        assert saved[0].severity == "warning"
+
+
+class TestSmbMappingStageMap:
+    def test_admin_share_maps_to_lateral(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("zeek_smb_admin_share_mapped") == "lateral"
+
+    def test_generic_share_maps_to_recon(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("zeek_smb_share_mapped") == "recon"
+
+
+class TestSmbMappingCollectorWiring:
+    def test_smb_mapping_log_processed_via_collect_once(self, tmp_path, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "id.orig_h": "192.168.1.100", "id.orig_p": 49152,
+               "id.resp_h": "10.0.0.5", "id.resp_p": 445,
+               "path": "\\\\10.0.0.5\\C$", "service": "DISK", "share_type": "DISK"}
+        (tmp_path / "smb_mapping.log").write_text(json.dumps(row) + "\n")
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        n = zc.collect_once()
+        assert n == 1
+        assert saved[0].event_action == "zeek_smb_admin_share_mapped"
         assert saved[0].severity == "warning"

@@ -7,7 +7,7 @@ normalized_logs tablosuna yazar. Her log dosyası için byte offset saklanır
 
 Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
                          weird, dpd, files, rdp, kerberos, smb_files, dce_rpc,
-                         dhcp, tunnel, pe
+                         dhcp, tunnel, pe, smb_mapping
 """
 
 import asyncio
@@ -27,7 +27,7 @@ from server.parsers.zeek import (
     parse_notice, parse_smtp, parse_ssh, parse_ssl, parse_x509,
     parse_weird, parse_dpd, parse_files,
     parse_rdp, parse_kerberos, parse_smb_files, parse_dce_rpc, parse_dhcp,
-    parse_tunnel, parse_pe,
+    parse_tunnel, parse_pe, parse_smb_mapping,
 )
 from shared.models import LogCategory, LogSourceType, NormalizedLog
 
@@ -58,6 +58,7 @@ _PARSERS: dict[str, Callable] = {
     "dhcp":      parse_dhcp,
     "tunnel":    parse_tunnel,
     "pe":        parse_pe,
+    "smb_mapping": parse_smb_mapping,
 }
 
 # log_type → bu log kaydedildikten sonra çalışacak stateful kontrol (C1).

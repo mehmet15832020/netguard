@@ -1412,3 +1412,76 @@ def parse_pe(row: dict) -> Optional[NormalizedLog]:
         },
         tags=["zeek", "pe"] + (["unsigned"] if is_unsigned else []) + (["packed_indicator"] if has_nonstandard_sections else []),
     )
+
+
+def parse_smb_mapping(row: dict) -> Optional[NormalizedLog]:
+    """
+    smb_mapping.log — C4. Zeek şeması: ts, uid, id.orig/resp_h/p, path,
+    service, native_file_system, share_type (zeek.org §SMB Logs, doğrulandı).
+
+    parse_smb_files() sadece dosya WRITE/DELETE/OPEN olduğunda admin share
+    tespiti yapıyordu — bu fonksiyon paylaşıma *bağlanma* (tree-connect)
+    anının kendisini yakalar. Saldırgan `net use \\\\host\\C$` yaptığında
+    henüz dosya işlemi olmasa bile burada görünür — daha erken sinyal
+    (MITRE ATT&CK T1021.002 — SMB/Windows Admin Shares).
+    """
+    path = (row.get("path") or "").strip()
+    if not path or path == "-":
+        return None
+
+    service = (row.get("service") or "").strip()
+    if service == "-":
+        service = ""
+    share_type = (row.get("share_type") or "").strip()
+    if share_type == "-":
+        share_type = ""
+    native_fs = (row.get("native_file_system") or "").strip()
+    if native_fs == "-":
+        native_fs = ""
+
+    path_upper = path.upper()
+    is_admin_share = any(f"\\{s}" in path_upper or path_upper.endswith(s) for s in _SMB_ADMIN_SHARES)
+    is_ipc = "IPC$" in path_upper
+
+    if is_admin_share:
+        event_action = "zeek_smb_admin_share_mapped"
+        severity = "warning"
+        tags = ["zeek", "smb_mapping", "lateral_movement"]
+    else:
+        event_action = "zeek_smb_share_mapped"
+        severity = "info"
+        tags = ["zeek", "smb_mapping"]
+
+    msg = f"SMB share mapped: {path}"
+    if service:
+        msg += f" [{service}]"
+    if is_admin_share:
+        msg += " [ADMIN_SHARE]"
+    if is_ipc:
+        msg += " [IPC — null session/DCE-RPC riski]"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action=event_action,
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        message=msg,
+        extra={
+            "path": path,
+            "service": service,
+            "share_type": share_type,
+            "native_file_system": native_fs,
+            "is_admin_share": is_admin_share,
+            "is_ipc": is_ipc,
+        },
+        tags=tags,
+        community_id=row.get("community_id"),
+    )
