@@ -54,6 +54,24 @@ class TestIdentifySource:
         raw = 'date=2026-06-16 devname="FG1" type="event" subtype="dhcp" action="lease"'
         assert identify_source(raw) == LogSourceType.DHCP
 
+    def test_unbound_dns_detected(self):
+        raw = "Apr 24 10:00:01 opnsense unbound: [1553775590] unbound[32655:0] info: 192.168.1.10 evil.com. A IN"
+        assert identify_source(raw) == LogSourceType.DNS_RESOLVER
+
+    def test_dnsmasq_detected(self):
+        raw = "Apr 24 10:00:01 router dnsmasq[1234]: query[A] evil.com from 192.168.1.10"
+        assert identify_source(raw) == LogSourceType.DNS_RESOLVER
+
+    def test_fortigate_dns_detected_not_generic_fortigate(self):
+        raw = ('date=2026-06-16 devname="FG1" type="utm" subtype="dns" '
+               'srcip=192.168.1.20 qname="evil.com"')
+        assert identify_source(raw) == LogSourceType.DNS_RESOLVER
+
+    def test_fortigate_traffic_still_detected_as_fortigate(self):
+        """DNS pattern eklenmesi mevcut FortiGate trafik tespitini bozmamalı."""
+        raw = "date=2024-04-24 type=traffic subtype=forward srcip=5.6.7.8 dstip=192.168.1.1"
+        assert identify_source(raw) == LogSourceType.FORTIGATE
+
 
 # ------------------------------------------------------------------ #
 #  Auth.log parse
@@ -337,6 +355,45 @@ class TestFirewallDhcpProcessAndStore:
 
         logs = tmp_db.get_normalized_logs(limit=10)
         assert not any(l.event_action == "dhcp_new_mac_detected" for l in logs)
+
+
+class TestFirewallDnsProcessAndStore:
+    def test_unbound_query_stored_with_dns_query_action(self, tmp_db, monkeypatch):
+        """Zeek parse_dns() ile aynı event_action — korelasyon kuralları paylaşılır."""
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 opnsense unbound: [1553775590] unbound[32655:0] info: 192.168.1.10 evil.com. A IN"
+        norm = process_and_store(raw, observer_hostname="opnsense")
+
+        assert norm is not None
+        assert norm.event_action == "dns_query"
+        assert norm.source_ip == "192.168.1.10"
+
+        logs = tmp_db.get_normalized_logs(limit=10)
+        assert any(l.event_action == "dns_query" and l.source_type == "dns_resolver" for l in logs)
+
+    def test_dnsmasq_query_stored(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 router dnsmasq[1234]: query[A] evil.com from 192.168.1.11"
+        norm = process_and_store(raw, observer_hostname="router")
+
+        assert norm is not None
+        assert norm.event_action == "dns_query"
+
+    def test_fortigate_dns_block_stored_as_warning(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = ('date=2026-06-16 devname="FG1" type="utm" subtype="dns" '
+               'srcip=192.168.1.12 qname="evil.com" action="block"')
+        norm = process_and_store(raw, observer_hostname="FG1")
+
+        assert norm is not None
+        assert norm.event_action == "dns_query"
+        assert norm.severity == "warning"
 
 
 # ------------------------------------------------------------------ #

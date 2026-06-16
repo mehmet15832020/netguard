@@ -5,6 +5,7 @@ from server.parsers.firewall import (
     parse_pfsense, parse_cisco_asa, parse_fortigate,
     parse_opnsense, parse_vyos, detect_and_parse,
     parse_isc_dhcpd, parse_kea_dhcp, parse_fortigate_dhcp, parse_dhcp_syslog,
+    parse_unbound_dns, parse_dnsmasq_dns, parse_fortigate_dns, parse_dns_resolver_syslog,
 )
 
 
@@ -367,3 +368,125 @@ class TestDhcpSyslogDispatcher:
 
     def test_unrelated_line_returns_none(self):
         assert parse_dhcp_syslog("this is not a dhcp log") is None
+
+
+# ── F2 — DNS resolver syslog parser'ları (marka bağımsız) ──────────────────
+
+UNBOUND_QUERY = "Apr 24 10:00:01 opnsense unbound: [1553775590] unbound[32655:0] info: 192.168.1.10 evil.com. A IN"
+DNSMASQ_QUERY = "Apr 24 10:00:01 router dnsmasq[1234]: query[A] evil.com from 192.168.1.10"
+FORTI_DNS_PASS = (
+    'date=2026-06-16 time=10:00:01 devname="FG1" type="utm" subtype="dns" '
+    'eventtype="dns-response" srcip=192.168.1.20 dstip=8.8.8.8 qname="evil.com" '
+    'qtype="A" ipaddr=1.2.3.4 action="pass" catdesc="Malicious Websites"'
+)
+FORTI_DNS_BLOCK = (
+    'date=2026-06-16 time=10:00:01 devname="FG1" type="utm" subtype="dns" '
+    'eventtype="dns-response" srcip=192.168.1.20 qname="evil.com" qtype="A" '
+    'action="block"'
+)
+
+
+class TestUnboundDnsParser:
+    def test_query_parsed(self):
+        log = parse_unbound_dns(UNBOUND_QUERY)
+        assert log is not None
+        assert log.source_type == "dns_resolver"
+        assert log.event_action == "dns_query"
+        assert log.source_ip == "192.168.1.10"
+        assert log.extra["query_domain"] == "evil.com"
+        assert log.extra["query_type"] == "A"
+        assert log.severity == "info"
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_unbound_dns("this is not unbound") is None
+
+    def test_tags(self):
+        log = parse_unbound_dns(UNBOUND_QUERY)
+        assert "dns" in log.tags
+        assert "unbound" in log.tags
+
+
+class TestDnsmasqParser:
+    def test_query_parsed(self):
+        log = parse_dnsmasq_dns(DNSMASQ_QUERY)
+        assert log is not None
+        assert log.source_type == "dns_resolver"
+        assert log.event_action == "dns_query"
+        assert log.source_ip == "192.168.1.10"
+        assert log.extra["query_domain"] == "evil.com"
+        assert log.extra["query_type"] == "A"
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_dnsmasq_dns("this is not dnsmasq") is None
+
+    def test_tags(self):
+        log = parse_dnsmasq_dns(DNSMASQ_QUERY)
+        assert "dns" in log.tags
+        assert "dnsmasq" in log.tags
+
+
+class TestFortiGateDnsParser:
+    def test_pass_parsed(self):
+        log = parse_fortigate_dns(FORTI_DNS_PASS)
+        assert log is not None
+        assert log.source_type == "dns_resolver"
+        assert log.event_action == "dns_query"
+        assert log.source_ip == "192.168.1.20"
+        assert log.destination_ip == "1.2.3.4"
+        assert log.extra["query_domain"] == "evil.com"
+        assert log.extra["response_ip"] == "1.2.3.4"
+        assert log.severity == "info"
+
+    def test_block_is_warning(self):
+        log = parse_fortigate_dns(FORTI_DNS_BLOCK)
+        assert log.severity == "warning"
+        assert log.extra["action"] == "block"
+
+    def test_non_dns_subtype_returns_none(self):
+        assert parse_fortigate_dns(FORTI_DENY) is None
+
+    def test_missing_qname_returns_none(self):
+        line = FORTI_DNS_PASS.replace('qname="evil.com" ', '')
+        assert parse_fortigate_dns(line) is None
+
+    def test_tags(self):
+        log = parse_fortigate_dns(FORTI_DNS_PASS)
+        assert "dns" in log.tags
+        assert "fortigate" in log.tags
+
+
+class TestDnsResolverSyslogDispatcher:
+    def test_dispatches_unbound(self):
+        log = parse_dns_resolver_syslog(UNBOUND_QUERY)
+        assert log is not None
+        assert "unbound" in log.tags
+
+    def test_dispatches_dnsmasq(self):
+        log = parse_dns_resolver_syslog(DNSMASQ_QUERY)
+        assert log is not None
+        assert "dnsmasq" in log.tags
+
+    def test_dispatches_fortigate(self):
+        log = parse_dns_resolver_syslog(FORTI_DNS_PASS)
+        assert log is not None
+        assert "fortigate" in log.tags
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_dns_resolver_syslog("this is not a dns log") is None
+
+    def test_fortigate_traffic_log_not_misdetected_as_dns(self):
+        """FortiGate'in normal trafik logu (type=traffic) DNS dispatcher'ı tetiklememeli."""
+        assert parse_dns_resolver_syslog(FORTI_DENY) is None
+
+
+class TestDetectAndParseDns:
+    def test_detects_unbound(self):
+        log = detect_and_parse(UNBOUND_QUERY)
+        assert log is not None
+        assert log.source_type == "dns_resolver"
+
+    def test_detects_fortigate_dns_not_generic_fortigate(self):
+        """type=utm subtype=dns hem FORTIGATE hem DNS pattern'ine uyar — DNS önce gelmeli."""
+        log = detect_and_parse(FORTI_DNS_PASS)
+        assert log is not None
+        assert log.event_action == "dns_query"

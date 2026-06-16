@@ -49,19 +49,29 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     (LogSourceType.ZEEK,      re.compile(r'^\d+\.\d+\t')),
     # Wazuh JSON — "rule" ve "agent" alanları içerir (çok satırlı JSON desteklenir)
     (LogSourceType.WAZUH,     re.compile(r'"rule"\s*:.*"agent"\s*:', re.DOTALL)),
+    # DHCP syslog — F1, marka bağımsız (ISC dhcpd/Kea/FortiGate). FORTIGATE
+    # pattern'inden ÖNCE kontrol edilmeli: FortiGate DHCP olayları type=event
+    # kullanır (FORTIGATE pattern'iyle çakışmaz) ama tutarlılık için burada.
+    (LogSourceType.DHCP,      re.compile(
+        r'dhcpd(?:\[\d+\])?:\s+DHCP(?:ACK|NAK|DECLINE)\b'
+        r'|DHCP4_LEASE_(?:ALLOC|RENEW)\b'
+        r'|subtype="?dhcp"?\b',
+    )),
+    # DNS resolver syslog — F2, marka bağımsız (Unbound/dnsmasq/FortiGate DNS filter).
+    # FORTIGATE pattern'inden ÖNCE ZORUNLU: FortiGate DNS filter logu
+    # type=utm subtype=dns kullanır — FORTIGATE pattern'i (type=utm) de eşleşir,
+    # subtype kontrolü olmadan yanlış kaynağa (FORTIGATE) düşer.
+    (LogSourceType.DNS_RESOLVER, re.compile(
+        r'\bunbound\b.*\binfo:\s+\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\s+\S+\s+[A-Z]+\s+IN\b'
+        r'|\bdnsmasq\b.*\bquery\[[A-Z]+\]'
+        r'|subtype="?dns"?\b',
+    )),
     # Firewall logları — AUTH_LOG'dan önce kontrol edilmeli
     (LogSourceType.OPNSENSE,  re.compile(r'filterlog\[')),           # OPNsense (PID'li)
     (LogSourceType.PFSENSE,   re.compile(r'filterlog:')),            # pfSense (PID'siz)
     (LogSourceType.CISCO_ASA, re.compile(r'%ASA-')),
     (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
     (LogSourceType.VYOS,      re.compile(r'kernel:.*SRC=[\d.]+.*DST=[\d.]+')),
-    # DHCP syslog — F1, marka bağımsız (ISC dhcpd/Kea/FortiGate). AUTH_LOG'dan
-    # önce: "dhcpd" pattern'i sshd/sudo/su ile çakışmaz ama sıralama tutarlılığı için burada.
-    (LogSourceType.DHCP,      re.compile(
-        r'dhcpd(?:\[\d+\])?:\s+DHCP(?:ACK|NAK|DECLINE)\b'
-        r'|DHCP4_LEASE_(?:ALLOC|RENEW)\b'
-        r'|subtype="?dhcp"?\b',
-    )),
     # nginx access/error log — "nginx:" process tag + combined log format IP
     (LogSourceType.NGINX,     re.compile(r'\bnginx\b.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')),
     # auth.log — sshd veya sudo içerir
@@ -337,6 +347,7 @@ _PARSERS = {
     LogSourceType.FORTIGATE : _parse_firewall,
     LogSourceType.VYOS      : _parse_firewall,
     LogSourceType.DHCP      : _parse_firewall,
+    LogSourceType.DNS_RESOLVER : _parse_firewall,
     LogSourceType.NGINX     : _parse_web_log,
 }
 

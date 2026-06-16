@@ -517,6 +517,134 @@ def parse_dhcp_syslog(line: str) -> Optional[NormalizedLog]:
 
 
 # ──────────────────────────────────────────────────────────────────
+#  DNS resolver syslog parser'ları (F2) — marka bağımsız
+#  Firewall'lar LAN istemcilerinin DNS resolver'ıdır; "hangi iç makine hangi
+#  domaini sorguladı" bilgisi C2/DGA/tünelleme tespitine açar (MITRE T1071.004).
+#  event_action="dns_query" — Zeek parse_dns() ile AYNI (server/parsers/zeek.py)
+#  → mevcut DNS korelasyon/Sigma kuralları firewall kaynaklı sorguları da kapsar.
+#
+#  Not: Cisco ASA bilinçli olarak ÇIKARILDI — araştırmada orijinal görevdeki
+#  örnek (%ASA-6-602303) gerçek değildi; gerçek ASA DNS mesajları (410001-410004)
+#  inceleme/anomali bildirimleri, istemci→domain sorgu kaydı değil (ASA tipik
+#  olarak LAN resolver'ı olarak kullanılmaz).
+# ──────────────────────────────────────────────────────────────────
+
+# Unbound (OPNsense/pfSense) — nlnetlabs.nl doğrulandı:
+# "[1553775590] unbound[32655:0] info: 127.0.0.1 googlemail.l.google.com. A IN"
+_UNBOUND_RE = re.compile(
+    r'unbound(?:\[\d+(?::\d+)?\])?:?\s*(?:\[\d+:\d+\]\s+)?info:\s+'
+    r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+(?P<domain>\S+?)\.?\s+'
+    r'(?P<qtype>[A-Z]+)\s+IN\b'
+)
+
+
+def parse_unbound_dns(line: str) -> Optional[NormalizedLog]:
+    m = _UNBOUND_RE.search(line)
+    if not m:
+        return None
+    ip, domain, qtype = m.group("ip"), m.group("domain"), m.group("qtype")
+
+    return _make_log(
+        source_type = LogSourceType.DNS_RESOLVER,
+        observer_hostname = "unbound",
+        event_action  = "dns_query",
+        severity    = "info",
+        event_category    = LogCategory.NETWORK,
+        message     = f"DNS {ip} → {domain} ({qtype})",
+        raw_content = line,
+        source_ip      = ip,
+        tags        = ["dns", "unbound"],
+        extra       = {"query_domain": domain, "query_type": qtype, "response_ip": "", "action": ""},
+    )
+
+
+# dnsmasq (küçük router'lar, Pi-hole) — man page formatı, yıllardır stabil:
+# "dnsmasq[1234]: query[A] evil.com from 192.168.1.10"
+_DNSMASQ_RE = re.compile(
+    r'dnsmasq(?:\[\d+\])?:\s+query\[(?P<qtype>[A-Z]+)\]\s+(?P<domain>\S+)\s+from\s+'
+    r'(?P<ip>\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'
+)
+
+
+def parse_dnsmasq_dns(line: str) -> Optional[NormalizedLog]:
+    m = _DNSMASQ_RE.search(line)
+    if not m:
+        return None
+    qtype, domain, ip = m.group("qtype"), m.group("domain"), m.group("ip")
+
+    return _make_log(
+        source_type = LogSourceType.DNS_RESOLVER,
+        observer_hostname = "dnsmasq",
+        event_action  = "dns_query",
+        severity    = "info",
+        event_category    = LogCategory.NETWORK,
+        message     = f"DNS {ip} → {domain} ({qtype})",
+        raw_content = line,
+        source_ip      = ip,
+        tags        = ["dns", "dnsmasq"],
+        extra       = {"query_domain": domain, "query_type": qtype, "response_ip": "", "action": ""},
+    )
+
+
+def parse_fortigate_dns(line: str) -> Optional[NormalizedLog]:
+    """
+    FortiGate DNS filter — Fortinet dokümantasyonu tam doğrulandı:
+    type="utm" subtype="dns" qname=... srcip=... ipaddr=<resolved> action=...
+    """
+    if "subtype=" not in line or "dns" not in line.lower():
+        return None
+    kv = {k: v.strip('"') for k, v in _FORTI_KV_RE.findall(line)}
+    if kv.get("subtype", "").lower() != "dns":
+        return None
+
+    domain = kv.get("qname")
+    src_ip = kv.get("srcip")
+    if not domain or not src_ip:
+        return None
+
+    response_ip = kv.get("ipaddr", "")
+    qtype       = kv.get("qtype", "")
+    action      = kv.get("action", "").lower()
+    blocked     = action in ("block", "redirect")
+    severity    = "warning" if blocked else "info"
+
+    msg = f"DNS {src_ip} → {domain} ({qtype}) [{action or 'pass'}]"
+
+    return _make_log(
+        source_type = LogSourceType.DNS_RESOLVER,
+        observer_hostname = kv.get("devname", "fortigate"),
+        event_action  = "dns_query",
+        severity    = severity,
+        event_category    = LogCategory.NETWORK,
+        message     = msg,
+        raw_content = line,
+        source_ip      = src_ip,
+        destination_ip      = response_ip or None,
+        tags        = ["dns", "fortigate", action] if action else ["dns", "fortigate"],
+        extra       = {
+            "query_domain": domain, "query_type": qtype,
+            "response_ip": response_ip, "action": action,
+            "category": kv.get("catdesc", ""),
+        },
+    )
+
+
+def parse_dns_resolver_syslog(line: str) -> Optional[NormalizedLog]:
+    """Marka bağımsız DNS resolver syslog dispatcher (F2)."""
+    if "unbound" in line:
+        result = parse_unbound_dns(line)
+        if result is not None:
+            return result
+    if "dnsmasq" in line:
+        result = parse_dnsmasq_dns(line)
+        if result is not None:
+            return result
+    if "subtype=" in line and "dns" in line.lower():
+        return parse_fortigate_dns(line)
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────
 #  Otomatik tespit + parse
 # ──────────────────────────────────────────────────────────────────
 
@@ -531,6 +659,9 @@ def detect_and_parse(line: str) -> Optional[NormalizedLog]:
     dhcp_result = parse_dhcp_syslog(line)
     if dhcp_result is not None:
         return dhcp_result
+    dns_result = parse_dns_resolver_syslog(line)
+    if dns_result is not None:
+        return dns_result
     if "type=traffic" in line or "type=utm" in line:
         return parse_fortigate(line)
     if "kernel:" in line and "SRC=" in line and "DST=" in line:
