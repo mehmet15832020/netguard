@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
-    parse_x509, parse_smtp, parse_ftp, parse_dhcp, parse_tunnel,
+    parse_x509, parse_smtp, parse_ftp, parse_dhcp, parse_tunnel, parse_pe,
     _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
@@ -776,6 +776,100 @@ class TestParseTunnel:
         assert "10.0.0.5" in log.message
 
 
+class TestParsePe:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id": "FtestUID123",
+            "machine": "AMD64",
+            "compile_ts": "2020-09-19T00:10:08.000000Z",
+            "os": "Windows",
+            "subsystem": "WINDOWS_GUI",
+            "is_exe": True,
+            "is_64bit": True,
+            "uses_aslr": True,
+            "uses_dep": True,
+            "uses_code_integrity": False,
+            "uses_seh": True,
+            "has_import_table": True,
+            "has_export_table": False,
+            "has_cert_table": True,
+            "has_debug_data": False,
+            "section_names": [".text", ".rdata", ".data", ".rsrc", ".reloc"],
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_pe(self._row())
+        assert log is not None
+        assert log.event_action == "pe_metadata"
+        assert "AMD64" in log.message
+        assert "64-bit" in log.message
+
+    def test_no_fuid_returns_none(self):
+        assert parse_pe(self._row(id="")) is None
+        assert parse_pe(self._row(id="-")) is None
+
+    def test_signed_standard_sections_info_severity(self):
+        log = parse_pe(self._row())
+        assert log.severity == "info"
+        assert "unsigned" not in log.tags
+        assert "packed_indicator" not in log.tags
+
+    def test_unsigned_with_nonstandard_sections_is_warning(self):
+        log = parse_pe(self._row(has_cert_table=False, section_names=[".text", ".UPX0", ".UPX1"]))
+        assert log.severity == "warning"
+        assert "unsigned" in log.tags
+        assert "packed_indicator" in log.tags
+        assert "UNSIGNED+PACKED_INDICATOR" in log.message
+
+    def test_unsigned_with_standard_sections_stays_info(self):
+        """Unsigned ama standart section'lar — tek başına yetersiz sinyal (çok yaygın FP)."""
+        log = parse_pe(self._row(has_cert_table=False))
+        assert log.severity == "info"
+        assert "unsigned" in log.tags
+        assert "packed_indicator" not in log.tags
+
+    def test_signed_with_nonstandard_sections_stays_info(self):
+        log = parse_pe(self._row(has_cert_table=True, section_names=[".text", ".weird_section"]))
+        assert log.severity == "info"
+        assert "packed_indicator" in log.tags
+        assert "unsigned" not in log.tags
+
+    def test_section_names_as_comma_string(self):
+        log = parse_pe(self._row(section_names=".text,.rdata,.data"))
+        assert log.extra["section_names"] == [".text", ".rdata", ".data"]
+
+    def test_extra_fields(self):
+        log = parse_pe(self._row())
+        assert log.extra["fuid"] == "FtestUID123"
+        assert log.extra["machine"] == "AMD64"
+        assert log.extra["is_64bit"] is True
+        assert log.extra["has_cert_table"] is True
+
+    def test_32bit_dll_message(self):
+        log = parse_pe(self._row(is_exe=False, is_64bit=False))
+        assert "DLL/OBJ" in log.message
+        assert "32-bit" in log.message
+
+    def test_tags(self):
+        log = parse_pe(self._row())
+        assert "zeek" in log.tags
+        assert "pe" in log.tags
+
+    def test_network_category(self):
+        from shared.models import LogCategory
+        log = parse_pe(self._row())
+        assert log.event_category == LogCategory.NETWORK
+
+    def test_no_ip_fields(self):
+        """pe.log dosya UID ile çalışır, IP taşımaz — files.log'a göre çapraz sorgu gerekir."""
+        log = parse_pe(self._row())
+        assert log.source_ip is None
+        assert log.destination_ip is None
+
+
 # ── Collector testleri ─────────────────────────────────────────────────────────
 
 class TestCollectOnce:
@@ -1171,4 +1265,25 @@ class TestTunnelCollectorWiring:
         n = zc.collect_once()
         assert n == 1
         assert saved[0].event_action == "network_tunnel_detected"
+        assert saved[0].severity == "warning"
+
+
+class TestPeCollectorWiring:
+    def test_pe_log_processed_via_collect_once(self, tmp_path, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "id": "FtestUID999", "machine": "AMD64",
+               "os": "Windows", "subsystem": "WINDOWS_CUI",
+               "is_exe": True, "is_64bit": True, "has_cert_table": False,
+               "section_names": [".text", ".UPX0"]}
+        (tmp_path / "pe.log").write_text(json.dumps(row) + "\n")
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        n = zc.collect_once()
+        assert n == 1
+        assert saved[0].event_action == "pe_metadata"
         assert saved[0].severity == "warning"

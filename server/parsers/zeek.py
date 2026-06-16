@@ -3,7 +3,7 @@ Zeek JSON log parsers.
 
 Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
                          weird, dpd, files, rdp, kerberos, smb_files, dce_rpc,
-                         dhcp, tunnel
+                         dhcp, tunnel, pe
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
@@ -1322,4 +1322,93 @@ def parse_tunnel(row: dict) -> Optional[NormalizedLog]:
         message=f"Tunnel {action}: {tunnel_type} {row.get('id.orig_h')} → {row.get('id.resp_h')}",
         extra={"tunnel_type": tunnel_type, "action": action},
         tags=["zeek", "tunnel", tunnel_type.lower()],
+    )
+
+
+# PE section adları — meşru derleyici/linker çıktısında görülen standart set.
+# Bilinmeyen/garip section adı, paketleyici (UPX vb.) veya custom packer
+# kullanıldığının klasik göstergesidir (MITRE T1027 — Obfuscated Files).
+_STANDARD_PE_SECTIONS: frozenset[str] = frozenset({
+    ".text", ".rdata", ".data", ".rsrc", ".reloc", ".pdata",
+    ".idata", ".edata", ".bss", ".tls", ".00cfg", ".didat", ".debug",
+})
+
+
+def _bool_field(val) -> bool:
+    if isinstance(val, str):
+        return val.upper() in ("T", "TRUE", "1")
+    return bool(val)
+
+
+def parse_pe(row: dict) -> Optional[NormalizedLog]:
+    """
+    pe.log — C3. Zeek şeması: ts, id (fuid), machine, compile_ts, os,
+    subsystem, is_exe, is_64bit, uses_aslr, uses_dep, uses_code_integrity,
+    uses_seh, has_import_table, has_export_table, has_cert_table,
+    has_debug_data, section_names (zeek.org/en/current/logs/pe.html, doğrulandı).
+
+    Not: pe.log IP taşımaz (files framework'ü dosya UID'siyle çalışır) —
+    bağlam için files.log'daki aynı fuid ile çapraz sorgulanmalı (extra.fuid).
+    Hash bilgisi de pe.log'da değil files.log'da (parse_files zaten kapsıyor).
+
+    Ağdan geçen EXE/DLL meta verisi — malware analizi ve eski/paketlenmiş
+    binary tespiti sağlar (Security Onion/Malcolm önceliği).
+    """
+    fuid = (row.get("id") or "").strip()
+    if not fuid or fuid == "-":
+        return None
+
+    machine = (row.get("machine") or "").strip()
+    os_name = (row.get("os") or "").strip()
+    subsystem = (row.get("subsystem") or "").strip()
+
+    is_exe = _bool_field(row.get("is_exe"))
+    is_64bit = _bool_field(row.get("is_64bit"))
+    uses_aslr = _bool_field(row.get("uses_aslr"))
+    uses_dep = _bool_field(row.get("uses_dep"))
+    has_cert_table = _bool_field(row.get("has_cert_table"))
+
+    section_names = row.get("section_names") or []
+    if isinstance(section_names, str):
+        section_names = [s.strip() for s in section_names.split(",") if s.strip()]
+    has_nonstandard_sections = any(
+        s.lower() not in _STANDARD_PE_SECTIONS for s in section_names
+    )
+
+    is_unsigned = not has_cert_table
+    severity = "warning" if (is_unsigned and has_nonstandard_sections) else "info"
+
+    msg = f"PE metadata: {'EXE' if is_exe else 'DLL/OBJ'}"
+    if machine:
+        msg += f" {machine}"
+    msg += f" {'64-bit' if is_64bit else '32-bit'}"
+    if is_unsigned and has_nonstandard_sections:
+        msg += " [UNSIGNED+PACKED_INDICATOR]"
+    elif is_unsigned:
+        msg += " [UNSIGNED]"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action="pe_metadata",
+        message=msg,
+        extra={
+            "fuid": fuid,
+            "machine": machine,
+            "os": os_name,
+            "subsystem": subsystem,
+            "is_exe": is_exe,
+            "is_64bit": is_64bit,
+            "uses_aslr": uses_aslr,
+            "uses_dep": uses_dep,
+            "has_cert_table": has_cert_table,
+            "section_names": section_names,
+            "has_nonstandard_sections": has_nonstandard_sections,
+        },
+        tags=["zeek", "pe"] + (["unsigned"] if is_unsigned else []) + (["packed_indicator"] if has_nonstandard_sections else []),
     )
