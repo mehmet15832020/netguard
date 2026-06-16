@@ -2029,6 +2029,27 @@ class DatabaseManager:
             return cur.rowcount
 
     # ------------------------------------------------------------------ #
+    #  DHCP MAC HISTORY (C1 — Zeek dhcp.log baseline)
+    # ------------------------------------------------------------------ #
+
+    def get_known_macs_for_ip(self, ip: str) -> list[str]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT mac_address FROM dhcp_mac_history WHERE ip_address=%s",
+                (ip,),
+            ).fetchall()
+        return [r["mac_address"] for r in rows]
+
+    def record_dhcp_mac(self, ip: str, mac: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO dhcp_mac_history (ip_address, mac_address)
+                   VALUES (%s, %s)
+                   ON CONFLICT (ip_address, mac_address) DO UPDATE SET last_seen=NOW()""",
+                (ip, mac),
+            )
+
+    # ------------------------------------------------------------------ #
     #  AUDIT LOG
     # ------------------------------------------------------------------ #
 

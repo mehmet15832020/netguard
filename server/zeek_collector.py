@@ -6,7 +6,7 @@ normalized_logs tablosuna yazar. Her log dosyası için byte offset saklanır
 (restart güvenli — aynı satırı iki kez işlemez).
 
 Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
-                         weird, dpd, files, rdp, kerberos, smb_files, dce_rpc
+                         weird, dpd, files, rdp, kerberos, smb_files, dce_rpc, dhcp
 """
 
 import asyncio
@@ -15,6 +15,7 @@ import logging
 import os
 import tempfile
 import time
+import uuid
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -24,8 +25,9 @@ from server.parsers.zeek import (
     parse_conn, parse_dns, parse_ftp, parse_http,
     parse_notice, parse_smtp, parse_ssh, parse_ssl, parse_x509,
     parse_weird, parse_dpd, parse_files,
-    parse_rdp, parse_kerberos, parse_smb_files, parse_dce_rpc,
+    parse_rdp, parse_kerberos, parse_smb_files, parse_dce_rpc, parse_dhcp,
 )
+from shared.models import LogCategory, LogSourceType, NormalizedLog
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +53,53 @@ _PARSERS: dict[str, Callable] = {
     "kerberos":  parse_kerberos,
     "smb_files": parse_smb_files,
     "dce_rpc":   parse_dce_rpc,
+    "dhcp":      parse_dhcp,
 }
+
+# log_type → bu log kaydedildikten sonra çalışacak stateful kontrol (C1).
+# Parser'lar saf kalır (DB erişimi yok) — bu hook'lar collector katmanında.
+_POST_SAVE_HOOKS: dict[str, Callable[[NormalizedLog], Optional[NormalizedLog]]] = {}
+
+
+def _check_dhcp_mac_baseline(log_entry: NormalizedLog) -> Optional[NormalizedLog]:
+    """
+    Bir IP için daha önce farklı bir MAC görülmüşse uyarı üretir
+    (DHCP spoofing / cihaz değişimi — NIST SP 800-94 §3.3).
+
+    IP hiç görülmemişse (ilk kayıt) alert üretmez — DHCP havuzunda yeni
+    adres dağıtımı normaldir, sadece *değişim* ilginçtir.
+    """
+    ip = log_entry.source_ip
+    mac = log_entry.extra.get("mac")
+    if not ip or not mac:
+        return None
+
+    from server.database import db
+    known_macs = db.get_known_macs_for_ip(ip)
+    db.record_dhcp_mac(ip, mac)
+
+    if known_macs and mac not in known_macs:
+        return NormalizedLog(
+            log_id=str(uuid.uuid4()),
+            raw_id=str(uuid.uuid4()),
+            source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek",
+            timestamp=log_entry.timestamp,
+            severity="warning",
+            event_category=LogCategory.NETWORK,
+            event_action="dhcp_new_mac_detected",
+            source_ip=ip,
+            message=(
+                f"IP {ip} için yeni MAC görüldü: {mac} "
+                f"(önceki: {', '.join(known_macs)})"
+            ),
+            tags=["zeek", "dhcp", "mac_change"],
+            extra={"mac": mac, "previous_macs": known_macs},
+        )
+    return None
+
+
+_POST_SAVE_HOOKS["dhcp"] = _check_dhcp_mac_baseline
 
 
 def _load_offsets() -> dict[str, dict[str, int]]:
@@ -134,11 +182,11 @@ def collect_once() -> int:
         log_file = _find_log_file(log_type)
         if log_file is None:
             continue
-        total += _process_file(log_file, parser)
+        total += _process_file(log_file, parser, log_type)
     return total
 
 
-def _process_file(log_file: Path, parser: Callable) -> int:
+def _process_file(log_file: Path, parser: Callable, log_type: str = "") -> int:
     key = str(log_file.resolve())
     entry = _offsets.get(key, {"offset": 0, "inode": 0})
     offset = entry["offset"]
@@ -196,6 +244,15 @@ def _process_file(log_file: Path, parser: Callable) -> int:
                     # At-least-once: bu satır bir sonraki taramada tekrar denensin
                     offset -= len(raw_line)
                     break
+
+                hook = _POST_SAVE_HOOKS.get(log_type)
+                if hook is not None:
+                    try:
+                        extra_log = hook(log_entry)
+                        if extra_log is not None:
+                            log_store.save(extra_log)
+                    except Exception as exc:
+                        logger.error("Zeek post-save hook hatası [%s]: %s", log_type, exc)
     except OSError as exc:
         logger.error("Zeek log okunamadı [%s]: %s", log_file.name, exc)
         offset = start_offset

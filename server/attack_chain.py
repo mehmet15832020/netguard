@@ -100,6 +100,7 @@ STAGE_MAP: dict[str, str] = {
     "multi_source_attack_detected":  "recon",
     # Sigma kural slug prefix'leri (title → slug → _detected dönüşümü)
     "arp_spoof":             "recon",     # ARP Spoofing Burst
+    "dhcp_new_mac_detected": "recon",     # C1 — bilinen IP'de MAC değişimi (rogue device / spoofing)
     "zeek_port":             "recon",     # Zeek Port Scan Notice
     "ssh_target":            "weaponize", # SSH Targeted Attack
     "dns_c2":                "lateral",   # DNS C2 High Frequency (C2 kanal)

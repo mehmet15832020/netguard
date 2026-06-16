@@ -14,7 +14,7 @@ _PG_TRUNCATE_TABLES = [
     "blocked_ips", "fp_rules", "asset_baselines", "attack_chain_state",
     "incident_events", "incidents", "topology_edges", "topology_nodes",
     "token_blacklist", "threat_intel_cache", "audit_log", "api_keys",
-    "agent_certificates",
+    "agent_certificates", "dhcp_mac_history",
     "service_checks", "snmp_poll_history", "snmp_devices", "devices",
     "correlated_events", "normalized_logs", "raw_logs",
     "security_events", "alerts", "db_users", "sites", "tenants",

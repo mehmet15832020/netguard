@@ -9,7 +9,8 @@ from unittest.mock import MagicMock, patch
 
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
-    parse_x509, parse_smtp, parse_ftp, _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
+    parse_x509, parse_smtp, parse_ftp, parse_dhcp,
+    _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
 
@@ -632,6 +633,76 @@ class TestParseNotice:
         assert "notice" in log.tags
 
 
+class TestParseDhcp:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "client_addr": "192.168.1.50",
+            "server_addr": "192.168.1.1",
+            "mac": "aa:bb:cc:dd:ee:ff",
+            "host_name": "DESKTOP-ABC123",
+            "assigned_addr": "192.168.1.50",
+            "lease_time": 86400.0,
+            "msg_types": ["REQUEST", "ACK"],
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_dhcp(self._row())
+        assert log is not None
+        assert log.event_action == "dhcp_lease"
+        assert log.source_ip == "192.168.1.50"
+        assert log.destination_ip == "192.168.1.1"
+        assert "aa:bb:cc:dd:ee:ff" in log.message
+        assert "DESKTOP-ABC123" in log.message
+
+    def test_no_mac_returns_none(self):
+        assert parse_dhcp(self._row(mac="")) is None
+        assert parse_dhcp(self._row(mac="-")) is None
+
+    def test_no_assigned_addr_falls_back_to_client_addr(self):
+        log = parse_dhcp(self._row(assigned_addr="-"))
+        assert log is not None
+        assert log.source_ip == "192.168.1.50"
+
+    def test_no_ip_at_all_returns_none(self):
+        assert parse_dhcp(self._row(assigned_addr="-", client_addr="-")) is None
+
+    def test_extra_fields(self):
+        log = parse_dhcp(self._row())
+        assert log.extra["mac"] == "aa:bb:cc:dd:ee:ff"
+        assert log.extra["host_name"] == "DESKTOP-ABC123"
+        assert log.extra["lease_time"] == 86400.0
+        assert log.extra["msg_types"] == ["REQUEST", "ACK"]
+
+    def test_missing_hostname_empty_string(self):
+        log = parse_dhcp(self._row(host_name="-"))
+        assert log.extra["host_name"] == ""
+
+    def test_nak_severity_warning(self):
+        log = parse_dhcp(self._row(msg_types=["DISCOVER", "NAK"]))
+        assert log.severity == "warning"
+
+    def test_ack_severity_info(self):
+        log = parse_dhcp(self._row(msg_types=["REQUEST", "ACK"]))
+        assert log.severity == "info"
+
+    def test_msg_types_as_comma_string(self):
+        log = parse_dhcp(self._row(msg_types="REQUEST,ACK"))
+        assert log.extra["msg_types"] == ["REQUEST", "ACK"]
+
+    def test_tags(self):
+        log = parse_dhcp(self._row())
+        assert "zeek" in log.tags
+        assert "dhcp" in log.tags
+
+    def test_network_category(self):
+        from shared.models import LogCategory
+        log = parse_dhcp(self._row())
+        assert log.event_category == LogCategory.NETWORK
+
+
 # ── Collector testleri ─────────────────────────────────────────────────────────
 
 class TestCollectOnce:
@@ -896,3 +967,109 @@ class TestRunZeekCollectorInotify:
                 pass
 
         asyncio.run(scenario())
+
+
+class TestDhcpMacBaseline:
+    """C1 — _check_dhcp_mac_baseline() ve collect_once() üzerinden entegrasyonu."""
+
+    def test_first_sighting_no_alert(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="dhcp_lease",
+            source_ip="192.168.1.50", message="test",
+            extra={"mac": "aa:bb:cc:dd:ee:ff"},
+        )
+        result = zc._check_dhcp_mac_baseline(log_entry)
+        assert result is None
+        assert tmp_db.get_known_macs_for_ip("192.168.1.50") == ["aa:bb:cc:dd:ee:ff"]
+
+    def test_same_mac_again_no_alert(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="dhcp_lease",
+            source_ip="192.168.1.50", message="test",
+            extra={"mac": "aa:bb:cc:dd:ee:ff"},
+        )
+        zc._check_dhcp_mac_baseline(log_entry)
+        result = zc._check_dhcp_mac_baseline(log_entry)
+        assert result is None
+
+    def test_different_mac_triggers_alert(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        first = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="dhcp_lease",
+            source_ip="192.168.1.50", message="test",
+            extra={"mac": "aa:bb:cc:dd:ee:ff"},
+        )
+        zc._check_dhcp_mac_baseline(first)
+
+        second = first.model_copy(update={"extra": {"mac": "11:22:33:44:55:66"}})
+        alert = zc._check_dhcp_mac_baseline(second)
+        assert alert is not None
+        assert alert.event_action == "dhcp_new_mac_detected"
+        assert alert.severity == "warning"
+        assert "11:22:33:44:55:66" in alert.message
+        assert "aa:bb:cc:dd:ee:ff" in alert.message
+
+    def test_missing_mac_no_crash(self, tmp_db):
+        import server.zeek_collector as zc
+        from shared.models import LogCategory, LogSourceType, NormalizedLog
+        import datetime as dt
+
+        log_entry = NormalizedLog(
+            log_id="x", raw_id="y", source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek", timestamp=dt.datetime.now(dt.timezone.utc),
+            severity="info", event_category=LogCategory.NETWORK, event_action="dhcp_lease",
+            source_ip="192.168.1.50", message="test", extra={},
+        )
+        assert zc._check_dhcp_mac_baseline(log_entry) is None
+
+    def test_collect_once_emits_new_mac_alert_end_to_end(self, tmp_path, tmp_db, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+
+        row1 = {"ts": 1700000000.0, "client_addr": "192.168.1.50", "server_addr": "192.168.1.1",
+                "mac": "aa:bb:cc:dd:ee:ff", "assigned_addr": "192.168.1.50",
+                "host_name": "host1", "lease_time": 3600.0, "msg_types": ["ACK"]}
+        (tmp_path / "dhcp.log").write_text(json.dumps(row1) + "\n")
+        zc.collect_once()
+        assert len(saved) == 1  # sadece lease, ilk görülme
+
+        # Aynı IP'ye farklı MAC ile yeni lease — rotation tetiklemeden yeni satır ekle
+        row2 = {"ts": 1700000100.0, "client_addr": "192.168.1.50", "server_addr": "192.168.1.1",
+                "mac": "11:22:33:44:55:66", "assigned_addr": "192.168.1.50",
+                "host_name": "host2", "lease_time": 3600.0, "msg_types": ["ACK"]}
+        with (tmp_path / "dhcp.log").open("a") as fh:
+            fh.write(json.dumps(row2) + "\n")
+        zc.collect_once()
+
+        assert len(saved) == 3  # +1 lease +1 new_mac_detected
+        actions = [s.event_action for s in saved]
+        assert actions.count("dhcp_lease") == 2
+        assert "dhcp_new_mac_detected" in actions
+
+
+class TestDhcpStageMap:
+    def test_new_mac_maps_to_recon(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("dhcp_new_mac_detected") == "recon"

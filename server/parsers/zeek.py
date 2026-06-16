@@ -1213,3 +1213,60 @@ def parse_dce_rpc(row: dict) -> Optional[NormalizedLog]:
         tags=tags,
         community_id=row.get("community_id"),
     )
+
+
+def parse_dhcp(row: dict) -> Optional[NormalizedLog]:
+    """
+    dhcp.log — C1. Zeek şeması: ts, uids, client_addr, server_addr, mac,
+    host_name, client_fqdn, domain, requested_addr, assigned_addr,
+    lease_time, msg_types (zeek.org/en/current/logs/dhcp.html, doğrulandı).
+
+    IP→MAC→hostname eşlemesi sağlar — saldırı triage'ında "bu IP hangi
+    cihaz?" sorusunu yanıtlar (NIST SP 800-94 §3.3).
+    """
+    mac = (row.get("mac") or "").strip()
+    assigned_addr = row.get("assigned_addr") or ""
+    client_addr = row.get("client_addr") or ""
+    assigned_ip = assigned_addr if assigned_addr not in ("", "-") else client_addr
+    if not mac or mac == "-" or not assigned_ip or assigned_ip == "-":
+        return None
+
+    host_name = (row.get("host_name") or "").strip()
+    if host_name == "-":
+        host_name = ""
+
+    try:
+        lease_time = float(row.get("lease_time") or 0)
+    except (ValueError, TypeError):
+        lease_time = 0.0
+
+    msg_types = row.get("msg_types") or []
+    if isinstance(msg_types, str):
+        msg_types = [m.strip() for m in msg_types.split(",") if m.strip()]
+
+    severity = "warning" if "NAK" in msg_types else "info"
+
+    msg = f"DHCP lease: {assigned_ip} → {mac}"
+    if host_name:
+        msg += f" ({host_name})"
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action="dhcp_lease",
+        source_ip=assigned_ip,
+        destination_ip=row.get("server_addr"),
+        message=msg,
+        extra={
+            "mac":         mac,
+            "host_name":   host_name,
+            "lease_time":  lease_time,
+            "msg_types":   msg_types,
+        },
+        tags=["zeek", "dhcp"],
+    )
