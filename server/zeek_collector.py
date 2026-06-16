@@ -13,6 +13,7 @@ import asyncio
 import json
 import logging
 import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable, Optional
@@ -52,24 +53,54 @@ _PARSERS: dict[str, Callable] = {
 }
 
 
-def _load_offsets() -> dict[str, int]:
-    """Disk'teki offset dosyasını oku — Filebeat registry pattern."""
+def _load_offsets() -> dict[str, dict[str, int]]:
+    """
+    Disk'teki offset dosyasını oku — Filebeat registry pattern (offset + inode).
+
+    Eski format ({"path": offset_int}) ile geriye uyumlu: bulunca {"offset": N, "inode": 0}
+    şeklinde yükseltilir — inode 0 olduğu için ilk taramada inode senkronize edilir,
+    veri kaybı olmaz (sadece bir kerelik gereksiz inode güncelleme).
+    """
     try:
         if ZEEK_OFFSET_FILE.exists():
-            return json.loads(ZEEK_OFFSET_FILE.read_text(encoding="utf-8"))
+            raw = json.loads(ZEEK_OFFSET_FILE.read_text(encoding="utf-8"))
+            upgraded = {}
+            for path, entry in raw.items():
+                if isinstance(entry, dict):
+                    upgraded[path] = {"offset": int(entry.get("offset", 0)), "inode": int(entry.get("inode", 0))}
+                else:
+                    upgraded[path] = {"offset": int(entry), "inode": 0}
+            return upgraded
     except Exception as exc:
         logger.warning("Zeek offset dosyası okunamadı: %s", exc)
     return {}
 
 
 def _save_offsets() -> None:
+    """Offset'leri atomik write ile sakla (tempfile + os.replace) — Suricata collector ile tutarlı."""
     try:
-        ZEEK_OFFSET_FILE.write_text(json.dumps(_offsets), encoding="utf-8")
+        ZEEK_OFFSET_FILE.parent.mkdir(parents=True, exist_ok=True)
+        content = json.dumps(_offsets)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=ZEEK_OFFSET_FILE.parent, prefix=".zeek_offsets_", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(content)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp_path, ZEEK_OFFSET_FILE)
+        except Exception:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
     except Exception as exc:
         logger.warning("Zeek offset kaydedilemedi: %s", exc)
 
 
-_offsets: dict[str, int] = _load_offsets()
+_offsets: dict[str, dict[str, int]] = _load_offsets()
 
 
 def _find_log_file(log_type: str) -> Optional[Path]:
@@ -108,20 +139,33 @@ def collect_once() -> int:
 
 def _process_file(log_file: Path, parser: Callable) -> int:
     key = str(log_file.resolve())
-    offset = _offsets.get(key, 0)
+    entry = _offsets.get(key, {"offset": 0, "inode": 0})
+    offset = entry["offset"]
+    inode = entry["inode"]
 
     try:
-        size = log_file.stat().st_size
+        stat = log_file.stat()
+        size = stat.st_size
+        cur_inode = stat.st_ino
     except OSError:
         return 0
 
-    if size < offset:
+    # Log rotation: inode değiştiyse (logrotate/Zeek archive_log) veya dosya küçüldüyse sıfırla
+    if cur_inode != inode or size < offset:
+        if inode:
+            logger.info(
+                "Zeek log döndü [%s] (inode %d→%d) — offset sıfırlandı",
+                log_file.name, inode, cur_inode,
+            )
         offset = 0
+        inode = cur_inode
 
     if size == offset:
+        _offsets[key] = {"offset": offset, "inode": inode}
         return 0
 
     written = 0
+    start_offset = offset
     try:
         with log_file.open("rb") as fh:
             fh.seek(offset)
@@ -148,11 +192,14 @@ def _process_file(log_file: Path, parser: Callable) -> int:
                     written += 1
                 except Exception as exc:
                     logger.error("Zeek log kaydedilemedi: %s", exc)
+                    # At-least-once: bu satır bir sonraki taramada tekrar denensin
+                    offset -= len(raw_line)
+                    break
     except OSError as exc:
         logger.error("Zeek log okunamadı [%s]: %s", log_file.name, exc)
-        return written
+        offset = start_offset
 
-    _offsets[key] = offset
+    _offsets[key] = {"offset": offset, "inode": inode}
     _save_offsets()
     if written:
         logger.debug("Zeek [%s]: %d satır yazıldı", log_file.name, written)

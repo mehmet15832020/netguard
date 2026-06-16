@@ -744,9 +744,95 @@ class TestCollectOnce:
 
         # Dosya rotasyonu simüle et — daha küçük dosya
         log_file.write_text(json.dumps(row) + "\n")  # aynı içerik, offset sıfırlanmalı
-        # Offset'i yapay olarak büyük yap
+        # Offset'i yapay olarak büyük yap (boyut < offset → rotation tespiti)
         key = str(log_file.resolve())
-        zc._offsets[key] = 99999
+        zc._offsets[key] = {"offset": 99999, "inode": zc._offsets[key]["inode"]}
 
         zc.collect_once()
         assert len(saved) == 2  # tekrar okur
+
+    def test_inode_change_triggers_reset_even_if_size_not_smaller(self, tmp_path, monkeypatch):
+        """Dosya rotate olup yeni inode ile yeniden büyüdüğünde (boyut eski offset'i
+        geçse bile) eski offset'ten değil baştan okunmalı — aksi halde yanlış noktadan
+        okumaya devam eder ve satırlar bozuk/atlanmış olur."""
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row1 = {"ts": 1700000000.0, "id.orig_h": "1.1.1.1", "id.resp_h": "8.8.8.8",
+                "proto": "udp", "query": "first.com", "qtype_name": "A",
+                "answers": [], "rcode_name": "NOERROR"}
+        log_file = tmp_path / "dns.log"
+        log_file.write_text(json.dumps(row1) + "\n")
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        zc.collect_once()
+        assert len(saved) == 1
+
+        # Rotation: dosya silinip yeni inode ile yeniden oluşturuluyor, daha büyük içerik
+        log_file.unlink()
+        row2 = {"ts": 1700000100.0, "id.orig_h": "2.2.2.2", "id.resp_h": "8.8.8.8",
+                "proto": "udp", "query": "second.com", "qtype_name": "A",
+                "answers": [], "rcode_name": "NOERROR"}
+        log_file.write_text(json.dumps(row1) + "\n" + json.dumps(row2) + "\n")
+
+        zc.collect_once()
+        # İnode değiştiği için offset sıfırlanıp dosya baştan okunmalı → 2 yeni satır
+        assert len(saved) == 3
+        assert "second.com" in saved[-1].message
+
+    def test_save_failure_rolls_back_offset_for_retry(self, tmp_path, monkeypatch):
+        """log_store.save() hata verirse offset o satırın öncesine geri alınmalı —
+        aksi halde satır sessizce kaybolur (at-least-once garanti, Suricata ile tutarlı)."""
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "id.orig_h": "3.3.3.3", "id.resp_h": "8.8.8.8",
+               "proto": "udp", "query": "retry.com", "qtype_name": "A",
+               "answers": [], "rcode_name": "NOERROR"}
+        log_file = tmp_path / "dns.log"
+        log_file.write_text(json.dumps(row) + "\n")
+
+        def _failing_save(log):
+            raise RuntimeError("DB geçici olarak erişilemez")
+
+        monkeypatch.setattr(zc.log_store, "save", _failing_save)
+        n = zc.collect_once()
+        assert n == 0
+
+        key = str(log_file.resolve())
+        assert zc._offsets[key]["offset"] == 0  # satır hiç işlenmemiş gibi kalmalı
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        n2 = zc.collect_once()
+        assert n2 == 1
+        assert saved[0].source_ip == "3.3.3.3"
+
+    def test_offsets_persisted_atomically(self, tmp_path, monkeypatch):
+        """Offset dosyası tempfile+os.replace ile yazılmalı — yarıda kesilmiş .tmp
+        dosyası kalıcı offset dosyasını bozmamalı."""
+        import server.zeek_collector as zc
+
+        offset_file = tmp_path / "offsets.json"
+        monkeypatch.setattr(zc, "ZEEK_OFFSET_FILE", offset_file)
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "id.orig_h": "4.4.4.4", "id.resp_h": "8.8.8.8",
+               "proto": "udp", "query": "atomic.com", "qtype_name": "A",
+               "answers": [], "rcode_name": "NOERROR"}
+        (tmp_path / "dns.log").write_text(json.dumps(row) + "\n")
+
+        monkeypatch.setattr(zc.log_store, "save", lambda log: None)
+        zc.collect_once()
+
+        assert offset_file.exists()
+        leftover_tmp = list(tmp_path.glob(".zeek_offsets_*.tmp"))
+        assert leftover_tmp == []
+        data = json.loads(offset_file.read_text())
+        assert all("offset" in v and "inode" in v for v in data.values())
