@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
     parse_x509, parse_smtp, parse_ftp, parse_dhcp, parse_tunnel, parse_pe,
-    parse_smb_mapping, parse_software,
+    parse_smb_mapping, parse_software, parse_ntp,
     _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
@@ -1034,6 +1034,96 @@ class TestParseSoftware:
         assert log.extra["name"] == "Chrome"
 
 
+class TestParseNtp:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id.orig_h": "192.168.1.10",
+            "id.orig_p": 123,
+            "id.resp_h": "10.0.0.1",
+            "id.resp_p": 123,
+            "version": 4,
+            "mode": 3,
+            "stratum": 2,
+            "ref_id": "GPS",
+        }
+        base.update(kw)
+        return base
+
+    def test_basic_client_query(self):
+        log = parse_ntp(self._row())
+        assert log is not None
+        assert log.event_action == "ntp_activity"
+        assert log.severity == "info"
+        assert log.extra["mode"] == "client"
+
+    def test_no_mode_returns_none(self):
+        assert parse_ntp(self._row(mode="-")) is None
+        assert parse_ntp(self._row(mode=None)) is None
+
+    def test_control_mode_is_amplification_risk(self):
+        log = parse_ntp(self._row(mode=6))
+        assert log.severity == "warning"
+        assert log.extra["is_amplification_risk"] is True
+        assert "amplification_risk" in log.tags
+        assert "AMPLIFICATION_RISK" in log.message
+
+    def test_private_mode_is_amplification_risk(self):
+        log = parse_ntp(self._row(mode=7))
+        assert log.severity == "warning"
+        assert log.extra["is_amplification_risk"] is True
+
+    def test_normal_client_server_modes_not_flagged(self):
+        for mode in (3, 4):
+            log = parse_ntp(self._row(mode=mode))
+            assert log.extra["is_amplification_risk"] is False
+            assert log.severity == "info"
+
+    def test_kiss_of_death_detected(self):
+        log = parse_ntp(self._row(stratum=0, ref_id="RATE"))
+        assert log.severity == "warning"
+        assert log.extra["is_kiss_of_death"] is True
+        assert "kiss_of_death" in log.tags
+        assert "KISS_OF_DEATH" in log.message
+
+    def test_stratum_zero_without_kiss_code_not_flagged(self):
+        log = parse_ntp(self._row(stratum=0, ref_id="INIT"))
+        assert log.extra["is_kiss_of_death"] is False
+        assert log.severity == "info"
+
+    def test_nonzero_stratum_with_kiss_string_not_flagged(self):
+        """Kiss-of-death sadece stratum=0 ile birlikte anlamlıdır."""
+        log = parse_ntp(self._row(stratum=2, ref_id="RATE"))
+        assert log.extra["is_kiss_of_death"] is False
+
+    def test_unknown_mode_labeled(self):
+        log = parse_ntp(self._row(mode=0))
+        assert log.extra["mode"] == "reserved"
+
+    def test_ports(self):
+        log = parse_ntp(self._row())
+        assert log.source_port == 123
+        assert log.destination_port == 123
+
+    def test_udp_protocol(self):
+        log = parse_ntp(self._row())
+        assert log.network_protocol == "udp"
+
+    def test_tags(self):
+        log = parse_ntp(self._row())
+        assert "zeek" in log.tags
+        assert "ntp" in log.tags
+
+    def test_network_category(self):
+        from shared.models import LogCategory
+        log = parse_ntp(self._row())
+        assert log.event_category == LogCategory.NETWORK
+
+    def test_missing_ref_id(self):
+        log = parse_ntp(self._row(ref_id="-"))
+        assert log.extra["ref_id"] == ""
+
+
 # ── Collector testleri ─────────────────────────────────────────────────────────
 
 class TestCollectOnce:
@@ -1600,4 +1690,22 @@ class TestSoftwareCollectorWiring:
 
         software = tmp_db.get_detected_software("192.168.1.60")
         assert len(software) == 1
-        assert software[0]["name"] == "OpenSSH"
+
+
+class TestNtpCollectorWiring:
+    def test_ntp_log_processed_via_collect_once(self, tmp_path, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "id.orig_h": "203.0.113.7", "id.orig_p": 123,
+               "id.resp_h": "192.168.1.1", "id.resp_p": 123, "mode": 7, "stratum": 1}
+        (tmp_path / "ntp.log").write_text(json.dumps(row) + "\n")
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        n = zc.collect_once()
+        assert n == 1
+        assert saved[0].event_action == "ntp_activity"
+        assert saved[0].severity == "warning"

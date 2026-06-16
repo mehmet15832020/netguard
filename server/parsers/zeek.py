@@ -3,7 +3,7 @@ Zeek JSON log parsers.
 
 Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
                          weird, dpd, files, rdp, kerberos, smb_files, dce_rpc,
-                         dhcp, tunnel, pe, smb_mapping, software
+                         dhcp, tunnel, pe, smb_mapping, software, ntp
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
@@ -1552,4 +1552,96 @@ def parse_software(row: dict) -> Optional[NormalizedLog]:
         message=msg,
         extra={"software_type": software_type, "name": name, "version": version},
         tags=["zeek", "software"],
+    )
+
+
+# RFC 5905 §7.3 — NTP mod kodları. Client(3)/Server(4) normal trafik;
+# control(6)/private(7) ntpq/monlist amplifikasyon istismarında kullanılır
+# (CVE-2013-5211, MITRE ATT&CK T1498.002 — Reflection Amplification).
+_NTP_MODE_NAMES: dict[int, str] = {
+    0: "reserved", 1: "symmetric_active", 2: "symmetric_passive",
+    3: "client", 4: "server", 5: "broadcast",
+    6: "control", 7: "private",
+}
+_NTP_AMPLIFICATION_RISK_MODES: frozenset[int] = frozenset({6, 7})
+
+# Kiss-of-death ref_id kodları (stratum=0) — sunucu istemciye "sorgulamayı
+# kes" diyor; geçmişte kötüye kullanım/abuse sonrası tetiklenmiş olabilir.
+_NTP_KISS_CODES: frozenset[str] = frozenset({"DENY", "RSTR", "RATE", "ACST", "AUTH"})
+
+
+def parse_ntp(row: dict) -> Optional[NormalizedLog]:
+    """
+    ntp.log — C6. Zeek şeması: ts, uid, id.orig/resp_h/p, version, mode,
+    stratum, poll, precision, root_delay, root_disp, ref_id, ref_time,
+    org_time, rec_time, xmt_time, num_exts (zeek.org doğrulandı).
+
+    NTP amplifikasyon (control/private mod istismarı) ve zaman eşitleme
+    anomalileri (kiss-of-death) için sinyal üretir.
+    """
+    mode_raw = row.get("mode")
+    try:
+        mode = int(mode_raw)
+    except (TypeError, ValueError):
+        return None
+
+    stratum_raw = row.get("stratum")
+    try:
+        stratum = int(stratum_raw)
+    except (TypeError, ValueError):
+        stratum = None
+
+    ref_id = (row.get("ref_id") or "").strip()
+    if ref_id == "-":
+        ref_id = ""
+
+    mode_name = _NTP_MODE_NAMES.get(mode, f"unknown_{mode}")
+    is_amplification_risk = mode in _NTP_AMPLIFICATION_RISK_MODES
+    is_kiss_of_death = stratum == 0 and ref_id.upper() in _NTP_KISS_CODES
+
+    if is_amplification_risk:
+        severity = "warning"
+    elif is_kiss_of_death:
+        severity = "warning"
+    else:
+        severity = "info"
+
+    msg = f"NTP {mode_name}"
+    if stratum is not None:
+        msg += f" stratum={stratum}"
+    if is_amplification_risk:
+        msg += " [AMPLIFICATION_RISK]"
+    if is_kiss_of_death:
+        msg += f" [KISS_OF_DEATH:{ref_id}]"
+
+    tags = ["zeek", "ntp"]
+    if is_amplification_risk:
+        tags.append("amplification_risk")
+    if is_kiss_of_death:
+        tags.append("kiss_of_death")
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action="ntp_activity",
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        network_protocol="udp",
+        message=msg,
+        extra={
+            "mode": mode_name,
+            "stratum": stratum,
+            "ref_id": ref_id,
+            "is_amplification_risk": is_amplification_risk,
+            "is_kiss_of_death": is_kiss_of_death,
+        },
+        tags=tags,
+        community_id=row.get("community_id"),
     )

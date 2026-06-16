@@ -318,7 +318,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/threat_intel.py` | AbuseIPDB + Feodo + ThreatFox + GreyNoise composite 0-100 |
 | `server/uptime_checker.py` | Cihaz uptime / ICMP ping |
 | `server/ws_manager.py` | WebSocket bağlantı yöneticisi |
-| `server/zeek_collector.py` | Zeek log tail (20 log tipi: conn/dns/http/ssl/ssh/notice/smtp/ftp/rdp/kerberos/smb/dce_rpc/weird/dpd/files/dhcp/tunnel/pe/smb_mapping/software) + inotify (B2) |
+| `server/zeek_collector.py` | Zeek log tail (21 log tipi: conn/dns/http/ssl/ssh/notice/smtp/ftp/rdp/kerberos/smb/dce_rpc/weird/dpd/files/dhcp/tunnel/pe/smb_mapping/software/ntp) + inotify (B2) |
 | `server/parsers/` | zeek.py, suricata.py, netflow.py, windows.py, opencanary.py, cloud.py, firewall.py, web_log.py |
 | `server/collectors/` | m365_collector.py, gworkspace_collector.py, kev_monitor.py |
 
