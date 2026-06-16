@@ -645,11 +645,225 @@ def parse_dns_resolver_syslog(line: str) -> Optional[NormalizedLog]:
 
 
 # ──────────────────────────────────────────────────────────────────
+#  Firewall yönetim erişimi (F3) — marka bağımsız
+#  Firewall'un admin paneline/SSH'ına giriş denemeleri — firewall ele
+#  geçirilirse tüm ağ korumasız kalır (CIS Controls v8 Control 8.11,
+#  NIST SP 800-92 §3.2). Tüm formatlar gerçek dokümantasyon/forum
+#  örnekleriyle doğrulandı (F3 araştırması).
+# ──────────────────────────────────────────────────────────────────
+
+# FortiGate — docs.fortinet.com doğrulandı:
+# type="event" subtype="system" logdesc="Admin login successful" user="admin"
+# srcip=... action="login" status="success"|"failed"
+def parse_fortigate_admin_access(line: str) -> Optional[NormalizedLog]:
+    if "subtype=" not in line or "system" not in line.lower():
+        return None
+    kv = {k: v.strip('"') for k, v in _FORTI_KV_RE.findall(line)}
+    if kv.get("subtype", "").lower() != "system":
+        return None
+    if kv.get("action", "").lower() != "login":
+        return None
+
+    src_ip = kv.get("srcip")
+    if not src_ip:
+        return None
+
+    status  = kv.get("status", "").lower()
+    success = status == "success"
+    user    = kv.get("user", "")
+    event_action = "fw_admin_login_success" if success else "fw_admin_login_failure"
+    severity     = "info" if success else "warning"
+
+    msg = f"FortiGate admin login {'success' if success else 'failure'}: user={user} from {src_ip}"
+
+    return _make_log(
+        source_type = LogSourceType.FORTIGATE,
+        observer_hostname = kv.get("devname", "fortigate"),
+        event_action  = event_action,
+        severity    = severity,
+        event_category    = LogCategory.AUTHENTICATION,
+        message     = msg,
+        raw_content = line,
+        source_ip      = src_ip,
+        tags        = ["fw_admin", "fortigate", status],
+        extra       = {"user": user, "method": kv.get("method", "")},
+    )
+
+
+# Cisco ASA — Cisco syslog mesaj referansı doğrulandı:
+# %ASA-6-605005 Login permitted / %ASA-6-605004 Login denied
+# %ASA-6-611101 User authentication succeeded / %ASA-6-611102 ... failed
+# Not: severity rakamı cihaz config'ine göre değişebilir, \d ile esnek bırakıldı.
+_ASA_LOGIN_RE = re.compile(
+    r'%ASA-\d-(?P<code>605005|605004):\s+Login (?:permitted|denied) from\s+'
+    r'(?P<ip>[\d.]+)/\d+\s+to\s+\S+\s+for user\s+"?(?P<user>[^"\s]+)"?'
+)
+_ASA_AUTH_RE = re.compile(
+    r'%ASA-\d-(?P<code>611101|611102):\s+User authentication (?:succeeded|failed):?'
+    r'(?:.*?IP address:\s*(?P<ip>[\d.]+),)?\s*Uname:\s*(?P<user>\S+)'
+)
+
+
+def parse_cisco_asa_admin_access(line: str) -> Optional[NormalizedLog]:
+    m = _ASA_LOGIN_RE.search(line) or _ASA_AUTH_RE.search(line)
+    if not m:
+        return None
+
+    code = m.group("code")
+    ip   = m.groupdict().get("ip")
+    user = m.group("user")
+    success = code in ("605005", "611101")
+    event_action = "fw_admin_login_success" if success else "fw_admin_login_failure"
+    severity     = "info" if success else "warning"
+
+    msg = f"Cisco ASA admin login {'success' if success else 'failure'}: user={user}"
+    if ip:
+        msg += f" from {ip}"
+
+    hm = _ASA_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "cisco-asa"
+
+    return _make_log(
+        source_type = LogSourceType.CISCO_ASA,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
+        severity    = severity,
+        event_category    = LogCategory.AUTHENTICATION,
+        message     = msg,
+        raw_content = line,
+        source_ip      = ip,
+        tags        = ["fw_admin", "cisco_asa", f"asa_code:{code}"],
+        extra       = {"user": user, "asa_code": code},
+    )
+
+
+# pfSense/OPNsense webConfigurator (php-fpm) — Netgate forum/dokümantasyon doğrulandı:
+# "Successful login for user 'admin' from: 10.0.0.4"
+# "webConfigurator authentication error for user 'admin' from: 10.0.0.4"
+# Not: pfSense ve OPNsense bu logu birebir aynı formatta üretir, satırdan
+# marka ayırt edilemez — OPNSENSE varsayılan olarak kullanılır (lab'da aktif olan).
+_PFSENSE_LOGIN_OK_RE = re.compile(
+    r"php-fpm(?:\[\d+\])?:\s+/index\.php:\s+Successful login for user '(?P<user>[^']+)'"
+    r"\s+from:\s*(?P<ip>[\d.]+)"
+)
+_PFSENSE_LOGIN_FAIL_RE = re.compile(
+    r"php-fpm(?:\[\d+\])?:\s+/index\.php:\s+webConfigurator authentication error "
+    r"for user '(?P<user>[^']+)'\s+from:\s*(?P<ip>[\d.]+)"
+)
+_PFSENSE_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+php-fpm')
+
+
+def parse_pfsense_admin_access(line: str) -> Optional[NormalizedLog]:
+    m = _PFSENSE_LOGIN_OK_RE.search(line)
+    success = True
+    if not m:
+        m = _PFSENSE_LOGIN_FAIL_RE.search(line)
+        success = False
+    if not m:
+        return None
+
+    user, ip = m.group("user"), m.group("ip")
+    event_action = "fw_admin_login_success" if success else "fw_admin_login_failure"
+    severity     = "info" if success else "warning"
+
+    hm = _PFSENSE_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "opnsense"
+
+    msg = f"pfSense/OPNsense webgui login {'success' if success else 'failure'}: user={user} from {ip}"
+
+    return _make_log(
+        source_type = LogSourceType.OPNSENSE,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
+        severity    = severity,
+        event_category    = LogCategory.AUTHENTICATION,
+        message     = msg,
+        raw_content = line,
+        source_ip      = ip,
+        tags        = ["fw_admin", "opnsense"],
+        extra       = {"user": user},
+    )
+
+
+# VyOS — standart sshd Accepted/Failed (OpenSSH). VyOS yönetim erişimi SSH
+# üzerinden olduğu için bu, router admin erişiminin kendisidir.
+_VYOS_SSH_ACCEPTED_RE = re.compile(
+    r'sshd(?:\[\d+\])?:\s+Accepted\s+(?P<method>\S+)\s+for\s+(?P<user>\S+)\s+from\s+'
+    r'(?P<ip>[\d.]+)\s+port\s+(?P<port>\d+)'
+)
+_VYOS_SSH_FAILED_RE = re.compile(
+    r'sshd(?:\[\d+\])?:\s+Failed\s+(?P<method>\S+)\s+for\s+(?:invalid user\s+)?(?P<user>\S+)\s+'
+    r'from\s+(?P<ip>[\d.]+)\s+port\s+(?P<port>\d+)'
+)
+_VYOS_SSH_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+sshd')
+
+
+def parse_vyos_admin_access(line: str) -> Optional[NormalizedLog]:
+    m = _VYOS_SSH_ACCEPTED_RE.search(line)
+    success = True
+    if not m:
+        m = _VYOS_SSH_FAILED_RE.search(line)
+        success = False
+    if not m:
+        return None
+
+    user, ip, port, method = m.group("user"), m.group("ip"), m.group("port"), m.group("method")
+    event_action = "fw_admin_login_success" if success else "fw_admin_login_failure"
+    severity     = "info" if success else "warning"
+
+    hm = _VYOS_SSH_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "vyos"
+
+    msg = f"VyOS SSH login {'success' if success else 'failure'}: user={user} from {ip}"
+
+    return _make_log(
+        source_type = LogSourceType.VYOS,
+        observer_hostname = observer_hostname,
+        event_action  = event_action,
+        severity    = severity,
+        event_category    = LogCategory.AUTHENTICATION,
+        message     = msg,
+        raw_content = line,
+        source_ip      = ip,
+        source_port    = int(port),
+        tags        = ["fw_admin", "vyos"],
+        extra       = {"user": user, "method": method},
+    )
+
+
+def parse_fw_admin_access(line: str) -> Optional[NormalizedLog]:
+    """Marka bağımsız firewall yönetim erişimi dispatcher (F3)."""
+    if "subtype=" in line and "system" in line.lower():
+        result = parse_fortigate_admin_access(line)
+        if result is not None:
+            return result
+    if "%ASA-" in line:
+        result = parse_cisco_asa_admin_access(line)
+        if result is not None:
+            return result
+    if "php-fpm" in line and "index.php" in line:
+        result = parse_pfsense_admin_access(line)
+        if result is not None:
+            return result
+    if "sshd" in line:
+        result = parse_vyos_admin_access(line)
+        if result is not None:
+            return result
+    return None
+
+
+# ──────────────────────────────────────────────────────────────────
 #  Otomatik tespit + parse
 # ──────────────────────────────────────────────────────────────────
 
 def detect_and_parse(line: str) -> Optional[NormalizedLog]:
     """Firewall log satırını otomatik tespit et ve parse et."""
+    # F3 yönetim erişimi en önce kontrol edilir — %ASA-/type=system gibi
+    # genel pattern'ler diğer parser'lara (parse_cisco_asa, parse_fortigate)
+    # düşmeden önce admin login olaylarını yakalamalı.
+    admin_result = parse_fw_admin_access(line)
+    if admin_result is not None:
+        return admin_result
     if "filterlog[" in line:
         return parse_opnsense(line)
     if "filterlog:" in line:

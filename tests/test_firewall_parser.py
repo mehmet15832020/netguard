@@ -6,6 +6,8 @@ from server.parsers.firewall import (
     parse_opnsense, parse_vyos, detect_and_parse,
     parse_isc_dhcpd, parse_kea_dhcp, parse_fortigate_dhcp, parse_dhcp_syslog,
     parse_unbound_dns, parse_dnsmasq_dns, parse_fortigate_dns, parse_dns_resolver_syslog,
+    parse_fortigate_admin_access, parse_cisco_asa_admin_access,
+    parse_pfsense_admin_access, parse_vyos_admin_access, parse_fw_admin_access,
 )
 
 
@@ -490,3 +492,223 @@ class TestDetectAndParseDns:
         log = detect_and_parse(FORTI_DNS_PASS)
         assert log is not None
         assert log.event_action == "dns_query"
+
+
+# ── F3 — Firewall yönetim erişimi (marka bağımsız) ─────────────────────────
+
+FORTI_ADMIN_OK = (
+    'date=2026-06-16 time=10:00:01 devname="FG1" type="event" subtype="system" '
+    'level="information" logdesc="Admin login successful" user="admin" '
+    'ui="ssh(192.168.1.30)" method="ssh" srcip=192.168.1.30 dstip=10.0.0.1 '
+    'action="login" status="success"'
+)
+FORTI_ADMIN_FAIL = (
+    'date=2026-06-16 time=10:00:01 devname="FG1" type="event" subtype="system" '
+    'logdesc="Admin login failed" user="admin" method="ssh" srcip=192.168.1.30 '
+    'action="login" status="failed"'
+)
+ASA_LOGIN_PERMIT = (
+    'Jun 06 2026 13:03:07: %ASA-6-605005: Login permitted from 10.10.10.10/60358 '
+    'to inside:172.18.254.34/ssh for user "admin"'
+)
+ASA_LOGIN_DENY = (
+    'Jun 06 2026 13:03:07: %ASA-6-605004: Login denied from 10.10.10.10/60358 '
+    'to inside:172.18.254.34/ssh for user "admin"'
+)
+ASA_AUTH_OK = (
+    'May 07 2026 12:57:26: %ASA-6-611101: User authentication succeeded: '
+    'IP address: 10.65.81.163, Uname: admin'
+)
+ASA_AUTH_FAIL = (
+    'May 07 2026 12:57:26: %ASA-6-611102: User authentication failed: '
+    'IP address: 10.65.81.163, Uname: admin'
+)
+PFSENSE_LOGIN_OK = (
+    "Apr 24 10:00:01 opnsense php-fpm[412]: /index.php: Successful login "
+    "for user 'admin' from: 192.168.1.40 (Local Database)"
+)
+PFSENSE_LOGIN_FAIL = (
+    "Apr 24 10:00:01 opnsense php-fpm[412]: /index.php: webConfigurator "
+    "authentication error for user 'admin' from: 192.168.1.40"
+)
+VYOS_SSH_OK = "Apr 24 10:00:01 vyos sshd[5123]: Accepted publickey for vyos from 192.168.203.1 port 54321 ssh2"
+VYOS_SSH_FAIL = "Apr 24 10:00:01 vyos sshd[5123]: Failed password for vyos from 192.168.203.1 port 54321 ssh2"
+
+
+class TestFortiGateAdminAccess:
+    def test_success_parsed(self):
+        log = parse_fortigate_admin_access(FORTI_ADMIN_OK)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+        assert log.source_ip == "192.168.1.30"
+        assert log.severity == "info"
+        assert log.event_category == "authentication"
+
+    def test_failure_parsed(self):
+        log = parse_fortigate_admin_access(FORTI_ADMIN_FAIL)
+        assert log.event_action == "fw_admin_login_failure"
+        assert log.severity == "warning"
+
+    def test_non_login_system_event_returns_none(self):
+        line = FORTI_ADMIN_OK.replace('action="login"', 'action="config-change"')
+        assert parse_fortigate_admin_access(line) is None
+
+    def test_non_system_subtype_returns_none(self):
+        assert parse_fortigate_admin_access(FORTI_DENY) is None
+
+    def test_tags(self):
+        log = parse_fortigate_admin_access(FORTI_ADMIN_OK)
+        assert "fw_admin" in log.tags
+        assert "fortigate" in log.tags
+
+
+class TestCiscoAsaAdminAccess:
+    def test_login_permitted(self):
+        log = parse_cisco_asa_admin_access(ASA_LOGIN_PERMIT)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+        assert log.source_ip == "10.10.10.10"
+        assert log.extra["user"] == "admin"
+
+    def test_login_denied(self):
+        log = parse_cisco_asa_admin_access(ASA_LOGIN_DENY)
+        assert log.event_action == "fw_admin_login_failure"
+        assert log.severity == "warning"
+
+    def test_auth_succeeded(self):
+        log = parse_cisco_asa_admin_access(ASA_AUTH_OK)
+        assert log.event_action == "fw_admin_login_success"
+        assert log.source_ip == "10.65.81.163"
+
+    def test_auth_failed(self):
+        log = parse_cisco_asa_admin_access(ASA_AUTH_FAIL)
+        assert log.event_action == "fw_admin_login_failure"
+
+    def test_unrelated_asa_code_returns_none(self):
+        assert parse_cisco_asa_admin_access(ASA_DENY) is None
+
+    def test_tags(self):
+        log = parse_cisco_asa_admin_access(ASA_LOGIN_PERMIT)
+        assert "fw_admin" in log.tags
+        assert "cisco_asa" in log.tags
+
+
+class TestPfsenseAdminAccess:
+    def test_success_parsed(self):
+        log = parse_pfsense_admin_access(PFSENSE_LOGIN_OK)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+        assert log.source_ip == "192.168.1.40"
+        assert log.observer_hostname == "opnsense"
+
+    def test_failure_parsed(self):
+        log = parse_pfsense_admin_access(PFSENSE_LOGIN_FAIL)
+        assert log.event_action == "fw_admin_login_failure"
+        assert log.severity == "warning"
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_pfsense_admin_access("php-fpm[1]: /index.php: something else") is None
+
+    def test_tags(self):
+        log = parse_pfsense_admin_access(PFSENSE_LOGIN_OK)
+        assert "fw_admin" in log.tags
+        assert "opnsense" in log.tags
+
+
+class TestVyosAdminAccess:
+    def test_success_parsed(self):
+        log = parse_vyos_admin_access(VYOS_SSH_OK)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+        assert log.source_ip == "192.168.203.1"
+        assert log.observer_hostname == "vyos"
+
+    def test_failure_parsed(self):
+        log = parse_vyos_admin_access(VYOS_SSH_FAIL)
+        assert log.event_action == "fw_admin_login_failure"
+        assert log.severity == "warning"
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_vyos_admin_access("just some random text") is None
+
+    def test_tags(self):
+        log = parse_vyos_admin_access(VYOS_SSH_OK)
+        assert "fw_admin" in log.tags
+        assert "vyos" in log.tags
+
+
+class TestFwAdminAccessDispatcher:
+    def test_dispatches_fortigate(self):
+        log = parse_fw_admin_access(FORTI_ADMIN_OK)
+        assert log is not None and "fortigate" in log.tags
+
+    def test_dispatches_asa(self):
+        log = parse_fw_admin_access(ASA_LOGIN_PERMIT)
+        assert log is not None and "cisco_asa" in log.tags
+
+    def test_dispatches_pfsense(self):
+        log = parse_fw_admin_access(PFSENSE_LOGIN_OK)
+        assert log is not None and "opnsense" in log.tags
+
+    def test_dispatches_vyos(self):
+        log = parse_fw_admin_access(VYOS_SSH_OK)
+        assert log is not None and "vyos" in log.tags
+
+    def test_unrelated_line_returns_none(self):
+        assert parse_fw_admin_access("this is not an admin access log") is None
+
+    def test_does_not_swallow_regular_traffic_logs(self):
+        """fw_admin dispatcher normal trafik/DHCP/DNS loglarını yutmamalı."""
+        assert parse_fw_admin_access(FORTI_DENY) is None
+        assert parse_fw_admin_access(ASA_DENY) is None
+
+
+class TestDetectAndParseAdminAccess:
+    def test_asa_admin_login_not_swallowed_by_generic_asa(self):
+        """parse_cisco_asa() her %ASA- satırını yutar — admin access önce kontrol edilmeli."""
+        log = detect_and_parse(ASA_LOGIN_PERMIT)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+
+    def test_fortigate_admin_not_swallowed_by_generic_fortigate(self):
+        log = detect_and_parse(FORTI_ADMIN_OK)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+
+    def test_vyos_admin_detected(self):
+        log = detect_and_parse(VYOS_SSH_OK)
+        assert log is not None
+        assert log.event_action == "fw_admin_login_success"
+
+    def test_normal_asa_traffic_still_works(self):
+        log = detect_and_parse(ASA_DENY)
+        assert log is not None
+        assert log.event_action == "fw_block"
+
+
+class TestFwAdminStageMap:
+    def test_login_failure_maps_to_weaponize(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("fw_admin_login_failure") == "weaponize"
+
+    def test_login_success_maps_to_access(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("fw_admin_login_success") == "access"
+
+    def test_brute_force_maps_to_weaponize(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("fw_admin_brute_force") == "weaponize"
+
+
+class TestFwAdminBruteForceSigmaRule:
+    def test_rule_loads_and_produces_expected_output_action(self):
+        from server.sigma_executor import SigmaExecutor
+        ex = SigmaExecutor()
+        ex.load_dir()
+        matches = [r for r in ex.rules if r.title == "FW Admin Brute Force"]
+        assert len(matches) == 1
+        rule = matches[0]
+        assert rule.output_event_action == "fw_admin_brute_force_detected"
+        assert rule.is_correlation is True
+        assert rule.window_seconds == 300
+        assert rule.group_by_fields == ["source_ip"]

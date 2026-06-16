@@ -55,3 +55,31 @@ falsepositives:
     - Authorized web security scans
     - Load testing
     - Search engine bots
+---
+title: Firewall Admin Login Failure Base
+name: ng_fw_admin_login_failure_base
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: fw_admin_login_failure
+    condition: selection
+level: medium
+---
+title: FW Admin Brute Force
+id: 7c2e9f4a-3b1d-4e6c-9a8f-2d5b6e7c8f9a
+correlation:
+    type: event_count
+    rules: ng_fw_admin_login_failure_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110
+falsepositives:
+    - Forgotten admin password / yanlış yazılmış kimlik bilgisi

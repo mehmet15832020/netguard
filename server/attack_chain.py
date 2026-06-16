@@ -83,6 +83,8 @@ STAGE_MAP: dict[str, str] = {
     "brute_force":               "weaponize",
     "ssh_success":               "access",
     "windows_logon_success":     "access",
+    "fw_admin_login_failure":    "weaponize",  # F3 — firewall yönetim erişimi denemesi (CIS 8.11)
+    "fw_admin_login_success":    "access",     # F3 — firewall yönetim erişimi başarılı
     "windows_lateral_movement":  "lateral",   # MITRE ATT&CK: Lateral Movement taktiği (T1550/T1569)
     "windows_process_create":    "execute",
     "sudo_abuse":                "execute",
@@ -90,6 +92,7 @@ STAGE_MAP: dict[str, str] = {
     "windows_lateral":           "lateral",
     # Correlated event output types (sigma rule output)
     "ssh_brute_force":           "weaponize",
+    "fw_admin_brute_force":      "weaponize",  # F3 — Sigma correlation çıktısı (T1110)
     "windows_pass_the_hash":     "weaponize",
     "port_scan_detected":        "recon",
     "arp_attack":                "recon",

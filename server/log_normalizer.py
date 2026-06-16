@@ -66,12 +66,21 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
         r'|\bdnsmasq\b.*\bquery\[[A-Z]+\]'
         r'|subtype="?dns"?\b',
     )),
+    # Firewall yönetim erişimi (F3) — admin login/auth olayları, CIS Control 8.11.
+    # FortiGate/pfSense pattern'lerinin yanında, AUTH_LOG'dan ÖNCE.
+    (LogSourceType.FORTIGATE, re.compile(r'subtype="?system"?\b.*\baction="?login"?\b')),
+    (LogSourceType.OPNSENSE,  re.compile(r'php-fpm(?:\[\d+\])?:\s+/index\.php:\s+(?:Successful login|webConfigurator authentication error)')),
     # Firewall logları — AUTH_LOG'dan önce kontrol edilmeli
     (LogSourceType.OPNSENSE,  re.compile(r'filterlog\[')),           # OPNsense (PID'li)
     (LogSourceType.PFSENSE,   re.compile(r'filterlog:')),            # pfSense (PID'siz)
     (LogSourceType.CISCO_ASA, re.compile(r'%ASA-')),
     (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
-    (LogSourceType.VYOS,      re.compile(r'kernel:.*SRC=[\d.]+.*DST=[\d.]+')),
+    (LogSourceType.VYOS,      re.compile(
+        r'kernel:.*SRC=[\d.]+.*DST=[\d.]+'
+        # F3 — VyOS SSH bağlam kaybı düzeltmesi: router/vyos hostname'li sshd
+        # satırları AUTH_LOG'a değil VYOS'a düşmeli (yönetim erişimi bağlamı).
+        r'|\w+\s+\d+\s+[\d:]+\s+(?:vyos|router|gw|edge)\S*\s+sshd\b',
+    )),
     # nginx access/error log — "nginx:" process tag + combined log format IP
     (LogSourceType.NGINX,     re.compile(r'\bnginx\b.*\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}')),
     # auth.log — sshd veya sudo içerir

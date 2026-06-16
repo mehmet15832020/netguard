@@ -72,6 +72,25 @@ class TestIdentifySource:
         raw = "date=2024-04-24 type=traffic subtype=forward srcip=5.6.7.8 dstip=192.168.1.1"
         assert identify_source(raw) == LogSourceType.FORTIGATE
 
+    def test_fortigate_admin_login_detected(self):
+        raw = ('date=2026-06-16 devname="FG1" type="event" subtype="system" '
+               'user="admin" srcip=192.168.1.30 action="login" status="success"')
+        assert identify_source(raw) == LogSourceType.FORTIGATE
+
+    def test_pfsense_admin_login_detected(self):
+        raw = "Apr 24 10:00:01 opnsense php-fpm[412]: /index.php: Successful login for user 'admin' from: 192.168.1.40"
+        assert identify_source(raw) == LogSourceType.OPNSENSE
+
+    def test_vyos_ssh_admin_access_detected_not_auth_log(self):
+        """F3 — VyOS SSH bağlam kaybı düzeltmesi: hostname 'vyos' ise AUTH_LOG'a değil VYOS'a düşmeli."""
+        raw = "Apr 24 10:00:01 vyos sshd[5123]: Accepted publickey for vyos from 192.168.203.1 port 54321 ssh2"
+        assert identify_source(raw) == LogSourceType.VYOS
+
+    def test_regular_server_ssh_still_detected_as_auth_log(self):
+        """vyos/router olmayan hostname'ler eski davranışı korumalı — regresyon yok."""
+        raw = "Apr 12 10:23:45 myhost sshd[1234]: Accepted publickey for mehmet from 192.168.1.5 port 22 ssh2"
+        assert identify_source(raw) == LogSourceType.AUTH_LOG
+
 
 # ------------------------------------------------------------------ #
 #  Auth.log parse
@@ -394,6 +413,51 @@ class TestFirewallDnsProcessAndStore:
         assert norm is not None
         assert norm.event_action == "dns_query"
         assert norm.severity == "warning"
+
+
+class TestFirewallAdminAccessProcessAndStore:
+    def test_vyos_ssh_success_stored(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 vyos sshd[5123]: Accepted publickey for vyos from 192.168.203.1 port 54321 ssh2"
+        norm = process_and_store(raw, observer_hostname="vyos")
+
+        assert norm is not None
+        assert norm.event_action == "fw_admin_login_success"
+        assert norm.source_type == "vyos"
+
+    def test_vyos_ssh_failure_stored_as_warning(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 vyos sshd[5123]: Failed password for vyos from 192.168.203.1 port 54321 ssh2"
+        norm = process_and_store(raw, observer_hostname="vyos")
+
+        assert norm is not None
+        assert norm.event_action == "fw_admin_login_failure"
+        assert norm.severity == "warning"
+
+    def test_pfsense_admin_login_stored(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = "Apr 24 10:00:01 opnsense php-fpm[412]: /index.php: Successful login for user 'admin' from: 192.168.1.40"
+        norm = process_and_store(raw, observer_hostname="opnsense")
+
+        assert norm is not None
+        assert norm.event_action == "fw_admin_login_success"
+
+    def test_fortigate_admin_login_stored(self, tmp_db, monkeypatch):
+        import server.log_normalizer as norm_module
+        monkeypatch.setattr(norm_module, "db", tmp_db)
+
+        raw = ('date=2026-06-16 devname="FG1" type="event" subtype="system" '
+               'user="admin" srcip=192.168.1.30 action="login" status="success"')
+        norm = process_and_store(raw, observer_hostname="FG1")
+
+        assert norm is not None
+        assert norm.event_action == "fw_admin_login_success"
 
 
 # ------------------------------------------------------------------ #
