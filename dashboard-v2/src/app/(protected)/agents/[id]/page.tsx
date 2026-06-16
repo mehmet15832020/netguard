@@ -247,16 +247,16 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
               {traffic.suspicious_packet_count >= 5 && (
                 <span className="flex items-center gap-1 text-xs text-red-400 ml-2">
                   <AlertTriangle size={11} />
-                  {traffic.suspicious_packet_count} şüpheli paket
+                  {traffic.suspicious_packet_count} şüpheli bağlantı
                 </span>
               )}
             </div>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-3 gap-2 text-center">
                 {[
-                  { label: 'Paket', value: traffic.total_packets.toLocaleString() },
+                  { label: 'Bağlantı/Akış', value: traffic.total_packets.toLocaleString() },
                   { label: 'Boyut', value: traffic.total_bytes > 1e6 ? `${(traffic.total_bytes / 1e6).toFixed(1)} MB` : `${(traffic.total_bytes / 1e3).toFixed(0)} KB` },
-                  { label: 'Arayüz', value: traffic.interface },
+                  { label: 'Veri Kaynağı', value: traffic.interface },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-sky-950/20 rounded-lg p-2 border border-sky-900/15">
                     <p className="text-[10px] text-slate-600">{label}</p>

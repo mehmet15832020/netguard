@@ -19,7 +19,6 @@ from agent.sender import MetricSender
 from agent.log_shipper import LogShipper
 from shared.models import AgentRegistration
 from shared.protocol import DEFAULT_SEND_INTERVAL_SEC
-from agent.traffic_collector import traffic_collector
 # Log formatı: zaman | seviye | modül | mesaj
 logging.basicConfig(
     level=logging.INFO,
@@ -70,13 +69,6 @@ def main():
     else:
         win_shipper = None
 
-# Traffic collector'ı başlat
-    if os.getenv("NETGUARD_ENABLE_TRAFFIC", "true").lower() == "true":
-        traffic_collector.start()
-        logger.info("Traffic Collector aktif.")
-    else:
-        logger.info("Traffic Collector devre dışı (NETGUARD_ENABLE_TRAFFIC=false)")
-
     # Server'a kendini tanıt
     registration = AgentRegistration(
         agent_id=_get_agent_id(),
@@ -94,10 +86,6 @@ def main():
     try:
         while True:
             snapshot = collect_snapshot()
-            # Traffic summary varsa snapshot'a ekle
-            traffic = traffic_collector.get_latest()
-            if traffic:
-                snapshot.traffic_summary = traffic
             sender.send_snapshot(snapshot)
             time.sleep(config["send_interval"])
 

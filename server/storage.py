@@ -25,6 +25,7 @@ class AgentRecord:
         default_factory=lambda: deque(maxlen=MAX_SNAPSHOTS_PER_AGENT)
     )
     last_seen: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    last_ip: Optional[str] = None
 
 
 class InMemoryStorage:
@@ -61,12 +62,15 @@ class InMemoryStorage:
                     )
                 )
             record = self._agents[snapshot.agent_id]
-            if snapshot.traffic_summary is None and record.snapshots:
-                last = record.snapshots[-1]
-                if last.traffic_summary is not None:
-                    snapshot.traffic_summary = last.traffic_summary
             record.snapshots.append(snapshot)
             record.last_seen = snapshot.collected_at
+
+    def set_agent_ip(self, agent_id: str, ip: str) -> None:
+        """Agent'ın son bilinen gerçek IP'sini kaydeder (B4 — Zeek/NetFlow trafik korelasyonu için)."""
+        with self._lock:
+            record = self._agents.get(agent_id)
+            if record is not None:
+                record.last_ip = ip
 
     def get_all_agents(self) -> list[AgentRecord]:
         with self._lock:

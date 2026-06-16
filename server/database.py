@@ -564,6 +564,28 @@ class DatabaseManager:
             ).fetchall()
         return [self._row_to_normalized_log(r) for r in rows]
 
+    def get_host_traffic_rows(self, ip: str, since, limit: int = 1000) -> list[dict]:
+        """
+        B4 — bir IP'nin kaynak/hedef olduğu Zeek+NetFlow kayıtları, ham dict.
+
+        _row_to_normalized_log() henüz network_bytes/extra alanlarını taşımıyor
+        (P5, ayrı backlog maddesi) — bu yüzden bilerek NormalizedLog'a çevirmeden
+        ham satır döndürülür; host_traffic.py bu alanları doğrudan okur.
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT source_ip, destination_ip, network_protocol,
+                          network_bytes, extra, severity, source_type
+                   FROM normalized_logs
+                   WHERE (source_ip = %s OR destination_ip = %s)
+                     AND source_type IN ('netflow', 'zeek')
+                     AND received_at >= %s
+                   ORDER BY received_at DESC
+                   LIMIT %s""",
+                (ip, ip, since, limit),
+            ).fetchall()
+        return [dict(r) for r in rows]
+
     def get_normalized_logs_in_window(
         self,
         event_action_prefix: str,

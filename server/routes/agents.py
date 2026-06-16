@@ -10,8 +10,9 @@ GET  /api/v1/agents/{id}/history → Geçmiş snapshot'lar
 
 import asyncio
 import logging
+import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 from shared.models import (
@@ -22,12 +23,15 @@ from server.storage import storage
 from server.database import db
 from server.log_store import log_store
 from server.alert_engine import alert_engine
+from server.host_traffic import build_traffic_summary
 from server.influx_writer import influx_writer
 from server.notifier import notifier
 from server.ws_manager import ws_manager
 from server.auth import get_agent_identity_verified
 from server.limiter import limiter
 from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
+
+AGENT_TRAFFIC_WINDOW_MINUTES = int(os.getenv("AGENT_TRAFFIC_WINDOW_MINUTES", "5"))
 
 SUSPICIOUS_WARN_THRESHOLD    = 5
 SUSPICIOUS_CRITICAL_THRESHOLD = 15
@@ -114,6 +118,8 @@ router = APIRouter()
 def register_agent(request: Request, response: Response, registration: AgentRegistration):
     """Agent'ı kaydet."""
     storage.register_agent(registration)
+    if request.client:
+        storage.set_agent_ip(registration.agent_id, request.client.host)
     db.save_device(
         device_id=registration.agent_id,
         name=registration.hostname,
@@ -193,6 +199,8 @@ async def receive_metrics(
             detail="API key bu agent_id için geçerli değil",
         )
     storage.store_snapshot(snapshot)
+    if request.client:
+        storage.set_agent_ip(agent_id, request.client.host)
 
     # InfluxDB'ye yaz
     influx_writer.write_snapshot(snapshot)
@@ -335,16 +343,25 @@ def get_snapshot_history(agent_id: str, limit: int = 60):
 
 @router.get("/agents/{agent_id}/traffic")
 def get_traffic_summary(agent_id: str):
-    """Agent'ın en son trafik özetini döndür."""
-    snapshot = storage.get_latest_snapshot(agent_id)
-    if snapshot is None:
+    """
+    Agent'ın bulunduğu host'a ait son trafik özetini döndür.
+
+    B4 — pyshark kaldırıldı; veri Zeek conn.log + NetFlow kayıtlarından
+    agent'ın son bilinen IP'sine (register/metrics isteklerinin kaynak IP'si)
+    göre türetilir (bkz. server/host_traffic.py).
+    """
+    record = storage.get_agent(agent_id)
+    if record is None:
         raise HTTPException(status_code=404, detail=f"Agent bulunamadı: {agent_id}")
-    if snapshot.traffic_summary is None:
+    if record.last_ip is None:
         raise HTTPException(
             status_code=404,
-            detail="Henüz trafik verisi yok — agent başlatıldıktan 30 saniye sonra tekrar dene"
+            detail="Agent'ın IP adresi henüz bilinmiyor — register/metrics isteği bekleniyor",
         )
-    return snapshot.traffic_summary
+
+    since = datetime.now(timezone.utc) - timedelta(minutes=AGENT_TRAFFIC_WINDOW_MINUTES)
+    rows = db.get_host_traffic_rows(record.last_ip, since)
+    return build_traffic_summary(record.last_ip, rows, AGENT_TRAFFIC_WINDOW_MINUTES * 60)
 
 @router.get("/agents/{agent_id}/processes")
 def get_processes(agent_id: str):

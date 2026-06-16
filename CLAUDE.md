@@ -295,6 +295,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/dns_resolver.py` | PTR lookup, TTL cache (300s/60s) |
 | `server/evtx_parser.py` | Windows EVTX — 60+ EID (Security/Sysmon/PowerShell/System/AppLocker) |
 | `server/fp_manager.py` | False positive suppression (CIDR + 30gün TTL) |
+| `server/host_traffic.py` | Agent trafik paneli — Zeek+NetFlow tabanlı agregasyon (B4, pyshark agent collector yerine) |
 | `server/incident_enricher.py` | MITRE + related logs + threat intel |
 | `server/incident_priority.py` | Severity formula, priority_score |
 | `server/influx_writer.py` | InfluxDB metrics yazıcı |
