@@ -1963,6 +1963,50 @@ class DatabaseManager:
             conn.execute("DELETE FROM api_keys WHERE agent_id=%s", (agent_id,))
 
     # ------------------------------------------------------------------ #
+    #  AGENT CERTIFICATES (A3 — mTLS)
+    # ------------------------------------------------------------------ #
+
+    def save_agent_certificate(
+        self, agent_id: str, serial_number: str, fingerprint_sha256: str, expires_at,
+    ) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """INSERT INTO agent_certificates
+                   (agent_id, serial_number, fingerprint_sha256, expires_at)
+                   VALUES (%s,%s,%s,%s)""",
+                (agent_id, serial_number, fingerprint_sha256, expires_at),
+            )
+
+    def get_active_agent_certificate(self, agent_id: str, serial_number: str) -> Optional[dict]:
+        """İptal edilmemiş, süresi dolmamış sertifika kaydını döndürür."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT * FROM agent_certificates
+                   WHERE agent_id=%s AND serial_number=%s
+                     AND revoked_at IS NULL AND expires_at > NOW()""",
+                (agent_id, serial_number),
+            ).fetchone()
+        return dict(row) if row else None
+
+    def revoke_agent_certificate(self, agent_id: str, serial_number: str) -> bool:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE agent_certificates SET revoked_at=NOW()
+                   WHERE agent_id=%s AND serial_number=%s AND revoked_at IS NULL""",
+                (agent_id, serial_number),
+            )
+            return cur.rowcount > 0
+
+    def revoke_all_agent_certificates(self, agent_id: str) -> int:
+        with self._connect() as conn:
+            cur = conn.execute(
+                """UPDATE agent_certificates SET revoked_at=NOW()
+                   WHERE agent_id=%s AND revoked_at IS NULL""",
+                (agent_id,),
+            )
+            return cur.rowcount
+
+    # ------------------------------------------------------------------ #
     #  AUDIT LOG
     # ------------------------------------------------------------------ #
 

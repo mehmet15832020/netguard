@@ -284,7 +284,8 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/anomaly/` | IsolationForest + Welford — kill chain entegre (F4) |
 | `server/asset_baseline.py` | Per-IP 7 günlük davranış profili + spike |
 | `server/attack_chain.py` | Kill chain (RECON/WEAPONIZE/ACCESS/LATERAL/FULL) |
-| `server/auth.py` | JWT access/refresh + API key (SHA-256) |
+| `server/agent_pki.py` | Agent mTLS CA üretimi + client sertifika imzalama (A3) |
+| `server/auth.py` | JWT access/refresh + API key (SHA-256) + agent mTLS doğrulama |
 | `server/compliance.py` | 26 güvenlik kontrolü |
 | `server/config_monitor.py` | Konfigürasyon değişiklik tespiti |
 | `server/correlator.py` | 60s döngü, JSON + pySigma v2 |
@@ -336,7 +337,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 
 ### Alembic Migrations
 
-`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)** · `019` asset_baseline_protocols · **`020` audit_log at-rest şifreleme (T2-2 ✓)** · **`021` RLS tenant isolation (U6 ✓)**
+`001` temel şema · `002` blocked_ips · `003` expires_at TIMESTAMPTZ · `004` offense_count DEFAULT 1 · `005` threat_intel kolonlar · `006` audit_log SHA-256 zinciri · `007` alerts tenant+time index · `008` norm_logs tenant+received index · `009` network_bytes · `010` totp_secret+enabled · `011` analytics indexes · `012` totp secrets şifreleme · `013` TimescaleDB hypertable · `014` alert_explanations · `015` saved_hunts · `016` anomaly_tables · `017` kev_entries · **`018` community_id (C1 ✓)** · `019` asset_baseline_protocols · **`020` audit_log at-rest şifreleme (T2-2 ✓)** · **`021` RLS tenant isolation (U6 ✓)** · **`022` agent_certificates (A3 ✓)**
 
 ### Frontend Sayfaları (dashboard-v2)
 
@@ -371,6 +372,63 @@ POST /api/v1/response/block
   5. OPNsense REST → VyOS SSH fallback
   6. DB: blocked_ips (expires_at + offense_count)
   7. audit_log zorunlu
+```
+
+---
+
+## Agent mTLS (A3 — 16 Haziran 2026)
+
+`/agents/metrics` ve `/agents/security-events` artık API key + opsiyonel client sertifikası (mTLS) ile doğrulanıyor — `server/auth.py::get_agent_identity_verified()`. nginx `/api/v1/agents/*` location'ında `ssl_verify_client optional` ile sertifikayı doğrular, sonucu `X-SSL-Client-Verify/CN/Serial` header'larıyla backend'e iletir.
+
+### Env Değişkenleri (Agent + Server)
+
+```bash
+# Server — mTLS zorunluluğu
+AGENT_MTLS_REQUIRED=false      # true yapılınca mTLS header'ı olmayan istek 401
+AGENT_CA_DIR=config/agent_ca   # CA cert+key burada saklanır (server/agent_pki.py)
+
+# Agent — TLS doğrulama + client sertifika (agent/tls_config.py)
+NETGUARD_CA_BUNDLE=            # özel CA ile sunucu sertifikası doğrulama
+NETGUARD_VERIFY_TLS=true       # false → doğrulama kapanır, logger.warning basılır
+NETGUARD_CLIENT_CERT=          # admin'in verdiği client_cert_pem dosya yolu
+NETGUARD_CLIENT_KEY=           # admin'in verdiği client_key_pem dosya yolu
+```
+
+### Sertifika Yaşam Döngüsü
+
+```
+POST /api/v1/auth/agent-key?agent_id=X        → API key + client cert + key (tek seferlik gösterim)
+POST /api/v1/auth/agent-key/{id}/revoke-cert  → sadece sertifikaları iptal et (key kalır)
+DELETE /api/v1/auth/agent-key/{id}            → key sil + tüm sertifikaları iptal et
+```
+
+Sertifika geçerliliği 90 gün (NIST SP 800-204A kısa ömür önerisi) — süre dolmadan `revoke-cert` + tekrar `agent-key` ile rotasyon yapılmalı.
+
+### Manuel Doğrulama (pytest nginx'i test edemez)
+
+```bash
+# 1. nginx mTLS kurulumu (production VM)
+bash scripts/setup_https.sh   # agent-ca.pem otomatik üretilip /etc/ssl/netguard/'a kopyalanır
+
+# 2. Admin'den agent key + sertifika al
+curl -sk -X POST "https://192.168.203.134/api/v1/auth/agent-key?agent_id=test-agent" \
+  -H "Authorization: Bearer <admin_jwt>" | tee /tmp/agent-creds.json
+
+# 3. cert/key dosyalarını ayır
+jq -r .client_cert_pem /tmp/agent-creds.json > /tmp/agent.crt
+jq -r .client_key_pem  /tmp/agent-creds.json > /tmp/agent.key
+
+# 4. mTLS handshake'i doğrula — sertifikasız istek hâlâ kabul edilmeli (optional)
+curl -sk -X POST https://192.168.203.134/api/v1/agents/metrics \
+  -H "X-API-Key: <api_key>" -d '{...}' -w "\n%{http_code}\n"
+
+# 5. Sertifikalı istek — nginx access log'da "SUCCESS" görülmeli
+curl -sk --cert /tmp/agent.crt --key /tmp/agent.key \
+  -X POST https://192.168.203.134/api/v1/agents/metrics \
+  -H "X-API-Key: <api_key>" -d '{...}' -w "\n%{http_code}\n"
+
+# 6. nginx error/access log'da doğrulama sonucunu kontrol et
+ssh netguard@192.168.203.134 "sudo tail -5 /var/log/nginx/access.log"
 ```
 
 ---

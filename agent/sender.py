@@ -11,7 +11,7 @@ import httpx
 import logging
 import time
 
-from agent.tls_config import resolve_tls_verify
+from agent.tls_config import resolve_client_cert, resolve_tls_verify
 from shared.models import AgentRegistration, MetricSnapshot
 from shared.protocol import (
     CONNECTION_TIMEOUT_SEC,
@@ -48,6 +48,7 @@ class MetricSender:
         return httpx.Client(
             timeout=httpx.Timeout(connect=5.0, read=None, write=10.0, pool=5.0),
             verify=resolve_tls_verify(),
+            cert=resolve_client_cert(),
             limits=httpx.Limits(keepalive_expiry=10, max_keepalive_connections=2),
         )
 

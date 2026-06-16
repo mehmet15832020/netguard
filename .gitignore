@@ -21,3 +21,6 @@ logs/
 *.log
 data/
 *.db
+
+# Agent mTLS CA — private key asla repo'ya gitmez (A3)
+config/agent_ca/

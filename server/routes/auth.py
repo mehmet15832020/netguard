@@ -4,7 +4,9 @@ NetGuard — Auth endpoint'leri
 POST /api/v1/auth/login          → JWT token al (TOTP etkinse mfa_required=true)
 POST /api/v1/auth/refresh        → Yeni access token al (refresh token ile)
 POST /api/v1/auth/logout         → Token blacklist'e ekle (çıkış)
-POST /api/v1/auth/agent-key      → Agent API key al (admin only)
+POST /api/v1/auth/agent-key      → Agent API key + mTLS client sertifikası al (admin only)
+DELETE /api/v1/auth/agent-key/{agent_id} → API key + tüm sertifikaları sil/iptal et
+POST /api/v1/auth/agent-key/{agent_id}/revoke-cert → Sadece sertifikaları iptal et (key kalır)
 GET  /api/v1/auth/me             → Mevcut kullanıcı bilgisi
 POST /api/v1/auth/totp-setup     → TOTP secret üret, otpauth URI döner
 POST /api/v1/auth/totp-confirm   → TOTP kodunu doğrula ve etkinleştir
@@ -20,6 +22,7 @@ from jose import jwt, JWTError
 from pydantic import BaseModel
 import pyotp
 from server.limiter import limiter
+from server.agent_pki import issue_agent_certificate
 from server.auth import (
     ACCESS_TOKEN_EXPIRE_MINUTES,
     ALGORITHM,
@@ -144,10 +147,24 @@ def create_agent_key(
         actor=admin.username, action="api_key.create", resource=agent_id,
         ip_address=request.client.host if request.client else "",
     )
+
+    cert_pem, key_pem, serial_decimal, fingerprint, expires_at = issue_agent_certificate(agent_id)
+    db.save_agent_certificate(agent_id, serial_decimal, fingerprint, expires_at)
+    db.save_audit_event(
+        actor=admin.username, action="agent_cert.issue", resource=agent_id,
+        ip_address=request.client.host if request.client else "",
+    )
+
     return {
         "agent_id": agent_id,
         "api_key": api_key,
-        "message": "Bu key'i güvenli saklayın, bir daha gösterilmeyecek.",
+        "client_cert_pem": cert_pem.decode(),
+        "client_key_pem": key_pem.decode(),
+        "cert_expires_at": expires_at.isoformat(),
+        "message": (
+            "Bu key ve sertifikayı güvenli saklayın, bir daha gösterilmeyecek. "
+            "Sertifika NETGUARD_CLIENT_CERT/NETGUARD_CLIENT_KEY ile agent'a tanımlanmalı."
+        ),
     }
 
 
@@ -161,11 +178,28 @@ def delete_agent_key(
     if db.get_api_key(agent_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key bulunamadı")
     db.delete_api_key(agent_id)
+    revoked = db.revoke_all_agent_certificates(agent_id)
     db.save_audit_event(
         actor=admin.username, action="api_key.delete", resource=agent_id,
         ip_address=request.client.host if request.client else "",
     )
-    return {"ok": True, "agent_id": agent_id}
+    return {"ok": True, "agent_id": agent_id, "certificates_revoked": revoked}
+
+
+@router.post("/auth/agent-key/{agent_id}/revoke-cert")
+def revoke_agent_certificates(
+    request: Request,
+    agent_id: str,
+    admin: User = Depends(require_admin),
+):
+    """API key'i silmeden sadece mTLS sertifikalarını iptal eder (kayıp/sızıntı senaryosu)."""
+    from server.database import db
+    revoked = db.revoke_all_agent_certificates(agent_id)
+    db.save_audit_event(
+        actor=admin.username, action="agent_cert.revoke", resource=agent_id,
+        ip_address=request.client.host if request.client else "",
+    )
+    return {"ok": True, "agent_id": agent_id, "certificates_revoked": revoked}
 
 
 # ─── TOTP endpoint'leri ──────────────────────────────────────────

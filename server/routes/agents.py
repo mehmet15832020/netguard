@@ -25,7 +25,7 @@ from server.alert_engine import alert_engine
 from server.influx_writer import influx_writer
 from server.notifier import notifier
 from server.ws_manager import ws_manager
-from server.auth import get_agent_from_api_key
+from server.auth import get_agent_identity_verified
 from server.limiter import limiter
 from server.attack_chain import attack_chain_tracker, chain_trigger_to_correlated_event
 
@@ -184,7 +184,7 @@ async def receive_metrics(
     request: Request,
     response: Response,
     snapshot: MetricSnapshot,
-    agent_id: str = Depends(get_agent_from_api_key),
+    agent_id: str = Depends(get_agent_identity_verified),
 ):
     """Agent'tan gelen snapshot'ı depola, alert kontrolü yap ve WS'e broadcast et."""
     if snapshot.agent_id != agent_id:
@@ -242,7 +242,7 @@ def receive_security_events(
     request: Request,
     response: Response,
     batch: SecurityEventBatch,
-    agent_id: str = Depends(get_agent_from_api_key),
+    agent_id: str = Depends(get_agent_identity_verified),
 ):
     """Agent'tan gelen güvenlik olaylarını API key doğrulamasıyla kaydet."""
     saved = 0

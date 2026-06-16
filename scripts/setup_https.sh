@@ -30,6 +30,13 @@ openssl req -x509 -nodes -days 3650 \
 chmod 600 "$CERT_DIR/key.pem"
 echo "    Sertifika: $CERT_DIR/cert.pem"
 
+# 2b. Agent mTLS CA'yı üret (A3) — yoksa server/agent_pki.py üretir, varsa dokunmaz
+echo "[2b/5] Agent mTLS CA hazırlanıyor..."
+cd "$(dirname "$0")/.."
+python3 -c "from server.agent_pki import ensure_ca; ensure_ca()"
+cp "config/agent_ca/ca.pem" "$CERT_DIR/agent-ca.pem"
+echo "    Agent CA: $CERT_DIR/agent-ca.pem"
+
 # 3. nginx konfigürasyonunu kopyala
 echo "[3/5] nginx konfigürasyonu ayarlanıyor..."
 cp "$(dirname "$0")/../nginx/netguard.conf" "$NGINX_SITE"

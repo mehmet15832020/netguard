@@ -29,3 +29,17 @@ def resolve_tls_verify() -> bool | str:
             "MITM riski. Production'da kullanılmamalı."
         )
     return verify_enabled
+
+
+def resolve_client_cert() -> tuple[str, str] | None:
+    """
+    httpx.Client(cert=...) için (cert_path, key_path) döndürür — A3 mTLS.
+    NETGUARD_CLIENT_CERT/NETGUARD_CLIENT_KEY tanımlı değilse None döner;
+    bu durumda agent mTLS sunmaz, server (AGENT_MTLS_REQUIRED=false ise)
+    API-key-only doğrulamaya düşer.
+    """
+    cert_path = os.getenv("NETGUARD_CLIENT_CERT")
+    key_path = os.getenv("NETGUARD_CLIENT_KEY")
+    if not cert_path or not key_path:
+        return None
+    return (cert_path, key_path)

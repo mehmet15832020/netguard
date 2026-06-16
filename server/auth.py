@@ -18,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials, APIKeyHeader
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -278,4 +278,67 @@ def get_agent_from_api_key(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Geçersiz API key",
         )
+    return agent_id
+
+
+AGENT_MTLS_REQUIRED = os.getenv("AGENT_MTLS_REQUIRED", "false").lower() == "true"
+
+
+def get_agent_identity_verified(
+    request: Request,
+    api_key: Optional[str] = Security(api_key_header),
+) -> str:
+    """
+    Agent endpoint'leri için API key + (varsa) mTLS client sertifikası doğrular (A3).
+
+    nginx /api/v1/agents/ location'ında ssl_verify_client optional ile istemci
+    sertifikasını doğrular, sonucu X-SSL-Client-Verify/CN/Serial header'larıyla
+    backend'e iletir (bkz. nginx/netguard.conf). Bu header'lar yoksa (nginx mTLS
+    yapılandırılmamış / lab ortamı) API-key-only davranışa düşülür —
+    AGENT_MTLS_REQUIRED=true ise bu fallback kapatılır ve mTLS zorunlu olur.
+    """
+    agent_id = get_agent_from_api_key(api_key)
+
+    ssl_verify = request.headers.get("X-SSL-Client-Verify")
+    if ssl_verify is None:
+        if AGENT_MTLS_REQUIRED:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="mTLS client sertifikası gerekli (AGENT_MTLS_REQUIRED=true)",
+            )
+        logger.warning(
+            f"mTLS header'ı yok — agent '{agent_id}' API-key-only doğrulandı "
+            "(nginx mTLS yapılandırılmamış olabilir)"
+        )
+        return agent_id
+
+    if ssl_verify != "SUCCESS":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"mTLS client sertifikası doğrulanamadı: {ssl_verify}",
+        )
+
+    cert_cn = request.headers.get("X-SSL-Client-CN", "")
+    if cert_cn != agent_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sertifika CN'i API key'in agent_id'siyle eşleşmiyor",
+        )
+
+    serial_raw = request.headers.get("X-SSL-Client-Serial", "")
+    if serial_raw:
+        try:
+            serial_decimal = str(int(serial_raw.replace(":", ""), 16))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sertifika serial numarası okunamadı",
+            )
+        from server.database import db
+        if db.get_active_agent_certificate(agent_id, serial_decimal) is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sertifika iptal edilmiş veya kayıtlı değil",
+            )
+
     return agent_id
