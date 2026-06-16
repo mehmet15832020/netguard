@@ -144,7 +144,7 @@ class TestKevDatabase:
 # ── 4. fetch_kev_once ────────────────────────────────────────────────────
 
 class TestFetchKevOnce:
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_fetch_stores_new_entries(self, tmp_db):
         mock_resp = MagicMock()
         mock_resp.raise_for_status = MagicMock()
@@ -162,7 +162,7 @@ class TestFetchKevOnce:
         assert result["status"] == "ok"
         assert result["new_count"] == 2
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_fetch_http_error_returns_error(self, tmp_db):
         import httpx as _httpx
 
