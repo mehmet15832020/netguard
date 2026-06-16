@@ -136,6 +136,7 @@ STAGE_MAP: dict[str, str] = {
     "netflow_large_flow":    "lateral",   # T1048 — exfil over alt protocol (büyük tek akış)
     "netflow_suspicious_por":"lateral",   # T1071 — C2/lateral suspicious port akışı
     "netflow_tunneled":      "lateral",   # T1572 — GRE/ESP/IPv6-in-IPv4 protocol tunneling
+    "network_tunnel_detected": "lateral", # C2 — Zeek tunnel.log (GRE/AYIYA/Teredo/SOCKS/HTTP/VXLAN)
     # NetFlow Sigma korelasyon çıktı slug prefix'leri
     "netflow_large_flow_exf":"lateral",   # NetFlow Large Flow Exfiltration Burst (T1048)
     "netflow_tunnel_protoco":"lateral",   # NetFlow Tunnel Protocol Burst (T1572)

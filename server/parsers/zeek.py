@@ -2,7 +2,8 @@
 Zeek JSON log parsers.
 
 Desteklenen log türleri: dns, http, conn, ssl, ssh, notice, x509, smtp, ftp,
-                         weird, dpd, files, rdp, kerberos, smb_files, dce_rpc
+                         weird, dpd, files, rdp, kerberos, smb_files, dce_rpc,
+                         dhcp, tunnel
 Her parser: dict (Zeek JSON satırı) → NormalizedLog | None
 """
 
@@ -1269,4 +1270,56 @@ def parse_dhcp(row: dict) -> Optional[NormalizedLog]:
             "msg_types":   msg_types,
         },
         tags=["zeek", "dhcp"],
+    )
+
+
+# Tunnel tipleri normalde nadir kullanılır — GRE/AYIYA/Teredo/SOCKS C2/exfil
+# için sıkça istismar edilir (MITRE T1572). IP-in-IP/VXLAN/GTPv1 daha çok
+# meşru altyapı amaçlı (IPv6 geçişi, datacenter overlay, mobil operatör).
+_HIGH_RISK_TUNNEL_TYPES: frozenset[str] = frozenset({
+    "GRE", "AYIYA", "TEREDO", "SOCKS", "HTTP",
+})
+
+
+def parse_tunnel(row: dict) -> Optional[NormalizedLog]:
+    """
+    tunnel.log — C2. Zeek şeması: ts, uid, id.orig_h/p, id.resp_h/p,
+    tunnel_type, action (zeek.org/en/current/logs/tunnel.html, doğrulandı).
+
+    tunnel_type: Tunnel::GRE | Tunnel::IP | Tunnel::TEREDO | Tunnel::AYIYA |
+                 Tunnel::SOCKS | Tunnel::HTTP | Tunnel::VXLAN | Tunnel::GTPv1
+    action: Tunnel::DISCOVER | Tunnel::CLOSE | Tunnel::EXPIRE
+
+    Protokol tünelleme — saldırganlar evasion/exfil için kullanır
+    (MITRE ATT&CK T1572).
+    """
+    tunnel_type = (row.get("tunnel_type") or "").strip()
+    if not tunnel_type or tunnel_type == "-":
+        return None
+    tunnel_type = tunnel_type.removeprefix("Tunnel::")
+
+    action = (row.get("action") or "").strip()
+    action = action.removeprefix("Tunnel::") if action and action != "-" else "UNKNOWN"
+
+    if action == "DISCOVER":
+        severity = "warning" if tunnel_type.upper() in _HIGH_RISK_TUNNEL_TYPES else "info"
+    else:
+        severity = "info"  # CLOSE/EXPIRE — yaşam döngüsü bilgisi, yeni tünel değil
+
+    return NormalizedLog(
+        log_id=str(uuid.uuid4()),
+        raw_id=str(uuid.uuid4()),
+        source_type=LogSourceType.ZEEK,
+        observer_hostname="zeek",
+        timestamp=_ts(row["ts"]),
+        severity=severity,
+        event_category=LogCategory.NETWORK,
+        event_action="network_tunnel_detected",
+        source_ip=row.get("id.orig_h"),
+        destination_ip=row.get("id.resp_h"),
+        source_port=_port(row.get("id.orig_p")),
+        destination_port=_port(row.get("id.resp_p")),
+        message=f"Tunnel {action}: {tunnel_type} {row.get('id.orig_h')} → {row.get('id.resp_h')}",
+        extra={"tunnel_type": tunnel_type, "action": action},
+        tags=["zeek", "tunnel", tunnel_type.lower()],
     )

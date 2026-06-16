@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from server.parsers.zeek import (
     parse_dns, parse_http, parse_conn, parse_ssl, parse_ssh, parse_notice,
-    parse_x509, parse_smtp, parse_ftp, parse_dhcp,
+    parse_x509, parse_smtp, parse_ftp, parse_dhcp, parse_tunnel,
     _KNOWN_BAD_JA3, _KNOWN_BAD_JA4, _KNOWN_BAD_JA4S,
 )
 
@@ -703,6 +703,79 @@ class TestParseDhcp:
         assert log.event_category == LogCategory.NETWORK
 
 
+class TestParseTunnel:
+    def _row(self, **kw):
+        base = {
+            "ts": 1700000000.0,
+            "id.orig_h": "192.168.1.10",
+            "id.orig_p": 0,
+            "id.resp_h": "10.0.0.5",
+            "id.resp_p": 0,
+            "tunnel_type": "Tunnel::GRE",
+            "action": "Tunnel::DISCOVER",
+        }
+        base.update(kw)
+        return base
+
+    def test_basic(self):
+        log = parse_tunnel(self._row())
+        assert log is not None
+        assert log.event_action == "network_tunnel_detected"
+        assert log.source_ip == "192.168.1.10"
+        assert log.destination_ip == "10.0.0.5"
+
+    def test_no_tunnel_type_returns_none(self):
+        assert parse_tunnel(self._row(tunnel_type="")) is None
+        assert parse_tunnel(self._row(tunnel_type="-")) is None
+
+    def test_tunnel_type_prefix_stripped(self):
+        log = parse_tunnel(self._row(tunnel_type="Tunnel::TEREDO"))
+        assert log.extra["tunnel_type"] == "TEREDO"
+
+    def test_action_prefix_stripped(self):
+        log = parse_tunnel(self._row(action="Tunnel::CLOSE"))
+        assert log.extra["action"] == "CLOSE"
+
+    def test_missing_action_defaults_unknown(self):
+        log = parse_tunnel(self._row(action="-"))
+        assert log.extra["action"] == "UNKNOWN"
+
+    def test_high_risk_type_discover_is_warning(self):
+        for t in ["Tunnel::GRE", "Tunnel::AYIYA", "Tunnel::TEREDO", "Tunnel::SOCKS", "Tunnel::HTTP"]:
+            log = parse_tunnel(self._row(tunnel_type=t, action="Tunnel::DISCOVER"))
+            assert log.severity == "warning", f"{t} beklenen warning"
+
+    def test_low_risk_type_discover_is_info(self):
+        for t in ["Tunnel::IP", "Tunnel::VXLAN", "Tunnel::GTPv1"]:
+            log = parse_tunnel(self._row(tunnel_type=t, action="Tunnel::DISCOVER"))
+            assert log.severity == "info", f"{t} beklenen info"
+
+    def test_close_action_always_info_even_high_risk_type(self):
+        log = parse_tunnel(self._row(tunnel_type="Tunnel::GRE", action="Tunnel::CLOSE"))
+        assert log.severity == "info"
+
+    def test_expire_action_always_info(self):
+        log = parse_tunnel(self._row(tunnel_type="Tunnel::GRE", action="Tunnel::EXPIRE"))
+        assert log.severity == "info"
+
+    def test_tags_include_tunnel_type(self):
+        log = parse_tunnel(self._row(tunnel_type="Tunnel::GRE"))
+        assert "zeek" in log.tags
+        assert "tunnel" in log.tags
+        assert "gre" in log.tags
+
+    def test_network_category(self):
+        from shared.models import LogCategory
+        log = parse_tunnel(self._row())
+        assert log.event_category == LogCategory.NETWORK
+
+    def test_message_contains_type_and_ips(self):
+        log = parse_tunnel(self._row())
+        assert "GRE" in log.message
+        assert "192.168.1.10" in log.message
+        assert "10.0.0.5" in log.message
+
+
 # ── Collector testleri ─────────────────────────────────────────────────────────
 
 class TestCollectOnce:
@@ -1073,3 +1146,29 @@ class TestDhcpStageMap:
     def test_new_mac_maps_to_recon(self):
         from server.attack_chain import STAGE_MAP
         assert STAGE_MAP.get("dhcp_new_mac_detected") == "recon"
+
+
+class TestTunnelStageMap:
+    def test_tunnel_detected_maps_to_lateral(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("network_tunnel_detected") == "lateral"
+
+
+class TestTunnelCollectorWiring:
+    def test_tunnel_log_processed_via_collect_once(self, tmp_path, monkeypatch):
+        import server.zeek_collector as zc
+
+        monkeypatch.setattr(zc, "ZEEK_LOG_DIR", tmp_path)
+        zc._offsets.clear()
+
+        row = {"ts": 1700000000.0, "id.orig_h": "10.0.0.9", "id.orig_p": 0,
+               "id.resp_h": "203.0.113.5", "id.resp_p": 0,
+               "tunnel_type": "Tunnel::GRE", "action": "Tunnel::DISCOVER"}
+        (tmp_path / "tunnel.log").write_text(json.dumps(row) + "\n")
+
+        saved = []
+        monkeypatch.setattr(zc.log_store, "save", lambda log: saved.append(log))
+        n = zc.collect_once()
+        assert n == 1
+        assert saved[0].event_action == "network_tunnel_detected"
+        assert saved[0].severity == "warning"
