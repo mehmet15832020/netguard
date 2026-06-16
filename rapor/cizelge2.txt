@@ -1,0 +1,3 @@
+ NetGuard, Security Onion ile karşılaştırılabilir NSM kapsamını Docker ile 30 dakikada ve sıfır lisans maliyetiyle sunmaktadır. Çok katmanlı tespit mimarisi (pySigma v2 imza,IsolationForest anomali, beaconing analizi ve kill chain korelasyonu), 37 sayfalık React dashboard ve gerçek zamanlı WebSocket log akışı ile orta ölçekli kurumlar için kurumsal düzeyde ağ güvenliği görünürlüğü sağlanmaktadır. Geliştirilen platform, 2.788 testin tamamını hatasız geçmiş ve GNS3 lab ortamında 5 farklı saldırı senaryosunu başarıyla tespit etmiştir. Gelecek çalışmalar olarak UEBA temeli, Arkime tam PCAP entegrasyonu ve TheHive SOAR bağlantısı planlanmaktadır.
+
+
