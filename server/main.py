@@ -282,9 +282,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Alert auto-age döngüsü başlatıldı (her {ALERT_AUTO_AGE_INTERVAL}s, >{ALERT_AUTO_AGE_HOURS}h)")
     beaconing_task = asyncio.create_task(_beaconing_loop())
     logger.info(f"C2 beaconing dedektörü başlatıldı (her {BEACONING_INTERVAL}s)")
-    from server.syslog_receiver import SyslogReceiver
+    from server.syslog_receiver import SyslogReceiver, SyslogTCPReceiver
     syslog = SyslogReceiver()
     await syslog.start()
+    syslog_tcp = SyslogTCPReceiver()
+    await syslog_tcp.start()
     from server.snmp_trap_receiver import SNMPTrapReceiver
     trap_receiver = SNMPTrapReceiver()
     await trap_receiver.start()
@@ -336,6 +338,7 @@ async def lifespan(app: FastAPI):
     m365_task.cancel()
     gws_task.cancel()
     syslog.stop()
+    syslog_tcp.stop()
     trap_receiver.stop()
     netflow_receiver.stop()
     anomaly_engine.stop()

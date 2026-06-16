@@ -313,7 +313,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | `server/snmp_trap_receiver.py` | SNMP trap UDP alıcısı |
 | `server/storage.py` | RAM snapshot cache (metrics/health) |
 | `server/suricata_collector.py` | Suricata EVE JSON (inode rotation-safe) |
-| `server/syslog_receiver.py` | UDP 514 syslog alıcı |
+| `server/syslog_receiver.py` | UDP syslog alıcı + TCP (RFC 6587) / TLS (RFC 5425) — B3 |
 | `server/threat_intel.py` | AbuseIPDB + Feodo + ThreatFox + GreyNoise composite 0-100 |
 | `server/uptime_checker.py` | Cihaz uptime / ICMP ping |
 | `server/ws_manager.py` | WebSocket bağlantı yöneticisi |
@@ -373,6 +373,24 @@ POST /api/v1/response/block
   6. DB: blocked_ips (expires_at + offense_count)
   7. audit_log zorunlu
 ```
+
+---
+
+## Syslog Toplama (B3 — 16 Haziran 2026)
+
+UDP 5140 yoğun trafikte sessizce paket düşürebilir (kernel/socket buffer dolduğunda) — TCP/TLS bu garantiyi transport katmanında verir. UDP eski/basit cihazlar için varsayılan açık kalır; OPNsense/VyOS gibi güvenilir teslimat istenen kaynaklar TCP/TLS'e yönlendirilebilir.
+
+```bash
+NETGUARD_SYSLOG_TCP_PORT=6010      # RFC 6587 — IANA 601'in root gerektirmeyen karşılığı (514→5140 ile aynı mantık)
+NETGUARD_SYSLOG_TLS_PORT=6514      # RFC 5425 — IANA standart, zaten >1024
+NETGUARD_SYSLOG_TLS_CERT=          # tanımlıysa TLS alıcısı açılır, değilse sadece düz TCP
+NETGUARD_SYSLOG_TLS_KEY=
+NETGUARD_SYSLOG_MAX_FRAME_BYTES=65536   # tek syslog mesajı için üst sınır (DoS koruması)
+```
+
+Framing: `SyslogFrameParser` RFC 6587 §3.4 — ilk byte rakamsa octet-counting (`MSGLEN SP MSG`), değilse LF-delimited (geleneksel rsyslog `@@` TCP forwarding). Her iki format otomatik tespit edilir.
+
+OPNsense/VyOS'u TCP syslog gönderecek şekilde yapılandırmak için: syslog-ng/rsyslog hedefini `@@<netguard-ip>:6010` (çift `@` = TCP, tek `@` = UDP) olarak ayarla.
 
 ---
 
