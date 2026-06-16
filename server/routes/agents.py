@@ -180,8 +180,18 @@ def _process_traffic_summary(agent_id: str, hostname: str, summary: TrafficSumma
 
 @router.post("/agents/metrics", status_code=202)
 @limiter.limit("120/minute")
-async def receive_metrics(request: Request, response: Response, snapshot: MetricSnapshot):
+async def receive_metrics(
+    request: Request,
+    response: Response,
+    snapshot: MetricSnapshot,
+    agent_id: str = Depends(get_agent_from_api_key),
+):
     """Agent'tan gelen snapshot'ı depola, alert kontrolü yap ve WS'e broadcast et."""
+    if snapshot.agent_id != agent_id:
+        raise HTTPException(
+            status_code=403,
+            detail="API key bu agent_id için geçerli değil",
+        )
     storage.store_snapshot(snapshot)
 
     # InfluxDB'ye yaz

@@ -9,6 +9,7 @@ from unittest.mock import patch, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
+from server.auth import register_agent_key
 from shared.models import ProtocolStats, TrafficSummary
 
 
@@ -88,6 +89,9 @@ class TestReceiveMetricsWithTraffic:
     def setup(self, tmp_db):
         from server.main import app
         self.client = TestClient(app)
+        key = register_agent_key("test-agent")
+        assert key is not None
+        self.headers = {"X-API-Key": key}
 
     def _snapshot_payload(self, with_traffic=False, suspicious=0):
         now = datetime.now(timezone.utc).isoformat()
@@ -125,6 +129,7 @@ class TestReceiveMetricsWithTraffic:
             resp = self.client.post(
                 "/api/v1/agents/metrics",
                 json=self._snapshot_payload(with_traffic=False),
+                headers=self.headers,
             )
         assert resp.status_code == 202
 
@@ -133,6 +138,7 @@ class TestReceiveMetricsWithTraffic:
             resp = self.client.post(
                 "/api/v1/agents/metrics",
                 json=self._snapshot_payload(with_traffic=True, suspicious=3),
+                headers=self.headers,
             )
         assert resp.status_code == 202
 
@@ -141,6 +147,7 @@ class TestReceiveMetricsWithTraffic:
             self.client.post(
                 "/api/v1/agents/metrics",
                 json=self._snapshot_payload(with_traffic=True, suspicious=10),
+                headers=self.headers,
             )
         logs = tmp_db.get_normalized_logs()
         assert any(l.event_action == "suspicious_traffic" for l in logs)

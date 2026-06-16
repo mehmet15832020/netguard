@@ -52,7 +52,7 @@ def main():
     logger.info(f"Gönderim aralığı: {config['send_interval']}s")
     logger.info("=" * 50)
 
-    sender = MetricSender(server_url=config["server_url"])
+    sender = MetricSender(server_url=config["server_url"], api_key=config["api_key"])
 
     log_shipper = LogShipper(
         server_url=config["server_url"],

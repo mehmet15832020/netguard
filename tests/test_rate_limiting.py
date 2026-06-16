@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
 from server.main import app
-from server.auth import create_access_token
+from server.auth import create_access_token, register_agent_key
 from server.limiter import limiter, _auth_key
 
 client = TestClient(app, raise_server_exceptions=False)
@@ -232,6 +232,9 @@ class TestAgentReportingRateLimit:
     """POST /agents/metrics → 120/minute (yüksek limit — agent sık raporlar)"""
 
     def test_metrics_allowed_up_to_120(self, tmp_db):
+        key = register_agent_key("test-agent-001")
+        assert key is not None
+        headers = {"X-API-Key": key}
         payload = {
             "agent_id": "test-agent-001",
             "hostname": "test-host",
@@ -245,7 +248,7 @@ class TestAgentReportingRateLimit:
             "traffic_summary": None,
         }
         for i in range(5):
-            r = client.post("/api/v1/agents/metrics", json=payload)
+            r = client.post("/api/v1/agents/metrics", json=payload, headers=headers)
             assert r.status_code in (202, 422), f"İstek {i+1}: {r.status_code}"
 
     def test_register_allowed_at_120_per_minute(self, tmp_db):

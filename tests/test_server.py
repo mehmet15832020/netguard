@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from server.main import app
 from server.storage import storage
+from server.auth import register_agent_key
 from shared.models import AgentRegistration, MetricSnapshot, CPUMetrics, MemoryMetrics
 
 client = TestClient(app)
@@ -77,14 +78,34 @@ class TestAgentRegistration:
 
 
 class TestMetricsEndpoint:
-    def test_receive_metrics_accepted(self):
-        response = client.post("/api/v1/agents/metrics", json=make_snapshot())
+    def _headers(self, agent_id: str) -> dict:
+        key = register_agent_key(agent_id)
+        assert key is not None
+        return {"X-API-Key": key}
+
+    def test_receive_metrics_accepted(self, tmp_db):
+        headers = self._headers("test-agent-001")
+        response = client.post("/api/v1/agents/metrics", json=make_snapshot(), headers=headers)
         assert response.status_code == 202
         assert response.json()["status"] == "accepted"
 
-    def test_latest_snapshot_retrievable(self):
+    def test_receive_metrics_without_api_key_rejected(self, tmp_db):
+        response = client.post("/api/v1/agents/metrics", json=make_snapshot())
+        assert response.status_code == 401
+
+    def test_receive_metrics_with_mismatched_agent_id_rejected(self, tmp_db):
+        headers = self._headers("agent-owner")
+        response = client.post(
+            "/api/v1/agents/metrics",
+            json=make_snapshot(agent_id="agent-victim"),
+            headers=headers,
+        )
+        assert response.status_code == 403
+
+    def test_latest_snapshot_retrievable(self, tmp_db):
+        headers = self._headers("agent-abc")
         snapshot = make_snapshot(agent_id="agent-abc")
-        client.post("/api/v1/agents/metrics", json=snapshot)
+        client.post("/api/v1/agents/metrics", json=snapshot, headers=headers)
 
         response = client.get("/api/v1/agents/agent-abc/latest")
         assert response.status_code == 200
@@ -96,9 +117,14 @@ class TestMetricsEndpoint:
         response = client.get("/api/v1/agents/nonexistent/latest")
         assert response.status_code == 404
 
-    def test_history_returns_multiple_snapshots(self):
+    def test_history_returns_multiple_snapshots(self, tmp_db):
+        headers = self._headers("agent-hist")
         for _ in range(5):
-            client.post("/api/v1/agents/metrics", json=make_snapshot(agent_id="agent-hist"))
+            client.post(
+                "/api/v1/agents/metrics",
+                json=make_snapshot(agent_id="agent-hist"),
+                headers=headers,
+            )
 
         response = client.get("/api/v1/agents/agent-hist/history?limit=10")
         assert response.status_code == 200

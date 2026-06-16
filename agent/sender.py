@@ -29,13 +29,17 @@ class MetricSender:
     Tek bir instance oluşturulur, uygulama boyunca yaşar.
     """
 
-    def __init__(self, server_url: str):
+    def __init__(self, server_url: str, api_key: str = ""):
         """
         server_url: Örn. "http://192.168.1.100:8000"
         Sona slash koyma.
+        api_key: /agents/metrics için X-API-Key — boşsa server 401 döner.
         """
         self.server_url = server_url.rstrip("/")
+        self._api_key = api_key
         self._client = self._make_client()
+        if not self._api_key:
+            logger.warning("NETGUARD_API_KEY tanımlı değil — /agents/metrics 401 ile reddedecek")
         logger.info(f"Sender başlatıldı → {self.server_url}")
 
     @staticmethod
@@ -80,7 +84,10 @@ class MetricSender:
                 response = self._client.post(
                     url,
                     content=snapshot.model_dump_json(),
-                    headers={"Content-Type": "application/json"},
+                    headers={
+                        "Content-Type": "application/json",
+                        "X-API-Key": self._api_key,
+                    },
                 )
                 response.raise_for_status()
                 logger.debug(
