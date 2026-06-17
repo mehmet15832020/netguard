@@ -49,12 +49,11 @@ def list_normalized_logs(
     event_action: str = None,
     severity: str = None,
     hours: int = Query(default=None, ge=1, le=168),
-    limit: int = 100,
+    limit: int = Query(default=100, ge=1, le=1000),
+    offset: int = Query(default=0, ge=0),
     current_user: User = Depends(get_current_user),
 ):
     """Normalize edilmiş logları filtreli listele."""
-    if limit < 1 or limit > 1000:
-        raise HTTPException(status_code=400, detail="limit 1-1000 arasında olmalı")
     since = datetime.now(timezone.utc) - timedelta(hours=hours) if hours else None
     logs = db.get_normalized_logs(
         source_type=source_type,
@@ -66,6 +65,7 @@ def list_normalized_logs(
         severity=severity,
         since=since,
         limit=limit,
+        offset=offset,
         tenant_id=tenant_scope(current_user),
     )
     return {"count": len(logs), "logs": logs}
@@ -221,7 +221,7 @@ class WebLogBatchRequest(BaseModel):
 @router.post("/logs/webserver", status_code=202)
 def ingest_webserver_log(
     req: WebLogRequest,
-    _: User = Depends(get_current_user),
+    _agent_id: str = Depends(get_agent_from_api_key),
 ):
     """Tek nginx/Apache log satırı al, parse et, normalize olarak kaydet."""
     norm = detect_weblog(req.line, req.observer_hostname)
@@ -234,7 +234,7 @@ def ingest_webserver_log(
 @router.post("/logs/webserver/batch", status_code=202)
 def ingest_webserver_batch(
     req: WebLogBatchRequest,
-    _: User = Depends(get_current_user),
+    _agent_id: str = Depends(get_agent_from_api_key),
 ):
     """Toplu nginx/Apache log satırı al — maksimum 1000 satır."""
     if len(req.lines) > 1000:

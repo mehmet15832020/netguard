@@ -135,6 +135,22 @@ class ProcessSnapshot(BaseModel):
     top_memory: list[ProcessInfo] = Field(default_factory=list)
     captured_at: datetime
 
+
+class ActiveConnection(BaseModel):
+    """Tek bir aktif TCP/UDP bağlantısının anlık bilgisi."""
+    laddr: Optional[str] = Field(None, description="Yerel adres:port")
+    raddr: Optional[str] = Field(None, description="Uzak adres:port")
+    status: str = Field(description="ESTABLISHED | CLOSE_WAIT vb.")
+    pid: Optional[int] = None
+
+
+class ListeningPort(BaseModel):
+    """Dinleyen (LISTEN) tek bir port kaydı."""
+    port: int
+    ip: str = Field(description="Bağlı olduğu yerel adres")
+    pid: Optional[int] = None
+
+
 class MetricSnapshot(BaseModel):
     """
     Agent'ın tek bir anda topladığı tüm metrikler.
@@ -152,6 +168,18 @@ class MetricSnapshot(BaseModel):
     network_snapshot: Optional[NetworkSnapshot] = None
     process_snapshot: Optional[ProcessSnapshot] = None
     traffic_summary: Optional[TrafficSummary] = None
+    active_connections: list[ActiveConnection] = Field(
+        default_factory=list,
+        description="ESTABLISHED/CLOSE_WAIT TCP bağlantıları (C2 tespiti için)",
+    )
+    listening_ports: list[ListeningPort] = Field(
+        default_factory=list,
+        description="LISTEN durumundaki portlar (backdoor tespiti için)",
+    )
+    dns_stats: dict = Field(
+        default_factory=dict,
+        description="systemd-resolved DNS istatistikleri (M6)",
+    )
     model_config = {"ser_json_timedelta": "iso8601"}
 
 

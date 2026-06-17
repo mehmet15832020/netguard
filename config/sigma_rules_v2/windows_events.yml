@@ -891,3 +891,156 @@ tags:
 falsepositives:
     - Backup software with raw disk access
     - Authorized forensic tools
+---
+title: Windows Firewall — New Listening Application
+id: 950588b6-fdc3-401e-815d-efcabb0c575d
+status: experimental
+description: Application started listening on network — potential backdoor
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: windows_fw_new_listener
+    condition: selection
+level: medium
+tags:
+    - attack.persistence
+    - attack.t1543
+---
+title: Windows Firewall Block Burst — Brute Force Indicator
+id: 3673bb67-0bb3-4f76-877b-bedd09e6fd9f
+status: experimental
+correlation:
+    type: event_count
+    rules: n1_fw_block_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 20
+level: medium
+---
+title: Windows Firewall Block Base
+name: n1_fw_block_base
+status: experimental
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: windows_fw_block
+    condition: selection
+level: low
+---
+title: RDP Brute Force — Multiple Sessions
+id: ba314fc6-8c9c-4aed-8646-7c89ace69c5e
+status: experimental
+description: Multiple RDP session events from same source in short window
+correlation:
+    type: event_count
+    rules: n2_rdp_base
+    group-by:
+        - source_ip
+    timespan: 5m
+    condition:
+        gte: 5
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110
+---
+title: RDP Event Base
+name: n2_rdp_base
+status: experimental
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action|startswith: rdp_
+    condition: selection
+level: low
+---
+title: Suspicious Registry Run Key Modification
+id: b5b5c78b-8c86-433d-9517-9bc9b383b7a3
+status: experimental
+description: Registry Run key modification — common persistence technique
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: sysmon_registry_create_delete
+        message|contains:
+            - "CurrentVersion\\Run"
+            - "CurrentVersion\\RunOnce"
+    condition: selection
+level: high
+tags:
+    - attack.persistence
+    - attack.t1547.001
+---
+title: Sysmon Registry Rename — Potential Masquerading
+id: 79506394-cc54-4a9a-8415-04357524f19a
+status: experimental
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: sysmon_registry_rename
+    condition: selection
+level: medium
+tags:
+    - attack.defense_evasion
+    - attack.t1036
+---
+title: Sysmon Service Stopped — Tamper Attempt
+id: c509046c-7fb9-46da-bafa-62027796e544
+status: experimental
+description: Sysmon driver/service stopped — possible tamper to evade detection
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: sysmon_state_change
+        severity: critical
+    condition: selection
+level: critical
+tags:
+    - attack.defense_evasion
+    - attack.t1562.001
+---
+title: Windows Defender — Malware Detected
+id: 24e67e40-b42f-4ff1-bdf0-df5860d35535
+status: experimental
+description: Windows Defender detected malware
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: defender_malware_detected
+    condition: selection
+level: critical
+tags:
+    - attack.execution
+    - attack.t1059
+---
+title: Windows Defender — Action Taken on Threat
+id: 390eb622-3b91-4c27-b4bb-bb501a3601b1
+status: experimental
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action|contains:
+            - defender_action_taken
+            - defender_scan_threat
+    condition: selection
+level: high
+tags:
+    - attack.execution

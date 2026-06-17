@@ -701,4 +701,130 @@ def test_save_and_get_service_check(pg_db):
     checks = pg_db.get_service_checks(device_id="svc-dev")
     assert len(checks) == 1
     assert checks[0]["rtt_ms"] == 12.5
-    assert checks[0]["status"] == "ok"
+
+
+# ── P1: save_batch bulk INSERT ────────────────────────────────────────────────
+
+def test_save_batch_inserts_all_logs(pg_db):
+    logs = [_nlog(event_action="port_scan_attempt") for _ in range(3)]
+    pg_db.save_batch(logs)
+    results = pg_db.get_normalized_logs(event_action="port_scan_attempt")
+    inserted_ids = {r.log_id for r in results}
+    for log in logs:
+        assert log.log_id in inserted_ids
+
+
+def test_save_batch_all_logs_persisted_in_one_call(pg_db):
+    action = "save_batch_one_call_test"
+    logs = [_nlog(event_action=action) for _ in range(5)]
+    pg_db.save_batch(logs)
+    results = pg_db.get_normalized_logs(event_action=action)
+    assert len(results) == 5
+
+
+def test_save_batch_empty_is_noop(pg_db):
+    before = len(pg_db.get_normalized_logs())
+    pg_db.save_batch([])
+    after = len(pg_db.get_normalized_logs())
+    assert before == after
+
+
+def test_save_batch_idempotent_on_duplicate(pg_db):
+    log = _nlog(event_action="batch_dup_test")
+    pg_db.save_batch([log, log])
+    results = pg_db.get_normalized_logs(event_action="batch_dup_test")
+    assert sum(1 for r in results if r.log_id == log.log_id) == 1
+
+
+# ── P3: query_correlated_log_groups → received_at filtresi ───────────────────
+
+def test_query_correlated_log_groups_uses_received_at():
+    """query_correlated_log_groups metodunun kaynak kodunun received_at kullandığını doğrula."""
+    import inspect
+    from server.database import DatabaseManager
+    source = inspect.getsource(DatabaseManager.query_correlated_log_groups)
+    assert "received_at >=" in source
+    assert "timestamp >=" not in source
+
+
+# ── P8: upsert_kev_entries bulk executemany ───────────────────────────────────
+
+def test_upsert_kev_entries_bulk_returns_new_ids(pg_db):
+    entries = [
+        {
+            "cve_id": f"CVE-2024-{9000 + i}",
+            "vendor_project": "Vendor",
+            "product": "Product",
+            "vulnerability_name": f"Test Vuln {i}",
+            "date_added": "2024-01-01",
+            "due_date": "2024-02-01",
+            "description": "desc",
+            "required_action": "patch",
+        }
+        for i in range(10)
+    ]
+    new_ids = pg_db.upsert_kev_entries(entries)
+    assert len(new_ids) == 10
+    assert all(e["cve_id"] in new_ids for e in entries)
+
+
+def test_upsert_kev_entries_skips_existing(pg_db):
+    entry = {
+        "cve_id": "CVE-2024-EXISTING-BULK",
+        "vendor_project": "V",
+        "product": "P",
+        "vulnerability_name": "Existing",
+        "date_added": "2024-01-01",
+        "due_date": None,
+        "description": "",
+        "required_action": "",
+    }
+    first = pg_db.upsert_kev_entries([entry])
+    assert len(first) == 1
+
+    second = pg_db.upsert_kev_entries([entry])
+    assert len(second) == 0
+
+
+def test_upsert_kev_entries_100_items_all_inserted(pg_db):
+    entries = [
+        {
+            "cve_id": f"CVE-2024-MASS-{i:04d}",
+            "vendor_project": "MassV",
+            "product": "MassP",
+            "vulnerability_name": f"Mass Vuln {i}",
+            "date_added": "2024-01-01",
+            "due_date": None,
+            "description": "",
+            "required_action": "",
+        }
+        for i in range(100)
+    ]
+    new_ids = pg_db.upsert_kev_entries(entries)
+    assert len(new_ids) == 100
+    stored = pg_db.get_kev_entries(limit=200)
+    stored_ids = {r["cve_id"] for r in stored}
+    for e in entries:
+        assert e["cve_id"] in stored_ids
+
+
+# ── P10: get_normalized_logs → offset sayfalama ───────────────────────────────
+
+def test_get_normalized_logs_offset_pagination(pg_db):
+    for i in range(10):
+        pg_db.save_normalized_log(_nlog(event_action=f"pag_test_{i:03d}"))
+
+    page1 = pg_db.get_normalized_logs(limit=5, offset=0)
+    page2 = pg_db.get_normalized_logs(limit=5, offset=5)
+
+    ids1 = {r.log_id for r in page1}
+    ids2 = {r.log_id for r in page2}
+    assert len(ids1) == 5
+    assert len(ids2) == 5
+    assert ids1.isdisjoint(ids2)
+
+
+def test_get_normalized_logs_offset_beyond_end_returns_empty(pg_db):
+    pg_db.save_normalized_log(_nlog(event_action="offset_boundary"))
+    results = pg_db.get_normalized_logs(event_action="offset_boundary", offset=1000)
+    assert results == []

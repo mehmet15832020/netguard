@@ -420,18 +420,14 @@ class DatabaseManager:
     # ------------------------------------------------------------------ #
 
     def save_normalized_log(self, log: NormalizedLog, tenant_id: str = "default") -> None:
-        with self._connect() as conn:
-            conn.execute("""
-                INSERT INTO normalized_logs
-                    (log_id, raw_id, source_type, observer_hostname, timestamp,
-                     received_at, severity, event_category, event_action,
-                     source_ip, destination_ip, source_hostname, destination_hostname,
-                     source_port, destination_port, network_protocol,
-                     username, message, tags, extra, network_bytes, community_id,
-                     processed_at, tenant_id)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (log_id, received_at) DO NOTHING
-            """, (
+        self.save_batch([log], tenant_id=tenant_id)
+
+    def save_batch(self, logs: list[NormalizedLog], tenant_id: str = "default") -> None:
+        """Birden fazla NormalizedLog'u tek executemany round-trip ile INSERT eder."""
+        if not logs:
+            return
+        rows = [
+            (
                 log.log_id,
                 log.raw_id,
                 log.source_type.value,
@@ -456,7 +452,22 @@ class DatabaseManager:
                 log.community_id,
                 log.processed_at,
                 tenant_id,
-            ))
+            )
+            for log in logs
+        ]
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.executemany("""
+                    INSERT INTO normalized_logs
+                        (log_id, raw_id, source_type, observer_hostname, timestamp,
+                         received_at, severity, event_category, event_action,
+                         source_ip, destination_ip, source_hostname, destination_hostname,
+                         source_port, destination_port, network_protocol,
+                         username, message, tags, extra, network_bytes, community_id,
+                         processed_at, tenant_id)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (log_id, received_at) DO NOTHING
+                """, rows)
 
     def update_log_hostnames(
         self,
@@ -534,6 +545,7 @@ class DatabaseManager:
         severity: Optional[str] = None,
         since=None,
         limit: int = 100,
+        offset: int = 0,
         tenant_id: Optional[str] = None,
     ) -> list[NormalizedLog]:
         clauses, params = [], []
@@ -556,10 +568,10 @@ class DatabaseManager:
         if tenant_id is not None:
             clauses.append("tenant_id = %s"); params.append(tenant_id)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-        params.append(limit)
+        params.extend([limit, offset])
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT * FROM normalized_logs {where} ORDER BY timestamp DESC LIMIT %s",
+                f"SELECT * FROM normalized_logs {where} ORDER BY timestamp DESC LIMIT %s OFFSET %s",
                 params,
             ).fetchall()
         return [self._row_to_normalized_log(r) for r in rows]
@@ -568,9 +580,7 @@ class DatabaseManager:
         """
         B4 — bir IP'nin kaynak/hedef olduğu Zeek+NetFlow kayıtları, ham dict.
 
-        _row_to_normalized_log() henüz network_bytes/extra alanlarını taşımıyor
-        (P5, ayrı backlog maddesi) — bu yüzden bilerek NormalizedLog'a çevirmeden
-        ham satır döndürülür; host_traffic.py bu alanları doğrudan okur.
+        Ham dict döner — host_traffic.py network_bytes ve community_id'yi doğrudan okur.
         """
         with self._connect() as conn:
             rows = conn.execute(
@@ -778,6 +788,37 @@ class DatabaseManager:
             ).fetchall()
         return [str(r["val"]) for r in rows]
 
+    def get_known_destination_ips(
+        self,
+        source_ips: list[str],
+        since: datetime,
+        tenant_id: str = "default",
+    ) -> dict[str, set[str]]:
+        """
+        Verilen source IP listesi için son X saatte iletişim kurduğu
+        tüm destination IP'leri tek toplu sorguda döner.
+        I3 rare external destination tespiti için kullanılır.
+        """
+        if not source_ips:
+            return {}
+        with self._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT source_ip, destination_ip
+                FROM normalized_logs
+                WHERE source_ip = ANY(%s)
+                  AND destination_ip IS NOT NULL
+                  AND received_at >= %s
+                  AND tenant_id = %s
+                GROUP BY source_ip, destination_ip
+                """,
+                (source_ips, since, tenant_id),
+            ).fetchall()
+        result: dict[str, set[str]] = {}
+        for r in rows:
+            result.setdefault(r["source_ip"], set()).add(r["destination_ip"])
+        return result
+
     def query_correlated_log_groups(
         self,
         event_action_prefix: str,
@@ -808,7 +849,7 @@ class DatabaseManager:
                        MIN(timestamp) AS first_ts, MAX(timestamp) AS last_ts
                 FROM normalized_logs
                 WHERE event_action LIKE %s
-                  AND timestamp >= %s
+                  AND received_at >= %s
                   {"AND severity = %s" if match_severity else ""}
                   AND {group_col} IS NOT NULL
                   {kw_clause}
@@ -827,13 +868,13 @@ class DatabaseManager:
 
     def get_network_intelligence(self, since: str, tenant_id: str) -> dict:
         """Zeek/TLS/SSL/FTP/SMTP/DNS istatistiklerini tek sorguda toplar — network_intel route için."""
-        _HOUR_EXPR = "to_char(date_trunc('hour', timestamp), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
+        _HOUR_EXPR = "to_char(date_trunc('hour', received_at), 'YYYY-MM-DD\"T\"HH24:00:00\"Z\"')"
         params_ts = [since, tenant_id]
         with self._connect() as conn:
             zeek_dist: dict = {}
             for r in conn.execute(
                 "SELECT event_action, COUNT(*) AS cnt FROM normalized_logs"
-                " WHERE source_type = 'zeek' AND timestamp >= %s AND tenant_id = %s"
+                " WHERE source_type = 'zeek' AND received_at >= %s AND tenant_id = %s"
                 " GROUP BY event_action ORDER BY cnt DESC LIMIT 20",
                 params_ts,
             ).fetchall():
@@ -842,42 +883,42 @@ class DatabaseManager:
             ja3_rows = conn.execute(
                 "SELECT source_ip, destination_ip, message, timestamp FROM normalized_logs"
                 " WHERE event_action = 'tls_suspicious_fingerprint'"
-                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 50",
+                "   AND received_at >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 50",
                 params_ts,
             ).fetchall()
 
             ssl_rows = conn.execute(
                 "SELECT source_ip, destination_ip, message, severity, timestamp FROM normalized_logs"
                 " WHERE event_action = 'ssl_connection' AND severity = 'warning'"
-                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 50",
+                "   AND received_at >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 50",
                 params_ts,
             ).fetchall()
 
             x509_rows = conn.execute(
                 "SELECT source_ip, message, timestamp FROM normalized_logs"
                 " WHERE event_action = 'x509_certificate' AND severity = 'warning'"
-                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
+                "   AND received_at >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
                 params_ts,
             ).fetchall()
 
             ftp_rows = conn.execute(
                 "SELECT source_ip, destination_ip, message, timestamp FROM normalized_logs"
                 " WHERE event_action = 'ftp_command' AND severity = 'warning'"
-                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
+                "   AND received_at >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
                 params_ts,
             ).fetchall()
 
             smtp_rows = conn.execute(
                 "SELECT source_ip, destination_ip, message, timestamp FROM normalized_logs"
                 " WHERE event_action = 'smtp_session'"
-                "   AND timestamp >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
+                "   AND received_at >= %s AND tenant_id = %s ORDER BY timestamp DESC LIMIT 30",
                 params_ts,
             ).fetchall()
 
             top_src_rows = conn.execute(
                 "SELECT source_ip, COUNT(*) AS cnt FROM normalized_logs"
                 " WHERE source_type = 'zeek' AND source_ip IS NOT NULL"
-                "   AND timestamp >= %s AND tenant_id = %s"
+                "   AND received_at >= %s AND tenant_id = %s"
                 " GROUP BY source_ip ORDER BY cnt DESC LIMIT 10",
                 params_ts,
             ).fetchall()
@@ -885,14 +926,14 @@ class DatabaseManager:
             dns_rows = conn.execute(
                 "SELECT message, COUNT(*) AS cnt FROM normalized_logs"
                 " WHERE event_action = 'dns_query'"
-                "   AND timestamp >= %s AND tenant_id = %s"
+                "   AND received_at >= %s AND tenant_id = %s"
                 " GROUP BY message ORDER BY cnt DESC LIMIT 10",
                 params_ts,
             ).fetchall()
 
             timeline_rows = conn.execute(
                 f"SELECT {_HOUR_EXPR} AS hour, COUNT(*) AS cnt FROM normalized_logs"
-                " WHERE source_type = 'zeek' AND timestamp >= %s AND tenant_id = %s"
+                " WHERE source_type = 'zeek' AND received_at >= %s AND tenant_id = %s"
                 " GROUP BY hour ORDER BY hour ASC",
                 params_ts,
             ).fetchall()
@@ -930,6 +971,9 @@ class DatabaseManager:
             username             = row.get("username"),
             message              = row["message"],
             tags                 = json.loads(row.get("tags") or "[]"),
+            extra                = json.loads(row.get("extra") or "{}"),
+            network_bytes        = row.get("network_bytes"),
+            community_id         = row.get("community_id"),
             processed_at         = _dt(row["processed_at"]),
         )
 
@@ -1099,34 +1143,50 @@ class DatabaseManager:
     def upsert_kev_entries(self, entries: list[dict]) -> list[str]:
         """Yeni CVE'leri ekler, mevcutları atlar. Eklenen cve_id listesi döner.
 
-        ON CONFLICT DO NOTHING + RETURNING ile N+1 sorgudan tek sorguda upsert'e geçildi.
+        executemany ile tek round-trip INSERT, ardından tek SELECT ile yeni ID'leri tespit eder.
         """
         if not entries:
             return []
-        new_ids: list[str] = []
+        incoming_ids = [e["cve_id"] for e in entries]
+        rows = [
+            (
+                e["cve_id"],
+                e.get("vendor_project", ""),
+                e.get("product", ""),
+                e.get("vulnerability_name", ""),
+                e.get("date_added"),
+                e.get("due_date"),
+                e.get("description", ""),
+                e.get("required_action", ""),
+            )
+            for e in entries
+        ]
         with self._connect() as conn:
-            for e in entries:
-                row = conn.execute(
+            existing = {
+                r["cve_id"]
+                for r in conn.execute(
+                    f"SELECT cve_id FROM kev_entries WHERE cve_id = ANY(%s)",
+                    (incoming_ids,),
+                ).fetchall()
+            }
+            with conn.cursor() as cur:
+                cur.executemany(
                     """INSERT INTO kev_entries
                        (cve_id, vendor_project, product, vulnerability_name,
                         date_added, due_date, description, required_action, seen_at)
                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,NOW())
-                       ON CONFLICT (cve_id) DO NOTHING
-                       RETURNING cve_id""",
-                    (
-                        e["cve_id"],
-                        e.get("vendor_project", ""),
-                        e.get("product", ""),
-                        e.get("vulnerability_name", ""),
-                        e.get("date_added"),
-                        e.get("due_date"),
-                        e.get("description", ""),
-                        e.get("required_action", ""),
-                    ),
-                ).fetchone()
-                if row:
-                    new_ids.append(row["cve_id"])
-        return new_ids
+                       ON CONFLICT (cve_id) DO UPDATE SET
+                         vendor_project=EXCLUDED.vendor_project,
+                         product=EXCLUDED.product,
+                         vulnerability_name=EXCLUDED.vulnerability_name,
+                         date_added=EXCLUDED.date_added,
+                         due_date=EXCLUDED.due_date,
+                         description=EXCLUDED.description,
+                         required_action=EXCLUDED.required_action,
+                         seen_at=NOW()""",
+                    rows,
+                )
+        return [cve_id for cve_id in incoming_ids if cve_id not in existing]
 
     def get_kev_entries(self, limit: int = 50, vendor: str = "") -> list[dict]:
         """KEV girdilerini döndür — isteğe bağlı vendor filtresi."""

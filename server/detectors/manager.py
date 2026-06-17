@@ -17,6 +17,7 @@ from server.detectors.dns_anomaly import DNSAnomalyDetector
 from server.detectors.icmp_flood import ICMPFloodDetector
 from server.detectors.lateral import LateralMovementDetector
 from server.detectors.port_scan import PortScanDetector
+from server.detectors.rare_dest import detect_rare_external_destinations
 from shared.models import NormalizedLog, SecurityEvent, SecurityEventType
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,26 @@ class DetectorManager:
                 logger.error(f"[{detector.name}] hata: {exc}")
 
         return all_logs
+
+    def run_rare_dest(
+        self,
+        new_logs: list[NormalizedLog],
+        tenant_id: str = "default",
+    ) -> list[NormalizedLog]:
+        """
+        I3 — Son 24 saatte görülmemiş harici hedefe bağlantıyı tespit eder.
+        new_logs: correlator/ingestion pipeline'ından gelen normalize loglar.
+        """
+        logs: list[NormalizedLog] = []
+        try:
+            logs = detect_rare_external_destinations(new_logs, tenant_id=tenant_id)
+            for log in logs:
+                db.save_normalized_log(log)
+            if logs:
+                logger.info("[rare_dest] %d nadir harici bağlantı tespiti", len(logs))
+        except Exception as exc:
+            logger.error("[rare_dest] hata: %s", exc)
+        return logs
 
     def run_beaconing(self) -> list[NormalizedLog]:
         """

@@ -242,16 +242,30 @@ def suggest_playbook(
         raise HTTPException(status_code=404, detail="Incident bulunamadı")
 
     suggestions = []
-    if incident.get("severity") == "critical":
-        group_value = incident.get("group_value", "")
-        if group_value and _IP_RE.match(group_value):
-            suggestions.append({
-                "action":          "block_ip",
-                "ip":              group_value,
-                "reason":          f"Critical incident: {incident['title']}",
-                "incident_id":     req.incident_id,
-                "already_blocked": db.is_ip_blocked(group_value, tenant_id=tid),
-            })
+    severity = incident.get("severity", "")
+    group_value = incident.get("group_value", "")
+
+    if severity == "critical" and group_value and _IP_RE.match(group_value):
+        suggestions.append({
+            "action":          "block_ip",
+            "ip":              group_value,
+            "reason":          f"Critical incident: {incident['title']}",
+            "incident_id":     req.incident_id,
+            "already_blocked": db.is_ip_blocked(group_value, tenant_id=tid),
+        })
+    elif severity == "high" and group_value and _IP_RE.match(group_value):
+        suggestions.append({
+            "action":      "investigate_ip",
+            "ip":          group_value,
+            "incident_id": req.incident_id,
+            "description": "High severity — IP'yi aktif bağlantılar ve son olaylar açısından incele",
+        })
+        suggestions.append({
+            "action":      "threat_intel_lookup",
+            "ip":          group_value,
+            "incident_id": req.incident_id,
+            "description": "AbuseIPDB/Feodo/ThreatFox/GreyNoise üzerinden IP itibarını sorgula",
+        })
 
     return {"incident_id": req.incident_id, "suggestions": suggestions}
 

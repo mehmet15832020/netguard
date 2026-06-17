@@ -29,6 +29,54 @@ _IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 _ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b[=>]")
 
 
+def _notify_block_failed(ip: str, reason: str, error: str) -> None:
+    try:
+        from server.notifier import notifier
+        subject = f"NetGuard: IP blok başarısız — {ip}"
+        body = (
+            f"NetGuard IP Bloklama Başarısız\n{'='*40}\n\n"
+            f"IP         : {ip}\n"
+            f"Sebep      : {reason}\n"
+            f"Hata       : {error}\n"
+            f"Zaman      : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+            f"{'='*40}\n"
+            f"OPNsense ve VyOS her ikisi de başarısız oldu. "
+            f"Firewall bağlantısını kontrol edin.\n"
+        )
+        notifier.email.send_custom(subject, body)
+        if notifier.webhook.enabled:
+            payload = {
+                "event_type": "block_failed",
+                "ip": ip,
+                "reason": reason,
+                "error": error,
+            }
+            if notifier.webhook.webhook_type == "discord":
+                notifier.webhook._post_payload(
+                    {
+                        "embeds": [{
+                            "title": f"NetGuard: IP blok başarısız — {ip}",
+                            "description": f"OPNsense ve VyOS her ikisi de başarısız oldu.",
+                            "color": 15158332,
+                            "fields": [
+                                {"name": "IP",    "value": ip,     "inline": True},
+                                {"name": "Sebep", "value": reason, "inline": True},
+                                {"name": "Hata",  "value": error,  "inline": False},
+                            ],
+                            "footer": {"text": "NetGuard Active Response"},
+                        }]
+                    },
+                    f"block_failed:{ip}",
+                )
+            else:
+                notifier.webhook._post_payload(
+                    {"text": f"NetGuard: IP blok başarısız — {ip}\nHata: {error}", **payload},
+                    f"block_failed:{ip}",
+                )
+    except Exception as exc:
+        logger.warning("block_failed bildirim gönderilemedi [%s]: %s", ip, exc)
+
+
 def _parse_progressive_ttl() -> list[float]:
     """BLOCK_PROGRESSIVE_TTL env'ini ayrıştır. Default: 1,4,24,168 saat."""
     raw = os.getenv("BLOCK_PROGRESSIVE_TTL", "1,4,24,168")
@@ -454,6 +502,10 @@ class ActiveResponseManager:
                 resource=f"ip:{ip}",
                 detail=f"firewall error: {result.error}",
             )
+            try:
+                _notify_block_failed(ip, reason, result.error)
+            except Exception as exc:
+                logger.warning("block_failed bildirim çağrısı başarısız [%s]: %s", ip, exc)
 
         return {
             "success":  result.success,

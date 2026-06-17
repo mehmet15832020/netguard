@@ -7,11 +7,13 @@ Forensik analiz ve offline inceleme için kullanılır.
 Desteklenen event ID'ler:
   Windows Security: 4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720,
                     4728, 4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
-                    4741, 4614, 4703
+                    4741, 4614, 4703, 5152, 5154, 4778, 4779
   PowerShell:       4103, 4104
   System:           7045, 7034, 7040
   AppLocker:        8004
-  Sysmon:           1, 3, 6, 7, 8, 9, 10, 11, 13, 15, 17, 18, 19, 21, 22, 25
+  Sysmon:           1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 22, 25
+  TerminalServices: 1149
+  Windows Defender: 1006, 1116, 1117
 
 Gereksinim: python-evtx (pip install python-evtx)
 """
@@ -64,16 +66,30 @@ _EID_MAP: dict[int, tuple[str, str]] = {
     7040: ("windows_service_start_changed",    "warning"),
     # AppLocker
     8004: ("windows_applocker_blocked",        "warning"),
+    # Windows Firewall (N1)
+    5152: ("windows_fw_block",                 "info"),
+    5154: ("windows_fw_new_listener",          "warning"),
+    # RDP Session events (N2)
+    4778: ("rdp_session_reconnect",            "info"),
+    4779: ("rdp_session_disconnect",           "info"),
+    1149: ("rdp_auth_success",                 "info"),
+    # Windows Defender (N5)
+    1116: ("defender_malware_detected",        "critical"),
+    1117: ("defender_action_taken",            "high"),
+    1006: ("defender_scan_threat",             "high"),
     # Sysmon Events
     1:     ("windows_sysmon_process",          "info"),
     3:     ("windows_sysmon_network",          "info"),
+    4:     ("sysmon_state_change",              "warning"),
     6:     ("windows_sysmon_driver_load",      "warning"),
     7:     ("windows_sysmon_image_load",       "info"),
     8:     ("windows_sysmon_remote_thread",    "critical"),
     9:     ("windows_sysmon_raw_access",       "warning"),
     10:    ("windows_sysmon_proc_access",      "warning"),
     11:    ("windows_sysmon_file_create",      "info"),
+    12:    ("sysmon_registry_create_delete",   "info"),
     13:    ("windows_sysmon_registry",         "info"),
+    14:    ("sysmon_registry_rename",          "warning"),
     15:    ("windows_sysmon_ads",              "warning"),
     17:    ("windows_sysmon_pipe_created",     "warning"),
     18:    ("windows_sysmon_pipe_connected",   "warning"),
@@ -805,6 +821,151 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "occurred_at":       occurred_at,
         }
 
+    # ── Windows Firewall (N1) ─────────────────────────────────────────────────
+
+    if eid == 5152:
+        application = _get_data(root, "Application")
+        src_ip      = _clean_ip(_get_data(root, "SourceAddress"))
+        dst_ip      = _clean_ip(_get_data(root, "DestAddress"))
+        src_port_str = _get_data(root, "SourcePort")
+        dst_port_str = _get_data(root, "DestPort")
+        protocol    = _get_data(root, "Protocol")
+        try:
+            src_port = int(src_port_str) if src_port_str else None
+        except (ValueError, TypeError):
+            src_port = None
+        try:
+            dst_port = int(dst_port_str) if dst_port_str else None
+        except (ValueError, TypeError):
+            dst_port = None
+        return {
+            "event_action":      event_action,
+            "severity":          "info",
+            "username":          None,
+            "source_ip":         src_ip,
+            "destination_ip":    dst_ip,
+            "destination_port":  dst_port,
+            "observer_hostname": computer,
+            "message":           f"Windows Firewall blocked: {application or '?'} src={src_ip}:{src_port} dst={dst_ip}:{dst_port} proto={protocol}",
+            "raw_data":          f"EID=5152 app={application} src={src_ip}:{src_port} dst={dst_ip}:{dst_port} proto={protocol}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 5154:
+        application = _get_data(root, "Application")
+        src_ip      = _clean_ip(_get_data(root, "SourceAddress"))
+        src_port_str = _get_data(root, "SourcePort")
+        try:
+            src_port = int(src_port_str) if src_port_str else None
+        except (ValueError, TypeError):
+            src_port = None
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          None,
+            "source_ip":         src_ip,
+            "destination_ip":    None,
+            "destination_port":  src_port,
+            "observer_hostname": computer,
+            "message":           f"Windows Firewall new listener: {application or '?'} on {src_ip}:{src_port}",
+            "raw_data":          f"EID=5154 app={application} src={src_ip} port={src_port}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── RDP Session events (N2) ───────────────────────────────────────────────
+
+    if eid == 4778:
+        account      = _get_data(root, "AccountName")
+        client_addr  = _clean_ip(_get_data(root, "ClientAddress"))
+        session_name = _get_data(root, "SessionName")
+        return {
+            "event_action":      event_action,
+            "severity":          "info",
+            "username":          account,
+            "source_ip":         client_addr,
+            "observer_hostname": computer,
+            "message":           f"RDP session reconnected: user={account} client={client_addr} session={session_name}",
+            "raw_data":          f"EID=4778 user={account} client={client_addr} session={session_name}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4779:
+        account      = _get_data(root, "AccountName")
+        client_addr  = _clean_ip(_get_data(root, "ClientAddress"))
+        session_name = _get_data(root, "SessionName")
+        return {
+            "event_action":      event_action,
+            "severity":          "info",
+            "username":          account,
+            "source_ip":         client_addr,
+            "observer_hostname": computer,
+            "message":           f"RDP session disconnected: user={account} client={client_addr} session={session_name}",
+            "raw_data":          f"EID=4779 user={account} client={client_addr} session={session_name}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 1149:
+        user         = _get_data(root, "Param1")
+        domain       = _get_data(root, "Param2")
+        client_addr  = _clean_ip(_get_data(root, "Param3"))
+        return {
+            "event_action":      event_action,
+            "severity":          "info",
+            "username":          user,
+            "source_ip":         client_addr,
+            "observer_hostname": computer,
+            "message":           f"RDP auth success: user={user}@{domain} client={client_addr}",
+            "raw_data":          f"EID=1149 user={user} domain={domain} client={client_addr}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    # ── Windows Defender (N5) ─────────────────────────────────────────────────
+
+    if eid == 1116:
+        threat_name = _get_data(root, "Threat Name") or _get_data(root, "ThreatName")
+        process     = _get_data(root, "Process Name") or _get_data(root, "ProcessName")
+        path        = _get_data(root, "Path")
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Windows Defender malware detected: {threat_name or '?'} path={path} process={process}",
+            "raw_data":          f"EID=1116 threat={threat_name} path={path} process={process}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 1117:
+        threat_name = _get_data(root, "Threat Name") or _get_data(root, "ThreatName")
+        action      = _get_data(root, "Action") or _get_data(root, "Action Name") or _get_data(root, "ActionName")
+        path        = _get_data(root, "Path")
+        return {
+            "event_action":      event_action,
+            "severity":          "high",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Windows Defender action taken: {action or '?'} threat={threat_name or '?'} path={path}",
+            "raw_data":          f"EID=1117 threat={threat_name} action={action} path={path}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 1006:
+        threat_name = _get_data(root, "Threat Name") or _get_data(root, "ThreatName")
+        path        = _get_data(root, "Path")
+        severity_field = _get_data(root, "Severity Name") or _get_data(root, "SeverityName")
+        return {
+            "event_action":      event_action,
+            "severity":          "high",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Windows Defender scan found threat: {threat_name or '?'} severity={severity_field} path={path}",
+            "raw_data":          f"EID=1006 threat={threat_name} severity={severity_field} path={path}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
     # ── Sysmon — yeni EID'ler ─────────────────────────────────────────────────
 
     if eid == 8:
@@ -836,6 +997,54 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "observer_hostname": computer,
             "message":           f"Raw disk access: {image} → device={device}",
             "raw_data":          f"EID=9 image={image} device={device}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 4:
+        state    = _get_data(root, "State")
+        severity = "critical" if state.strip().lower() == "stopped" else "warning"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Sysmon service state changed: {state}",
+            "raw_data":          f"EID=4 state={state}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 12:
+        target  = _get_data(root, "TargetObject")
+        action  = _get_data(root, "EventType")
+        proc    = _get_data(root, "Image")
+        run_key = any(k in target.lower() for k in (
+            r"currentversion\run", r"currentversion\runonce"
+        ))
+        severity = "warning" if run_key else "info"
+        return {
+            "event_action":      event_action,
+            "severity":          severity,
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Registry object {action}: {target} by {proc or '?'}",
+            "raw_data":          f"EID=12 action={action} key={target} proc={proc}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 14:
+        target   = _get_data(root, "TargetObject")
+        new_name = _get_data(root, "NewName")
+        proc     = _get_data(root, "Image")
+        return {
+            "event_action":      event_action,
+            "severity":          "warning",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Registry key renamed: {target} → {new_name} by {proc or '?'}",
+            "raw_data":          f"EID=14 key={target} new={new_name} proc={proc}"[:500],
             "occurred_at":       occurred_at,
         }
 

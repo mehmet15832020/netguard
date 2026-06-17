@@ -62,6 +62,22 @@ _ACTION_TO_CATEGORY: dict[str, LogCategory] = {
     "windows_sysmon_wmi_event":        LogCategory.INTRUSION,
     "windows_sysmon_wmi_binding":      LogCategory.INTRUSION,
     "windows_sysmon_process_tamper":   LogCategory.INTRUSION,
+    # N1 — Windows Firewall
+    "windows_fw_block":                LogCategory.NETWORK,
+    "windows_fw_new_listener":         LogCategory.NETWORK,
+    # N2 — RDP Session
+    "rdp_session_reconnect":           LogCategory.AUTHENTICATION,
+    "rdp_session_disconnect":          LogCategory.AUTHENTICATION,
+    "rdp_auth_success":                LogCategory.AUTHENTICATION,
+    # N3 — Sysmon Registry EID 12/14
+    "sysmon_registry_create_delete":   LogCategory.SYSTEM,
+    "sysmon_registry_rename":          LogCategory.SYSTEM,
+    # N4 — Sysmon EID 4 state change
+    "sysmon_state_change":             LogCategory.INTRUSION,
+    # N5 — Windows Defender
+    "defender_malware_detected":       LogCategory.INTRUSION,
+    "defender_action_taken":           LogCategory.INTRUSION,
+    "defender_scan_threat":            LogCategory.INTRUSION,
 }
 
 

@@ -352,6 +352,129 @@ class TestCorrelatedCooldown:
         assert "text/html" in content_types
         assert "text/plain" in content_types
 
+    def test_expired_cooldown_entries_purged(self):
+        """Q5 — Süresi dolmuş _correlated_cooldown entry'leri her çağrıda temizlenmeli."""
+        n = self._notifier_with_email()
+        old_time = datetime.now(timezone.utc) - timedelta(hours=2)
+        stale_key = "old_rule:1.2.3.4:old_action"
+        n._correlated_cooldown[stale_key] = old_time
+        smtp = self._make_smtp()
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical"))
+        assert stale_key not in n._correlated_cooldown
+
+    def test_active_cooldown_entries_preserved(self):
+        """Q5 — Süresi dolmamış entry'ler temizlenmemeli."""
+        n = self._notifier_with_email()
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=5)
+        active_key = "active_rule:2.2.2.2:active_action"
+        n._correlated_cooldown[active_key] = recent_time
+        smtp = self._make_smtp()
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_correlated(_make_event(severity="critical"))
+        assert active_key in n._correlated_cooldown
+
+
+class TestBlockFailedNotification:
+    """Q3 — block_ip() her iki provider başarısız olursa notifier çağrılmalı."""
+
+    def _make_smtp(self):
+        smtp = MagicMock()
+        smtp.__enter__ = lambda s: s
+        smtp.__exit__ = MagicMock(return_value=False)
+        return smtp
+
+    def _notifier_with_email(self) -> Notifier:
+        n = Notifier()
+        n.email.enabled = True
+        n.email.smtp_host = "smtp.test"
+        n.email.smtp_port = 587
+        n.email.smtp_user = "u"
+        n.email.smtp_password = "p"
+        n.email.from_email = "ng@test"
+        n.email.to_emails = ["dest@test"]
+        n.webhook.enabled = False
+        return n
+
+    def _notifier_with_both(self) -> Notifier:
+        n = Notifier()
+        n.email.enabled = True
+        n.email.smtp_host = "smtp.test"
+        n.email.smtp_port = 587
+        n.email.smtp_user = "u"
+        n.email.smtp_password = "p"
+        n.email.from_email = "ng@test"
+        n.email.to_emails = ["dest@test"]
+        n.webhook.enabled = True
+        n.webhook.webhook_url = "http://localhost:9999/webhook"
+        n.webhook.webhook_type = "discord"
+        return n
+
+    def test_block_failed_sends_email(self, tmp_db, monkeypatch):
+        from server.active_response import (
+            ActiveResponseManager, OPNsenseProvider, VyOSProvider, BlockResult,
+        )
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, d=None, p=None: BlockResult(False, "opnsense", "conn refused"))
+        monkeypatch.setattr(VyOSProvider, "block",
+                            lambda self, ip, d=None, p=None: BlockResult(False, "vyos", "ssh timeout"))
+        sent = []
+        with patch("server.notifier.notifier") as fake_notifier:
+            fake_notifier.email.enabled = True
+            fake_notifier.email.send_custom.side_effect = lambda s, b: sent.append((s, b))
+            fake_notifier.webhook.enabled = False
+            mgr = ActiveResponseManager()
+            result = mgr.block_ip("5.6.7.8", "test reason", "admin", tenant_id="default")
+        assert result["success"] is False
+        assert len(sent) == 1
+        assert "5.6.7.8" in sent[0][0]
+
+    def test_block_failed_email_contains_ip_and_error(self):
+        from server.active_response import _notify_block_failed
+        sent = []
+        with patch("server.notifier.notifier") as fake_notifier:
+            fake_notifier.email.enabled = True
+            fake_notifier.email.send_custom.side_effect = lambda s, b: sent.append((s, b))
+            fake_notifier.webhook.enabled = False
+            _notify_block_failed("9.9.9.9", "port scan", "SSH timeout after 15s")
+        assert len(sent) == 1
+        subj, body = sent[0]
+        assert "9.9.9.9" in subj
+        assert "port scan" in body
+        assert "SSH timeout after 15s" in body
+
+    def test_block_failed_discord_webhook_event_type(self):
+        from server.active_response import _notify_block_failed
+        with patch("server.notifier.notifier") as fake_notifier:
+            fake_notifier.email.enabled = False
+            fake_notifier.webhook.enabled = True
+            fake_notifier.webhook.webhook_type = "discord"
+            _notify_block_failed("1.2.3.4", "brute force", "OPNsense 503")
+            fake_notifier.webhook._post_payload.assert_called_once()
+            call_args = fake_notifier.webhook._post_payload.call_args[0]
+            payload = call_args[0]
+            assert "embeds" in payload
+            assert "1.2.3.4" in payload["embeds"][0]["title"]
+
+    def test_block_failed_notifier_exception_does_not_propagate(self, tmp_db, monkeypatch):
+        from server.active_response import _notify_block_failed
+        import server.active_response as ar_mod
+        def _bad_notify(ip, reason, error):
+            raise RuntimeError("notifier crashed")
+        monkeypatch.setattr(ar_mod, "_notify_block_failed", _bad_notify)
+        from server.active_response import (
+            ActiveResponseManager, OPNsenseProvider, VyOSProvider, BlockResult,
+        )
+        monkeypatch.setattr(OPNsenseProvider, "block",
+                            lambda self, ip, d=None, p=None: BlockResult(False, "opnsense", "fail"))
+        monkeypatch.setattr(VyOSProvider, "block",
+                            lambda self, ip, d=None, p=None: BlockResult(False, "vyos", "fail"))
+        mgr = ActiveResponseManager()
+        result = mgr.block_ip("8.8.8.8", "test", "admin", tenant_id="default")
+        assert result["success"] is False
+
     def test_html_contains_severity_color(self):
         n = self._notifier_with_email()
         sent_msgs = []

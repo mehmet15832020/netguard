@@ -61,8 +61,15 @@ class TestCollectSuspiciousConnections:
         assert events == []
 
     def test_high_ephemeral_port_warning(self):
+        # Tek bağlantı threshold altında — uyarı üretilmemeli (SUSPICIOUS_CONN_THRESHOLD=5)
         conn = _make_conn("ESTABLISHED", "10.20.30.40", 50000)
         events = self._run([conn])
+        assert len(events) == 0
+
+    def test_high_ephemeral_port_burst_warning(self):
+        # 5 farklı hedefe ephemeral port bağlantısı → uyarı
+        conns = [_make_conn("ESTABLISHED", f"10.20.30.{i}", 50000 + i) for i in range(5)]
+        events = self._run(conns)
         assert len(events) == 1
         assert events[0]["severity"] == "warning"
 

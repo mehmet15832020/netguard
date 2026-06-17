@@ -11,6 +11,7 @@ from agent.collector import (
     _collect_memory,
     _collect_disks,
     _collect_network,
+    _collect_dns_stats,
     _get_agent_id,
 )
 from shared.models import AgentStatus
@@ -76,6 +77,78 @@ class TestCollectSnapshot:
         snapshot = collect_snapshot()  # ikinci çağrı — bant genişliği hesaplı
         assert snapshot.network_snapshot is not None
         assert snapshot.network_snapshot.connections.total >= 0
+
+class TestDnsStatsCollector:
+    def test_returns_dict(self):
+        """_collect_dns_stats her zaman dict döner, exception fırlatmaz."""
+        result = _collect_dns_stats()
+        assert isinstance(result, dict)
+
+    def test_returns_empty_when_resolvectl_missing(self, monkeypatch):
+        """resolvectl yoksa boş dict döner."""
+        import subprocess
+        monkeypatch.setattr(
+            subprocess,
+            "run",
+            lambda *a, **kw: (_ for _ in ()).throw(FileNotFoundError("resolvectl not found")),
+        )
+        result = _collect_dns_stats()
+        assert result == {}
+
+    def test_returns_empty_when_nonzero_returncode(self, monkeypatch):
+        """resolvectl hata kodu döndürürse boş dict döner."""
+        import subprocess
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.returncode = 1
+        mock_result.stdout = ""
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+
+        result = _collect_dns_stats()
+        assert result == {}
+
+    def test_parses_transactions_from_output(self, monkeypatch):
+        """Geçerli resolvectl çıktısı doğru parse edilmeli."""
+        import subprocess
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = (
+            "Transactions\n"
+            "Current Transactions: 3\n"
+            "Total Transactions: 1042\n"
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+
+        result = _collect_dns_stats()
+        assert result.get("current_transactions") == 3
+        assert result.get("total_transactions") == 1042
+
+    def test_dns_stats_in_snapshot(self):
+        """collect_snapshot() dns_stats alanını içermeli."""
+        snapshot = collect_snapshot()
+        assert hasattr(snapshot, "dns_stats")
+        assert isinstance(snapshot.dns_stats, dict)
+
+    def test_dns_stats_in_snapshot_with_mock(self, monkeypatch):
+        """Mock resolvectl çıktısıyla snapshot dns_stats dolu gelir."""
+        import subprocess
+        from unittest.mock import MagicMock
+
+        mock_result = MagicMock()
+        mock_result.returncode = 0
+        mock_result.stdout = (
+            "Current Transactions: 5\n"
+            "Total Transactions: 9999\n"
+        )
+        monkeypatch.setattr(subprocess, "run", lambda *a, **kw: mock_result)
+
+        snapshot = collect_snapshot()
+        assert snapshot.dns_stats.get("current_transactions") == 5
+        assert snapshot.dns_stats.get("total_transactions") == 9999
+
 
 class TestProcessCollector:
     def test_process_snapshot_collected(self):

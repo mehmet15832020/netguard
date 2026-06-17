@@ -37,6 +37,17 @@ ZEEK_LOG_DIR    = Path(os.getenv("ZEEK_LOG_DIR", "/zeek-logs"))
 POLL_INTERVAL   = int(os.getenv("ZEEK_POLL_INTERVAL", "5"))
 TENANT_ID       = "default"
 ZEEK_OFFSET_FILE = Path(os.getenv("ZEEK_OFFSET_FILE", "/var/lib/netguard/zeek_offsets.json"))
+ZEEK_INTERFACE  = os.getenv("ZEEK_INTERFACE", "")
+
+
+def _validate_zeek_interface() -> None:
+    if not ZEEK_INTERFACE:
+        logger.warning(
+            "ZEEK_INTERFACE env var tanımlı değil — "
+            "Zeek log tail pasif modda çalışıyor (canlı paket yakalama devre dışı)"
+        )
+    else:
+        logger.info("ZEEK_INTERFACE: %s", ZEEK_INTERFACE)
 
 _PARSERS: dict[str, Callable] = {
     "dns":    parse_dns,
@@ -293,6 +304,7 @@ async def run_zeek_collector() -> None:
     saniyede bir de zaten çalışır (fallback — dizin henüz yoksa, inotify
     desteklenmeyen dosya sisteminde veya event kaçırılırsa veri kaybı olmaz).
     """
+    _validate_zeek_interface()
     logger.info(
         "Zeek log collector başlatıldı (dizin: %s, poll: %ss, retention: %dd)",
         ZEEK_LOG_DIR, POLL_INTERVAL, _LOG_RETENTION_DAYS,

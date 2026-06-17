@@ -191,8 +191,11 @@ _FORTI_LEVEL_MAP = {
 }
 
 
+_FORTI_TYPE_RE = re.compile(r'type="?(?:traffic|utm)"?')
+
+
 def parse_fortigate(line: str) -> Optional[NormalizedLog]:
-    if "type=traffic" not in line and "type=utm" not in line:
+    if not _FORTI_TYPE_RE.search(line):
         return None
     kv = {k: v.strip('"') for k, v in _FORTI_KV_RE.findall(line)}
     if not kv:
@@ -785,6 +788,94 @@ def parse_pfsense_admin_access(line: str) -> Optional[NormalizedLog]:
     )
 
 
+# ──────────────────────────────────────────────────────────────────
+#  G1 — VyOS Routing + Interface Event Parser
+#  BGP/OSPF route değişiklikleri ve interface link up/down olayları
+# ──────────────────────────────────────────────────────────────────
+
+_VYOS_IFACE_RE = re.compile(
+    r'kernel:\s+(?P<iface>\S+?):\s+Link\s+is\s+(?P<state>Up|Down)',
+    re.IGNORECASE,
+)
+_VYOS_BGP_RE = re.compile(
+    r'bgpd?\[\d*\].*?(?P<event>Peer\s+\S+\s+\w+|BGP\s+\S+|neighbor\s+\S+\s+\w+)',
+    re.IGNORECASE,
+)
+_VYOS_OSPF_RE = re.compile(
+    r'ospfd?\[\d*\].*?(?P<event>neighbor\s+\S+.*?state\s+\w+|route\s+\S+\s+\w+)',
+    re.IGNORECASE,
+)
+_VYOS_ROUTE_CHANGE_RE = re.compile(
+    r'zebra\[\d*\].*?(?P<event>route\s+\S+.*?(?:added|removed|changed))',
+    re.IGNORECASE,
+)
+_VYOS_HOST_GENERIC_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+')
+
+
+def parse_vyos_routing_events(line: str) -> Optional[NormalizedLog]:
+    """G1 — VyOS BGP/OSPF/interface event parser."""
+    hm = _VYOS_HOST_GENERIC_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "vyos"
+
+    m = _VYOS_IFACE_RE.search(line)
+    if m:
+        iface = m.group("iface")
+        state = m.group("state").lower()
+        severity = "critical" if state == "down" else "info"
+        return _make_log(
+            source_type       = LogSourceType.VYOS,
+            observer_hostname = observer_hostname,
+            event_action      = f"interface_link_{state}",
+            severity          = severity,
+            event_category    = LogCategory.NETWORK,
+            message           = f"Interface {iface} link {state}",
+            raw_content       = line,
+            tags              = ["routing", "interface", "vyos"],
+            extra             = {"interface": iface, "state": state},
+        )
+
+    m = _VYOS_BGP_RE.search(line)
+    if m:
+        return _make_log(
+            source_type       = LogSourceType.VYOS,
+            observer_hostname = observer_hostname,
+            event_action      = "bgp_state_change",
+            severity          = "warning",
+            event_category    = LogCategory.NETWORK,
+            message           = f"BGP event: {m.group('event').strip()}",
+            raw_content       = line,
+            tags              = ["routing", "bgp", "vyos"],
+        )
+
+    m = _VYOS_OSPF_RE.search(line)
+    if m:
+        return _make_log(
+            source_type       = LogSourceType.VYOS,
+            observer_hostname = observer_hostname,
+            event_action      = "ospf_state_change",
+            severity          = "warning",
+            event_category    = LogCategory.NETWORK,
+            message           = f"OSPF event: {m.group('event').strip()}",
+            raw_content       = line,
+            tags              = ["routing", "ospf", "vyos"],
+        )
+
+    m = _VYOS_ROUTE_CHANGE_RE.search(line)
+    if m:
+        return _make_log(
+            source_type       = LogSourceType.VYOS,
+            observer_hostname = observer_hostname,
+            event_action      = "route_change",
+            severity          = "info",
+            event_category    = LogCategory.NETWORK,
+            message           = f"Route change: {m.group('event').strip()}",
+            raw_content       = line,
+            tags              = ["routing", "zebra", "vyos"],
+        )
+
+    return None
+
+
 # VyOS — standart sshd Accepted/Failed (OpenSSH). VyOS yönetim erişimi SSH
 # üzerinden olduğu için bu, router admin erişiminin kendisidir.
 _VYOS_SSH_ACCEPTED_RE = re.compile(
@@ -876,8 +967,11 @@ def detect_and_parse(line: str) -> Optional[NormalizedLog]:
     dns_result = parse_dns_resolver_syslog(line)
     if dns_result is not None:
         return dns_result
-    if "type=traffic" in line or "type=utm" in line:
+    if _FORTI_TYPE_RE.search(line):
         return parse_fortigate(line)
     if "kernel:" in line and "SRC=" in line and "DST=" in line:
         return parse_vyos(line)
+    routing_result = parse_vyos_routing_events(line)
+    if routing_result is not None:
+        return routing_result
     return None

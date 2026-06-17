@@ -1072,6 +1072,180 @@ class TestFailedBlockUnblockAudit:
         assert "ip_blocked" in actions
 
 
+class TestQ7PlaybookHighSeverity:
+    """Q7 — suggest_playbook() high severity için investigate + threat_intel önerileri."""
+
+    def _admin_headers(self):
+        from server.auth import create_access_token
+        token = create_access_token("admin", "superadmin", tenant_id="default")
+        return {"Authorization": f"Bearer {token}"}
+
+    def _make_incident(self, tmp_db, severity: str, group_value: str = "5.6.7.8") -> str:
+        import uuid
+        from server.database import db
+        incident = Incident(
+            incident_id=str(uuid.uuid4()),
+            title=f"Test incident {severity}",
+            severity=severity,
+            created_by="system",
+            group_value=group_value,
+            rule_id="ssh_brute_force",
+        )
+        db.create_incident(incident, tenant_id="default")
+        return incident.incident_id
+
+    def test_high_severity_returns_investigate_and_threat_intel(self, tmp_db):
+        inc_id = self._make_incident(tmp_db, "high")
+        r = client.post("/api/v1/response/playbook",
+                        json={"incident_id": inc_id},
+                        headers=self._admin_headers())
+        assert r.status_code == 200
+        data = r.json()
+        actions = [s["action"] for s in data["suggestions"]]
+        assert "investigate_ip" in actions
+        assert "threat_intel_lookup" in actions
+
+    def test_high_severity_suggestions_contain_ip(self, tmp_db):
+        inc_id = self._make_incident(tmp_db, "high", group_value="5.6.7.8")
+        r = client.post("/api/v1/response/playbook",
+                        json={"incident_id": inc_id},
+                        headers=self._admin_headers())
+        data = r.json()
+        for suggestion in data["suggestions"]:
+            assert suggestion["ip"] == "5.6.7.8"
+
+    def test_high_severity_no_block_ip_suggestion(self, tmp_db):
+        inc_id = self._make_incident(tmp_db, "high")
+        r = client.post("/api/v1/response/playbook",
+                        json={"incident_id": inc_id},
+                        headers=self._admin_headers())
+        data = r.json()
+        actions = [s["action"] for s in data["suggestions"]]
+        assert "block_ip" not in actions
+
+    def test_medium_severity_no_suggestions(self, tmp_db):
+        inc_id = self._make_incident(tmp_db, "medium")
+        r = client.post("/api/v1/response/playbook",
+                        json={"incident_id": inc_id},
+                        headers=self._admin_headers())
+        data = r.json()
+        assert data["suggestions"] == []
+
+    def test_high_severity_non_ip_group_value_no_suggestions(self, tmp_db):
+        inc_id = self._make_incident(tmp_db, "high", group_value="WIN-WORKSTATION")
+        r = client.post("/api/v1/response/playbook",
+                        json={"incident_id": inc_id},
+                        headers=self._admin_headers())
+        data = r.json()
+        assert data["suggestions"] == []
+
+    def test_critical_severity_still_returns_block_ip(self, tmp_db, monkeypatch):
+        from server.database import db
+        from server.fp_manager import fp_manager
+        monkeypatch.setattr(fp_manager, "is_suppressed", lambda *a, **kw: None)
+        inc_id = self._make_incident(tmp_db, "critical", group_value="5.6.7.8")
+        r = client.post("/api/v1/response/playbook",
+                        json={"incident_id": inc_id},
+                        headers=self._admin_headers())
+        data = r.json()
+        actions = [s["action"] for s in data["suggestions"]]
+        assert "block_ip" in actions
+        assert "investigate_ip" not in actions
+
+
+class TestQ8VerifyBlocksScheduler:
+    """Q8 — verify_blocks background task phantom blok tespiti."""
+
+    def test_verify_blocks_called_returns_phantom(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        from server.database import db
+        db.block_ip("phantom-q8-001", "203.0.113.99", "test", "admin",
+                    provider="opnsense", tenant_id="default")
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "list_blocked", lambda self: [])
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_ready", lambda self: True)
+        monkeypatch.setattr(ar_mod.VyOSProvider, "_ready", lambda self: False)
+        mgr = ar_mod.ActiveResponseManager()
+        result = mgr.verify_blocks()
+        assert result["status"] == "mismatch"
+        assert "203.0.113.99" in result["phantom"]
+
+    def test_verify_blocks_no_phantom_status_ok(self, tmp_db, monkeypatch):
+        from server import active_response as ar_mod
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "list_blocked", lambda self: [])
+        monkeypatch.setattr(ar_mod.OPNsenseProvider, "_ready", lambda self: True)
+        monkeypatch.setattr(ar_mod.VyOSProvider, "_ready", lambda self: False)
+        mgr = ar_mod.ActiveResponseManager()
+        result = mgr.verify_blocks()
+        assert result["status"] == "ok"
+        assert result["phantom"] == []
+
+    def test_verify_blocks_loop_warns_on_phantom(self, tmp_db, monkeypatch):
+        import asyncio
+        from server import active_response as ar_mod
+        phantom_result = {
+            "status": "mismatch",
+            "phantom": ["203.0.113.88"],
+            "orphan": [],
+            "synced": [],
+            "fw_reachable": True,
+            "opnsense_up": True,
+            "vyos_up": False,
+        }
+        sent = []
+        monkeypatch.setattr(
+            ar_mod.ActiveResponseManager, "verify_blocks",
+            lambda self, tid=None: phantom_result,
+        )
+        from server.notifier import EmailNotifier
+        monkeypatch.setattr(EmailNotifier, "send_custom",
+                            lambda self, s, b: sent.append((s, b)))
+        import server.main as main_mod
+        monkeypatch.setattr(main_mod, "VERIFY_BLOCKS_INTERVAL", 0)
+        async def run_once():
+            from server.active_response import active_response_manager
+            from server.notifier import notifier
+            result = active_response_manager.verify_blocks()
+            phantoms = result.get("phantom", [])
+            if phantoms:
+                notifier.email.send_custom(
+                    f"NetGuard: {len(phantoms)} phantom blok tespit edildi",
+                    "test body",
+                )
+        asyncio.run(run_once())
+        assert len(sent) == 1
+        assert "phantom" in sent[0][0].lower()
+
+    def test_verify_blocks_loop_silent_on_no_phantom(self, tmp_db, monkeypatch):
+        import asyncio
+        from server import active_response as ar_mod
+        ok_result = {
+            "status": "ok",
+            "phantom": [],
+            "orphan": [],
+            "synced": [],
+            "fw_reachable": True,
+            "opnsense_up": True,
+            "vyos_up": False,
+        }
+        monkeypatch.setattr(
+            ar_mod.ActiveResponseManager, "verify_blocks",
+            lambda self, tid=None: ok_result,
+        )
+        sent = []
+        from server.notifier import EmailNotifier
+        monkeypatch.setattr(EmailNotifier, "send_custom",
+                            lambda self, s, b: sent.append((s, b)))
+        async def run_once():
+            from server.active_response import active_response_manager
+            from server.notifier import notifier
+            result = active_response_manager.verify_blocks()
+            phantoms = result.get("phantom", [])
+            if phantoms:
+                notifier.email.send_custom("subject", "body")
+        asyncio.run(run_once())
+        assert len(sent) == 0
+
+
 class TestU5PhantomBlockClearing:
     """U5 — VyOS/OPNsense kuralı bulunamadığında DB yine de temizlenmeli."""
 

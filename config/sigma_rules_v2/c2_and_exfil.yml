@@ -1,3 +1,63 @@
+title: DNS over HTTPS — Potential C2 Bypass
+id: 9f17f5fb-9211-4970-8b8f-cdd306082001
+status: experimental
+description: DNS over HTTPS to known DoH providers may indicate C2 traffic bypassing DNS monitoring
+logsource:
+    category: network
+detection:
+    selection:
+        destination_port: 443
+        destination_ip:
+            - "8.8.8.8"
+            - "8.8.4.4"
+            - "1.1.1.1"
+            - "1.0.0.1"
+            - "9.9.9.9"
+            - "208.67.222.222"
+    condition: selection
+level: low
+tags:
+    - attack.command_and_control
+    - attack.t1071.004
+---
+title: TLS/SSL Downgrade Detected
+id: d2786441-d397-4ff4-8ac2-a5680b41157b
+status: experimental
+description: Legacy TLS versions detected via Suricata TLS anomaly
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: suricata_tls_anomaly
+        severity: warning
+    condition: selection
+level: medium
+tags:
+    - attack.defense_evasion
+    - attack.t1573
+---
+title: Potential Reverse Shell — Outbound to Unusual Port
+id: 0e80ae5f-6a16-4737-bb9e-96d6ae6334de
+status: experimental
+description: Internal host connecting outbound on unusual port that may indicate reverse shell
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: netflow_connection
+        destination_port:
+            - 4444
+            - 4445
+            - 1234
+            - 31337
+            - 8888
+            - 9001
+    condition: selection
+level: high
+tags:
+    - attack.command_and_control
+    - attack.t1059
+---
 title: DNS High Frequency (Base)
 name: ng_dns_high_freq_base
 status: stable

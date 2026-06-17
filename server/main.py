@@ -218,7 +218,8 @@ async def _asset_deviation_loop():
             logger.error(f"Asset sapma kontrolü hatası: {exc}")
 
 
-BEACONING_INTERVAL = int(os.getenv("NETGUARD_BEACON_INTERVAL", "300"))  # saniye (5 dakika)
+BEACONING_INTERVAL       = int(os.getenv("NETGUARD_BEACON_INTERVAL", "300"))   # saniye (5 dakika)
+VERIFY_BLOCKS_INTERVAL   = int(os.getenv("NETGUARD_VERIFY_BLOCKS_INTERVAL", "21600"))  # saniye (6 saat)
 
 
 async def _beaconing_loop():
@@ -230,6 +231,35 @@ async def _beaconing_loop():
         except Exception as exc:
             logger.error("Beaconing dedektör hatası: %s", exc)
         await asyncio.sleep(BEACONING_INTERVAL)
+
+
+async def _verify_blocks_loop():
+    """Her 6 saatte bir firewall ile DB blok kaydını karşılaştır; phantom blok varsa uyar."""
+    from server.active_response import active_response_manager
+    from server.notifier import notifier
+    while True:
+        await asyncio.sleep(VERIFY_BLOCKS_INTERVAL)
+        try:
+            result = await asyncio.to_thread(active_response_manager.verify_blocks)
+            phantoms = result.get("phantom", [])
+            if phantoms:
+                logger.warning(
+                    "Phantom blok tespiti: %d IP DB'de kayıtlı ama firewall'da yok: %s",
+                    len(phantoms), phantoms,
+                )
+                subject = f"NetGuard: {len(phantoms)} phantom blok tespit edildi"
+                body = (
+                    f"NetGuard Blok Senkronizasyon Uyarısı\n{'='*40}\n\n"
+                    f"Phantom bloklar (DB'de var, firewall'da yok):\n"
+                    + "\n".join(f"  - {ip}" for ip in phantoms)
+                    + f"\n\n{'='*40}\n"
+                    f"Bu IP'ler DB'de aktif blok olarak görünüyor ancak "
+                    f"firewall kurallarında bulunamadı. "
+                    f"Manuel kontrol veya /api/v1/response/blocks/verify çağrısı önerilir.\n"
+                )
+                notifier.email.send_custom(subject, body)
+        except Exception as exc:
+            logger.error("Verify blocks döngü hatası: %s", exc)
 
 
 load_dotenv()
@@ -282,6 +312,8 @@ async def lifespan(app: FastAPI):
     logger.info(f"Alert auto-age döngüsü başlatıldı (her {ALERT_AUTO_AGE_INTERVAL}s, >{ALERT_AUTO_AGE_HOURS}h)")
     beaconing_task = asyncio.create_task(_beaconing_loop())
     logger.info(f"C2 beaconing dedektörü başlatıldı (her {BEACONING_INTERVAL}s)")
+    verify_blocks_task = asyncio.create_task(_verify_blocks_loop())
+    logger.info(f"Verify blocks döngüsü başlatıldı (her {VERIFY_BLOCKS_INTERVAL}s)")
     from server.syslog_receiver import SyslogReceiver, SyslogTCPReceiver
     syslog = SyslogReceiver()
     await syslog.start()
@@ -330,6 +362,7 @@ async def lifespan(app: FastAPI):
     asset_deviation_task.cancel()
     block_expiry_task.cancel()
     beaconing_task.cancel()
+    verify_blocks_task.cancel()
     zeek_task.cancel()
     suricata_task.cancel()
     opencanary_task.cancel()

@@ -29,10 +29,17 @@ POSITION_FILE  = os.getenv("LOG_POSITION_FILE", "/tmp/netguard_auth_pos")
 SHIP_INTERVAL  = 10   # saniye
 BATCH_SIZE     = 50   # tek seferde max kaç olay gönderilir
 CONN_SCAN_INTERVAL = 60  # saniye — bağlantı taraması aralığı
+SUSPICIOUS_CONN_THRESHOLD = int(os.getenv("SUSPICIOUS_CONN_THRESHOLD", "5"))
 
 _RE_FAILED   = re.compile(r"Failed password for (?:invalid user )?(\S+) from ([\d.]+) port")
 _RE_ACCEPTED = re.compile(r"Accepted (?:password|publickey) for (\S+) from ([\d.]+) port")
 _RE_SUDO     = re.compile(r"sudo:\s+(\S+)\s+:.*COMMAND=(.*)")
+_RE_PAM_AUTH_FAILURE = re.compile(
+    r"PAM:?\s+[Aa]uthentication failure.*?(?:for user|user=)\s*(\S+?)(?:\s+from\s+([\d.]+))?(?:\s|$)"
+)
+_RE_PAM_UNIX = re.compile(
+    r"pam_unix\(\S+:auth\):\s+authentication failure;.*?user=(\S+)"
+)
 
 # Bilinen meşru portlar — bunları raporlama
 _TRUSTED_DPORTS = frozenset({22, 80, 443, 8000, 8080, 8443, 53, 123, 5140, 2055})
@@ -80,6 +87,32 @@ def _parse_line(line: str) -> Optional[dict]:
             "raw_data":   line.rstrip(),
             "occurred_at": _now_iso(),
         }
+    if m := _RE_PAM_AUTH_FAILURE.search(line):
+        username = m.group(1).rstrip(";")
+        source_ip = m.group(2) if m.lastindex and m.lastindex >= 2 else None
+        return {
+            "event_action": "pam_auth_failure",
+            "severity":   "warning",
+            "username":   username,
+            "source_ip":  source_ip,
+            "message":    (
+                f"PAM kimlik doğrulama hatası: kullanıcı={username}"
+                + (f" kaynak={source_ip}" if source_ip else "")
+            ),
+            "raw_data":   line.rstrip(),
+            "occurred_at": _now_iso(),
+        }
+    if m := _RE_PAM_UNIX.search(line):
+        username = m.group(1)
+        return {
+            "event_action": "pam_auth_failure",
+            "severity":   "warning",
+            "username":   username,
+            "source_ip":  None,
+            "message":    f"PAM kimlik doğrulama hatası: kullanıcı={username}",
+            "raw_data":   line.rstrip(),
+            "occurred_at": _now_iso(),
+        }
     return None
 
 
@@ -104,10 +137,11 @@ def _write_position(pos: int) -> None:
 def _collect_suspicious_connections() -> list[dict]:
     """
     psutil.net_connections() ile aktif TCP bağlantıları tarar.
-    Şüpheli portlara (C2 portları, DB portları, VNC, RDP vb.) yapılan
-    ESTABLISHED bağlantıları raporlar.
+
+    Bilinen kötü portlara (C2/VNC/RDP/DB) yapılan bağlantılar doğrudan raporlanır.
+    Yüksek ephemeral portlara giden bağlantılar ise SUSPICIOUS_CONN_THRESHOLD
+    kadar farklı hedefe ulaşıldığında raporlanır — tek bağlantı FP'yi önler.
     """
-    events = []
     try:
         conns = psutil.net_connections(kind="inet")
     except psutil.AccessDenied:
@@ -115,6 +149,9 @@ def _collect_suspicious_connections() -> list[dict]:
 
     local_ip = socket.gethostbyname(socket.gethostname())
     now = _now_iso()
+
+    known_bad_events: list[dict] = []
+    ephemeral_remotes: set[str] = set()
 
     for conn in conns:
         if conn.status != "ESTABLISHED":
@@ -127,16 +164,9 @@ def _collect_suspicious_connections() -> list[dict]:
 
         if remote_ip in ("127.0.0.1", "::1", local_ip):
             continue
-
-        is_suspicious_port = remote_port in _SUSPICIOUS_DPORTS
-        is_high_ephemeral = remote_port >= 49152
-
-        if not is_suspicious_port and not is_high_ephemeral:
-            continue
         if remote_port in _TRUSTED_DPORTS:
             continue
 
-        severity = "critical" if is_suspicious_port else "warning"
         proc_name = ""
         try:
             if conn.pid:
@@ -144,16 +174,35 @@ def _collect_suspicious_connections() -> list[dict]:
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             pass
 
+        if remote_port in _SUSPICIOUS_DPORTS:
+            known_bad_events.append({
+                "event_action": "suspicious_outbound_connection",
+                "severity": "critical",
+                "username": None,
+                "source_ip": local_ip,
+                "message": (
+                    f"Şüpheli bağlantı: {local_ip}:{local_port} → {remote_ip}:{remote_port}"
+                    + (f" [{proc_name}]" if proc_name else "")
+                ),
+                "raw_data": f"pid={conn.pid} proc={proc_name} raddr={remote_ip}:{remote_port}",
+                "occurred_at": now,
+            })
+        elif remote_port >= 49152:
+            ephemeral_remotes.add(f"{remote_ip}:{remote_port}")
+
+    events = list(known_bad_events)
+
+    if len(ephemeral_remotes) >= SUSPICIOUS_CONN_THRESHOLD:
         events.append({
             "event_action": "suspicious_outbound_connection",
-            "severity": severity,
+            "severity": "warning",
             "username": None,
             "source_ip": local_ip,
             "message": (
-                f"Şüpheli bağlantı: {local_ip}:{local_port} → {remote_ip}:{remote_port}"
-                + (f" [{proc_name}]" if proc_name else "")
+                f"Yüksek sayıda ephemeral bağlantı: {local_ip} → "
+                f"{len(ephemeral_remotes)} farklı hedef (eşik: {SUSPICIOUS_CONN_THRESHOLD})"
             ),
-            "raw_data": f"pid={conn.pid} proc={proc_name} raddr={remote_ip}:{remote_port}",
+            "raw_data": f"ephemeral_count={len(ephemeral_remotes)}",
             "occurred_at": now,
         })
 

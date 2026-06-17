@@ -291,6 +291,10 @@ class Notifier:
         dedup_key = f"{event.rule_id}:{event.group_value}:{event.event_action}"
         now = datetime.now(timezone.utc)
         with self._cooldown_lock:
+            self._correlated_cooldown = {
+                k: v for k, v in self._correlated_cooldown.items()
+                if (now - v).total_seconds() < max(_CORRELATED_COOLDOWN_SECS.values())
+            }
             last = self._correlated_cooldown.get(dedup_key)
             if last and (now - last).total_seconds() < cooldown_secs:
                 logger.debug("Correlated bildirim bekleniyor (cooldown): %s", dedup_key)

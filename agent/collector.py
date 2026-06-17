@@ -9,6 +9,7 @@ Server'dan haberi yoktur. Ağdan haberi yoktur.
 
 import platform
 import socket
+import subprocess
 import uuid
 import psutil
 
@@ -19,8 +20,10 @@ import time
 
 from shared.models import (
     AgentStatus,
+    ActiveConnection,
     CPUMetrics,
     DiskMetrics,
+    ListeningPort,
     MemoryMetrics,
     MetricSnapshot,
     NetworkBandwidth,
@@ -185,6 +188,48 @@ def _collect_connections() -> ConnectionStats:
     except Exception:
         return ConnectionStats(total=0, established=0, time_wait=0, listen=0)
 
+def _collect_active_connections() -> list[ActiveConnection]:
+    """
+    ESTABLISHED ve CLOSE_WAIT durumundaki TCP bağlantılarını toplar.
+    C2 port 443 gibi meşru görünen bağlantıları da kapsar.
+    """
+    result = []
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.status not in ("ESTABLISHED", "CLOSE_WAIT"):
+                continue
+            laddr = f"{conn.laddr.ip}:{conn.laddr.port}" if conn.laddr else None
+            raddr = f"{conn.raddr.ip}:{conn.raddr.port}" if conn.raddr else None
+            result.append(ActiveConnection(
+                laddr=laddr,
+                raddr=raddr,
+                status=conn.status,
+                pid=conn.pid,
+            ))
+    except psutil.AccessDenied:
+        pass
+    return result
+
+
+def _collect_listening_ports() -> list[ListeningPort]:
+    """
+    LISTEN durumundaki tüm TCP/UDP portlarını toplar.
+    Backdoor listener tespiti için kullanılır (server/port_monitor.py ile bütünleşir).
+    """
+    result = []
+    try:
+        for conn in psutil.net_connections(kind="inet"):
+            if conn.status == "LISTEN" and conn.laddr:
+                result.append(ListeningPort(
+                    port=conn.laddr.port,
+                    ip=conn.laddr.ip,
+                    pid=conn.pid,
+                ))
+    except psutil.AccessDenied:
+        pass
+    return result
+
+
 def _collect_processes() -> ProcessSnapshot:
     """
     Sistemdeki process listesini toplar.
@@ -229,6 +274,31 @@ def _collect_processes() -> ProcessSnapshot:
         captured_at=datetime.now(timezone.utc),
     )
 
+def _collect_dns_stats() -> dict:
+    """systemd-resolved DNS istatistiklerini toplar (M6).
+
+    resolvectl yoksa veya hata verirse boş dict döner.
+    """
+    try:
+        result = subprocess.run(
+            ["resolvectl", "statistics"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode != 0:
+            return {}
+        stats = {}
+        for line in result.stdout.splitlines():
+            if "Current Transactions:" in line:
+                stats["current_transactions"] = int(line.split(":")[-1].strip())
+            elif "Total Transactions:" in line:
+                stats["total_transactions"] = int(line.split(":")[-1].strip())
+        return stats
+    except Exception:
+        return {}
+
+
 def collect_snapshot() -> MetricSnapshot:
     """
     Tek entry point. Tüm metrikleri toplar, MetricSnapshot döndürür.
@@ -270,6 +340,11 @@ def collect_snapshot() -> MetricSnapshot:
         process_snapshot = None
         status = AgentStatus.DEGRADED
 
+    try:
+        dns_stats = _collect_dns_stats()
+    except Exception:
+        dns_stats = {}
+
     return MetricSnapshot(
         agent_id=_get_agent_id(),
         hostname=socket.gethostname(),
@@ -281,4 +356,5 @@ def collect_snapshot() -> MetricSnapshot:
         network_interfaces=network,
         network_snapshot=network_snapshot,
         process_snapshot=process_snapshot,
+        dns_stats=dns_stats,
     )

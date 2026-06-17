@@ -348,3 +348,39 @@ level: high
 tags:
     - attack.privilege_escalation
     - attack.t1548.003
+---
+title: Interface Link Down — Potential DoS or Physical Disruption
+id: eb0aa448-1a44-4786-b75b-5dc59e0d47c5
+status: experimental
+description: Network interface went down — may indicate physical attack, DoS, or cable disconnect
+logsource:
+    product: netguard
+    service: firewall
+detection:
+    selection:
+        event_action: interface_link_down
+        severity: critical
+    condition: selection
+level: high
+tags:
+    - attack.impact
+    - attack.t1498
+---
+title: BGP/OSPF Routing State Change
+id: 1da30f93-1a5f-428d-895f-7939d3ad84b3
+status: experimental
+description: BGP or OSPF neighbor state change detected — may indicate route injection or hijacking
+logsource:
+    product: netguard
+    service: firewall
+detection:
+    selection:
+        event_action|contains:
+            - bgp_state_change
+            - ospf_state_change
+            - route_change
+    condition: selection
+level: medium
+tags:
+    - attack.defense_evasion
+    - attack.t1599

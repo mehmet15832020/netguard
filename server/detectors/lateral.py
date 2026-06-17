@@ -27,7 +27,7 @@ from shared.models import LogCategory, NormalizedLog
 
 logger = logging.getLogger(__name__)
 
-UNIQUE_HOSTS_THRESHOLD = int(os.getenv("NETGUARD_LATERAL_THRESHOLD", "3"))
+UNIQUE_HOSTS_THRESHOLD = int(os.getenv("NETGUARD_LATERAL_THRESHOLD", os.getenv("SUSPICIOUS_CONN_THRESHOLD", "5")))
 WINDOW_SECONDS         = int(os.getenv("NETGUARD_LATERAL_WINDOW", "120"))
 NETWORK_INTERFACE      = os.getenv("NETGUARD_INTERFACE", "ens33")
 
