@@ -67,30 +67,43 @@ class TestPartialChain:
 
 
 class TestFullChain:
-    def test_three_stages_triggers_full(self):
+    def test_three_stages_triggers_partial(self):
+        # FULL_THRESHOLD=4: 3 aşama → PARTIAL (recon gerekli ama sayı yetersiz)
         t = AttackChainTracker()
         t.record("6.6.6.6", "port_scan_attempt")       # recon
         t.record("6.6.6.6", "windows_logon_failure")   # weaponize
         result = t.record("6.6.6.6", "ssh_success")    # access
         assert result is not None
+        assert result["chain_type"] == "PARTIAL_ATTACK_CHAIN"
+
+    def test_four_stages_triggers_full(self):
+        # FULL_THRESHOLD=4 + recon zorunlu: 4 aşama → FULL_ATTACK_CHAIN
+        t = AttackChainTracker()
+        t.record("7.7.7.7", "port_scan_attempt")       # recon
+        t.record("7.7.7.7", "ssh_failure")              # weaponize
+        t.record("7.7.7.7", "ssh_success")              # access
+        result = t.record("7.7.7.7", "windows_process_create")  # execute
+        assert result is not None
         assert result["chain_type"] == "FULL_ATTACK_CHAIN"
         assert result["severity"] == "critical"
-        assert len(result["stages"]) == 3
-
-    def test_four_stages_still_full(self):
-        t = AttackChainTracker()
-        t.record("7.7.7.7", "port_scan_attempt")
-        t.record("7.7.7.7", "ssh_failure")
-        t.record("7.7.7.7", "ssh_success")
-        result = t.record("7.7.7.7", "windows_process_create")
-        assert result["chain_type"] == "FULL_ATTACK_CHAIN"
         assert len(result["stages"]) == 4
+
+    def test_four_stages_without_recon_not_full(self):
+        # recon olmadan 4 aşama → FULL_ATTACK_CHAIN tetiklenmez
+        t = AttackChainTracker()
+        t.record("6.1.2.3", "ssh_failure")              # weaponize
+        t.record("6.1.2.3", "ssh_success")              # access
+        t.record("6.1.2.3", "windows_process_create")   # execute
+        result = t.record("6.1.2.3", "ssh_lateral")     # lateral
+        assert result is not None
+        assert result["chain_type"] == "PARTIAL_ATTACK_CHAIN"
 
     def test_message_contains_ip_and_stages(self):
         t = AttackChainTracker()
         t.record("8.8.8.8", "port_scan_attempt")
         t.record("8.8.8.8", "brute_force_detected")
         result = t.record("8.8.8.8", "ssh_success")
+        assert result is not None
         assert "8.8.8.8" in result["message"]
         assert "aşama" in result["message"].lower() or "SALDIRI" in result["message"]
 
@@ -238,13 +251,17 @@ class TestAutoBlock:
         with patch("server.fp_manager.fp_manager", mock_fp):
             with patch("server.database.db", mock_db):
                 with patch("server.active_response.active_response_manager", mock_manager):
-                    _auto_block_full_chain(_full_trigger("5.6.7.8"))
-        mock_manager.block_ip.assert_called_once_with(
-            "5.6.7.8",
-            "Otomatik bloklama: FULL_ATTACK_CHAIN (recon, weaponize, access)",
-            "system/kill_chain",
-            tenant_id="default",
-        )
+                    with patch("server.attack_chain._notify_auto_block_success"):
+                        _auto_block_full_chain(_full_trigger("5.6.7.8"))
+        mock_manager.block_ip.assert_called_once()
+        call_args = mock_manager.block_ip.call_args
+        assert call_args[0][0] == "5.6.7.8"
+        reason = call_args[0][1]
+        assert "FULL_ATTACK_CHAIN" in reason
+        assert "recon" in reason
+        assert "weaponize" in reason
+        assert "access" in reason
+        assert call_args[0][2] == "system/kill_chain"
 
     def test_provider_failure_logged_as_error(self, monkeypatch, caplog):
         import logging
@@ -293,10 +310,12 @@ class TestAutoBlockIntegration:
     """
 
     def test_full_chain_triggers_auto_block(self, monkeypatch):
+        # FULL_THRESHOLD=4 + recon zorunlu
         t = AttackChainTracker()
-        t.record("5.6.7.8", "port_scan_attempt")
-        t.record("5.6.7.8", "ssh_failure")
-        trigger = t.record("5.6.7.8", "ssh_success")
+        t.record("5.6.7.8", "port_scan_attempt")        # recon
+        t.record("5.6.7.8", "ssh_failure")               # weaponize
+        t.record("5.6.7.8", "ssh_success")               # access
+        trigger = t.record("5.6.7.8", "windows_process_create")  # execute
         assert trigger is not None
         assert trigger["chain_type"] == "FULL_ATTACK_CHAIN"
 
@@ -375,23 +394,28 @@ class TestU1ManagementIPKillChain:
         assert result is None
 
     def test_normal_ip_unaffected_by_management_list(self, monkeypatch):
+        # FULL_THRESHOLD=4 + recon zorunlu
         mgmt = frozenset({"192.168.203.134"})
         t = AttackChainTracker()
         with patch("server.attack_chain._MANAGEMENT_IPS", mgmt):
-            t.record("5.6.7.8", "port_scan_attempt")
-            t.record("5.6.7.8", "ssh_failure")
-            result = t.record("5.6.7.8", "ssh_success")
+            t.record("5.6.7.8", "port_scan_attempt")        # recon
+            t.record("5.6.7.8", "ssh_failure")               # weaponize
+            t.record("5.6.7.8", "ssh_success")               # access
+            result = t.record("5.6.7.8", "windows_process_create")  # execute
         assert result is not None
         assert result["chain_type"] == "FULL_ATTACK_CHAIN"
 
     def test_empty_management_ips_no_effect(self):
+        # FULL_THRESHOLD=4 + recon zorunlu
         mgmt = frozenset()
         t = AttackChainTracker()
         with patch("server.attack_chain._MANAGEMENT_IPS", mgmt):
-            t.record("1.2.3.4", "port_scan_attempt")
-            t.record("1.2.3.4", "ssh_failure")
-            result = t.record("1.2.3.4", "ssh_success")
+            t.record("1.2.3.4", "port_scan_attempt")         # recon
+            t.record("1.2.3.4", "ssh_failure")                # weaponize
+            t.record("1.2.3.4", "ssh_success")                # access
+            result = t.record("1.2.3.4", "windows_process_create")  # execute
         assert result is not None
+        assert result["chain_type"] == "FULL_ATTACK_CHAIN"
 
 
 class TestKillChainNamespaceGuard:
@@ -444,3 +468,95 @@ class TestKillChainNamespaceGuard:
             with patch("server.attack_chain.attack_chain_tracker", mock_tracker):
                 c._check_attack_chain(event)
         mock_tracker.record.assert_not_called()
+
+
+class TestQ4AutoBlockNotification:
+    """Q4 — Auto-block bildiriminde kill chain bağlamı (aşamalar + tetikleyen action)."""
+
+    def test_block_reason_contains_stages(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    with patch("server.attack_chain._notify_auto_block_success"):
+                        _auto_block_full_chain(_full_trigger("5.6.7.9"))
+        reason = mock_manager.block_ip.call_args[0][1]
+        assert "recon" in reason
+        assert "weaponize" in reason
+        assert "access" in reason
+
+    def test_block_reason_contains_triggering_action(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    with patch("server.attack_chain._notify_auto_block_success"):
+                        _auto_block_full_chain(_full_trigger("5.6.7.9"))
+        reason = mock_manager.block_ip.call_args[0][1]
+        assert "full_attack_chain_detected" in reason
+
+    def test_notify_auto_block_success_called_on_success(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    with patch("server.attack_chain._notify_auto_block_success") as mock_notify:
+                        _auto_block_full_chain(_full_trigger("5.6.7.9"))
+        mock_notify.assert_called_once()
+        call_args = mock_notify.call_args[0]
+        assert call_args[0] == "5.6.7.9"
+        assert isinstance(call_args[1], list)
+        assert "full_attack_chain_detected" in call_args[2]
+
+    def test_notify_auto_block_success_not_called_on_failure(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": False, "error": "provider down"}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    with patch("server.attack_chain._notify_auto_block_success") as mock_notify:
+                        _auto_block_full_chain(_full_trigger("5.6.7.9"))
+        mock_notify.assert_not_called()
+
+    def test_notify_auto_block_success_email_sent(self):
+        from server.attack_chain import _notify_auto_block_success
+        from server.notifier import Notifier
+        n = Notifier()
+        n.email.enabled = True
+        sent = []
+        n.email.send_custom = lambda subj, body: sent.append((subj, body))
+        n.webhook.enabled = False
+        with patch("server.notifier.notifier", n):
+            _notify_auto_block_success(
+                "8.8.8.8",
+                ["Keşif", "Erişim Denemeleri", "İlk Erişim"],
+                "full_attack_chain_detected",
+                "opnsense",
+            )
+        assert len(sent) >= 1
+        assert "8.8.8.8" in sent[0][0]
+        assert "Keşif" in sent[0][1]
+        assert "full_attack_chain_detected" in sent[0][1]

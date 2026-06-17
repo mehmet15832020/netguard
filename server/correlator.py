@@ -97,6 +97,7 @@ class CorrelationRule:
     keywords: Optional[list] = None        # mesajda aranacak anahtar kelimeler (OR)
     distinct_by: Optional[str] = None      # count(distinct field) — password spray için
     tags: list = None                      # Sigma tags → MITRE etiketleri
+    require_external_source_ip: bool = False  # RFC1918 source_ip'leri atla (U3 — iç yönetim FP)
 
 
 # ------------------------------------------------------------------ #
@@ -118,6 +119,9 @@ class Correlator:
         # None → runtime'da SIGMA_RULES_V2_DIR okunur (monkeypatch uyumlu)
         self._sigma_v2_dir = sigma_v2_dir if sigma_v2_dir is not None else SIGMA_RULES_V2_DIR
         self._rules: list[CorrelationRule] = []
+        # Q5: (rule_id:group_val) → expiry monotonic timestamp
+        # run() döngüsünde süresi geçenler temizlenir → bellek sızıntısı engellenir
+        self._emit_cooldown: dict[str, float] = {}
         from server.sigma_executor import SigmaExecutor
         self._sigma_executor = SigmaExecutor(rules_dir=self._sigma_v2_dir)
         self.load_rules()
@@ -155,8 +159,9 @@ class Correlator:
                             enabled             = True,
                             match_severity      = item.get("match_severity"),
                             keywords            = item.get("keywords"),
-                            distinct_by         = item.get("distinct_by"),
-                            tags                = item.get("tags", []),
+                            distinct_by                = item.get("distinct_by"),
+                            tags                       = item.get("tags", []),
+                            require_external_source_ip = item.get("require_external_source_ip", False),
                         )
                         rule_map[rule.rule_id] = rule
                     except KeyError as exc:
@@ -186,6 +191,9 @@ class Correlator:
         Tüm aktif kuralları çalıştır — JSON korelasyon kuralları + pySigma (sigma_v2).
         Üretilen CorrelatedEvent listesini döner.
         """
+        import time as _time
+        _now_mono = _time.monotonic()
+        self._emit_cooldown = {k: v for k, v in self._emit_cooldown.items() if v > _now_mono}
         produced: list[CorrelatedEvent] = []
 
         # JSON korelasyon kuralları akışı
@@ -305,6 +313,7 @@ class Correlator:
             keywords=rule.keywords or [],
         )
 
+        import ipaddress as _ipaddress
         _mgmt_ips = frozenset(
             ip.strip()
             for ip in os.getenv("NETGUARD_MANAGEMENT_IPS", "").split(",")
@@ -316,6 +325,12 @@ class Correlator:
             group_value = row["grp_val"]
             if _mgmt_ips and rule.group_by == "source_ip" and group_value in _mgmt_ips:
                 continue
+            if rule.require_external_source_ip and rule.group_by == "source_ip":
+                try:
+                    if _ipaddress.ip_address(group_value).is_private:
+                        continue
+                except ValueError:
+                    pass
             count       = row["cnt"]
             def _parse_ts2(val) -> datetime:
                 if isinstance(val, datetime):
@@ -388,6 +403,11 @@ class Correlator:
 
             last_seen_iso = event.last_seen.isoformat() if hasattr(event.last_seen, "isoformat") else event.last_seen
             existing_id = db.find_open_incident_for_rule(event.rule_id, event.group_value)
+            # O3: yeni incident açmak için ya severity yeterince yüksek olmalı
+            # ya da kural eşiği gerçekten aşılmış olmalı (matched_count >= 3)
+            # — tek/çift eşleşmeli low-severity olaylar (ör. 2-aşamalı PARTIAL kill chain) incident üretmez
+            if not existing_id and event.severity not in ("high", "critical") and event.matched_count < 3:
+                return
             if existing_id:
                 db.escalate_incident_severity(existing_id, event.severity)
                 db.add_incident_event(

@@ -11,6 +11,7 @@
     "severity": "high",
     "output_event_action": "multi_source_attack_detected",
     "enabled": true,
+    "require_external_source_ip": true,
     "tags": ["attack.reconnaissance", "attack.t1595"]
   }
 ]

@@ -1298,7 +1298,7 @@ _STAGE_LABELS: dict[str, str] = {
     "lateral":  "Yanal Hareket",
 }
 
-_FULL_THRESHOLD = 3
+_FULL_THRESHOLD = 4  # attack_chain.py ile senkron — 4 farklı aşama + recon zorunlu
 
 
 class _ChainEvent(BaseModel):

@@ -256,6 +256,15 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓, Port/protocol input (P7) ✓
 - [x] **Windows Sigma FP** — 4 korelasyon kuralında `group-by: source_ip` → `observer_hostname` (EID 4688/Sysmon 1/4776/Sysmon 22 kaynaklı event'lerde source_ip her zaman None); commit db46ca4 ✓
 - [x] **U2 FP — EID 4672 SeImpersonate + PowerShell keyword tier** — SeImpersonatePrivilege `high_risk`'ten çıkarıldı (yalnızca SeDebugPrivilege/SeTcbPrivilege critical); NT SERVICE\/NT AUTHORITY\/WINDOW MANAGER\ is_system'e eklendi. `_PS_DANGEROUS` iki katmana ayrıldı: `_PS_CRITICAL_KEYWORDS` (mimikatz/reflectivepe/sekurlsa/dcsync vb.) → critical, `_PS_SUSPICIOUS_KEYWORDS` (iex/bypass/-enc/downloadstring vb.) → warning. Sigma `filter_system` NT SERVICE\/NT AUTHORITY\/WINDOW MANAGER\ eklendi. 16 yeni test; 94 test ✓
+- [x] **Tehdit Skoru FP Azaltma (17 Haziran 2026)** — Kill chain eşik kalibrasyonu ve gürültülü STAGE_MAP temizliği:
+  - `CHAIN_WINDOW_SEC` 1800→3600s (IBM QRadar/Splunk ESCU/Sentinel standardı)
+  - `FULL_THRESHOLD` 3→4 + recon zorunlu (Splunk ESCU "Critical Kill Chain" — 4 aşama)
+  - 13 gürültülü STAGE_MAP girişi kaldırıldı: `dns_query`, `sflow_flow`, `rdp_session_disconnect`, `interface_link_down`, `bgp_state_change`, `ospf_state_change`, `route_change`, `windows_fw_block`, `zeek_smb_open`, `zeek_smb_operation`, `zeek_smb_share_mapped`, `zeek_dce_rpc_operation`
+  - U3: `multi_source_attack` kuralına `require_external_source_ip: true` — RFC1918 yönetim IP'lerinin koordineli saldırı tetiklemesi önlendi
+  - O3: Yeni incident açmak için `severity∈{high,critical}` VEYA `matched_count≥3` zorunlu
+  - `MIN_SAMPLE_HOURS_FOR_DEVIATION` 1→24 (SANS NSM/RITA/Security Onion standardı)
+  - Port scan Sigma: timespan 2m→60s, eşik 10→15 (Snort ET sid:1228 / Zeek notice.bro standardı)
+  - `analytics.py _FULL_THRESHOLD` senkronize edildi → 4
 
 ---
 

@@ -108,7 +108,7 @@ class TestJA3Pipeline:
 
         ja3_rule = next(
             (r for r in sigma_ex.rules
-             if "ja3" in r.title.lower() or "fingerprint" in r.title.lower()),
+             if "ja3" in r.title.lower()),
             None,
         )
         assert ja3_rule is not None, "TLS JA3 sigma kuralı bulunamadı"
@@ -520,7 +520,7 @@ class TestSigmaRulesLoading:
         rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
         ex = SigmaExecutor(str(rules_dir))
         ja3_rule = next(
-            (r for r in ex.rules if "ja3" in r.title.lower() or "fingerprint" in r.title.lower()),
+            (r for r in ex.rules if "ja3" in r.title.lower()),
             None,
         )
         assert ja3_rule is not None
@@ -555,7 +555,7 @@ class TestSigmaRulesLoading:
         rules_dir = Path(__file__).parent.parent / "config" / "sigma_rules_v2"
         ex = SigmaExecutor(str(rules_dir))
         ja3_rule = next(
-            (r for r in ex.rules if "fingerprint" in r.title.lower()), None
+            (r for r in ex.rules if "ja3" in r.title.lower()), None
         )
         assert ja3_rule is not None
 

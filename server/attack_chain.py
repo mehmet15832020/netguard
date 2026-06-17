@@ -74,9 +74,9 @@ _MANAGEMENT_IPS: frozenset[str] = frozenset(
     if ip.strip()
 )
 
-CHAIN_WINDOW_SEC = 1800   # 30 dakika
-PARTIAL_THRESHOLD = 2     # uyarı eşiği
-FULL_THRESHOLD    = 3     # kritik eşiği
+CHAIN_WINDOW_SEC = 3600   # 60 dakika — IBM QRadar / Splunk ESCU / Microsoft Sentinel endüstri standardı
+PARTIAL_THRESHOLD = 2     # uyarı eşiği: 2 farklı aşama — IBM QRadar "Suspicious Activity"
+FULL_THRESHOLD    = 4     # kritik eşiği: 4 farklı aşama + recon zorunlu — Splunk ESCU "Critical Kill Chain"
 
 STAGE_MAP: dict[str, str] = {
     # event_action → stage adı
@@ -114,7 +114,7 @@ STAGE_MAP: dict[str, str] = {
     "ssh_target":            "weaponize", # SSH Targeted Attack
     "dns_c2":                "lateral",   # DNS C2 High Frequency (C2 kanal)
     "dns_tunnel":            "lateral",   # DNS Tunneling
-    "dns_query":             "recon",     # DNS Query Burst
+    # dns_query kaldırıldı — her DNS sorgusu recon değildir; dns_anomaly/dns_c2 yeterli
     "ftp_exfil":             "lateral",   # FTP Exfiltration Burst
     "web_auth":              "weaponize", # Web Auth Brute Force
     "icmp_flood":            "recon",     # ICMP Flood
@@ -191,6 +191,18 @@ STAGE_MAP: dict[str, str] = {
     "windows_sysmon_wmi_event":         "lateral",    # Sysmon 19 — WMI persistence T1047
     "windows_sysmon_wmi_binding":       "lateral",    # Sysmon 21 — WMI binding T1047
     "windows_sysmon_process_tamper":    "execute",    # Sysmon 25 — process tampering T1070
+    # N1-N5 — Windows Firewall / RDP / Registry / Sysmon tamper / Defender
+    # windows_fw_block kaldırıldı — Windows Firewall internet botu trafiğini bloklar, recon değildir
+    "windows_fw_new_listener":         "execute",    # 5154 — yeni dinleme portu → persistence
+    "rdp_session_reconnect":           "lateral",    # 4778 — RDP yeniden bağlantı T1021.001 (aktif oturum devralma)
+    # rdp_session_disconnect kaldırıldı — normal RDP çıkışı lateral hareket göstergesi değildir
+    "rdp_auth_success":                "access",     # 1149 — RDP başarılı kimlik doğrulama
+    "sysmon_registry_create_delete":   "execute",    # Sysmon 12 — registry persistence T1547.001
+    "sysmon_registry_rename":          "execute",    # Sysmon 14 — registry key rename T1112
+    "sysmon_state_change":             "execute",    # Sysmon 4 — sysmon tamper T1562.001
+    "defender_malware_detected":       "execute",    # Defender 1116 — malware T1204
+    "defender_action_taken":           "execute",    # Defender 1117 — remediation T1204
+    "defender_scan_threat":            "execute",    # Defender 1006 — scan threat T1204
     # Zeek weird.log (N2)
     "zeek_weird_unknown_protocol":       "lateral",   # T1071 C2 tunnel
     "zeek_weird_bad_http_request":       "execute",   # T1190 exploit
@@ -230,10 +242,10 @@ STAGE_MAP: dict[str, str] = {
     "zeek_smb_recon":                "recon",       # T1018 domain recon
     "zeek_smb_write":                "lateral",     # T1021.002 file write
     "zeek_smb_rename":               "execute",     # T1070 file manipulation
-    "zeek_smb_open":                 "recon",       # file access
-    "zeek_smb_operation":            "recon",       # generic SMB
+    # zeek_smb_open kaldırıldı — her dosya erişimi recon değildir; smb_admin_share / smb_recon yeterli
+    # zeek_smb_operation kaldırıldı — generik SMB operasyonu gürültü yaratır
     "zeek_smb_admin_share_mapped":   "lateral",     # C4 — T1021.002 admin share tree-connect
-    "zeek_smb_share_mapped":         "recon",       # C4 — generic share tree-connect
+    # zeek_smb_share_mapped kaldırıldı — generik share bağlantısı çok gürültülü
     # ── Zeek dce_rpc.log ──────────────────────────────────────────────────────
     "zeek_dce_rpc_dcsync":           "execute",     # T1003.006 DCSync
     "zeek_dce_rpc_psexec":           "execute",     # T1569.002 PsExec
@@ -242,9 +254,9 @@ STAGE_MAP: dict[str, str] = {
     "zeek_dce_rpc_registry":         "execute",     # T1112 registry modification
     "zeek_dce_rpc_samr_enum":        "recon",       # T1087 account discovery
     "zeek_dce_rpc_policy":           "recon",       # T1082 system discovery
-    "zeek_dce_rpc_operation":        "recon",       # generic DCE-RPC
+    # zeek_dce_rpc_operation kaldırıldı — generik DCE-RPC çağrısı gürültü yaratır
     # ── sFlow v5 (N6) — sampled flow (RFC 3176 / T1048 / T1572) ─────────────
-    "sflow_flow":             "recon",      # normal akış örnekleme
+    # sflow_flow kaldırıldı — her örneklenmiş akış recon değildir; sflow_large_flow yeterli
     "sflow_large_flow":       "lateral",    # T1048 büyük veri exfil
     "sflow_tunneled":         "lateral",    # T1572 protokol tüneli
     "sflow_suspicious_port":  "weaponize",  # şüpheli port akışı
@@ -275,6 +287,11 @@ STAGE_MAP: dict[str, str] = {
     "gws_gmail_rule":       "lateral",    # T1114.003 Gmail forwarding/filter rule
     "gws_admin_privilege":  "weaponize",  # T1098 account manipulation
     "gws_bulk_download":    "lateral",    # T1530 data from cloud storage
+    # ── G1 — VyOS Routing + Interface Events ─────────────────────────────────
+    # interface_link_down kaldırıldı — ağ bakımı / GNS3 restart tetikler
+    # bgp_state_change kaldırıldı — normal BGP konverjanssı tetikler
+    # ospf_state_change kaldırıldı — normal OSPF konverjanssı tetikler
+    # route_change kaldırıldı — normal routing değişikliği tetikler
 }
 
 # Longest-prefix-first sıralama — belirsiz prefix eşleşmelerinde daha uzun (özgül) prefix kazanır.
@@ -290,6 +307,57 @@ STAGE_LABELS = {
     "execute":    "Komut Çalıştırma",
     "lateral":    "Yanal Hareket",
 }
+
+
+def _notify_auto_block_success(
+    source_ip: str,
+    stage_labels: list[str],
+    triggering_action: str,
+    provider: str,
+) -> None:
+    try:
+        from server.notifier import notifier
+        from datetime import datetime, timezone
+        labels_str = " → ".join(stage_labels)
+        subject = f"NetGuard: FULL_ATTACK_CHAIN otomatik blok — {source_ip}"
+        body = (
+            f"NetGuard Kill Chain Otomatik Bloklama\n{'='*40}\n\n"
+            f"IP             : {source_ip}\n"
+            f"Kill Chain     : {labels_str}\n"
+            f"Tetikleyen     : {triggering_action}\n"
+            f"Provider       : {provider}\n"
+            f"Zaman          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
+            f"{'='*40}\n"
+            f"Bu IP {CHAIN_WINDOW_SEC // 60} dakika içinde {len(stage_labels)} farklı saldırı aşaması "
+            f"tamamladığı için otomatik olarak firewall'da bloklandı.\n"
+        )
+        notifier.email.send_custom(subject, body)
+        if notifier.webhook.enabled:
+            if notifier.webhook.webhook_type == "discord":
+                notifier.webhook._post_payload(
+                    {
+                        "embeds": [{
+                            "title": f"NetGuard: FULL_ATTACK_CHAIN otomatik blok — {source_ip}",
+                            "description": f"Kill chain tamamlandı: {labels_str}",
+                            "color": 15158332,
+                            "fields": [
+                                {"name": "Kaynak IP",    "value": source_ip,          "inline": True},
+                                {"name": "Kill Chain",   "value": labels_str,         "inline": False},
+                                {"name": "Tetikleyen",   "value": triggering_action,  "inline": True},
+                                {"name": "Provider",     "value": provider,           "inline": True},
+                            ],
+                            "footer": {"text": "NetGuard Kill Chain Detector"},
+                        }]
+                    },
+                    f"auto_block:{source_ip}",
+                )
+            else:
+                notifier.webhook._post_payload(
+                    {"text": f"NetGuard FULL_ATTACK_CHAIN otomatik blok — {source_ip}\nKill chain: {labels_str}\nTetikleyen: {triggering_action}"},
+                    f"auto_block:{source_ip}",
+                )
+    except Exception as exc:
+        logger.warning("auto_block bildirim gönderilemedi [%s]: %s", source_ip, exc)
 
 
 def _resolve_stage(event_action: str) -> Optional[str]:
@@ -359,7 +427,8 @@ class AttackChainTracker:
             active_stages = list(bucket.keys())
             stage_count = len(active_stages)
 
-            if stage_count >= FULL_THRESHOLD:
+            # FULL_ATTACK_CHAIN: eşik + recon aşaması zorunlu (kill chain başlangıcı olmadan tam zincir olmaz)
+            if stage_count >= FULL_THRESHOLD and "recon" in active_stages:
                 trigger = self._build_trigger(source_ip, active_stages, "FULL_ATTACK_CHAIN", "critical")
             elif stage_count >= PARTIAL_THRESHOLD:
                 trigger = self._build_trigger(source_ip, active_stages, "PARTIAL_ATTACK_CHAIN", "warning")
@@ -487,15 +556,27 @@ def _auto_block_full_chain(trigger: dict) -> None:
                 logger.debug("AUTO_BLOCK atlandı (zaten bloklu): %s", source_ip)
                 return
             from server.active_response import active_response_manager
-            stages = ", ".join(trigger.get("stages") or ["unknown"])
+            stages = trigger.get("stages") or ["unknown"]
+            stage_labels = trigger.get("stage_labels") or stages
+            triggering_action = trigger.get("event_action", "full_attack_chain_detected")
+            stages_str = ", ".join(stages)
+            labels_str = " → ".join(stage_labels)
+            block_reason = (
+                f"Otomatik bloklama: FULL_ATTACK_CHAIN "
+                f"aşamalar=({stages_str}) "
+                f"zincir=({labels_str}) "
+                f"tetikleyen={triggering_action}"
+            )
             result = active_response_manager.block_ip(
                 source_ip,
-                f"Otomatik bloklama: FULL_ATTACK_CHAIN ({stages})",
+                block_reason,
                 "system/kill_chain",
                 tenant_id="default",
             )
             if result.get("success"):
-                logger.info("AUTO_BLOCK başarılı [%s] provider=%s", source_ip, result.get("provider"))
+                logger.info("AUTO_BLOCK başarılı [%s] provider=%s stages=%s action=%s",
+                            source_ip, result.get("provider"), stages_str, triggering_action)
+                _notify_auto_block_success(source_ip, stage_labels, triggering_action, result.get("provider", ""))
             else:
                 logger.error("AUTO_BLOCK provider başarısız [%s]: %s", source_ip, result.get("error"))
         except Exception as exc:

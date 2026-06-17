@@ -1713,12 +1713,22 @@ class TestKillChainTimelineData:
         assert label_map["access"] == "Erişim"
         assert label_map["lateral"] == "Yanal Hareket"
 
-    def test_full_chain_type_for_3_stages(self, client, tmp_db):
-        for stage in ["recon", "weaponize", "access"]:
+    def test_full_chain_type_for_4_stages(self, client, tmp_db):
+        # FULL_THRESHOLD=4: 4 farklı aşama → FULL_ATTACK_CHAIN
+        for stage in ["recon", "weaponize", "access", "execute"]:
             _insert_chain_stage(tmp_db, source_ip="10.0.0.3", stage=stage)
         data = client.get("/api/v1/analytics/kill-chain-timeline").json()
         row = next(r for r in data["rows"] if r["source_ip"] == "10.0.0.3")
         assert row["chain_type"] == "FULL_ATTACK_CHAIN"
+        assert row["stage_count"] == 4
+
+    def test_three_stages_is_partial(self, client, tmp_db):
+        # FULL_THRESHOLD=4: 3 aşama → PARTIAL_ATTACK_CHAIN
+        for stage in ["recon", "weaponize", "access"]:
+            _insert_chain_stage(tmp_db, source_ip="10.0.0.9", stage=stage)
+        data = client.get("/api/v1/analytics/kill-chain-timeline").json()
+        row = next(r for r in data["rows"] if r["source_ip"] == "10.0.0.9")
+        assert row["chain_type"] == "PARTIAL_ATTACK_CHAIN"
         assert row["stage_count"] == 3
 
     def test_partial_chain_type_for_2_stages(self, client, tmp_db):

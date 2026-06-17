@@ -298,15 +298,16 @@ class TestKillChainPipeline:
         assert "recon" in result["stages"]
         assert "weaponize" in result["stages"]
 
-    def test_three_stages_full_chain(self, fresh_chain_tracker):
-        """RECON + WEAPONIZE + ACCESS → FULL_ATTACK_CHAIN tetiklenmeli."""
-        fresh_chain_tracker.record("10.0.0.3", "port_scan_detected")
-        fresh_chain_tracker.record("10.0.0.3", "ssh_failure")
-        result = fresh_chain_tracker.record("10.0.0.3", "ssh_success")
+    def test_four_stages_full_chain(self, fresh_chain_tracker):
+        """RECON + WEAPONIZE + ACCESS + EXECUTE → FULL_ATTACK_CHAIN tetiklenmeli (FULL_THRESHOLD=4)."""
+        fresh_chain_tracker.record("10.0.0.3", "port_scan_detected")    # recon
+        fresh_chain_tracker.record("10.0.0.3", "ssh_failure")            # weaponize
+        fresh_chain_tracker.record("10.0.0.3", "ssh_success")            # access
+        result = fresh_chain_tracker.record("10.0.0.3", "windows_process_create")  # execute
         assert result is not None
         assert result["chain_type"] == "FULL_ATTACK_CHAIN"
         assert result["severity"] == "critical"
-        assert len(result["stages"]) >= 3
+        assert len(result["stages"]) >= 4
 
     def test_different_ips_independent_chains(self, fresh_chain_tracker):
         """İki farklı IP bağımsız zincir tutar."""
@@ -496,6 +497,12 @@ class TestEndToEndPipeline:
                       event_category=LogCategory.AUTHENTICATION)
         )
 
+        # EXECUTE: FULL_THRESHOLD=4 gerektirir — 4. aşama ile FULL_ATTACK_CHAIN tetiklenir
+        pipeline_db.save_normalized_log(
+            _norm_log("windows_process_create", src, severity="warning",
+                      event_category=LogCategory.NETWORK)
+        )
+
         corr = Correlator()
         corr.load_rules()
 
@@ -511,9 +518,6 @@ class TestEndToEndPipeline:
 
         # Kill chain trigger'ı olan critical incident var mı?
         critical = [i for i in incidents if i["severity"] == "critical"]
-        # Kill chain 3 aşamada critical incident üretir —
-        # correlated_event'ların attack_chain'e ulaşması için
-        # _check_attack_chain çağrılması şarttır (correlator.run() içinde)
         assert len(critical) >= 1 or len(incidents) >= 2, (
             "Full kill chain ya critical incident ya da birden fazla incident üretmeli"
         )

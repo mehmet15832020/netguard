@@ -157,9 +157,9 @@ class TestCheckDeviations:
         )
 
         ip = "192.168.100.1"
-        # Baseline: az trafik
-        for i in range(MIN_EVENTS_FOR_BASELINE + 2):
-            ts = datetime.now(timezone.utc) - timedelta(days=1, minutes=i)
+        # 30 eventi 2 saatlik aralıklarla dağıt → 30 distinct saat → MIN_SAMPLE_HOURS_FOR_DEVIATION=24 geçilir
+        for i in range(30):
+            ts = datetime.now(timezone.utc) - timedelta(hours=i * 2 + 2)
             baseline_db.save_normalized_log(_norm(ip, timestamp=ts), tenant_id="default")
         update_baselines("default")
 
@@ -306,8 +306,9 @@ class TestAssetBaselineKillChainIntegration:
         assert STAGE_MAP["asset_anomaly_detected"] == "recon"
 
         ip = "10.77.0.1"
-        for i in range(MIN_EVENTS_FOR_BASELINE + 2):
-            ts = datetime.now(timezone.utc) - timedelta(days=1, minutes=i)
+        # 30 eventi 2 saatlik aralıklarla dağıt → 30 distinct saat → MIN_SAMPLE_HOURS_FOR_DEVIATION=24 geçilir
+        for i in range(30):
+            ts = datetime.now(timezone.utc) - timedelta(hours=i * 2 + 2)
             baseline_db.save_normalized_log(_norm(ip, timestamp=ts), tenant_id="default")
         update_baselines("default")
 

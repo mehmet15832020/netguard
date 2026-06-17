@@ -1,3 +1,27 @@
+title: Web Scanner Fingerprint Detected
+id: 0d814172-4b04-4ceb-9dd6-86550193a466
+status: experimental
+description: Known web scanner user agent detected in HTTP logs
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: http_request
+        message|contains:
+            - "nikto"
+            - "sqlmap"
+            - "nessus"
+            - "openvas"
+            - "masscan"
+            - "zgrab"
+            - "wfuzz"
+            - "dirbuster"
+    condition: selection
+level: medium
+tags:
+    - attack.reconnaissance
+    - attack.t1595
+---
 title: Port Scan Base
 name: ng_port_scan_base
 status: stable
@@ -16,9 +40,9 @@ correlation:
     rules: ng_port_scan_base
     group-by:
         - source_ip
-    timespan: 2m
+    timespan: 60s
     condition:
-        gte: 10
+        gte: 15
 level: high
 tags:
     - attack.reconnaissance

@@ -33,6 +33,7 @@ def _make_normalized_log(
         source_type = LogSourceType.AUTH_LOG,
         observer_hostname = observer_hostname,
         timestamp   = ts,
+        received_at = ts,
         severity    = severity,
         event_category    = LogCategory.AUTHENTICATION,
         event_action  = event_action,

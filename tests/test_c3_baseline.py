@@ -153,7 +153,7 @@ class TestUpdateBaselinesProtocols:
 
 class TestCheckDeviationsNewBehavior:
 
-    def _seed_baseline(self, bdb, ip, ports, protocols, sample_hours=20):
+    def _seed_baseline(self, bdb, ip, ports, protocols, sample_hours=30):
         bdb.upsert_asset_baseline(
             source_ip=ip, tenant_id="default",
             first_seen_at=_now().isoformat(), last_seen_at=_now().isoformat(),
