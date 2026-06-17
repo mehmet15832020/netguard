@@ -480,13 +480,14 @@ class ActiveResponseManager:
         else:
             return {"success": False, "provider": provider, "error": f"Bilinmeyen provider: {provider}"}
 
-        if result.success:
+        phantom = not result.success and "bulunamadı" in (result.error or "")
+        if result.success or phantom:
             db.unblock_ip(ip, unblocked_by, tenant_id)
             db.save_audit_event(
                 actor=unblocked_by,
-                action="ip_unblocked",
+                action="ip_unblocked" if result.success else "ip_unblocked_phantom",
                 resource=f"ip:{ip}",
-                detail=f"provider={provider}",
+                detail=f"provider={provider}" + ("" if result.success else " (firewall rule missing — phantom cleared)"),
             )
         else:
             logger.error("Unblock başarısız: %s — %s", ip, result.error)
@@ -497,7 +498,7 @@ class ActiveResponseManager:
                 detail=f"firewall error: {result.error}",
             )
         return {
-            "success":  result.success,
+            "success":  result.success or phantom,
             "provider": result.provider,
             "error":    result.error,
         }

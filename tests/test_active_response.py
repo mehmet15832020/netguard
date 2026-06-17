@@ -1070,3 +1070,66 @@ class TestFailedBlockUnblockAudit:
         actions = [a["action"] for a in audit]
         assert "ip_block_failed" not in actions
         assert "ip_blocked" in actions
+
+
+class TestU5PhantomBlockClearing:
+    """U5 — VyOS/OPNsense kuralı bulunamadığında DB yine de temizlenmeli."""
+
+    def test_vyos_rule_not_found_still_clears_db(self, tmp_db, monkeypatch):
+        block_id = str(uuid.uuid4())
+        tmp_db.block_ip(block_id, "5.5.5.5", "test", "admin",
+                        provider="vyos", tenant_id="default")
+        assert tmp_db.is_ip_blocked("5.5.5.5", "default")
+
+        monkeypatch.setattr(
+            VyOSProvider, "unblock",
+            lambda self, ip: UnblockResult(False, "vyos", f"VyOS'ta {ip} kuralı bulunamadı"),
+        )
+
+        mgr = ActiveResponseManager()
+        result = mgr.unblock_ip("5.5.5.5", "admin", tenant_id="default")
+
+        assert not tmp_db.is_ip_blocked("5.5.5.5", "default")
+        audit = tmp_db.get_audit_log(limit=10)
+        actions = [a["action"] for a in audit]
+        assert "ip_unblocked_phantom" in actions
+
+    def test_vyos_real_error_keeps_db_entry(self, tmp_db, monkeypatch):
+        block_id = str(uuid.uuid4())
+        tmp_db.block_ip(block_id, "6.6.6.6", "test", "admin",
+                        provider="vyos", tenant_id="default")
+
+        monkeypatch.setattr(
+            VyOSProvider, "unblock",
+            lambda self, ip: UnblockResult(False, "vyos", "SSH bağlantısı zaman aşımına uğradı"),
+        )
+
+        mgr = ActiveResponseManager()
+        result = mgr.unblock_ip("6.6.6.6", "admin", tenant_id="default")
+
+        assert result["success"] is False
+        assert tmp_db.is_ip_blocked("6.6.6.6", "default")
+
+    def test_expire_blocks_phantom_cleared_via_vyos(self, tmp_db, monkeypatch):
+        from datetime import datetime, timezone, timedelta
+        past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        with tmp_db._connect() as conn:
+            conn.execute(
+                """INSERT INTO blocked_ips
+                   (block_id, ip, reason, blocked_by, blocked_at, is_active, provider, tenant_id, expires_at)
+                   VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s)""",
+                ("ph-exp-001", "7.7.7.7", "test", "admin",
+                 datetime.now(timezone.utc).isoformat(),
+                 "vyos", "default", past),
+            )
+
+        from server import active_response as ar_mod
+        monkeypatch.setattr(
+            VyOSProvider, "unblock",
+            lambda self, ip: UnblockResult(False, "vyos", f"VyOS'ta {ip} kuralı bulunamadı"),
+        )
+
+        mgr = ActiveResponseManager()
+        count = mgr.expire_blocks()
+        assert count == 1
+        assert not tmp_db.is_ip_blocked("7.7.7.7", "default")

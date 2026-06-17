@@ -547,3 +547,102 @@ class TestU1ManagementIPSigmaFilter:
             and hostname_event.group_value in _mgmt_ips
         )
         assert not should_skip
+
+
+class TestU3ManagementIPJsonRuleFilter:
+    """U3 — JSON korelasyon kurallarında yönetim IP filtresi."""
+
+    def test_apply_rule_skips_management_ip(self, tmp_db, monkeypatch):
+        """_apply_rule() yönetim IP'sini group_value olarak gören satırı atlar."""
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.203.150")
+
+        from server.correlator import Correlator
+        from server.database import db
+
+        correlator = Correlator()
+
+        # normalized_logs'a management IP'den event ekle
+        from server.log_normalizer import LogSourceType, LogCategory
+        from shared.models import NormalizedLog
+        import uuid
+        from datetime import datetime, timezone
+
+        for i in range(4):
+            log = NormalizedLog(
+                log_id=str(uuid.uuid4()),
+                raw_id=str(uuid.uuid4()),
+                source_type=LogSourceType.SYSLOG,
+                observer_hostname="agent-vm",
+                timestamp=datetime.now(timezone.utc),
+                severity="warning",
+                event_category=LogCategory.NETWORK,
+                event_action="ssh_success",
+                source_ip="192.168.203.150",
+                message=f"ssh success {i}",
+                tags=[],
+                extra={},
+            )
+            db.save_normalized_log(log, tenant_id="default")
+
+        from server.correlator import CorrelationRule
+        rule = CorrelationRule(
+            rule_id="test_multi_source",
+            name="Test Multi Source",
+            description="Test",
+            match_event_action="ssh_success",
+            group_by="source_ip",
+            window_seconds=300,
+            threshold=3,
+            severity="high",
+            output_event_action="multi_source_test_detected",
+            enabled=True,
+        )
+
+        events = correlator._apply_rule(rule)
+        assert len(events) == 0, "Yönetim IP'si korelasyon olayı üretmemeli"
+
+    def test_apply_rule_passes_non_management_ip(self, tmp_db, monkeypatch):
+        """Yönetim IP olmayan source_ip normal şekilde korelasyon üretir."""
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.203.150")
+
+        from server.correlator import Correlator, CorrelationRule
+        from server.database import db
+        from server.log_normalizer import LogSourceType, LogCategory
+        from shared.models import NormalizedLog
+        import uuid
+        from datetime import datetime, timezone
+
+        correlator = Correlator()
+
+        for i in range(4):
+            log = NormalizedLog(
+                log_id=str(uuid.uuid4()),
+                raw_id=str(uuid.uuid4()),
+                source_type=LogSourceType.SYSLOG,
+                observer_hostname="external-host",
+                timestamp=datetime.now(timezone.utc),
+                severity="warning",
+                event_category=LogCategory.NETWORK,
+                event_action="ssh_success",
+                source_ip="1.2.3.4",
+                message=f"ssh success {i}",
+                tags=[],
+                extra={},
+            )
+            db.save_normalized_log(log, tenant_id="default")
+
+        rule = CorrelationRule(
+            rule_id="test_multi_source_2",
+            name="Test Multi Source 2",
+            description="Test",
+            match_event_action="ssh_success",
+            group_by="source_ip",
+            window_seconds=300,
+            threshold=3,
+            severity="high",
+            output_event_action="multi_source_test2_detected",
+            enabled=True,
+        )
+
+        events = correlator._apply_rule(rule)
+        assert len(events) >= 1, "Normal IP korelasyon üretmeli"

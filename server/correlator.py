@@ -305,9 +305,17 @@ class Correlator:
             keywords=rule.keywords or [],
         )
 
+        _mgmt_ips = frozenset(
+            ip.strip()
+            for ip in os.getenv("NETGUARD_MANAGEMENT_IPS", "").split(",")
+            if ip.strip()
+        )
+
         produced = []
         for row in rows:
             group_value = row["grp_val"]
+            if _mgmt_ips and rule.group_by == "source_ip" and group_value in _mgmt_ips:
+                continue
             count       = row["cnt"]
             def _parse_ts2(val) -> datetime:
                 if isinstance(val, datetime):
