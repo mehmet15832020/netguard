@@ -427,6 +427,9 @@ detection:
             - NETWORK SERVICE
             - ANONYMOUS LOGON
             - IUSR
+            - NT SERVICE\
+            - NT AUTHORITY\
+            - WINDOW MANAGER\
     condition: selection and not filter_system
 level: critical
 tags:

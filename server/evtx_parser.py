@@ -109,14 +109,18 @@ _KNOWN_MALWARE_PROC: frozenset[str] = frozenset({
     "pwdump.exe", "gsecdump.exe", "lsadump.exe", "sekurlsa.exe",
 })
 
-_PS_DANGEROUS: frozenset[str] = frozenset({
-    "iex", "invoke-expression", "invoke-mimikatz",
-    "invoke-reflectivepeinjection", "invoke-shellcode",
-    "downloadstring", "downloadfile", "net.webclient",
-    "frombase64string", "-encodedcommand", "-enc ",
-    "bypass", "amsiutils", "set-mppreference",
+_PS_CRITICAL_KEYWORDS: frozenset[str] = frozenset({
+    "invoke-mimikatz", "invoke-reflectivepeinjection", "invoke-shellcode",
+    "amsiutils", "set-mppreference",
     "sekurlsa", "lsadump", "dcsync",
     "invoke-empire", "invoke-obfuscation",
+})
+
+_PS_SUSPICIOUS_KEYWORDS: frozenset[str] = frozenset({
+    "iex", "invoke-expression",
+    "downloadstring", "downloadfile", "net.webclient",
+    "frombase64string", "-encodedcommand", "-enc ",
+    "bypass",
 })
 
 _SUSPICIOUS_SERVICES: frozenset[str] = frozenset({
@@ -327,8 +331,14 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
     if eid == 4672:
         user   = _get_data(root, "SubjectUserName")
         privs  = _get_data(root, "PrivilegeList")
-        high_risk = any(p in privs for p in ("SeDebugPrivilege", "SeImpersonatePrivilege", "SeTcbPrivilege"))
-        is_system = user.upper() in _WINDOWS_SYSTEM_ACCOUNTS or user.endswith("$")
+        high_risk = any(p in privs for p in ("SeDebugPrivilege", "SeTcbPrivilege"))
+        is_system = (
+            user.upper() in _WINDOWS_SYSTEM_ACCOUNTS
+            or user.endswith("$")
+            or user.upper().startswith("NT SERVICE\\")
+            or user.upper().startswith("NT AUTHORITY\\")
+            or user.upper().startswith("WINDOW MANAGER\\")
+        )
         if is_system:
             severity = "info"
         else:
@@ -684,8 +694,14 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         payload  = _get_data(root, "Payload")
         host_app = _get_data(root, "HostApplication")
         payload_lower = payload.lower()
-        dangerous = any(k in payload_lower for k in _PS_DANGEROUS)
-        severity  = "critical" if dangerous else "info"
+        is_critical_keyword  = any(k in payload_lower for k in _PS_CRITICAL_KEYWORDS)
+        is_suspicious_keyword = any(k in payload_lower for k in _PS_SUSPICIOUS_KEYWORDS)
+        if is_critical_keyword:
+            severity = "critical"
+        elif is_suspicious_keyword:
+            severity = "warning"
+        else:
+            severity = "info"
         return {
             "event_action":      event_action,
             "severity":          severity,
@@ -701,8 +717,14 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
         script_text = _get_data(root, "ScriptBlockText")
         path        = _get_data(root, "Path")
         script_lower = script_text.lower()
-        dangerous   = any(k in script_lower for k in _PS_DANGEROUS)
-        severity    = "critical" if dangerous else "warning"
+        is_critical_keyword   = any(k in script_lower for k in _PS_CRITICAL_KEYWORDS)
+        is_suspicious_keyword = any(k in script_lower for k in _PS_SUSPICIOUS_KEYWORDS)
+        if is_critical_keyword:
+            severity = "critical"
+        elif is_suspicious_keyword:
+            severity = "warning"
+        else:
+            severity = "warning"
         return {
             "event_action":      event_action,
             "severity":          severity,

