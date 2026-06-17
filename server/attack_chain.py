@@ -68,6 +68,12 @@ def _load_protected_networks() -> list:
 
 _PROTECTED_NETWORKS = _load_protected_networks()
 
+_MANAGEMENT_IPS: frozenset[str] = frozenset(
+    ip.strip()
+    for ip in os.getenv("NETGUARD_MANAGEMENT_IPS", "").split(",")
+    if ip.strip()
+)
+
 CHAIN_WINDOW_SEC = 1800   # 30 dakika
 PARTIAL_THRESHOLD = 2     # uyarı eşiği
 FULL_THRESHOLD    = 3     # kritik eşiği
@@ -326,6 +332,9 @@ class AttackChainTracker:
           }
         """
         if not source_ip or source_ip in ("-", "None", "none"):
+            return None
+
+        if _MANAGEMENT_IPS and source_ip in _MANAGEMENT_IPS:
             return None
 
         stage = _resolve_stage(event_action)

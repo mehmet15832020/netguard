@@ -8,6 +8,7 @@ Desteklenen event_type değerleri:
   alert, dns, http, tls, flow, smtp, fileinfo, ssh, anomaly
 """
 
+import os
 import re
 import uuid
 import logging
@@ -43,10 +44,18 @@ _OLD_TLS_VERSIONS: frozenset[str] = frozenset({
     "sslv2", "ssl 2.0", "ssl2",
 })
 
-# Same single-word constraint: "paramiko" covers "python-paramiko" after split.
+# Same single-word constraint: "libssh" and scanner tools only.
+# "paramiko" removed: it is a legitimate Python SSH library used by NetGuard itself
+# (VyOS management) — including it generates FP alerts from the management host.
 _SUSPICIOUS_SSH_CLIENTS: frozenset[str] = frozenset({
-    "libssh", "paramiko", "nmap", "masscan",
+    "libssh", "nmap", "masscan",
 })
+
+_MANAGEMENT_IPS: frozenset[str] = frozenset(
+    ip.strip()
+    for ip in os.getenv("NETGUARD_MANAGEMENT_IPS", "").split(",")
+    if ip.strip()
+)
 
 
 def _is_suspicious_ua(ua) -> bool:
@@ -465,6 +474,8 @@ def parse_ssh(row: dict) -> Optional[NormalizedLog]:
     s_sw    = server.get("software_version", "")
 
     suspicious = _is_suspicious_ssh_client(c_sw)
+    if suspicious and src_ip and src_ip in _MANAGEMENT_IPS:
+        suspicious = False
     event_action = "suricata_ssh_anomaly" if suspicious else "ssh_attempt"
     severity = "warning" if suspicious else "info"
 

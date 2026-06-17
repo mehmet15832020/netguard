@@ -867,11 +867,11 @@ class TestSshAnomalyDetection:
         assert log.event_action == "ssh_attempt"
         assert log.severity == "info"
 
-    def test_paramiko_is_anomaly(self):
+    def test_paramiko_is_not_anomaly(self):
         log = parse_ssh(self._row(client_sw="paramiko_3.1.0"))
-        assert log.event_action == "suricata_ssh_anomaly"
-        assert log.severity == "warning"
-        assert "SUSPICIOUS-CLIENT" in log.message
+        assert log.event_action == "ssh_attempt"
+        assert log.severity == "info"
+        assert "SUSPICIOUS-CLIENT" not in log.message
 
     def test_libssh_is_anomaly(self):
         log = parse_ssh(self._row(client_sw="libssh-0.9.6"))
@@ -891,7 +891,7 @@ class TestSshAnomalyDetection:
         assert log.event_action == "ssh_attempt"
 
     def test_is_suspicious_ssh_client_helper(self):
-        assert _is_suspicious_ssh_client("paramiko_3.1") is True
+        assert _is_suspicious_ssh_client("paramiko_3.1") is False
         assert _is_suspicious_ssh_client("libssh-0.9") is True
         assert _is_suspicious_ssh_client("OpenSSH_9.0") is False
         assert _is_suspicious_ssh_client("") is False
@@ -954,9 +954,9 @@ class TestFalsePositiveRegression:
             "server": {},
         })
 
-    def test_python_paramiko_flagged_via_token(self):
+    def test_python_paramiko_not_flagged(self):
         log = parse_ssh(self._ssh_row("python-paramiko_3.1"))
-        assert log.event_action == "suricata_ssh_anomaly"
+        assert log.event_action == "ssh_attempt"
 
     def test_nmapscannertool_not_flagged(self):
         log = parse_ssh(self._ssh_row("nmapscannertool"))
@@ -1000,3 +1000,47 @@ class TestRobustness:
         from server.parsers.suricata import _is_suspicious_ssh_client
         assert _is_suspicious_ssh_client(None) is False
         assert _is_suspicious_ssh_client(42) is False
+
+
+class TestU1ManagementIPFP:
+    """U1 — Management IP false positive: NetGuard kendisi attack chain'e girmiyor."""
+
+    def _ssh_row(self, src_ip: str, client_sw: str = "paramiko_3.1.0"):
+        return _base(
+            event_type="ssh",
+            src_ip=src_ip,
+            dest_port=22,
+            ssh={
+                "client": {"software_version": client_sw, "proto_version": "2.0"},
+                "server": {"software_version": "OpenSSH_9.0"},
+            },
+        )
+
+    def test_paramiko_not_in_suspicious_clients(self):
+        assert "paramiko" not in _SUSPICIOUS_SSH_CLIENTS
+
+    def test_paramiko_produces_ssh_attempt_not_anomaly(self):
+        log = parse_ssh(self._ssh_row("10.0.0.50", client_sw="paramiko_3.1.0"))
+        assert log.event_action == "ssh_attempt"
+        assert log.severity == "info"
+
+    def test_management_ip_overrides_suspicious_client(self, monkeypatch):
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.0.1")
+        import importlib
+        import server.parsers.suricata as suri_mod
+        importlib.reload(suri_mod)
+        row = self._ssh_row("192.168.0.1", client_sw="libssh-0.9.6")
+        log = suri_mod.parse_ssh(row)
+        assert log.event_action == "ssh_attempt"
+        assert log.severity == "info"
+        importlib.reload(suri_mod)
+
+    def test_non_management_ip_still_flagged(self, monkeypatch):
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.0.1")
+        import importlib
+        import server.parsers.suricata as suri_mod
+        importlib.reload(suri_mod)
+        row = self._ssh_row("10.0.0.99", client_sw="libssh-0.9.6")
+        log = suri_mod.parse_ssh(row)
+        assert log.event_action == "suricata_ssh_anomaly"
+        importlib.reload(suri_mod)

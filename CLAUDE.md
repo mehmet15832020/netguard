@@ -255,6 +255,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] `correlator.py:244` — Sessiz `except: pass` → `logger.debug` ✓
 - [x] **Frontend** — Block verify panel (P6) ✓, Break-glass butonu (P8) ✓, Port/protocol input (P7) ✓
 - [x] **Windows Sigma FP** — 4 korelasyon kuralında `group-by: source_ip` → `observer_hostname` (EID 4688/Sysmon 1/4776/Sysmon 22 kaynaklı event'lerde source_ip her zaman None); commit db46ca4 ✓
+- [x] **U2 FP — EID 4672 SeImpersonate + PowerShell keyword tier** — SeImpersonatePrivilege `high_risk`'ten çıkarıldı (yalnızca SeDebugPrivilege/SeTcbPrivilege critical); NT SERVICE\/NT AUTHORITY\/WINDOW MANAGER\ is_system'e eklendi. `_PS_DANGEROUS` iki katmana ayrıldı: `_PS_CRITICAL_KEYWORDS` (mimikatz/reflectivepe/sekurlsa/dcsync vb.) → critical, `_PS_SUSPICIOUS_KEYWORDS` (iex/bypass/-enc/downloadstring vb.) → warning. Sigma `filter_system` NT SERVICE\/NT AUTHORITY\/WINDOW MANAGER\ eklendi. 16 yeni test; 94 test ✓
 
 ---
 

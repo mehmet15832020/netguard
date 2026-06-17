@@ -212,6 +212,11 @@ class Correlator:
                 rule_hits.extend((rule, row) for row in rows)
 
         # Read connection kapatıldı — şimdi güvenle write işlemleri yapılabilir
+        _mgmt_ips = frozenset(
+            ip.strip()
+            for ip in os.getenv("NETGUARD_MANAGEMENT_IPS", "").split(",")
+            if ip.strip()
+        )
         for rule, row in rule_hits:
             group_val = str(row.get("group_value") or "unknown")
             count     = int(row.get("event_count", 1))
@@ -247,6 +252,8 @@ class Correlator:
             saved = db.save_correlated_event(event)
             if saved:
                 if self._is_fp_suppressed(event):
+                    continue
+                if _mgmt_ips and event.group_by_field == "source_ip" and event.group_value in _mgmt_ips:
                     continue
                 produced.append(event)
                 logger.warning(

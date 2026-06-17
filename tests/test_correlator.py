@@ -420,3 +420,130 @@ class TestCrossSourceCorrelation:
         events = correlator.run()
         assert len(events) == 1
         assert events[0].group_value == "1.2.3.4"
+
+
+# ------------------------------------------------------------------ #
+#  U1 — Management IP false positive önleme testleri
+# ------------------------------------------------------------------ #
+
+class TestU1ManagementIPSigmaFilter:
+    """
+    pySigma (_run_sigma_v2) management IP kaynaklı alertları
+    incident/kill chain pipeline'ına iletmiyor.
+    """
+
+    @pytest.fixture
+    def setup(self, tmp_db, tmp_path, monkeypatch):
+        import server.correlator as corr_module
+        monkeypatch.setattr(corr_module, "db", tmp_db)
+        c = Correlator(rules_path=str(tmp_path / "empty.json"), sigma_v2_dir=str(tmp_path / "no_sigma_v2"))
+        c._rules = []
+        return c, tmp_db
+
+    def test_management_ip_sigma_alert_not_dispatched(self, setup, monkeypatch):
+        """Management IP kaynağından gelen Sigma alarmı incident/kill chain üretmez."""
+        correlator, test_db = setup
+
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.203.134")
+
+        from shared.models import CorrelatedEvent
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        mgmt_event = CorrelatedEvent(
+            corr_id="mgmt-test-corr-id",
+            rule_id="ssh_brute_force",
+            rule_name="SSH Brute Force",
+            event_action="ssh_brute_force",
+            severity="critical",
+            group_by_field="source_ip",
+            group_value="192.168.203.134",
+            matched_count=10,
+            window_seconds=300,
+            first_seen=now,
+            last_seen=now,
+            message="SSH Brute Force: 192.168.203.134",
+        )
+
+        _mgmt_ips = frozenset({"192.168.203.134"})
+
+        create_incident_called = []
+        original_create_incident = correlator._create_incident_from_corr
+
+        def mock_create_incident(event):
+            create_incident_called.append(event.group_value)
+
+        correlator._create_incident_from_corr = mock_create_incident
+
+        if _mgmt_ips and mgmt_event.group_by_field == "source_ip" and mgmt_event.group_value in _mgmt_ips:
+            pass
+        else:
+            correlator._create_incident_from_corr(mgmt_event)
+
+        assert len(create_incident_called) == 0
+
+    def test_non_management_ip_sigma_alert_dispatched(self, setup, monkeypatch):
+        """Yönetim dışı IP'den gelen Sigma alarmı incident pipeline'ına iletilir."""
+        correlator, test_db = setup
+
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.203.134")
+
+        from shared.models import CorrelatedEvent
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        attacker_event = CorrelatedEvent(
+            corr_id="attacker-test-corr-id",
+            rule_id="ssh_brute_force",
+            rule_name="SSH Brute Force",
+            event_action="ssh_brute_force",
+            severity="critical",
+            group_by_field="source_ip",
+            group_value="5.6.7.8",
+            matched_count=10,
+            window_seconds=300,
+            first_seen=now,
+            last_seen=now,
+            message="SSH Brute Force: 5.6.7.8",
+        )
+
+        _mgmt_ips = frozenset({"192.168.203.134"})
+
+        should_skip = (
+            _mgmt_ips
+            and attacker_event.group_by_field == "source_ip"
+            and attacker_event.group_value in _mgmt_ips
+        )
+        assert not should_skip
+
+    def test_mgmt_ip_filter_only_applies_to_source_ip_group_by(self, monkeypatch):
+        """group_by_field != source_ip olan eventler management IP filtresinden geçmez."""
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.203.134")
+
+        from shared.models import CorrelatedEvent
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc)
+        hostname_event = CorrelatedEvent(
+            corr_id="hostname-test-corr-id",
+            rule_id="some_rule",
+            rule_name="Some Rule",
+            event_action="some_action",
+            severity="warning",
+            group_by_field="observer_hostname",
+            group_value="192.168.203.134",
+            matched_count=5,
+            window_seconds=300,
+            first_seen=now,
+            last_seen=now,
+            message="Some event from host 192.168.203.134",
+        )
+
+        _mgmt_ips = frozenset({"192.168.203.134"})
+
+        should_skip = (
+            _mgmt_ips
+            and hostname_event.group_by_field == "source_ip"
+            and hostname_event.group_value in _mgmt_ips
+        )
+        assert not should_skip

@@ -348,6 +348,52 @@ def _make_corr_event(group_value: str, group_by_field: str = "source_ip") -> Cor
     )
 
 
+class TestU1ManagementIPKillChain:
+    """U1 — Management IP'ler kill chain'e girmiyor."""
+
+    def test_management_ip_returns_none(self, monkeypatch):
+        monkeypatch.setenv("NETGUARD_MANAGEMENT_IPS", "192.168.203.134")
+        import importlib
+        import server.attack_chain as ac
+        mgmt = frozenset(
+            ip.strip()
+            for ip in "192.168.203.134".split(",")
+            if ip.strip()
+        )
+        t = AttackChainTracker()
+        with patch("server.attack_chain._MANAGEMENT_IPS", mgmt):
+            result = t.record("192.168.203.134", "ssh_success")
+        assert result is None
+
+    def test_management_ip_full_chain_blocked(self, monkeypatch):
+        mgmt = frozenset({"192.168.203.134"})
+        t = AttackChainTracker()
+        with patch("server.attack_chain._MANAGEMENT_IPS", mgmt):
+            t.record("192.168.203.134", "port_scan_attempt")
+            t.record("192.168.203.134", "ssh_failure")
+            result = t.record("192.168.203.134", "ssh_success")
+        assert result is None
+
+    def test_normal_ip_unaffected_by_management_list(self, monkeypatch):
+        mgmt = frozenset({"192.168.203.134"})
+        t = AttackChainTracker()
+        with patch("server.attack_chain._MANAGEMENT_IPS", mgmt):
+            t.record("5.6.7.8", "port_scan_attempt")
+            t.record("5.6.7.8", "ssh_failure")
+            result = t.record("5.6.7.8", "ssh_success")
+        assert result is not None
+        assert result["chain_type"] == "FULL_ATTACK_CHAIN"
+
+    def test_empty_management_ips_no_effect(self):
+        mgmt = frozenset()
+        t = AttackChainTracker()
+        with patch("server.attack_chain._MANAGEMENT_IPS", mgmt):
+            t.record("1.2.3.4", "port_scan_attempt")
+            t.record("1.2.3.4", "ssh_failure")
+            result = t.record("1.2.3.4", "ssh_success")
+        assert result is not None
+
+
 class TestKillChainNamespaceGuard:
     def test_hostname_group_by_skips_kill_chain(self, caplog):
         c = Correlator()
