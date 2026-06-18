@@ -72,6 +72,16 @@ class TestIdentifySource:
         raw = "date=2024-04-24 type=traffic subtype=forward srcip=5.6.7.8 dstip=192.168.1.1"
         assert identify_source(raw) == LogSourceType.FORTIGATE
 
+    def test_fortigate_traffic_quoted_format(self):
+        """T2 — FortiGate gerçek cihaz formatı: type=, subtype= değerleri tırnaklı (Fortinet docs)."""
+        raw = 'date=2024-04-24 time=10:00:00 devname="FG200E" type="traffic" subtype="forward" srcip=5.6.7.8 dstip=1.2.3.4'
+        assert identify_source(raw) == LogSourceType.FORTIGATE
+
+    def test_fortigate_utm_quoted_format(self):
+        """T2 — type="utm" tırnaklı FortiGate UTM logu da FORTIGATE olarak tanınmalı."""
+        raw = 'date=2024-04-24 time=10:00:01 devname="FG200E" type="utm" subtype="virus" msg="Blocked"'
+        assert identify_source(raw) == LogSourceType.FORTIGATE
+
     def test_fortigate_admin_login_detected(self):
         raw = ('date=2026-06-16 devname="FG1" type="event" subtype="system" '
                'user="admin" srcip=192.168.1.30 action="login" status="success"')

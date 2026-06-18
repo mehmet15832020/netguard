@@ -80,7 +80,7 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     (LogSourceType.JUNIPER,   re.compile(r'RPD_BGP_NEIGHBOR_STATE_CHANGED|SNMP_TRAP_LINK_(?:DOWN|UP)')),
     # G1 — MikroTik RouterOS interface syslog
     (LogSourceType.MIKROTIK,  re.compile(r'interface,(?:info|error|warning)\s+\S+\s+link\s+(?:up|down)')),
-    (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
+    (LogSourceType.FORTIGATE, re.compile(r'type="?(?:traffic|utm)"?\b')),
     (LogSourceType.VYOS,      re.compile(
         r'kernel:.*SRC=[\d.]+.*DST=[\d.]+'
         # F3 — VyOS SSH bağlam kaybı düzeltmesi: router/vyos hostname'li sshd
