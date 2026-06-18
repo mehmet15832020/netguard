@@ -632,7 +632,7 @@ class TestUnusualTimeActivity:
 
     def test_get_hourly_event_counts_db_method(self, baseline_db):
         ip = "10.2.2.5"
-        ts_2 = datetime.now(timezone.utc).replace(hour=2, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        ts_2  = datetime.now(timezone.utc).replace(hour=2,  minute=0, second=0, microsecond=0) - timedelta(days=1)
         ts_14 = datetime.now(timezone.utc).replace(hour=14, minute=0, second=0, microsecond=0) - timedelta(days=1)
         baseline_db.save_normalized_log(_norm(ip, timestamp=ts_2))
         baseline_db.save_normalized_log(_norm(ip, timestamp=ts_2))
@@ -664,3 +664,193 @@ class TestUnusualTimeActivity:
         stored = all_bl[ip]["hour_of_day_profile"]
         assert stored["0"] == 0
         assert stored["23"] == 23 * 5
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  I2 — Outbound Exfiltration Volume Baseline
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _norm_with_bytes(
+    source_ip: str,
+    dest_ip: str,
+    network_bytes: int,
+    timestamp: datetime | None = None,
+) -> "NormalizedLog":
+    from shared.models import NormalizedLog, LogSourceType, LogCategory
+    return NormalizedLog(
+        log_id            = str(uuid.uuid4()),
+        raw_id            = str(uuid.uuid4()),
+        source_type       = LogSourceType.NETFLOW,
+        observer_hostname = "netflow-collector",
+        timestamp         = timestamp or datetime.now(timezone.utc),
+        severity          = "info",
+        event_category    = LogCategory.NETWORK,
+        event_action      = "network_flow",
+        source_ip         = source_ip,
+        destination_ip    = dest_ip,
+        network_bytes     = network_bytes,
+        message           = f"flow {source_ip} → {dest_ip}",
+        tags              = [],
+    )
+
+
+class TestComputeOutboundStats:
+
+    def test_mean_stddev_from_daily_totals(self):
+        from server.asset_baseline import _compute_outbound_stats
+        totals = [100.0, 200.0, 300.0]
+        avg, std = _compute_outbound_stats(totals)
+        assert avg == pytest.approx(200.0, abs=1)
+        assert std == pytest.approx(81.65, abs=1)
+
+    def test_too_few_days_returns_zeros(self):
+        from server.asset_baseline import _compute_outbound_stats, MIN_DAYS_FOR_EXFIL_BASELINE
+        totals = [1_000_000.0] * (MIN_DAYS_FOR_EXFIL_BASELINE - 1)
+        avg, std = _compute_outbound_stats(totals)
+        assert avg == 0.0
+        assert std == 0.0
+
+    def test_empty_list_returns_zeros(self):
+        from server.asset_baseline import _compute_outbound_stats
+        assert _compute_outbound_stats([]) == (0.0, 0.0)
+
+    def test_uniform_values_have_zero_stddev(self):
+        from server.asset_baseline import _compute_outbound_stats
+        avg, std = _compute_outbound_stats([5_000_000.0] * 7)
+        assert avg == pytest.approx(5_000_000.0, abs=1)
+        assert std == 0.0
+
+
+class TestGetOutboundBytesDB:
+
+    def test_external_dest_counted(self, baseline_db):
+        ip = "192.168.1.50"
+        ext = "8.8.8.8"
+        ts = datetime.now(timezone.utc) - timedelta(hours=1)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, ext, 5_000_000, ts))
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+        result = baseline_db.get_outbound_bytes_by_ip(since_dt, "default")
+        assert ip in result
+        assert sum(result[ip]) == 5_000_000
+
+    def test_rfc1918_dest_excluded(self, baseline_db):
+        ip = "192.168.1.51"
+        for priv in ["10.0.0.1", "192.168.5.1", "172.20.0.1"]:
+            baseline_db.save_normalized_log(_norm_with_bytes(ip, priv, 10_000_000))
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+        result = baseline_db.get_outbound_bytes_by_ip(since_dt, "default")
+        assert ip not in result
+
+    def test_current_outbound_bytes(self, baseline_db):
+        ip = "192.168.1.52"
+        ts = datetime.now(timezone.utc) - timedelta(minutes=10)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, "1.2.3.4", 2_000_000, ts))
+        since_dt = datetime.now(timezone.utc) - timedelta(hours=1)
+        result = baseline_db.get_outbound_bytes_current(since_dt, "default")
+        assert result.get(ip) == 2_000_000
+
+    def test_outbound_bytes_stored_in_baseline(self, baseline_db):
+        ip = "192.168.1.53"
+        avg = 50_000_000.0
+        std = 5_000_000.0
+        baseline_db.upsert_asset_baseline(
+            source_ip                = ip,
+            tenant_id                = "default",
+            first_seen_at            = datetime.now(timezone.utc),
+            last_seen_at             = datetime.now(timezone.utc),
+            avg_events_per_hour      = 10.0,
+            typical_ports            = [],
+            typical_destinations     = [],
+            typical_event_actions    = [],
+            typical_protocols        = [],
+            sample_hours             = 48,
+            outbound_bytes_daily_avg = avg,
+            outbound_bytes_stddev    = std,
+        )
+        bl = baseline_db.get_asset_baseline(ip)
+        assert bl is not None
+        assert bl["outbound_bytes_daily_avg"] == pytest.approx(avg)
+        assert bl["outbound_bytes_stddev"] == pytest.approx(std)
+
+
+class TestExfilVolumeDetection:
+
+    def _make_exfil_baseline(self, baseline_db, ip: str, avg: float, std: float) -> None:
+        baseline_db.upsert_asset_baseline(
+            source_ip                = ip,
+            tenant_id                = "default",
+            first_seen_at            = datetime.now(timezone.utc) - timedelta(days=7),
+            last_seen_at             = datetime.now(timezone.utc),
+            avg_events_per_hour      = 10.0,
+            typical_ports            = [],
+            typical_destinations     = [],
+            typical_event_actions    = [],
+            typical_protocols        = [],
+            sample_hours             = 168,
+            outbound_bytes_daily_avg = avg,
+            outbound_bytes_stddev    = std,
+        )
+
+    def test_exfil_anomaly_detected(self, baseline_db):
+        from server.asset_baseline import check_deviations, EXFIL_STDDEV_FACTOR
+        ip = "192.168.1.60"
+        avg = 10_000_000.0   # 10 MB/gün normal
+        std = 1_000_000.0    # 1 MB stddev
+        self._make_exfil_baseline(baseline_db, ip, avg, std)
+
+        # 50 MB gönder (eşik = 10 + 3*1 = 13 MB → aşılmış)
+        ts = datetime.now(timezone.utc) - timedelta(minutes=30)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, "5.5.5.5", 50_000_000, ts))
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        exfil = [l for l in logs if l.get("event_action") == "data_exfil_volume_anomaly"
+                 and l.get("source_ip") == ip]
+        assert len(exfil) >= 1
+        assert exfil[0]["severity"] == "high"
+
+    def test_normal_volume_no_anomaly(self, baseline_db):
+        from server.asset_baseline import check_deviations
+        ip = "192.168.1.61"
+        avg = 100_000_000.0   # 100 MB/gün normal
+        std = 10_000_000.0
+        self._make_exfil_baseline(baseline_db, ip, avg, std)
+
+        # 5 MB gönder — normalin çok altında
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, "5.5.5.5", 5_000_000))
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        exfil = [l for l in logs if l.get("event_action") == "data_exfil_volume_anomaly"
+                 and l.get("source_ip") == ip]
+        assert len(exfil) == 0
+
+    def test_below_min_threshold_no_anomaly(self, baseline_db):
+        from server.asset_baseline import check_deviations, MIN_EXFIL_BYTES_THRESHOLD
+        ip = "192.168.1.62"
+        # avg < MIN_EXFIL_BYTES_THRESHOLD → atlanmalı
+        self._make_exfil_baseline(baseline_db, ip, MIN_EXFIL_BYTES_THRESHOLD - 1, 100.0)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, "5.5.5.5", 100_000_000))
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        exfil = [l for l in logs if l.get("event_action") == "data_exfil_volume_anomaly"
+                 and l.get("source_ip") == ip]
+        assert len(exfil) == 0
+
+    def test_update_baselines_computes_outbound_bytes(self, baseline_db):
+        from server.asset_baseline import update_baselines, MIN_EVENTS_FOR_BASELINE
+        ip = "192.168.1.63"
+        # Birden fazla gün olması için farklı günlerden veri yaz
+        for day_offset in range(4):
+            ts = datetime.now(timezone.utc) - timedelta(days=day_offset + 1, hours=1)
+            baseline_db.save_normalized_log(_norm_with_bytes(ip, "8.8.8.8", 5_000_000, ts))
+            # Minimum event sayısı için birkaç ek log
+            for _ in range(MIN_EVENTS_FOR_BASELINE // 2):
+                baseline_db.save_normalized_log(_norm(ip, timestamp=ts))
+
+        update_baselines()
+        bl = baseline_db.get_asset_baseline(ip)
+        assert bl is not None
+        # avg ve stddev hesaplanmış olmalı (sıfır değil)
+        assert bl["outbound_bytes_daily_avg"] > 0

@@ -1393,6 +1393,8 @@ class DatabaseManager:
         sample_hours: int,
         typical_protocols: list | None = None,
         hour_of_day_profile: dict | None = None,
+        outbound_bytes_daily_avg: float = 0.0,
+        outbound_bytes_stddev: float = 0.0,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
@@ -1400,18 +1402,21 @@ class DatabaseManager:
                    (source_ip, tenant_id, first_seen_at, last_seen_at,
                     avg_events_per_hour, typical_ports, typical_destinations,
                     typical_event_actions, typical_protocols, sample_hours,
-                    hour_of_day_profile, updated_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    hour_of_day_profile, outbound_bytes_daily_avg, outbound_bytes_stddev,
+                    updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (source_ip, tenant_id) DO UPDATE SET
-                       last_seen_at          = EXCLUDED.last_seen_at,
-                       avg_events_per_hour   = EXCLUDED.avg_events_per_hour,
-                       typical_ports         = EXCLUDED.typical_ports,
-                       typical_destinations  = EXCLUDED.typical_destinations,
-                       typical_event_actions = EXCLUDED.typical_event_actions,
-                       typical_protocols     = EXCLUDED.typical_protocols,
-                       sample_hours          = EXCLUDED.sample_hours,
-                       hour_of_day_profile   = EXCLUDED.hour_of_day_profile,
-                       updated_at            = EXCLUDED.updated_at""",
+                       last_seen_at              = EXCLUDED.last_seen_at,
+                       avg_events_per_hour       = EXCLUDED.avg_events_per_hour,
+                       typical_ports             = EXCLUDED.typical_ports,
+                       typical_destinations      = EXCLUDED.typical_destinations,
+                       typical_event_actions     = EXCLUDED.typical_event_actions,
+                       typical_protocols         = EXCLUDED.typical_protocols,
+                       sample_hours              = EXCLUDED.sample_hours,
+                       hour_of_day_profile       = EXCLUDED.hour_of_day_profile,
+                       outbound_bytes_daily_avg  = EXCLUDED.outbound_bytes_daily_avg,
+                       outbound_bytes_stddev     = EXCLUDED.outbound_bytes_stddev,
+                       updated_at                = EXCLUDED.updated_at""",
                 (
                     source_ip, tenant_id, _dt(first_seen_at), _dt(last_seen_at),
                     avg_events_per_hour,
@@ -1421,6 +1426,8 @@ class DatabaseManager:
                     json.dumps(typical_protocols or []),
                     sample_hours,
                     json.dumps(hour_of_day_profile or {}),
+                    outbound_bytes_daily_avg,
+                    outbound_bytes_stddev,
                     _now(),
                 ),
             )
@@ -1441,11 +1448,13 @@ class DatabaseManager:
                 "typical_ports":         json.loads(r["typical_ports"] or "[]"),
                 "typical_destinations":  json.loads(r["typical_destinations"] or "[]"),
                 "typical_event_actions": json.loads(r["typical_event_actions"] or "[]"),
-                "typical_protocols":     json.loads(r.get("typical_protocols") or "[]"),
-                "detected_software":     json.loads(r.get("detected_software") or "[]"),
-                "hour_of_day_profile":   json.loads(r.get("hour_of_day_profile") or "{}"),
-                "sample_hours":          r["sample_hours"],
-                "updated_at":            r["updated_at"].isoformat() if r["updated_at"] else None,
+                "typical_protocols":         json.loads(r.get("typical_protocols") or "[]"),
+                "detected_software":         json.loads(r.get("detected_software") or "[]"),
+                "hour_of_day_profile":       json.loads(r.get("hour_of_day_profile") or "{}"),
+                "outbound_bytes_daily_avg":  float(r.get("outbound_bytes_daily_avg") or 0),
+                "outbound_bytes_stddev":     float(r.get("outbound_bytes_stddev") or 0),
+                "sample_hours":              r["sample_hours"],
+                "updated_at":                r["updated_at"].isoformat() if r["updated_at"] else None,
             }
         return result
 
@@ -1466,12 +1475,70 @@ class DatabaseManager:
             "typical_ports":         json.loads(row["typical_ports"] or "[]"),
             "typical_destinations":  json.loads(row["typical_destinations"] or "[]"),
             "typical_event_actions": json.loads(row["typical_event_actions"] or "[]"),
-            "typical_protocols":     json.loads(row.get("typical_protocols") or "[]"),
-            "detected_software":     json.loads(row.get("detected_software") or "[]"),
-            "hour_of_day_profile":   json.loads(row.get("hour_of_day_profile") or "{}"),
-            "sample_hours":          row["sample_hours"],
-            "updated_at":            row["updated_at"].isoformat() if row["updated_at"] else None,
+            "typical_protocols":         json.loads(row.get("typical_protocols") or "[]"),
+            "detected_software":         json.loads(row.get("detected_software") or "[]"),
+            "hour_of_day_profile":       json.loads(row.get("hour_of_day_profile") or "{}"),
+            "outbound_bytes_daily_avg":  float(row.get("outbound_bytes_daily_avg") or 0),
+            "outbound_bytes_stddev":     float(row.get("outbound_bytes_stddev") or 0),
+            "sample_hours":              row["sample_hours"],
+            "updated_at":                row["updated_at"].isoformat() if row["updated_at"] else None,
         }
+
+    def get_outbound_bytes_by_ip(
+        self, since_dt: datetime, tenant_id: str
+    ) -> dict[str, list[float]]:
+        """I2 — Kaynak IP başına günlük dış ağ byte toplamları listesi.
+
+        Yalnızca destination_ip'si RFC1918 olmayan (dış ağ) kayıtlar sayılır.
+        Döner: {source_ip: [günlük_bytes, ...]}  (baseline hesabı için)
+        """
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT source_ip,
+                          date_trunc('day', timestamp) AS day,
+                          COALESCE(SUM(network_bytes), 0) AS daily_bytes
+                   FROM normalized_logs
+                   WHERE source_ip IS NOT NULL
+                     AND network_bytes IS NOT NULL
+                     AND network_bytes > 0
+                     AND timestamp >= %s
+                     AND tenant_id  = %s
+                     AND destination_ip IS NOT NULL
+                     AND destination_ip NOT LIKE '10.%%'
+                     AND destination_ip NOT LIKE '192.168.%%'
+                     AND NOT (destination_ip LIKE '172.%%'
+                              AND SPLIT_PART(destination_ip,'.',2)::int BETWEEN 16 AND 31)
+                   GROUP BY source_ip, day""",
+                (since_dt, tenant_id),
+            ).fetchall()
+        result: dict[str, list[float]] = {}
+        for r in rows:
+            result.setdefault(r["source_ip"], []).append(float(r["daily_bytes"]))
+        return result
+
+    def get_outbound_bytes_current(
+        self, since_dt: datetime, tenant_id: str
+    ) -> dict[str, float]:
+        """I2 — Son penceredeki dış ağa gönderilen bytes: {source_ip: total_bytes}."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT source_ip,
+                          COALESCE(SUM(network_bytes), 0) AS total_bytes
+                   FROM normalized_logs
+                   WHERE source_ip IS NOT NULL
+                     AND network_bytes IS NOT NULL
+                     AND network_bytes > 0
+                     AND timestamp >= %s
+                     AND tenant_id  = %s
+                     AND destination_ip IS NOT NULL
+                     AND destination_ip NOT LIKE '10.%%'
+                     AND destination_ip NOT LIKE '192.168.%%'
+                     AND NOT (destination_ip LIKE '172.%%'
+                              AND SPLIT_PART(destination_ip,'.',2)::int BETWEEN 16 AND 31)
+                   GROUP BY source_ip""",
+                (since_dt, tenant_id),
+            ).fetchall()
+        return {r["source_ip"]: float(r["total_bytes"]) for r in rows}
 
     def get_hourly_event_counts_by_ip(
         self, source_ip: str, since_dt: datetime, tenant_id: str
