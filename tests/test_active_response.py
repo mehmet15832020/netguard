@@ -1114,14 +1114,17 @@ class TestQ7PlaybookHighSeverity:
         for suggestion in data["suggestions"]:
             assert suggestion["ip"] == "5.6.7.8"
 
-    def test_high_severity_no_block_ip_suggestion(self, tmp_db):
+    def test_high_severity_has_block_ip_with_short_ttl(self, tmp_db):
+        """Q7 — high severity için block_ip önerisi eklendi, ttl_hours=4 (critical=24)."""
         inc_id = self._make_incident(tmp_db, "high")
         r = client.post("/api/v1/response/playbook",
                         json={"incident_id": inc_id},
                         headers=self._admin_headers())
         data = r.json()
         actions = [s["action"] for s in data["suggestions"]]
-        assert "block_ip" not in actions
+        assert "block_ip" in actions
+        block = next(s for s in data["suggestions"] if s["action"] == "block_ip")
+        assert block["ttl_hours"] == 4
 
     def test_medium_severity_no_suggestions(self, tmp_db):
         inc_id = self._make_incident(tmp_db, "medium")

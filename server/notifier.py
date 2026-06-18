@@ -320,9 +320,27 @@ class Notifier:
     def _send_correlated_email(self, event: CorrelatedEvent) -> None:
         if not self.email.enabled:
             return
+        import os as _os
         ts = event.last_seen.strftime("%Y-%m-%dT%H:%M:%SZ")
         sev_up = event.severity.upper()
         subject = f"[{sev_up}] NetGuard | {event.event_action} | {event.group_value} ({event.rule_id})"
+
+        # Q4 — FULL_ATTACK_CHAIN + AUTO_BLOCK: analist "otomatik bloklandı" bilgisini görür
+        auto_block_line = ""
+        auto_block_html = ""
+        if (
+            event.event_action == "full_attack_chain"
+            and _os.getenv("AUTO_BLOCK_ON_FULL_CHAIN", "0") == "1"
+        ):
+            from server.active_response import _progressive_ttl
+            ttl = _progressive_ttl(1)
+            auto_block_line = f"OT. AKSİYON : IP {event.group_value} {ttl:.0f} saat süreyle otomatik bloklandı\n"
+            auto_block_html = (
+                f'<tr style="background:#fff3cd"><td style="padding:8px 12px;color:#555"><b>Otomatik Aksiyon</b></td>'
+                f'<td style="padding:8px 12px;color:#856404;font-weight:bold">'
+                f'IP {event.group_value} {ttl:.0f} saat süreyle bloklandı (OPNsense/VyOS)</td></tr>'
+            )
+
         plain = (
             f"NetGuard Korelasyon Alarmı\n{'='*40}\n\n"
             f"Olay Tipi  : {event.event_action}\n"
@@ -331,8 +349,9 @@ class Notifier:
             f"Kaynak     : {event.group_value}\n"
             f"Mesaj      : {event.message}\n"
             f"Eşleşme    : {event.matched_count} olay / {event.window_seconds}s\n"
-            f"Zaman      : {ts}\n\n"
-            f"{'='*40}\nBu mesaj NetGuard tarafından otomatik gönderilmiştir.\n"
+            f"Zaman      : {ts}\n"
+            + (f"{auto_block_line}" if auto_block_line else "")
+            + f"\n{'='*40}\nBu mesaj NetGuard tarafından otomatik gönderilmiştir.\n"
         )
         color = _SEV_COLOR.get(event.severity, "#2563eb")
         html = f"""<!DOCTYPE html>
@@ -349,6 +368,7 @@ class Notifier:
       <tr style="background:#f9f9f9"><td style="padding:8px 12px;color:#555"><b>Kaynak IP</b></td><td style="padding:8px 12px;font-family:monospace">{event.group_value}</td></tr>
       <tr><td style="padding:8px 12px;color:#555"><b>Eşleşme</b></td><td style="padding:8px 12px">{event.matched_count} olay / {event.window_seconds}s</td></tr>
       <tr style="background:#f9f9f9"><td style="padding:8px 12px;color:#555"><b>Zaman</b></td><td style="padding:8px 12px;font-family:monospace">{ts}</td></tr>
+      {auto_block_html}
     </table>
   </td></tr>
   <tr><td style="background:#f4f4f4;padding:12px 24px;font-size:11px;color:#888;text-align:center">

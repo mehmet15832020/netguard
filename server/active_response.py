@@ -115,11 +115,14 @@ class UnblockResult:
 class OPNsenseProvider:
 
     def __init__(self) -> None:
-        self._host    = os.getenv("OPNSENSE_HOST", "")
-        self._key     = os.getenv("OPNSENSE_KEY", "")
-        self._secret  = os.getenv("OPNSENSE_SECRET", "")
-        self._alias   = os.getenv("OPNSENSE_BLOCK_ALIAS", "NETGUARD_BLOCK")
-        self._timeout = 10
+        self._host      = os.getenv("OPNSENSE_HOST", "")
+        self._key       = os.getenv("OPNSENSE_KEY", "")
+        self._secret    = os.getenv("OPNSENSE_SECRET", "")
+        self._alias     = os.getenv("OPNSENSE_BLOCK_ALIAS", "NETGUARD_BLOCK")
+        self._interface = os.getenv("OPNSENSE_BLOCK_INTERFACE", "lan")
+        # Q1: verify= sistem CA havuzu veya özel CA bundle (OPNSENSE_CA_BUNDLE ile)
+        self._verify    = os.getenv("OPNSENSE_CA_BUNDLE") or True
+        self._timeout   = 10
 
     def _base(self) -> str:
         return f"https://{self._host}/api"
@@ -146,7 +149,7 @@ class OPNsenseProvider:
             return BlockResult(False, "opnsense", "OPNsense credentials eksik")
         try:
             import httpx
-            with httpx.Client(verify=False, timeout=self._timeout) as client:
+            with httpx.Client(verify=self._verify, timeout=self._timeout) as client:
                 if destination_port is not None or network_protocol is not None:
                     return self._block_with_rule(client, ip, destination_port, network_protocol)
                 r = client.post(
@@ -171,7 +174,7 @@ class OPNsenseProvider:
     ) -> BlockResult:
         rule = {
             "action":      "block",
-            "interface":   "lan",
+            "interface":   self._interface,
             "ipprotocol":  "inet",
             "protocol":    protocol or "any",
             "src":         ip,
@@ -198,7 +201,7 @@ class OPNsenseProvider:
             return UnblockResult(False, "opnsense", "OPNsense credentials eksik")
         try:
             import httpx
-            with httpx.Client(verify=False, timeout=self._timeout) as client:
+            with httpx.Client(verify=self._verify, timeout=self._timeout) as client:
                 r = client.post(
                     f"{self._base()}/firewall/alias/delHost/{self._alias}",
                     auth=self._auth(),
@@ -217,7 +220,7 @@ class OPNsenseProvider:
             return []
         try:
             import httpx
-            with httpx.Client(verify=False, timeout=self._timeout) as client:
+            with httpx.Client(verify=self._verify, timeout=self._timeout) as client:
                 r = client.get(
                     f"{self._base()}/firewall/alias/getAliasUUID/{self._alias}",
                     auth=self._auth(),
@@ -245,11 +248,13 @@ class OPNsenseProvider:
 class VyOSProvider:
 
     def __init__(self) -> None:
-        self._host     = os.getenv("VYOS_HOST", "")
-        self._user     = os.getenv("VYOS_USER", "vyos")
-        self._key_path = os.getenv("VYOS_KEY_PATH", "")
-        self._timeout  = 15
-        self._fw_name  = os.getenv("VYOS_FW_NAME", "BLOCK-LIST")
+        self._host        = os.getenv("VYOS_HOST", "")
+        self._user        = os.getenv("VYOS_USER", "vyos")
+        self._key_path    = os.getenv("VYOS_KEY_PATH", "")
+        self._timeout     = 15
+        self._fw_name     = os.getenv("VYOS_FW_NAME", "BLOCK-LIST")
+        # Q2: known_hosts dosyası — RejectPolicy ile MITM koruması (NIST SP 800-77 §4.1)
+        self._known_hosts = os.getenv("VYOS_KNOWN_HOSTS", "")
 
     def _ready(self) -> bool:
         return bool(self._host and self._key_path)
@@ -268,7 +273,16 @@ class VyOSProvider:
         import paramiko
         import time as _t
         client = paramiko.SSHClient()
-        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        if self._known_hosts:
+            client.load_host_keys(self._known_hosts)
+            client.set_missing_host_key_policy(paramiko.RejectPolicy())
+        else:
+            client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            logger.warning(
+                "VYOS_KNOWN_HOSTS tanımlı değil — SSH host key doğrulaması devre dışı "
+                "(NIST SP 800-77 §4.1). ssh-keyscan %s >> <path> ile kayıt yapın.",
+                self._host,
+            )
         client.connect(
             self._host,
             username=self._user,

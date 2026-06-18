@@ -254,10 +254,19 @@ def suggest_playbook(
             "action":          "block_ip",
             "ip":              group_value,
             "reason":          f"Critical incident: {incident['title']}",
+            "ttl_hours":       24,
             "incident_id":     req.incident_id,
             "already_blocked": db.is_ip_blocked(group_value, tenant_id=tid),
         })
     elif severity == "high" and group_value and _IP_RE.match(group_value):
+        suggestions.append({
+            "action":          "block_ip",
+            "ip":              group_value,
+            "reason":          f"High severity incident: {incident['title']}",
+            "ttl_hours":       4,
+            "incident_id":     req.incident_id,
+            "already_blocked": db.is_ip_blocked(group_value, tenant_id=tid),
+        })
         suggestions.append({
             "action":      "investigate_ip",
             "ip":          group_value,
