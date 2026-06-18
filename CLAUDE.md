@@ -442,6 +442,59 @@ Zaten aktif ✓ — `set service netflow` LAN tarafında yapılandırılmış, r
 
 ---
 
+## WebServer Nginx Log İletimi (H2/J1 — 18 Haziran 2026)
+
+**Kod tarafı:** Hazır — `/logs/webserver` ve `/logs/webserver/batch` endpoint'leri API Key (`X-API-Key`) ile çalışıyor. Syslog üzerinden gelen nginx satırları `log_normalizer` tarafından `LogSourceType.NGINX` → `web_request` olarak parse ediliyor (test edildi).
+
+**Alpine tarafı (GNS3 açıkken uygulanacak):**
+
+```bash
+# Alpine'a SSH: ssh -J netguard@192.168.203.134 root@10.0.10.2
+
+# rsyslog kur (apkovl'a kalıcı olarak ekle)
+apk add rsyslog
+rc-update add rsyslog
+
+# /etc/rsyslog.conf sonuna ekle — nginx loglarını UDP 5140'a gönder
+echo 'module(load="imfile")
+input(type="imfile" File="/var/log/nginx/access.log"
+      Tag="nginx:" Severity="info" Facility="local0")
+input(type="imfile" File="/var/log/nginx/error.log"
+      Tag="nginx:" Severity="error" Facility="local0")
+local0.* @192.168.203.134:5140' >> /etc/rsyslog.conf
+
+# rsyslog başlat
+rc-service rsyslog start
+
+# nginx access.log dosya yoksa oluştur
+[ -f /var/log/nginx/access.log ] || touch /var/log/nginx/access.log
+[ -f /var/log/nginx/error.log ]  || touch /var/log/nginx/error.log
+```
+
+**Doğrulama (NetGuard sunucusundan):**
+```bash
+# Alpine'dan syslog gelip gelmediğini kontrol et
+curl -sk "https://192.168.203.134/api/v1/logs/normalized?source_type=nginx&limit=5" \
+  -H "Authorization: Bearer <admin_jwt>" | jq '.[].event_action'
+```
+
+**Alternatif — Python Shipper (Seçenek B, rsyslog yoksa):**
+Alpine'da `apk add python3` + log shipper script:
+```python
+# /etc/netguard-shipper.py — cron'a her dakika ekle
+import subprocess, requests, os
+last_pos = int(open("/tmp/ng_pos","r").read() or 0) if os.path.exists("/tmp/ng_pos") else 0
+with open("/var/log/nginx/access.log") as f:
+    f.seek(last_pos); lines = f.readlines(); open("/tmp/ng_pos","w").write(str(f.tell()))
+if lines:
+    requests.post("https://192.168.203.134/api/v1/logs/webserver/batch",
+        headers={"X-API-Key": "NETGUARD_API_KEY"},
+        json={"lines": [l.strip() for l in lines[:1000]], "observer_hostname": "alpine-webserver"},
+        verify=False)
+```
+
+---
+
 ## VyOS SNMP Yapılandırması (G2 — 18 Haziran 2026)
 
 SNMP trap receiver zaten UDP 162'de dinliyor (herhangi bir kaynaktan trap alır). VyOS'ta SNMP etkinleştirme ve NetGuard'a trap gönderme için VyOS CLI:
