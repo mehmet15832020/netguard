@@ -392,6 +392,10 @@ _KNOWN_BAD_JA4S: frozenset[str] = frozenset({
 })
 
 
+# I6 — Eski TLS versiyonları (MITRE ATT&CK T1557.002 / NIST SP 800-52r2)
+_LEGACY_TLS_VERSIONS = frozenset({"SSLv2", "SSLv3", "TLSv10", "TLSv1", "TLSv1.0"})
+
+
 def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     sni = row.get("server_name") or ""
     validation = row.get("validation_status") or ""
@@ -400,6 +404,8 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
     ja3s = (row.get("ja3s") or "").strip()
     ja4 = (row.get("ja4") or "").strip()
     ja4s = (row.get("ja4s") or "").strip()
+    tls_version = (row.get("version") or "").strip()
+    established = str(row.get("established", "")).strip().upper()
 
     if sni == "-":
         sni = ""
@@ -413,6 +419,53 @@ def parse_ssl(row: dict) -> Optional[NormalizedLog]:
         ja4 = ""
     if ja4s == "-":
         ja4s = ""
+    if tls_version == "-":
+        tls_version = ""
+
+    # I6 — Eski TLS versiyonu tespiti (SSLv3 / TLS 1.0 — POODLE / BEAST saldırılarına açık)
+    if tls_version in _LEGACY_TLS_VERSIONS:
+        label = sni or subject or row.get("id.resp_h", "unknown")
+        return NormalizedLog(
+            log_id=str(uuid.uuid4()),
+            raw_id=str(uuid.uuid4()),
+            source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek",
+            timestamp=_ts(row["ts"]),
+            severity="warning",
+            event_category=LogCategory.NETWORK,
+            event_action="ssl_old_version_detected",
+            source_ip=row.get("id.orig_h"),
+            destination_ip=row.get("id.resp_h"),
+            destination_port=_port(row.get("id.resp_p")),
+            network_protocol="tcp",
+            message=f"Eski TLS: {label} {tls_version} (POODLE/BEAST riski — NIST SP 800-52r2 geçersiz)",
+            extra={"tls_version": tls_version},
+            tags=["zeek", "ssl", "legacy_tls"],
+            community_id=row.get("community_id"),
+        )
+
+    # I6 — Olası SSL strip: port 443'te TLS handshake başlamış ama established=F
+    resp_port = _port(row.get("id.resp_p"))
+    if established == "F" and resp_port == 443:
+        label = sni or subject or row.get("id.resp_h", "unknown")
+        return NormalizedLog(
+            log_id=str(uuid.uuid4()),
+            raw_id=str(uuid.uuid4()),
+            source_type=LogSourceType.ZEEK,
+            observer_hostname="zeek",
+            timestamp=_ts(row["ts"]),
+            severity="warning",
+            event_category=LogCategory.NETWORK,
+            event_action="ssl_strip_possible",
+            source_ip=row.get("id.orig_h"),
+            destination_ip=row.get("id.resp_h"),
+            destination_port=resp_port,
+            network_protocol="tcp",
+            message=f"Olası SSL strip: {label} — port 443 TLS handshake tamamlanamadı (established=F)",
+            extra={"tls_version": tls_version or "unknown"},
+            tags=["zeek", "ssl", "ssl_strip"],
+            community_id=row.get("community_id"),
+        )
 
     label = sni or subject or row.get("id.resp_h", "unknown")
     _BAD_VALIDATION = ("fail", "expire", "invalid", "error", "unable", "self signed")

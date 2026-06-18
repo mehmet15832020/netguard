@@ -1773,3 +1773,83 @@ class TestNtpCollectorWiring:
         assert n == 1
         assert saved[0].event_action == "ntp_activity"
         assert saved[0].severity == "warning"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  I6 — Legacy TLS / SSL Strip (Zeek ssl.log)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestParseSSLI6:
+    _TS = 1718000000.0
+
+    def _base_row(self) -> dict:
+        return {
+            "ts": self._TS,
+            "id.orig_h": "192.168.1.10",
+            "id.resp_h": "203.0.113.5",
+            "id.resp_p": "443",
+            "server_name": "example.com",
+            "validation_status": "",
+            "subject": "",
+            "ja4": "",
+            "ja4s": "",
+            "ja3": "",
+            "ja3s": "",
+            "version": "TLSv13",
+            "established": "T",
+        }
+
+    def test_legacy_tls10_detected(self):
+        from server.parsers.zeek import parse_ssl
+        row = self._base_row()
+        row["version"] = "TLSv10"
+        log = parse_ssl(row)
+        assert log is not None
+        assert log.event_action == "ssl_old_version_detected"
+        assert log.severity == "warning"
+        assert "TLSv10" in log.message
+
+    def test_legacy_sslv3_detected(self):
+        from server.parsers.zeek import parse_ssl
+        row = self._base_row()
+        row["version"] = "SSLv3"
+        log = parse_ssl(row)
+        assert log is not None
+        assert log.event_action == "ssl_old_version_detected"
+        assert "SSLv3" in log.message
+
+    def test_modern_tls_not_flagged_as_legacy(self):
+        from server.parsers.zeek import parse_ssl
+        row = self._base_row()
+        row["version"] = "TLSv13"
+        log = parse_ssl(row)
+        assert log is not None
+        assert log.event_action != "ssl_old_version_detected"
+
+    def test_ssl_strip_established_false_port_443(self):
+        from server.parsers.zeek import parse_ssl
+        row = self._base_row()
+        row["version"] = ""
+        row["established"] = "F"
+        log = parse_ssl(row)
+        assert log is not None
+        assert log.event_action == "ssl_strip_possible"
+        assert log.severity == "warning"
+        assert log.destination_port == 443
+
+    def test_ssl_strip_not_flagged_other_port(self):
+        from server.parsers.zeek import parse_ssl
+        row = self._base_row()
+        row["id.resp_p"] = "8443"
+        row["established"] = "F"
+        log = parse_ssl(row)
+        assert log is not None
+        assert log.event_action != "ssl_strip_possible"
+
+    def test_stage_map_old_version(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("ssl_old_version_detected") == "lateral"
+
+    def test_stage_map_ssl_strip(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("ssl_strip_possible") == "lateral"

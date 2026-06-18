@@ -117,6 +117,9 @@ STAGE_MAP: dict[str, str] = {
     "zeek_ssl_self_signed_cert": "lateral",     # SSL::Self_Signed_Cert — olası C2 kanal
     "ssh_target":            "weaponize", # SSH Targeted Attack
     "dns_c2":                "lateral",   # DNS C2 High Frequency (C2 kanal)
+    "ng_doh_tunnel":         "lateral",   # DNS over HTTPS (Sigma slug — T1071.004)
+    "ssl_old_version_detected": "lateral",  # I6 — SSLv3/TLS1.0 (T1557.002 — POODLE/BEAST)
+    "ssl_strip_possible":    "lateral",   # I6 — port 443 established=F (AiTM / SSL strip)
     "dns_tunnel":            "lateral",   # DNS Tunneling
     # dns_query kaldırıldı — her DNS sorgusu recon değildir; dns_anomaly/dns_c2 yeterli
     "ftp_exfil":             "lateral",   # FTP Exfiltration Burst

@@ -1,5 +1,6 @@
 title: DNS over HTTPS — Potential C2 Bypass
 id: 9f17f5fb-9211-4970-8b8f-cdd306082001
+name: ng_doh_tunnel_base
 status: experimental
 description: DNS over HTTPS to known DoH providers may indicate C2 traffic bypassing DNS monitoring
 logsource:
@@ -13,17 +14,23 @@ detection:
             - "1.1.1.1"
             - "1.0.0.1"
             - "9.9.9.9"
+            - "149.112.112.112"
             - "208.67.222.222"
+            - "208.67.220.220"
+            - "94.140.14.14"
+            - "94.140.15.15"
+            - "185.228.168.9"
+            - "76.76.2.0"
     condition: selection
 level: low
 tags:
     - attack.command_and_control
     - attack.t1071.004
 ---
-title: TLS/SSL Downgrade Detected
+title: TLS/SSL Downgrade Detected (Suricata)
 id: d2786441-d397-4ff4-8ac2-a5680b41157b
 status: experimental
-description: Legacy TLS versions detected via Suricata TLS anomaly
+description: Legacy TLS versions detected via Suricata TLS anomaly (POODLE/BEAST/SWEET32 risk)
 logsource:
     category: network
 detection:
@@ -35,6 +42,36 @@ level: medium
 tags:
     - attack.defense_evasion
     - attack.t1573
+---
+title: Legacy TLS Version Detected (Zeek)
+id: c3e1f552-8b14-4e2d-a9fc-01234567890a
+status: experimental
+description: Zeek detected SSLv3 or TLS 1.0 connection — vulnerable to POODLE/BEAST (NIST SP 800-52r2)
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: ssl_old_version_detected
+    condition: selection
+level: medium
+tags:
+    - attack.defense_evasion
+    - attack.t1557.002
+---
+title: Possible SSL Strip Attack (Zeek)
+id: e9a2b331-5c07-4f1e-b7c2-fedcba987654
+status: experimental
+description: TLS handshake on port 443 did not complete (established=F) — potential AiTM / SSL strip (T1557.002)
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: ssl_strip_possible
+    condition: selection
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1557.002
 ---
 title: Potential Reverse Shell — Outbound to Unusual Port
 id: 0e80ae5f-6a16-4737-bb9e-96d6ae6334de

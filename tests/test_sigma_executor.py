@@ -238,3 +238,59 @@ def test_output_event_action_generated():
         is_correlation=False
     )
     assert r.output_event_action == "my_test_rule_detected"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  I4 — DoH Sigma kuralı var ve beklenilen IP listesini içeriyor
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_doh_sigma_rule_loaded():
+    """I4 — c2_and_exfil.yml içindeki DoH kuralı parse edilmeli."""
+    from server.sigma_executor import SigmaExecutor
+    executor = SigmaExecutor()
+    names = [r.title for r in executor.rules]
+    assert any("DNS over HTTPS" in n for n in names)
+
+
+def test_doh_sigma_contains_nextdns_ip():
+    """I4 — NextDNS ve AdGuard IP'leri DoH kuralında mevcut."""
+    import yaml, os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "sigma_rules_v2", "c2_and_exfil.yml"
+    )
+    docs = list(yaml.safe_load_all(open(path)))
+    doh_rule = next((d for d in docs if d and "DNS over HTTPS" in (d.get("title") or "")), None)
+    assert doh_rule is not None
+    dest_ips = doh_rule["detection"]["selection"]["destination_ip"]
+    assert "94.140.14.14" in dest_ips   # NextDNS
+    assert "1.1.1.1"       in dest_ips   # Cloudflare
+    assert "8.8.8.8"       in dest_ips   # Google
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  I6 — TLS/SSL Downgrade Sigma kuralları yüklü
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_i6_legacy_tls_sigma_rule_loaded():
+    """I6 — Legacy TLS Zeek kuralı parse edilmeli."""
+    import yaml, os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "sigma_rules_v2", "c2_and_exfil.yml"
+    )
+    docs = list(yaml.safe_load_all(open(path)))
+    rule = next((d for d in docs if d and "Legacy TLS Version" in (d.get("title") or "")), None)
+    assert rule is not None
+    assert rule["detection"]["selection"]["event_action"] == "ssl_old_version_detected"
+
+
+def test_i6_ssl_strip_sigma_rule_loaded():
+    """I6 — SSL strip Zeek kuralı parse edilmeli."""
+    import yaml, os
+    path = os.path.join(
+        os.path.dirname(__file__), "..", "config", "sigma_rules_v2", "c2_and_exfil.yml"
+    )
+    docs = list(yaml.safe_load_all(open(path)))
+    rule = next((d for d in docs if d and "SSL Strip" in (d.get("title") or "")), None)
+    assert rule is not None
+    assert rule["detection"]["selection"]["event_action"] == "ssl_strip_possible"
+    assert rule["level"] == "high"
