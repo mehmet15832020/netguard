@@ -193,3 +193,29 @@ tags:
 falsepositives:
     - VPN infrastructure using GRE/ESP
     - Site-to-site tunnel endpoints
+---
+title: Unusual Outbound from DMZ Host
+id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+status: experimental
+description: DMZ host initiating outbound connection to high port (>1024) on external IP — potential reverse shell after web exploit (MITRE ATT&CK T1059 / T1048)
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: netflow_flow
+        source_ip|startswith:
+            - "10.0.10."
+            - "10.0.20."
+            - "10.0.30."
+    filter_known:
+        destination_port|lte: 1024
+    condition: selection and not filter_known
+level: high
+tags:
+    - attack.execution
+    - attack.t1059
+    - attack.command_and_control
+    - attack.t1048
+falsepositives:
+    - Outbound HTTPS (443) already filtered by filter_known
+    - Update servers using high ports

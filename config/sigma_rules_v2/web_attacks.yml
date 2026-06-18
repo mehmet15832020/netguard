@@ -90,3 +90,32 @@ level: high
 tags:
     - attack.credential_access
     - attack.t1110
+---
+title: Web Scanner Fingerprint Detected
+id: f2a3b4c5-d6e7-4f8a-9b0c-1d2e3f4a5b6c
+status: experimental
+description: Known web scanner User-Agent or tool signature detected in HTTP request message (sqlmap, nikto, dirb, gobuster, nmap-nse)
+logsource:
+    category: webserver
+detection:
+    selection:
+        event_action: web_request
+        message|contains:
+            - "sqlmap"
+            - "Nikto"
+            - "dirbuster"
+            - "DirBuster"
+            - "gobuster"
+            - "wfuzz"
+            - "nmap scripting"
+            - "masscan"
+            - " ZAP/"
+            - "w3af"
+            - "Acunetix"
+            - "Nessus"
+            - "OpenVAS"
+    condition: selection
+level: medium
+tags:
+    - attack.reconnaissance
+    - attack.t1595.003

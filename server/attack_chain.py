@@ -106,6 +106,8 @@ STAGE_MAP: dict[str, str] = {
     "anomaly_detected":              "recon",
     "asset_anomaly_detected":        "recon",
     "web_scan_detected":             "recon",
+    "web_scanner_fingerprint_detected": "recon",  # J3 — sqlmap/nikto/gobuster UA (T1595.003)
+    "unusual_outbound_from_dmz_host_detected": "lateral",  # J4 — reverse shell DMZ (T1059/T1048)
     "multi_source_attack_detected":  "recon",
     # Sigma kural slug prefix'leri (title → slug → _detected dönüşümü)
     "arp_spoof":             "recon",     # ARP Spoofing Burst

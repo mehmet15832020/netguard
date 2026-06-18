@@ -294,3 +294,51 @@ def test_i6_ssl_strip_sigma_rule_loaded():
     assert rule is not None
     assert rule["detection"]["selection"]["event_action"] == "ssl_strip_possible"
     assert rule["level"] == "high"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  J3 — Web Scanner Fingerprint Sigma kuralı
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_j3_web_scanner_sigma_loaded():
+    """J3 — Web Scanner Fingerprint kuralı parse edilmeli."""
+    from server.sigma_executor import SigmaExecutor
+    executor = SigmaExecutor()
+    rule = next((r for r in executor.rules if r.title == "Web Scanner Fingerprint Detected"), None)
+    assert rule is not None
+    assert "web" in rule.sql.lower() and "request" in rule.sql.lower()
+
+
+def test_j3_web_scanner_sql_contains_sqlmap():
+    """J3 — Üretilen SQL sqlmap pattern'ini içermeli."""
+    from server.sigma_executor import SigmaExecutor
+    executor = SigmaExecutor()
+    rule = next((r for r in executor.rules if r.title == "Web Scanner Fingerprint Detected"), None)
+    assert rule is not None
+    assert "sqlmap" in rule.sql.lower()
+    assert "nikto" in rule.sql.lower()
+
+
+def test_j3_stage_map_entry():
+    """J3 — web_scanner_fingerprint_detected → recon."""
+    from server.attack_chain import STAGE_MAP
+    assert STAGE_MAP.get("web_scanner_fingerprint_detected") == "recon"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  J4 — DMZ Reverse Shell Sigma kuralı
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_j4_dmz_outbound_sigma_loaded():
+    """J4 — Unusual Outbound from DMZ kuralı parse edilmeli."""
+    from server.sigma_executor import SigmaExecutor
+    executor = SigmaExecutor()
+    rule = next((r for r in executor.rules if "DMZ" in r.title), None)
+    assert rule is not None
+    assert "10.0.10" in rule.sql
+
+
+def test_j4_stage_map_entry():
+    """J4 — unusual_outbound_from_dmz_host_detected → lateral."""
+    from server.attack_chain import STAGE_MAP
+    assert STAGE_MAP.get("unusual_outbound_from_dmz_host_detected") == "lateral"
