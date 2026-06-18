@@ -324,11 +324,15 @@ def _notify_auto_block_success(
     stage_labels: list[str],
     triggering_action: str,
     provider: str,
+    ttl_hours: Optional[float] = None,
+    offense_count: Optional[int] = None,
 ) -> None:
     try:
         from server.notifier import notifier
         from datetime import datetime, timezone
         labels_str = " → ".join(stage_labels)
+        ttl_str = f"{ttl_hours:.0f} saat" if ttl_hours is not None else "varsayılan"
+        offense_str = str(offense_count) if offense_count is not None else "?"
         subject = f"NetGuard: FULL_ATTACK_CHAIN otomatik blok — {source_ip}"
         body = (
             f"NetGuard Kill Chain Otomatik Bloklama\n{'='*40}\n\n"
@@ -336,6 +340,8 @@ def _notify_auto_block_success(
             f"Kill Chain     : {labels_str}\n"
             f"Tetikleyen     : {triggering_action}\n"
             f"Provider       : {provider}\n"
+            f"Blok Süresi    : {ttl_str}\n"
+            f"Offense Sayısı : {offense_str}\n"
             f"Zaman          : {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n"
             f"{'='*40}\n"
             f"Bu IP {CHAIN_WINDOW_SEC // 60} dakika içinde {len(stage_labels)} farklı saldırı aşaması "
@@ -351,10 +357,12 @@ def _notify_auto_block_success(
                             "description": f"Kill chain tamamlandı: {labels_str}",
                             "color": 15158332,
                             "fields": [
-                                {"name": "Kaynak IP",    "value": source_ip,          "inline": True},
-                                {"name": "Kill Chain",   "value": labels_str,         "inline": False},
-                                {"name": "Tetikleyen",   "value": triggering_action,  "inline": True},
-                                {"name": "Provider",     "value": provider,           "inline": True},
+                                {"name": "Kaynak IP",       "value": source_ip,          "inline": True},
+                                {"name": "Kill Chain",      "value": labels_str,         "inline": False},
+                                {"name": "Tetikleyen",      "value": triggering_action,  "inline": True},
+                                {"name": "Provider",        "value": provider,           "inline": True},
+                                {"name": "Blok Süresi",     "value": ttl_str,            "inline": True},
+                                {"name": "Offense Sayısı",  "value": offense_str,        "inline": True},
                             ],
                             "footer": {"text": "NetGuard Kill Chain Detector"},
                         }]
@@ -619,7 +627,12 @@ def _auto_block_full_chain(trigger: dict) -> None:
             if result.get("success"):
                 logger.info("AUTO_BLOCK başarılı [%s] provider=%s stages=%s action=%s",
                             source_ip, result.get("provider"), stages_str, triggering_action)
-                _notify_auto_block_success(source_ip, stage_labels, triggering_action, result.get("provider", ""))
+                _notify_auto_block_success(
+                    source_ip, stage_labels, triggering_action,
+                    result.get("provider", ""),
+                    ttl_hours=result.get("ttl_hours"),
+                    offense_count=result.get("offense_count"),
+                )
             else:
                 logger.error("AUTO_BLOCK provider başarısız [%s]: %s", source_ip, result.get("error"))
         except Exception as exc:

@@ -482,6 +482,8 @@ class ActiveResponseManager:
             logger.warning("OPNsense block başarısız (%s), VyOS deneniyor", result.error)
             result = self._vyos.block(ip, destination_port, network_protocol)
 
+        effective_ttl: Optional[float] = None
+        offense_count: Optional[int] = None
         if result.success:
             block_id = str(uuid.uuid4())
             offense_count = db.get_offense_count(ip, tenant_id) + 1
@@ -522,9 +524,11 @@ class ActiveResponseManager:
                 logger.warning("block_failed bildirim çağrısı başarısız [%s]: %s", ip, exc)
 
         return {
-            "success":  result.success,
-            "provider": result.provider,
-            "error":    result.error,
+            "success":       result.success,
+            "provider":      result.provider,
+            "error":         result.error,
+            "ttl_hours":     effective_ttl if result.success else None,
+            "offense_count": offense_count if result.success else None,
         }
 
     def unblock_ip(

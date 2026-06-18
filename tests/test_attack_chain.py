@@ -578,11 +578,27 @@ class TestQ4AutoBlockNotification:
                 ["Keşif", "Erişim Denemeleri", "İlk Erişim"],
                 "full_attack_chain_detected",
                 "opnsense",
+                ttl_hours=4.0,
+                offense_count=2,
             )
         assert len(sent) >= 1
         assert "8.8.8.8" in sent[0][0]
         assert "Keşif" in sent[0][1]
         assert "full_attack_chain_detected" in sent[0][1]
+        assert "4 saat" in sent[0][1]
+        assert "2" in sent[0][1]
+
+    def test_notify_auto_block_success_default_ttl_label(self):
+        from server.attack_chain import _notify_auto_block_success
+        from server.notifier import Notifier
+        n = Notifier()
+        n.email.enabled = True
+        sent = []
+        n.email.send_custom = lambda subj, body: sent.append((subj, body))
+        n.webhook.enabled = False
+        with patch("server.notifier.notifier", n):
+            _notify_auto_block_success("1.2.3.4", ["Keşif"], "port_scan", "vyos")
+        assert "varsayılan" in sent[0][1]
 
 
 class TestAutoBlockR1ThreatIntelGate:
