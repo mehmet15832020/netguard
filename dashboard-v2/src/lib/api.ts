@@ -481,12 +481,28 @@ export interface SNMPPollParams {
   v3_priv_key?: string
 }
 
+export type SNMPIfacePoint = { t: string; v: number }
+export type SNMPIfaceHistory = {
+  if_name: string
+  oper_status: SNMPIfacePoint[]
+  bw_in: SNMPIfacePoint[]
+  bw_out: SNMPIfacePoint[]
+}
+export type SNMPInterfaceHistoryResponse = {
+  host: string
+  range: string
+  interfaces: SNMPIfaceHistory[]
+  influx_disabled?: boolean
+}
+
 export const snmpApi = {
   poll: (params: SNMPPollParams) =>
     request<SNMPDeviceInfo>('/snmp/poll', {
       method: 'POST',
       body: JSON.stringify(params),
     }),
+  interfaceHistory: (host: string, range: '1h' | '6h' | '24h' | '7d' = '6h') =>
+    request<SNMPInterfaceHistoryResponse>(`/snmp/devices/${encodeURIComponent(host)}/interfaces/history?range=${range}`),
 }
 
 // ------------------------------------------------------------------ //

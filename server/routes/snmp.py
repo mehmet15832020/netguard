@@ -116,3 +116,23 @@ def remove_snmp_device(
         raise HTTPException(status_code=404, detail=f"{host} bulunamadı")
     db.remove_device(host)
     return {"removed": True, "host": host}
+
+
+@router.get("/snmp/devices/{host}/interfaces/history")
+@limiter.limit("30/minute")
+def snmp_interface_history(
+    request: Request,
+    response: Response,
+    host: str,
+    range: Literal["1h", "6h", "24h", "7d"] = "6h",
+    _: User = Depends(get_current_user),
+):
+    """
+    SNMP cihazı arayüz geçmişi — InfluxDB snmp_interface measurement.
+    T1: oper_status + bandwidth_in/out_bps zaman serisi.
+    """
+    from server.influx_writer import influx_writer
+    data = influx_writer.query_snmp_interfaces(host, range=range)
+    if data is None:
+        return {"host": host, "range": range, "interfaces": [], "influx_disabled": True}
+    return data

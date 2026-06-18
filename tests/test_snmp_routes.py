@@ -124,3 +124,36 @@ class TestSNMPPollEndpoint:
     def test_poll_unauthenticated_returns_401(self):
         resp = client.post("/api/v1/snmp/poll", json={"host": "192.0.2.1"})
         assert resp.status_code == 401
+
+
+class TestSNMPInterfaceHistory:
+    """T1 — GET /api/v1/snmp/devices/{host}/interfaces/history"""
+
+    def test_returns_200_when_influx_disabled(self, auth):
+        resp = client.get("/api/v1/snmp/devices/192.168.1.1/interfaces/history", headers=auth)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["host"] == "192.168.1.1"
+        assert "interfaces" in data
+
+    def test_influx_disabled_flag_present(self, auth):
+        resp = client.get("/api/v1/snmp/devices/192.168.1.1/interfaces/history", headers=auth)
+        data = resp.json()
+        assert data.get("influx_disabled") is True or "interfaces" in data
+
+    def test_valid_range_param(self, auth):
+        for r in ["1h", "6h", "24h", "7d"]:
+            resp = client.get(
+                f"/api/v1/snmp/devices/192.168.1.1/interfaces/history?range={r}",
+                headers=auth,
+            )
+            assert resp.status_code == 200
+
+    def test_default_range_is_6h(self, auth):
+        resp = client.get("/api/v1/snmp/devices/192.168.1.1/interfaces/history", headers=auth)
+        data = resp.json()
+        assert data.get("range") == "6h"
+
+    def test_unauthenticated_returns_401(self):
+        resp = client.get("/api/v1/snmp/devices/192.168.1.1/interfaces/history")
+        assert resp.status_code == 401

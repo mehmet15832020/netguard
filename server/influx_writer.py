@@ -271,6 +271,66 @@ class InfluxWriter:
             logger.error(f"InfluxDB sorgu hatası: {e}")
             return None
 
+    _HOST_RE = re.compile(r'^[a-zA-Z0-9_.:\-]{1,128}$')
+
+    def query_snmp_interfaces(self, host: str, range: str = "6h") -> dict | None:
+        """
+        InfluxDB'den SNMP interface geçmişini çeker.
+        Döner: {interfaces: [{if_name, oper_status, bw_in, bw_out}], last_seen}
+        her değer [{t, v}] listesi. InfluxDB yoksa None.
+        T1 — SNMP Interface Görselleştirme.
+        """
+        if not self._enabled:
+            return None
+        if not self._HOST_RE.match(host):
+            return None
+
+        window, start = self._RANGES.get(range, ("5m", "-6h"))
+        bucket = self._bucket
+
+        try:
+            client = InfluxDBClient(url=self._url, token=self._token, org=self._org)
+            qa = client.query_api()
+
+            def run_field(field: str) -> dict[str, list[dict]]:
+                flux = (
+                    f'from(bucket: "{bucket}")'
+                    f' |> range(start: {start})'
+                    f' |> filter(fn: (r) => r._measurement == "snmp_interface")'
+                    f' |> filter(fn: (r) => r.host == "{host}")'
+                    f' |> filter(fn: (r) => r._field == "{field}")'
+                    f' |> aggregateWindow(every: {window}, fn: mean, createEmpty: false)'
+                    f' |> keep(columns: ["_time", "_value", "if_name"])'
+                )
+                result: dict[str, list[dict]] = {}
+                for table in qa.query(flux):
+                    for rec in table.records:
+                        if_name = rec.values.get("if_name", "unknown")
+                        result.setdefault(if_name, []).append(
+                            {"t": rec.get_time().isoformat(), "v": round(rec.get_value() or 0, 2)}
+                        )
+                return result
+
+            bw_in  = run_field("bandwidth_in_bps")
+            bw_out = run_field("bandwidth_out_bps")
+            status = run_field("oper_status")
+
+            all_ifaces = set(bw_in) | set(bw_out) | set(status)
+            interfaces = [
+                {
+                    "if_name":    iface,
+                    "oper_status": status.get(iface, []),
+                    "bw_in":      bw_in.get(iface, []),
+                    "bw_out":     bw_out.get(iface, []),
+                }
+                for iface in sorted(all_ifaces)
+            ]
+            client.close()
+            return {"host": host, "range": range, "interfaces": interfaces}
+        except Exception as exc:
+            logger.error("SNMP interface sorgu hatası: %s", exc)
+            return None
+
     def write_traffic(self, agent_id: str, hostname: str, summary: TrafficSummary) -> bool:
         """TrafficSummary'yi InfluxDB'ye yazar."""
         if not self._enabled:

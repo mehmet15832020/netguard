@@ -1,16 +1,16 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft, Circle, Cpu, Server, AlertTriangle,
-  FileText, Wifi, Shield,
+  FileText, Wifi, Shield, Activity,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { SeverityBadge } from '@/components/ui/severity-badge'
 import { TimeSeriesChart } from '@/components/charts/TimeSeriesChart'
 import { useInfluxMetrics, useLatestSnapshot } from '@/hooks/useMetrics'
-import { devicesApi, logsApi } from '@/lib/api'
+import { devicesApi, logsApi, snmpApi, type SNMPIfaceHistory } from '@/lib/api'
 import { cn } from '@/lib/utils'
 import type { Severity } from '@/types/models'
 
@@ -50,6 +50,133 @@ function Panel({ title, icon: Icon, children }: {
       </div>
       {children}
     </div>
+  )
+}
+
+const RANGE_OPTIONS = ['1h', '6h', '24h', '7d'] as const
+type Range = typeof RANGE_OPTIONS[number]
+
+function IfaceStatusDot({ points }: { points: { t: string; v: number }[] }) {
+  const last = points.at(-1)?.v
+  if (last === undefined) return <span className="text-slate-600">—</span>
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 text-xs font-medium',
+      last === 1 ? 'text-emerald-400' : 'text-red-400',
+    )}>
+      <span className={cn('w-1.5 h-1.5 rounded-full', last === 1 ? 'bg-emerald-400' : 'bg-red-500')} />
+      {last === 1 ? 'UP' : 'DOWN'}
+    </span>
+  )
+}
+
+function SNMPMetrics({ host }: { host: string }) {
+  const [range, setRange] = useState<Range>('6h')
+  const [selected, setSelected] = useState<string | null>(null)
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['snmp-iface-history', host, range],
+    queryFn: () => snmpApi.interfaceHistory(host, range),
+    refetchInterval: 60_000,
+  })
+
+  if (isLoading) return (
+    <Panel title="SNMP Arayüzler" icon={Wifi}>
+      <div className="p-6 text-center text-slate-700 text-xs">Yükleniyor...</div>
+    </Panel>
+  )
+
+  if (data?.influx_disabled) return (
+    <Panel title="SNMP Arayüzler" icon={Wifi}>
+      <div className="p-6 text-center text-slate-700 text-xs">
+        InfluxDB yapılandırılmamış — INFLUXDB_TOKEN env var tanımlı değil
+      </div>
+    </Panel>
+  )
+
+  const ifaces = data?.interfaces ?? []
+  const activeIface = ifaces.find(i => i.if_name === selected) ?? ifaces[0] ?? null
+
+  return (
+    <Panel title="SNMP Arayüzler" icon={Wifi}>
+      <div className="p-4 space-y-4">
+        {/* Range selector */}
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] text-slate-600 uppercase tracking-wide">Zaman Aralığı</span>
+          <div className="flex gap-1">
+            {RANGE_OPTIONS.map(r => (
+              <button
+                key={r}
+                onClick={() => setRange(r)}
+                className={cn(
+                  'px-2 py-0.5 text-[10px] rounded border transition-colors',
+                  range === r
+                    ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
+                    : 'border-sky-900/20 text-slate-600 hover:text-slate-400',
+                )}
+              >{r}</button>
+            ))}
+          </div>
+        </div>
+
+        {ifaces.length === 0 ? (
+          <p className="text-slate-700 text-xs text-center py-4">Arayüz verisi yok</p>
+        ) : (
+          <>
+            {/* Interface list */}
+            <div className="space-y-1">
+              {ifaces.map((iface: SNMPIfaceHistory) => (
+                <button
+                  key={iface.if_name}
+                  onClick={() => setSelected(iface.if_name)}
+                  className={cn(
+                    'w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs transition-colors border',
+                    iface.if_name === (activeIface?.if_name)
+                      ? 'bg-sky-500/10 border-sky-500/30 text-slate-200'
+                      : 'border-sky-900/10 text-slate-500 hover:bg-sky-950/20',
+                  )}
+                >
+                  <span className="font-mono">{iface.if_name}</span>
+                  <IfaceStatusDot points={iface.oper_status} />
+                </button>
+              ))}
+            </div>
+
+            {/* Bandwidth chart for selected interface */}
+            {activeIface && (activeIface.bw_in.length > 1 || activeIface.bw_out.length > 1) && (
+              <div className="space-y-2">
+                <p className="text-[10px] text-slate-600 uppercase tracking-wide">
+                  {activeIface.if_name} — Bant Genişliği (bps)
+                </p>
+                {activeIface.bw_in.length > 1 && (
+                  <TimeSeriesChart
+                    data={activeIface.bw_in}
+                    label="In"
+                    color="#22d3ee"
+                    unit=" bps"
+                    height={100}
+                  />
+                )}
+                {activeIface.bw_out.length > 1 && (
+                  <TimeSeriesChart
+                    data={activeIface.bw_out}
+                    label="Out"
+                    color="#818cf8"
+                    unit=" bps"
+                    height={100}
+                  />
+                )}
+              </div>
+            )}
+            {activeIface && activeIface.bw_in.length <= 1 && activeIface.bw_out.length <= 1 && (
+              <p className="text-[10px] text-slate-700 text-center">
+                Bant genişliği verisi yok — SNMP_COLLECT_INTERFACE_STATS=true yapılınca etkinleşir
+              </p>
+            )}
+          </>
+        )}
+      </div>
+    </Panel>
   )
 }
 
@@ -213,22 +340,12 @@ export default function DeviceDetailPage({ params }: { params: Promise<{ id: str
         <div className="lg:col-span-2">
           {isAgent ? (
             <AgentMetrics deviceId={id} />
+          ) : hasSNMP ? (
+            <SNMPMetrics host={id} />
           ) : (
             <Panel title="SNMP Durumu" icon={Wifi}>
               <div className="px-4 py-6 text-center">
-                {hasSNMP ? (
-                  <div className="space-y-2">
-                    <p className="text-slate-500 text-sm">
-                      SNMP {device.snmp_version} · community:{' '}
-                      <span className="font-mono text-sky-400">{device.snmp_community}</span>
-                    </p>
-                    <p className="text-slate-700 text-xs">
-                      InfluxDB'deki arayüz metrikleri A3 aşamasında eklenecek
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-slate-700 text-sm">SNMP yapılandırılmamış</p>
-                )}
+                <p className="text-slate-700 text-sm">SNMP yapılandırılmamış</p>
               </div>
             </Panel>
           )}
