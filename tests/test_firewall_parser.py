@@ -8,6 +8,8 @@ from server.parsers.firewall import (
     parse_unbound_dns, parse_dnsmasq_dns, parse_fortigate_dns, parse_dns_resolver_syslog,
     parse_fortigate_admin_access, parse_cisco_asa_admin_access,
     parse_pfsense_admin_access, parse_vyos_admin_access, parse_fw_admin_access,
+    parse_cisco_ios_routing, parse_juniper_routing, parse_mikrotik_interface,
+    parse_fortigate_interface_event, parse_vyos_routing_events, parse_router_event,
 )
 
 
@@ -712,3 +714,340 @@ class TestFwAdminBruteForceSigmaRule:
         assert rule.is_correlation is True
         assert rule.window_seconds == 300
         assert rule.group_by_fields == ["source_ip"]
+
+
+# ──────────────────────────────────────────────────────────────────
+# G1 — Multi-vendor router routing + interface event parser testleri
+# ──────────────────────────────────────────────────────────────────
+
+CISCO_BGP_DOWN = (
+    "Jun 18 09:10:00 router1 %BGP-5-ADJCHANGE: neighbor 10.0.0.1 Down Neighbor deleted"
+)
+CISCO_BGP_UP = (
+    "Jun 18 09:11:00 router1 %BGP-5-ADJCHANGE: neighbor 10.0.0.1 Up"
+)
+CISCO_LINK_DOWN = (
+    "Jun 18 09:12:00 router1 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to down"
+)
+CISCO_LINK_UP = (
+    "Jun 18 09:12:05 router1 %LINK-3-UPDOWN: Interface GigabitEthernet0/1, changed state to up"
+)
+CISCO_LINEPROTO_DOWN = (
+    "Jun 18 09:12:01 router1 %LINEPROTO-5-UPDOWN: Line protocol on Interface GigabitEthernet0/1 changed state to down"
+)
+JUNIPER_BGP_DOWN = (
+    "Jun 18 10:00:00 juniper1 rpd[1234]: RPD_BGP_NEIGHBOR_STATE_CHANGED: BGP peer 192.168.1.2 "
+    "(External AS 64512) changed state from Established to Idle (event: RecvNotify) (instance master)"
+)
+JUNIPER_BGP_UP = (
+    "Jun 18 10:01:00 juniper1 rpd[1234]: RPD_BGP_NEIGHBOR_STATE_CHANGED: BGP peer 192.168.1.2 "
+    "(External AS 64512) changed state from Active to Established (event: RecvOpen) (instance master)"
+)
+JUNIPER_LINK_DOWN = (
+    "Jun 18 10:02:00 juniper1 mib2d[5678]: SNMP_TRAP_LINK_DOWN: ifIndex 523, "
+    "ifAdminStatus up(1), ifOperStatus down(2), ifName ge-0/0/0"
+)
+JUNIPER_LINK_UP = (
+    "Jun 18 10:02:05 juniper1 mib2d[5678]: SNMP_TRAP_LINK_UP: ifIndex 523, "
+    "ifAdminStatus up(1), ifOperStatus up(1), ifName ge-0/0/0"
+)
+MIKROTIK_IFACE_DOWN = (
+    "Jun 18 11:00:00 mikrotik - - - interface,error sfp1 link down"
+)
+MIKROTIK_IFACE_UP = (
+    "Jun 18 11:00:05 mikrotik - - - interface,info sfp1 link up"
+)
+FORTI_IFACE_DOWN = (
+    'Jun 18 12:00:00 fortigate type=event subtype=system '
+    'logdesc="Interface changed" action=link-down iface=port1'
+)
+FORTI_IFACE_UP = (
+    'Jun 18 12:00:05 fortigate type=event subtype=system '
+    'logdesc="Interface changed" action=link-up iface=port1'
+)
+VYOS_IFACE_DOWN = "Jun 18 08:00:00 vyos kernel: eth1: Link is Down"
+VYOS_BGP_DOWN = "Jun 18 08:01:00 vyos bgpd[123]: BGP: peer 10.0.30.1 Down BGP Notification sent"
+VYOS_OSPF_CHANGE = "Jun 18 08:02:00 vyos ospfd[456]: neighbor 192.168.1.10 state change Full"
+VYOS_ROUTE_CHANGE = "Jun 18 08:03:00 vyos zebra[789]: route 0.0.0.0/0 added"
+
+
+class TestCiscoIOSRouting:
+    def test_bgp_down_action(self):
+        log = parse_cisco_ios_routing(CISCO_BGP_DOWN)
+        assert log is not None
+        assert log.event_action == "bgp_state_change"
+
+    def test_bgp_down_severity_warning(self):
+        log = parse_cisco_ios_routing(CISCO_BGP_DOWN)
+        assert log.severity == "warning"
+
+    def test_bgp_down_peer_in_extra(self):
+        log = parse_cisco_ios_routing(CISCO_BGP_DOWN)
+        assert log.extra["peer"] == "10.0.0.1"
+        assert log.extra["state"] == "down"
+
+    def test_bgp_up_severity_info(self):
+        log = parse_cisco_ios_routing(CISCO_BGP_UP)
+        assert log.severity == "info"
+
+    def test_bgp_source_type(self):
+        from shared.models import LogSourceType
+        log = parse_cisco_ios_routing(CISCO_BGP_DOWN)
+        assert log.source_type == LogSourceType.CISCO_IOS
+
+    def test_link_down_action(self):
+        log = parse_cisco_ios_routing(CISCO_LINK_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_link_down_severity_warning(self):
+        log = parse_cisco_ios_routing(CISCO_LINK_DOWN)
+        assert log.severity == "warning"
+
+    def test_link_up_action(self):
+        log = parse_cisco_ios_routing(CISCO_LINK_UP)
+        assert log.event_action == "interface_link_up"
+        assert log.severity == "info"
+
+    def test_lineproto_down(self):
+        log = parse_cisco_ios_routing(CISCO_LINEPROTO_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_iface_in_extra(self):
+        log = parse_cisco_ios_routing(CISCO_LINK_DOWN)
+        assert "GigabitEthernet0/1" in log.extra["interface"]
+
+
+class TestJuniperRouting:
+    def test_bgp_down_action(self):
+        log = parse_juniper_routing(JUNIPER_BGP_DOWN)
+        assert log is not None
+        assert log.event_action == "bgp_state_change"
+
+    def test_bgp_down_severity(self):
+        log = parse_juniper_routing(JUNIPER_BGP_DOWN)
+        assert log.severity == "warning"
+
+    def test_bgp_established_severity_info(self):
+        log = parse_juniper_routing(JUNIPER_BGP_UP)
+        assert log.severity == "info"
+
+    def test_bgp_peer_extracted(self):
+        log = parse_juniper_routing(JUNIPER_BGP_DOWN)
+        assert log.extra["peer"] == "192.168.1.2"
+
+    def test_link_down_action(self):
+        log = parse_juniper_routing(JUNIPER_LINK_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_link_up_action(self):
+        log = parse_juniper_routing(JUNIPER_LINK_UP)
+        assert log.event_action == "interface_link_up"
+        assert log.severity == "info"
+
+    def test_iface_in_extra(self):
+        log = parse_juniper_routing(JUNIPER_LINK_DOWN)
+        assert log.extra["interface"] == "ge-0/0/0"
+
+    def test_source_type(self):
+        from shared.models import LogSourceType
+        log = parse_juniper_routing(JUNIPER_BGP_DOWN)
+        assert log.source_type == LogSourceType.JUNIPER
+
+
+class TestMikrotikInterface:
+    def test_down_action(self):
+        log = parse_mikrotik_interface(MIKROTIK_IFACE_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_down_severity(self):
+        log = parse_mikrotik_interface(MIKROTIK_IFACE_DOWN)
+        assert log.severity == "warning"
+
+    def test_up_action(self):
+        log = parse_mikrotik_interface(MIKROTIK_IFACE_UP)
+        assert log.event_action == "interface_link_up"
+        assert log.severity == "info"
+
+    def test_iface_in_extra(self):
+        log = parse_mikrotik_interface(MIKROTIK_IFACE_DOWN)
+        assert log.extra["interface"] == "sfp1"
+
+    def test_source_type(self):
+        from shared.models import LogSourceType
+        log = parse_mikrotik_interface(MIKROTIK_IFACE_DOWN)
+        assert log.source_type == LogSourceType.MIKROTIK
+
+    def test_no_match_returns_none(self):
+        log = parse_mikrotik_interface("Jun 18 11:00:00 mikrotik - random syslog line")
+        assert log is None
+
+
+class TestFortigateInterfaceEvent:
+    def test_link_down_action(self):
+        log = parse_fortigate_interface_event(FORTI_IFACE_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_link_up_action(self):
+        log = parse_fortigate_interface_event(FORTI_IFACE_UP)
+        assert log.event_action == "interface_link_up"
+
+    def test_down_severity(self):
+        log = parse_fortigate_interface_event(FORTI_IFACE_DOWN)
+        assert log.severity == "warning"
+
+    def test_iface_in_extra(self):
+        log = parse_fortigate_interface_event(FORTI_IFACE_DOWN)
+        assert log.extra["interface"] == "port1"
+
+    def test_no_match_returns_none(self):
+        log = parse_fortigate_interface_event(
+            "Jun 18 type=event subtype=system action=login user=admin"
+        )
+        assert log is None
+
+
+class TestVyosRoutingEvents:
+    def test_iface_down(self):
+        log = parse_vyos_routing_events(VYOS_IFACE_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+        assert log.severity == "critical"
+
+    def test_bgp_event(self):
+        log = parse_vyos_routing_events(VYOS_BGP_DOWN)
+        assert log is not None
+        assert log.event_action == "bgp_state_change"
+
+    def test_ospf_event(self):
+        log = parse_vyos_routing_events(VYOS_OSPF_CHANGE)
+        assert log is not None
+        assert log.event_action == "ospf_state_change"
+
+    def test_route_change(self):
+        log = parse_vyos_routing_events(VYOS_ROUTE_CHANGE)
+        assert log is not None
+        assert log.event_action == "route_change"
+
+    def test_no_match_returns_none(self):
+        log = parse_vyos_routing_events("Jun 18 08:00:00 vyos sshd[123]: session opened")
+        assert log is None
+
+
+class TestParseRouterEventDispatcher:
+    def test_cisco_bgp_routed_correctly(self):
+        from shared.models import LogSourceType
+        log = parse_router_event(CISCO_BGP_DOWN)
+        assert log is not None
+        assert log.source_type == LogSourceType.CISCO_IOS
+
+    def test_cisco_link_routed_correctly(self):
+        from shared.models import LogSourceType
+        log = parse_router_event(CISCO_LINK_DOWN)
+        assert log.source_type == LogSourceType.CISCO_IOS
+
+    def test_juniper_bgp_routed_correctly(self):
+        from shared.models import LogSourceType
+        log = parse_router_event(JUNIPER_BGP_DOWN)
+        assert log.source_type == LogSourceType.JUNIPER
+
+    def test_mikrotik_routed_correctly(self):
+        from shared.models import LogSourceType
+        log = parse_router_event(MIKROTIK_IFACE_DOWN)
+        assert log.source_type == LogSourceType.MIKROTIK
+
+    def test_vyos_routed_correctly(self):
+        from shared.models import LogSourceType
+        log = parse_router_event(VYOS_IFACE_DOWN)
+        assert log.source_type == LogSourceType.VYOS
+
+    def test_unrelated_line_returns_none(self):
+        log = parse_router_event("Jun 18 08:00:00 host sshd[123]: session opened")
+        assert log is None
+
+
+class TestDetectAndParseRouterEvents:
+    def test_cisco_bgp_detected(self):
+        log = detect_and_parse(CISCO_BGP_DOWN)
+        assert log is not None
+        assert log.event_action == "bgp_state_change"
+
+    def test_cisco_link_detected(self):
+        log = detect_and_parse(CISCO_LINK_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_juniper_bgp_detected(self):
+        log = detect_and_parse(JUNIPER_BGP_DOWN)
+        assert log is not None
+        assert log.event_action == "bgp_state_change"
+
+    def test_mikrotik_iface_detected(self):
+        log = detect_and_parse(MIKROTIK_IFACE_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+    def test_vyos_iface_detected(self):
+        log = detect_and_parse(VYOS_IFACE_DOWN)
+        assert log is not None
+        assert log.event_action == "interface_link_down"
+
+
+class TestRouterSigmaRules:
+    def test_bgp_flapping_rule_loads(self):
+        from server.sigma_executor import SigmaExecutor
+        ex = SigmaExecutor()
+        ex.load_dir()
+        titles = [r.title for r in ex.rules]
+        assert "BGP Peer Flapping" in titles
+
+    def test_bgp_flapping_is_correlation(self):
+        from server.sigma_executor import SigmaExecutor
+        ex = SigmaExecutor()
+        ex.load_dir()
+        rule = next(r for r in ex.rules if r.title == "BGP Peer Flapping")
+        assert rule.is_correlation is True
+        assert rule.window_seconds == 300
+        assert rule.group_by_fields == ["observer_hostname"]
+
+    def test_iface_flapping_rule_loads(self):
+        from server.sigma_executor import SigmaExecutor
+        ex = SigmaExecutor()
+        ex.load_dir()
+        titles = [r.title for r in ex.rules]
+        assert "Interface Flapping" in titles
+
+    def test_iface_flapping_is_correlation(self):
+        from server.sigma_executor import SigmaExecutor
+        ex = SigmaExecutor()
+        ex.load_dir()
+        rule = next(r for r in ex.rules if r.title == "Interface Flapping")
+        assert rule.is_correlation is True
+        assert rule.window_seconds == 120
+        assert rule.group_by_fields == ["observer_hostname"]
+
+
+class TestRouterLogNormalizerSourcePatterns:
+    def test_cisco_ios_bgp_identified(self):
+        from server.log_normalizer import identify_source
+        from shared.models import LogSourceType
+        assert identify_source(CISCO_BGP_DOWN) == LogSourceType.CISCO_IOS
+
+    def test_cisco_ios_link_identified(self):
+        from server.log_normalizer import identify_source
+        from shared.models import LogSourceType
+        assert identify_source(CISCO_LINK_DOWN) == LogSourceType.CISCO_IOS
+
+    def test_juniper_bgp_identified(self):
+        from server.log_normalizer import identify_source
+        from shared.models import LogSourceType
+        assert identify_source(JUNIPER_BGP_DOWN) == LogSourceType.JUNIPER
+
+    def test_mikrotik_iface_identified(self):
+        from server.log_normalizer import identify_source
+        from shared.models import LogSourceType
+        assert identify_source(MIKROTIK_IFACE_DOWN) == LogSourceType.MIKROTIK

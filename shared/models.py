@@ -297,6 +297,9 @@ class LogSourceType(str, Enum):
     GWORKSPACE   = "gworkspace"   # Google Workspace Admin Reports API
     DHCP         = "dhcp"         # ISC dhcpd / Kea / FortiGate DHCP lease syslog (F1, marka bağımsız)
     DNS_RESOLVER = "dns_resolver" # Unbound / dnsmasq / FortiGate DNS filter syslog (F2, marka bağımsız)
+    CISCO_IOS    = "cisco_ios"    # Cisco IOS/NX-OS router/switch BGP+LINK syslog (G1)
+    JUNIPER      = "juniper"      # Juniper Junos RPD BGP + SNMP_TRAP_LINK (G1)
+    MIKROTIK     = "mikrotik"     # MikroTik RouterOS interface syslog (G1)
 
 
 class LogCategory(str, Enum):

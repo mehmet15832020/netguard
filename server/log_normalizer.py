@@ -74,6 +74,12 @@ _SOURCE_PATTERNS: list[tuple[LogSourceType, re.Pattern]] = [
     (LogSourceType.OPNSENSE,  re.compile(r'filterlog\[')),           # OPNsense (PID'li)
     (LogSourceType.PFSENSE,   re.compile(r'filterlog:')),            # pfSense (PID'siz)
     (LogSourceType.CISCO_ASA, re.compile(r'%ASA-')),
+    # G1 — Cisco IOS/NX-OS router BGP + interface events (%BGP- / %LINK- / %LINEPROTO-)
+    (LogSourceType.CISCO_IOS, re.compile(r'%(?:BGP|LINK|LINEPROTO)-\d+-\w+')),
+    # G1 — Juniper Junos RPD BGP + SNMP link trap
+    (LogSourceType.JUNIPER,   re.compile(r'RPD_BGP_NEIGHBOR_STATE_CHANGED|SNMP_TRAP_LINK_(?:DOWN|UP)')),
+    # G1 — MikroTik RouterOS interface syslog
+    (LogSourceType.MIKROTIK,  re.compile(r'interface,(?:info|error|warning)\s+\S+\s+link\s+(?:up|down)')),
     (LogSourceType.FORTIGATE, re.compile(r'type=(?:traffic|utm)\b')),
     (LogSourceType.VYOS,      re.compile(
         r'kernel:.*SRC=[\d.]+.*DST=[\d.]+'
@@ -354,10 +360,13 @@ _PARSERS = {
     LogSourceType.OPNSENSE  : _parse_firewall,
     LogSourceType.CISCO_ASA : _parse_firewall,
     LogSourceType.FORTIGATE : _parse_firewall,
-    LogSourceType.VYOS      : _parse_firewall,
-    LogSourceType.DHCP      : _parse_firewall,
+    LogSourceType.VYOS       : _parse_firewall,
+    LogSourceType.DHCP       : _parse_firewall,
     LogSourceType.DNS_RESOLVER : _parse_firewall,
-    LogSourceType.NGINX     : _parse_web_log,
+    LogSourceType.CISCO_IOS  : _parse_firewall,
+    LogSourceType.JUNIPER    : _parse_firewall,
+    LogSourceType.MIKROTIK   : _parse_firewall,
+    LogSourceType.NGINX      : _parse_web_log,
 }
 
 

@@ -54,3 +54,62 @@ tags:
 falsepositives:
     - SNMP monitoring tools
     - Network management systems
+---
+title: BGP State Change Base
+name: ng_bgp_state_change_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: bgp_state_change
+    condition: selection
+level: low
+---
+title: BGP Peer Flapping
+id: f6a7b8c9-d0e1-2345-fabc-456789012345
+correlation:
+    type: event_count
+    rules: ng_bgp_state_change_base
+    group-by:
+        - observer_hostname
+    timespan: 5m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.impact
+    - attack.t1557
+falsepositives:
+    - BGP convergence during maintenance
+    - Router restart
+---
+title: Interface Link Down Base
+name: ng_iface_link_down_base
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: interface_link_down
+    condition: selection
+level: low
+---
+title: Interface Flapping
+id: a7b8c9d0-e1f2-3456-abcd-567890123456
+correlation:
+    type: event_count
+    rules: ng_iface_link_down_base
+    group-by:
+        - observer_hostname
+    timespan: 2m
+    condition:
+        gte: 3
+level: high
+tags:
+    - attack.impact
+    - attack.t1557
+    - attack.t1499
+falsepositives:
+    - Physical cable issues
+    - Network maintenance

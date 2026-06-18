@@ -793,6 +793,51 @@ def parse_pfsense_admin_access(line: str) -> Optional[NormalizedLog]:
 #  BGP/OSPF route değişiklikleri ve interface link up/down olayları
 # ──────────────────────────────────────────────────────────────────
 
+# ──────────────────────────────────────────────────────────────────
+#  G1 — Multi-vendor router routing + interface event parsers
+#  Kapsam: Cisco IOS/NX-OS, Juniper Junos, MikroTik RouterOS,
+#          FortiGate interface system event, VyOS (BGP/OSPF/iface/route)
+# ──────────────────────────────────────────────────────────────────
+
+# Cisco IOS: %BGP-5-ADJCHANGE / %LINK-3-UPDOWN / %LINEPROTO-5-UPDOWN
+_CISCO_IOS_BGP_RE = re.compile(
+    r'%BGP-\d+-\w+:\s+neighbor\s+(?P<peer>[\d.a-fA-F:]+)\s+'
+    r'(?P<state>Up|Down|Reset|Idle|Active|OpenSent|Established)(?:\s+(?P<reason>.+))?',
+    re.IGNORECASE,
+)
+_CISCO_IOS_LINK_RE = re.compile(
+    r'%(?:LINK|LINEPROTO)-\d+-UPDOWN:\s+(?:Line protocol on Interface\s+|Interface\s+)'
+    r'(?P<iface>\S+?),?\s+changed state to\s+(?P<state>up|down)',
+    re.IGNORECASE,
+)
+_CISCO_IOS_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+')
+
+# Juniper Junos: RPD_BGP_NEIGHBOR_STATE_CHANGED / SNMP_TRAP_LINK_DOWN
+_JUNIPER_BGP_RE = re.compile(
+    r'RPD_BGP_NEIGHBOR_STATE_CHANGED:\s+BGP peer\s+(?P<peer>[\d.a-fA-F:]+)'
+    r'.*?changed state from\s+\S+\s+to\s+(?P<state>\w+)',
+    re.IGNORECASE,
+)
+_JUNIPER_LINK_RE = re.compile(
+    r'SNMP_TRAP_LINK_(?P<state>DOWN|UP):.*?ifName\s+(?P<iface>\S+)',
+    re.IGNORECASE,
+)
+_JUNIPER_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+')
+
+# MikroTik RouterOS: "interface,info eth1 link up"
+_MIKROTIK_IFACE_RE = re.compile(
+    r'interface,(?:info|error|warning)\s+(?P<iface>\S+)\s+link\s+(?P<state>up|down)',
+    re.IGNORECASE,
+)
+_MIKROTIK_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+')
+
+# FortiGate interface system event (F3'teki admin login'den farklı)
+_FORTI_IFACE_RE = re.compile(
+    r'logdesc="?Interface changed"?.*?action="?link-(?P<state>up|down)"?.*?iface="?(?P<iface>\S+?)"?(?:\s|$)',
+    re.IGNORECASE,
+)
+_FORTI_HOST_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+')
+
 _VYOS_IFACE_RE = re.compile(
     r'kernel:\s+(?P<iface>\S+?):\s+Link\s+is\s+(?P<state>Up|Down)',
     re.IGNORECASE,
@@ -810,6 +855,158 @@ _VYOS_ROUTE_CHANGE_RE = re.compile(
     re.IGNORECASE,
 )
 _VYOS_HOST_GENERIC_RE = re.compile(r'\w+\s+\d+\s+[\d:]+\s+(\S+)\s+')
+
+
+def parse_cisco_ios_routing(line: str) -> Optional[NormalizedLog]:
+    hm = _CISCO_IOS_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "cisco"
+
+    m = _CISCO_IOS_BGP_RE.search(line)
+    if m:
+        peer  = m.group("peer")
+        state = m.group("state").lower()
+        reason = (m.group("reason") or "").strip()
+        severity = "warning" if state in ("down", "idle", "active", "reset") else "info"
+        return _make_log(
+            source_type       = LogSourceType.CISCO_IOS,
+            observer_hostname = observer_hostname,
+            event_action      = "bgp_state_change",
+            severity          = severity,
+            event_category    = LogCategory.NETWORK,
+            message           = f"BGP neighbor {peer} {state}" + (f": {reason}" if reason else ""),
+            raw_content       = line,
+            source_ip         = peer,
+            tags              = ["routing", "bgp", "cisco_ios"],
+            extra             = {"peer": peer, "state": state, "reason": reason},
+        )
+
+    m = _CISCO_IOS_LINK_RE.search(line)
+    if m:
+        iface = m.group("iface")
+        state = m.group("state").lower()
+        severity = "warning" if state == "down" else "info"
+        return _make_log(
+            source_type       = LogSourceType.CISCO_IOS,
+            observer_hostname = observer_hostname,
+            event_action      = f"interface_link_{state}",
+            severity          = severity,
+            event_category    = LogCategory.NETWORK,
+            message           = f"Interface {iface} link {state}",
+            raw_content       = line,
+            tags              = ["routing", "interface", "cisco_ios"],
+            extra             = {"interface": iface, "state": state},
+        )
+
+    return None
+
+
+def parse_juniper_routing(line: str) -> Optional[NormalizedLog]:
+    hm = _JUNIPER_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "juniper"
+
+    m = _JUNIPER_BGP_RE.search(line)
+    if m:
+        peer  = m.group("peer")
+        state = m.group("state").lower()
+        severity = "warning" if state in ("idle", "active", "connect") else "info"
+        return _make_log(
+            source_type       = LogSourceType.JUNIPER,
+            observer_hostname = observer_hostname,
+            event_action      = "bgp_state_change",
+            severity          = severity,
+            event_category    = LogCategory.NETWORK,
+            message           = f"BGP peer {peer} changed to {state}",
+            raw_content       = line,
+            source_ip         = peer,
+            tags              = ["routing", "bgp", "juniper"],
+            extra             = {"peer": peer, "state": state},
+        )
+
+    m = _JUNIPER_LINK_RE.search(line)
+    if m:
+        state = m.group("state").lower()
+        iface = m.group("iface")
+        severity = "warning" if state == "down" else "info"
+        return _make_log(
+            source_type       = LogSourceType.JUNIPER,
+            observer_hostname = observer_hostname,
+            event_action      = f"interface_link_{state}",
+            severity          = severity,
+            event_category    = LogCategory.NETWORK,
+            message           = f"Interface {iface} link {state}",
+            raw_content       = line,
+            tags              = ["routing", "interface", "juniper"],
+            extra             = {"interface": iface, "state": state},
+        )
+
+    return None
+
+
+def parse_mikrotik_interface(line: str) -> Optional[NormalizedLog]:
+    m = _MIKROTIK_IFACE_RE.search(line)
+    if not m:
+        return None
+
+    hm = _MIKROTIK_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "mikrotik"
+    iface = m.group("iface")
+    state = m.group("state").lower()
+    severity = "warning" if state == "down" else "info"
+    return _make_log(
+        source_type       = LogSourceType.MIKROTIK,
+        observer_hostname = observer_hostname,
+        event_action      = f"interface_link_{state}",
+        severity          = severity,
+        event_category    = LogCategory.NETWORK,
+        message           = f"Interface {iface} link {state}",
+        raw_content       = line,
+        tags              = ["routing", "interface", "mikrotik"],
+        extra             = {"interface": iface, "state": state},
+    )
+
+
+def parse_fortigate_interface_event(line: str) -> Optional[NormalizedLog]:
+    m = _FORTI_IFACE_RE.search(line)
+    if not m:
+        return None
+
+    hm = _FORTI_HOST_RE.search(line)
+    observer_hostname = hm.group(1) if hm else "fortigate"
+    state = m.group("state").lower()
+    iface = m.group("iface")
+    severity = "warning" if state == "down" else "info"
+    return _make_log(
+        source_type       = LogSourceType.FORTIGATE,
+        observer_hostname = observer_hostname,
+        event_action      = f"interface_link_{state}",
+        severity          = severity,
+        event_category    = LogCategory.NETWORK,
+        message           = f"FortiGate interface {iface} link {state}",
+        raw_content       = line,
+        tags              = ["routing", "interface", "fortigate"],
+        extra             = {"interface": iface, "state": state},
+    )
+
+
+def parse_router_event(line: str) -> Optional[NormalizedLog]:
+    """G1 — Multi-vendor router routing + interface event dispatcher."""
+    if "%BGP-" in line or "%LINK-" in line or "%LINEPROTO-" in line:
+        result = parse_cisco_ios_routing(line)
+        if result is not None:
+            return result
+    if "RPD_BGP_NEIGHBOR_STATE_CHANGED" in line or "SNMP_TRAP_LINK_" in line:
+        result = parse_juniper_routing(line)
+        if result is not None:
+            return result
+    if "interface,info" in line or "interface,error" in line or "interface,warning" in line:
+        result = parse_mikrotik_interface(line)
+        if result is not None:
+            return result
+    if 'logdesc="Interface changed"' in line or "logdesc=Interface changed" in line:
+        result = parse_fortigate_interface_event(line)
+        if result is not None:
+            return result
+    return parse_vyos_routing_events(line)
 
 
 def parse_vyos_routing_events(line: str) -> Optional[NormalizedLog]:
@@ -971,7 +1168,7 @@ def detect_and_parse(line: str) -> Optional[NormalizedLog]:
         return parse_fortigate(line)
     if "kernel:" in line and "SRC=" in line and "DST=" in line:
         return parse_vyos(line)
-    routing_result = parse_vyos_routing_events(line)
+    routing_result = parse_router_event(line)
     if routing_result is not None:
         return routing_result
     return None
