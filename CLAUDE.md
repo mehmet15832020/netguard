@@ -442,6 +442,44 @@ Zaten aktif ✓ — `set service netflow` LAN tarafında yapılandırılmış, r
 
 ---
 
+## VyOS SNMP Yapılandırması (G2 — 18 Haziran 2026)
+
+SNMP trap receiver zaten UDP 162'de dinliyor (herhangi bir kaynaktan trap alır). VyOS'ta SNMP etkinleştirme ve NetGuard'a trap gönderme için VyOS CLI:
+
+```bash
+# VyOS'a SSH ile giriş: ssh vyos@192.168.203.200
+configure
+
+# SNMP v2c community tanımla (read-only, NetGuard IP'sine kısıtlı)
+set service snmp community netguard authorization ro
+set service snmp community netguard client 192.168.203.134
+
+# Trap hedefini NetGuard olarak ayarla (IF-MIB link traps + BGP-MIB peer traps)
+set service snmp trap-target 192.168.203.134 community netguard
+set service snmp trap-target 192.168.203.134 port 162
+
+# Listen interface (sadece LAN tarafı)
+set service snmp listen-address 192.168.203.200
+
+commit
+save
+exit
+```
+
+VyOS'u NetGuard SNMP collector'ına eklemek için (GNS3 lab açıkken çalıştır):
+
+```bash
+# NetGuard sunucusundan API ile ekle
+curl -s -X POST "http://localhost:8000/api/v1/snmp/devices" \
+  -H "Authorization: Bearer <admin_jwt>" \
+  -H "Content-Type: application/json" \
+  -d '{"host":"192.168.203.200","community":"netguard","label":"VyOS Router"}'
+```
+
+**Erişim notu (18 Haziran 2026):** GNS3 lab kapalıyken VyOS'a SSH erişimi yok — yukarıdaki komutlar GNS3 başlatıldıktan sonra uygulanmalı. Trap receiver her kaynaktan trap alır, VyOS tarafı yapılandırıldığında otomatik çalışır.
+
+---
+
 ## Syslog Toplama (B3 — 16 Haziran 2026)
 
 UDP 5140 yoğun trafikte sessizce paket düşürebilir (kernel/socket buffer dolduğunda) — TCP/TLS bu garantiyi transport katmanında verir. UDP eski/basit cihazlar için varsayılan açık kalır; OPNsense/VyOS gibi güvenilir teslimat istenen kaynaklar TCP/TLS'e yönlendirilebilir.
