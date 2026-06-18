@@ -990,8 +990,8 @@ class DatabaseManager:
             network_protocol     = row.get("network_protocol"),
             username             = row.get("username"),
             message              = row["message"],
-            tags                 = json.loads(row.get("tags") or "[]"),
-            extra                = json.loads(row.get("extra") or "{}"),
+            tags                 = row.get("tags") or [],
+            extra                = row.get("extra") or {},
             network_bytes        = row.get("network_bytes"),
             community_id         = row.get("community_id"),
             processed_at         = _dt(row["processed_at"]),
@@ -1055,8 +1055,8 @@ class DatabaseManager:
                 event.last_seen,
                 event.message,
                 event.created_at,
-                ",".join(event.mitre_techniques),
-                ",".join(event.mitre_tactics),
+                list(event.mitre_techniques),
+                list(event.mitre_tactics),
             ))
             return True
 
@@ -1095,8 +1095,6 @@ class DatabaseManager:
         return self._row_to_correlated_event(row) if row else None
 
     def _row_to_correlated_event(self, row: dict) -> CorrelatedEvent:
-        def _split(val: str) -> list[str]:
-            return [v for v in (val or "").split(",") if v]
         return CorrelatedEvent(
             corr_id          = row["corr_id"],
             rule_id          = row["rule_id"],
@@ -1110,8 +1108,8 @@ class DatabaseManager:
             last_seen        = _dt(row["last_seen"]),
             message          = row["message"],
             created_at       = _dt(row["created_at"]),
-            mitre_techniques = _split(row.get("mitre_techniques", "")),
-            mitre_tactics    = _split(row.get("mitre_tactics", "")),
+            mitre_techniques = list(row.get("mitre_techniques") or []),
+            mitre_tactics    = list(row.get("mitre_tactics") or []),
         )
 
     def count_correlated_events_since(self, hours: int = 24, tenant_id: Optional[str] = None) -> dict:

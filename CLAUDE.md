@@ -278,7 +278,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 | **P1-P8** | RFC1918, TTL, FP gate, severity gate, progressive TTL, verify, port/protocol, break-glass | çeşitli |
 | **GNS3 Lab** | PostgreSQL kurulum, Alembic migrasyon, API key, dashboard build, topoloji bağlantıları | çeşitli |
 
-**Test durumu:** 2788 test, 0 hata (7 Haziran 2026)
+**Test durumu:** ~3300+ test (18 Haziran 2026 sonrası, improvement_todos maddeleri eklendi)
 
 ---
 
