@@ -5,6 +5,15 @@ NetFlow v5: Sabit boyutlu kayıtlar (24 byte header + 48 byte/flow)
 NetFlow v9: Template tabanlı — önce template alınır, sonra data parse edilir
 
 Her parse çağrısı list[NormalizedLog] döner (birden fazla akış olabilir).
+
+I8 — Asimetrik Routing Uyarısı (NIST SP 800-94 §3.4.2):
+NetFlow her akışı tek yönlü kaydeder (src→dst). VyOS/OPNsense NAT yapıyor veya
+routing asimetrikse (gidiş/dönüş farklı yoldan), aynı TCP sessionın iki yönü
+farklı akış kayıtları olarak gelir ya da dönüş hiç gelmez. Bu durumda:
+- network_bytes sadece tek yönlü byte sayısını yansıtır
+- Gerçek session boyutu hafife alınır (sadece outbound veya inbound görünür)
+- East-West trafik matrisi bu nedenle tahmini değerler içerir
+Çözüm: İki yönlü akışları community_id üzerinden eşleştirip toplamak (C1 altyapısı hazır).
 """
 
 import logging
