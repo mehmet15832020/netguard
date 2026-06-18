@@ -13,6 +13,7 @@ from server.port_monitor import PortMonitor
 from server.config_monitor import ConfigMonitor
 from shared.models import (
     Alert, AlertSeverity, AlertStatus,
+    NormalizedLog, LogSourceType, LogCategory,
     SecurityEvent, SecurityEventType,
 )
 
@@ -146,7 +147,19 @@ class TestSecurityEvents:
         since = (now - timedelta(minutes=5)).isoformat()
 
         for _ in range(3):
-            db_manager.save_security_event(_make_event(source_ip=ip))
+            log = NormalizedLog(
+                log_id=str(uuid.uuid4()),
+                raw_id=str(uuid.uuid4()),
+                source_type=LogSourceType.AUTH_LOG,
+                observer_hostname="testhost",
+                timestamp=now,
+                severity="warning",
+                event_category=LogCategory.AUTHENTICATION,
+                event_action="ssh_login_failed",
+                source_ip=ip,
+                message="Failed password",
+            )
+            db_manager.save_normalized_log(log)
 
         count = db_manager.count_recent_failures(ip, since)
         assert count == 3
@@ -154,7 +167,19 @@ class TestSecurityEvents:
     def test_count_failures_old_excluded(self, db_manager):
         ip = "10.0.0.88"
         old_time = datetime.now(timezone.utc) - timedelta(minutes=10)
-        db_manager.save_security_event(_make_event(source_ip=ip, occurred_at=old_time))
+        log = NormalizedLog(
+            log_id=str(uuid.uuid4()),
+            raw_id=str(uuid.uuid4()),
+            source_type=LogSourceType.AUTH_LOG,
+            observer_hostname="testhost",
+            timestamp=old_time,
+            severity="warning",
+            event_category=LogCategory.AUTHENTICATION,
+            event_action="ssh_login_failed",
+            source_ip=ip,
+            message="Failed password",
+        )
+        db_manager.save_normalized_log(log)
 
         since = (datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat()
         count = db_manager.count_recent_failures(ip, since)
