@@ -667,6 +667,101 @@ class TestUnusualTimeActivity:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+#  I3 — Rare External Destination
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestNewExternalDestination:
+
+    def _make_baseline(self, baseline_db, ip: str) -> None:
+        baseline_db.upsert_asset_baseline(
+            source_ip             = ip,
+            tenant_id             = "default",
+            first_seen_at         = datetime.now(timezone.utc) - timedelta(days=7),
+            last_seen_at          = datetime.now(timezone.utc),
+            avg_events_per_hour   = 5.0,
+            typical_ports         = [],
+            typical_destinations  = [],
+            typical_event_actions = [],
+            typical_protocols     = [],
+            sample_hours          = 168,
+        )
+
+    def test_new_external_destination_detected(self, baseline_db):
+        from server.asset_baseline import check_deviations
+        ip = "192.168.1.80"
+        self._make_baseline(baseline_db, ip)
+
+        # Şimdiki pencerede yeni dış IP
+        ts = datetime.now(timezone.utc) - timedelta(minutes=20)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, "1.2.3.4", 500, ts))
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        events = [l for l in logs if l.get("event_action") == "new_external_destination"
+                  and l.get("source_ip") == ip]
+        assert len(events) >= 1
+        assert "1.2.3.4" in events[0]["message"]
+
+    def test_known_destination_no_alert(self, baseline_db):
+        from server.asset_baseline import check_deviations
+        ip = "192.168.1.81"
+        self._make_baseline(baseline_db, ip)
+
+        known_dest = "8.8.8.8"
+        # Baseline penceresinde de bu IP'ye bağlantı var
+        ts_old = datetime.now(timezone.utc) - timedelta(days=4, hours=1)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, known_dest, 1000, ts_old))
+        # Şimdiki pencerede de aynı IP
+        ts_now = datetime.now(timezone.utc) - timedelta(minutes=20)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, known_dest, 1000, ts_now))
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        events = [l for l in logs if l.get("event_action") == "new_external_destination"
+                  and l.get("source_ip") == ip]
+        assert len(events) == 0
+
+    def test_rfc1918_dest_ignored(self, baseline_db):
+        from server.asset_baseline import check_deviations
+        ip = "192.168.1.82"
+        self._make_baseline(baseline_db, ip)
+
+        ts = datetime.now(timezone.utc) - timedelta(minutes=10)
+        for priv in ["10.0.0.1", "192.168.5.1", "172.20.0.1"]:
+            baseline_db.save_normalized_log(_norm_with_bytes(ip, priv, 500, ts))
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        events = [l for l in logs if l.get("event_action") == "new_external_destination"
+                  and l.get("source_ip") == ip]
+        assert len(events) == 0
+
+    def test_max_alerts_per_ip_capped(self, baseline_db):
+        from server.asset_baseline import check_deviations, NEW_EXTERNAL_DEST_MAX_PER_IP
+        ip = "192.168.1.83"
+        self._make_baseline(baseline_db, ip)
+
+        # MAX + 3 adet yeni dış IP
+        ts = datetime.now(timezone.utc) - timedelta(minutes=15)
+        for i in range(NEW_EXTERNAL_DEST_MAX_PER_IP + 3):
+            baseline_db.save_normalized_log(
+                _norm_with_bytes(ip, f"5.{i}.{i}.{i}", 100, ts)
+            )
+
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=200)]
+        events = [l for l in logs if l.get("event_action") == "new_external_destination"
+                  and l.get("source_ip") == ip]
+        assert len(events) <= NEW_EXTERNAL_DEST_MAX_PER_IP
+
+    def test_empty_source_ips_returns_empty(self, baseline_db):
+        since = datetime.now(timezone.utc) - timedelta(hours=1)
+        baseline = datetime.now(timezone.utc) - timedelta(days=7)
+        result = baseline_db.get_new_external_destinations([], since, baseline)
+        assert result == {}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 #  I2 — Outbound Exfiltration Volume Baseline
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -837,6 +932,29 @@ class TestExfilVolumeDetection:
         exfil = [l for l in logs if l.get("event_action") == "data_exfil_volume_anomaly"
                  and l.get("source_ip") == ip]
         assert len(exfil) == 0
+
+    def test_get_new_external_destinations_db_method(self, baseline_db):
+        ip = "192.168.1.70"
+        ext_new = "5.5.5.5"
+        ext_old = "8.8.8.8"
+        priv = "10.0.0.1"
+
+        # Baseline'da bilinen dış IP (5 gün önce)
+        ts_old = datetime.now(timezone.utc) - timedelta(days=5, hours=1)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, ext_old, 1000, ts_old))
+        # Şimdiki pencerede yeni dış IP
+        ts_new = datetime.now(timezone.utc) - timedelta(minutes=30)
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, ext_new, 1000, ts_new))
+        # Özel ağ — dahil edilmemeli
+        baseline_db.save_normalized_log(_norm_with_bytes(ip, priv, 1000, ts_new))
+
+        current_since  = datetime.now(timezone.utc) - timedelta(hours=1)
+        baseline_since = datetime.now(timezone.utc) - timedelta(days=7)
+        result = baseline_db.get_new_external_destinations([ip], current_since, baseline_since)
+        assert ip in result
+        assert ext_new in result[ip]
+        assert ext_old not in result[ip]  # baseline'da zaten vardı
+        assert priv    not in result[ip]  # RFC1918 → dışlanmalı
 
     def test_update_baselines_computes_outbound_bytes(self, baseline_db):
         from server.asset_baseline import update_baselines, MIN_EVENTS_FOR_BASELINE

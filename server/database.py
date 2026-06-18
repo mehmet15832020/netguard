@@ -788,31 +788,46 @@ class DatabaseManager:
             ).fetchall()
         return [str(r["val"]) for r in rows]
 
-    def get_known_destination_ips(
+    def get_new_external_destinations(
         self,
         source_ips: list[str],
-        since: datetime,
+        current_since: datetime,
+        baseline_since: datetime,
         tenant_id: str = "default",
     ) -> dict[str, set[str]]:
-        """
-        Verilen source IP listesi için son X saatte iletişim kurduğu
-        tüm destination IP'leri tek toplu sorguda döner.
-        I3 rare external destination tespiti için kullanılır.
+        """I3 — Mevcut pencerede görülen ama baseline penceresinde (current hariç) hiç
+        görülmemiş, RFC1918-dışı destination IP'leri döner.
+
+        Döner: {source_ip: {new_external_dest, ...}}
         """
         if not source_ips:
             return {}
         with self._connect() as conn:
             rows = conn.execute(
                 """
-                SELECT source_ip, destination_ip
-                FROM normalized_logs
-                WHERE source_ip = ANY(%s)
-                  AND destination_ip IS NOT NULL
-                  AND received_at >= %s
-                  AND tenant_id = %s
-                GROUP BY source_ip, destination_ip
+                SELECT DISTINCT n.source_ip, n.destination_ip
+                FROM normalized_logs n
+                WHERE n.source_ip = ANY(%s)
+                  AND n.destination_ip IS NOT NULL
+                  AND n.timestamp >= %s
+                  AND n.tenant_id = %s
+                  AND n.destination_ip NOT LIKE '10.%%'
+                  AND n.destination_ip NOT LIKE '192.168.%%'
+                  AND n.destination_ip NOT LIKE '127.%%'
+                  AND n.destination_ip NOT LIKE '169.254.%%'
+                  AND NOT (n.destination_ip LIKE '172.%%'
+                           AND SPLIT_PART(n.destination_ip,'.',2)::int BETWEEN 16 AND 31)
+                EXCEPT
+                SELECT DISTINCT b.source_ip, b.destination_ip
+                FROM normalized_logs b
+                WHERE b.source_ip = ANY(%s)
+                  AND b.destination_ip IS NOT NULL
+                  AND b.timestamp >= %s
+                  AND b.timestamp < %s
+                  AND b.tenant_id = %s
                 """,
-                (source_ips, since, tenant_id),
+                (source_ips, current_since, tenant_id,
+                 source_ips, baseline_since, current_since, tenant_id),
             ).fetchall()
         result: dict[str, set[str]] = {}
         for r in rows:

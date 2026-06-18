@@ -35,6 +35,9 @@ EXFIL_STDDEV_FACTOR    = 3.0   # mean + 3*stddev → anomali (NIST §800-94 §4.
 MIN_DAYS_FOR_EXFIL_BASELINE = 3  # En az 3 günlük outbound veri olmadan baseline çıkartma
 MIN_EXFIL_BYTES_THRESHOLD   = 1_000_000  # 1 MB altı mutlak değer → FP riski yüksek, atla
 
+# I3 — Rare external destination (RITA/BHIS BlackHat 2015; MITRE ATT&CK T1071)
+NEW_EXTERNAL_DEST_MAX_PER_IP = 5  # Bir check döngüsünde IP başına en fazla bu kadar alert
+
 _VALID_COLUMNS = frozenset({"destination_port", "destination_ip", "event_action", "network_protocol"})
 
 
@@ -131,8 +134,15 @@ def check_deviations(tenant_id: str = "default") -> int:
         return 0
 
     since_dt = datetime.now(timezone.utc) - timedelta(hours=DEVIATION_WINDOW_HOURS)
+    baseline_since_dt = datetime.now(timezone.utc) - timedelta(days=BASELINE_WINDOW_DAYS)
     current_rows = db.get_event_counts_by_ip(since_dt, tenant_id)
     current_outbound = db.get_outbound_bytes_current(since_dt, tenant_id)
+
+    # I3 — Rare external destination: toplu sorgu (tüm aktif IP'ler için tek round-trip)
+    active_ips = [r["source_ip"] for r in current_rows]
+    new_ext_dests = db.get_new_external_destinations(
+        active_ips, since_dt, baseline_since_dt, tenant_id
+    )
 
     detected = 0
     for row in current_rows:
@@ -195,6 +205,21 @@ def check_deviations(tenant_id: str = "default") -> int:
                         tenant_id = tenant_id,
                     )
                     detected += 1
+
+        # I3 — Yeni/nadir dış IP tespiti (RITA/BHIS; MITRE ATT&CK T1071)
+        new_dests = new_ext_dests.get(ip, set())
+        for dest in list(new_dests)[:NEW_EXTERNAL_DEST_MAX_PER_IP]:
+            _write_anomaly(
+                source_ip    = ip,
+                event_action = "new_external_destination",
+                message      = (
+                    f"Yeni dış hedef: {ip} → {dest} — son {BASELINE_WINDOW_DAYS} günde "
+                    f"ilk kez görülüyor (baseline penceresinde yok)"
+                ),
+                severity  = "warning",
+                tenant_id = tenant_id,
+            )
+            detected += 1
 
         # I2 — Outbound exfiltration hacim anomalisi (Verizon DBIR 2025)
         ob_avg = bl.get("outbound_bytes_daily_avg", 0)
