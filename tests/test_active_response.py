@@ -111,6 +111,23 @@ class TestOPNsenseProvider:
         assert result.success is False
         assert "Connection refused" in result.error
 
+    def test_verify_defaults_to_true_when_ca_bundle_unset(self, monkeypatch):
+        monkeypatch.delenv("OPNSENSE_CA_BUNDLE", raising=False)
+        provider = OPNsenseProvider()
+        assert provider._verify is True
+
+    def test_verify_uses_ca_bundle_path(self, monkeypatch, tmp_path):
+        ca_file = tmp_path / "ca.pem"
+        ca_file.write_text("dummy")
+        monkeypatch.setenv("OPNSENSE_CA_BUNDLE", str(ca_file))
+        provider = OPNsenseProvider()
+        assert provider._verify == str(ca_file)
+
+    def test_verify_empty_ca_bundle_falls_back_to_true(self, monkeypatch):
+        monkeypatch.setenv("OPNSENSE_CA_BUNDLE", "")
+        provider = OPNsenseProvider()
+        assert provider._verify is True
+
 
 # ═══════════════════════════════════════════════════════════════════════════ #
 #  Birim — VyOSProvider
