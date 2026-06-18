@@ -78,6 +78,7 @@ _ACTION_TO_CATEGORY: dict[str, LogCategory] = {
     "defender_malware_detected":       LogCategory.INTRUSION,
     "defender_action_taken":           LogCategory.INTRUSION,
     "defender_scan_threat":            LogCategory.INTRUSION,
+    "defender_realtime_disabled":      LogCategory.INTRUSION,  # N5 critical: AV devre dışı
 }
 
 

@@ -145,3 +145,70 @@ class TestCollectChannelWithoutWin32:
         with patch.dict("sys.modules", {"win32evtlog": None}):
             result = _collect_channel("Security")
         assert result == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  N1-N5 — Windows EID kapsam genişletme (kanalar ve STAGE_MAP)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestWindowsEIDN1N5:
+    def test_n1_security_channel_has_wfp_eids(self):
+        from agent.windows_log_shipper import _CHANNELS
+        eids = _CHANNELS["Security"][1]
+        assert 5152 in eids  # WFP bağlantı engellendi
+        assert 5154 in eids  # WFP yeni dinleyici
+
+    def test_n2_security_channel_has_rdp_eids(self):
+        from agent.windows_log_shipper import _CHANNELS
+        eids = _CHANNELS["Security"][1]
+        assert 4778 in eids  # RDP reconnect
+        assert 4779 in eids  # RDP disconnect
+
+    def test_n2_termservices_channel_exists(self):
+        from agent.windows_log_shipper import _CHANNELS
+        assert "TermServices" in _CHANNELS
+        assert 1149 in _CHANNELS["TermServices"][1]
+
+    def test_n3_sysmon_channel_has_registry_eids(self):
+        from agent.windows_log_shipper import _CHANNELS
+        eids = _CHANNELS["Sysmon"][1]
+        assert 12 in eids   # registry create/delete
+        assert 14 in eids   # registry rename
+
+    def test_n4_sysmon_channel_has_config_tamper_eid(self):
+        from agent.windows_log_shipper import _CHANNELS
+        eids = _CHANNELS["Sysmon"][1]
+        assert 4 in eids    # Sysmon config changed
+
+    def test_n5_defender_channel_exists(self):
+        from agent.windows_log_shipper import _CHANNELS
+        assert "Defender" in _CHANNELS
+        eids = _CHANNELS["Defender"][1]
+        assert 1116 in eids  # malware detected
+        assert 1117 in eids  # action taken
+        assert 5001 in eids  # real-time protection disabled
+
+    def test_n5_eid_5001_in_eid_map(self):
+        from server.evtx_parser import _EID_MAP
+        assert 5001 in _EID_MAP
+        assert _EID_MAP[5001][0] == "defender_realtime_disabled"
+        assert _EID_MAP[5001][1] == "critical"
+
+    def test_n5_defender_realtime_in_stage_map(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("defender_realtime_disabled") == "execute"
+
+    def test_n5_windows_category_mapping(self):
+        from server.parsers.windows import _ACTION_TO_CATEGORY
+        from shared.models import LogCategory
+        assert _ACTION_TO_CATEGORY.get("defender_realtime_disabled") == LogCategory.INTRUSION
+
+    def test_n5_sigma_rules_loaded(self):
+        import yaml, os
+        path = os.path.join(
+            os.path.dirname(__file__), "..", "config", "sigma_rules_v2", "windows_events.yml"
+        )
+        docs = list(yaml.safe_load_all(open(path)))
+        titles = [d.get("title", "") for d in docs if d]
+        assert any("Defender Real-Time Protection Disabled" in t for t in titles)
+        assert any("Sysmon Configuration Changed" in t for t in titles)

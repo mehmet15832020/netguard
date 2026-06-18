@@ -212,6 +212,7 @@ STAGE_MAP: dict[str, str] = {
     "defender_malware_detected":       "execute",    # Defender 1116 — malware T1204
     "defender_action_taken":           "execute",    # Defender 1117 — remediation T1204
     "defender_scan_threat":            "execute",    # Defender 1006 — scan threat T1204
+    "defender_realtime_disabled":      "execute",    # N5 — Defender EID 5001 — AV devre dışı T1562.001
     # Zeek weird.log (N2)
     "zeek_weird_unknown_protocol":       "lateral",   # T1071 C2 tunnel
     "zeek_weird_bad_http_request":       "execute",   # T1190 exploit

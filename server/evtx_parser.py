@@ -77,6 +77,7 @@ _EID_MAP: dict[int, tuple[str, str]] = {
     1116: ("defender_malware_detected",        "critical"),
     1117: ("defender_action_taken",            "high"),
     1006: ("defender_scan_threat",             "high"),
+    5001: ("defender_realtime_disabled",       "critical"),  # N5 — Real-time protection off (T1562.001)
     # Sysmon Events
     1:     ("windows_sysmon_process",          "info"),
     3:     ("windows_sysmon_network",          "info"),
@@ -963,6 +964,19 @@ def _parse_record_xml(xml_str: str) -> Optional[dict]:
             "observer_hostname": computer,
             "message":           f"Windows Defender scan found threat: {threat_name or '?'} severity={severity_field} path={path}",
             "raw_data":          f"EID=1006 threat={threat_name} severity={severity_field} path={path}"[:500],
+            "occurred_at":       occurred_at,
+        }
+
+    if eid == 5001:
+        # N5 — Defender Real-Time Protection devre dışı bırakıldı (T1562.001)
+        return {
+            "event_action":      event_action,
+            "severity":          "critical",
+            "username":          None,
+            "source_ip":         None,
+            "observer_hostname": computer,
+            "message":           f"Windows Defender gerçek zamanlı koruma DEVRE DIŞI ({computer})",
+            "raw_data":          f"EID=5001 computer={computer}"[:500],
             "occurred_at":       occurred_at,
         }
 

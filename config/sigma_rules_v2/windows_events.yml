@@ -1044,3 +1044,35 @@ detection:
 level: high
 tags:
     - attack.execution
+---
+title: Windows Defender Real-Time Protection Disabled
+id: f3a4b5c6-d7e8-9f0a-b1c2-d3e4f5a6b7c8
+status: stable
+description: Windows Defender EID 5001 — Real-time protection was disabled. Immediate indicator of AV tampering before malware execution (T1562.001)
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: defender_realtime_disabled
+    condition: selection
+level: critical
+tags:
+    - attack.defense_evasion
+    - attack.t1562.001
+---
+title: Sysmon Configuration Changed — Anti-Tamper
+id: e4b5c6d7-e8f9-0a1b-c2d3-e4f5a6b7c8d9
+status: stable
+description: Sysmon EID 4 — Sysmon service state changed. May indicate Sysmon being disabled or configuration replaced by attacker (T1562.001)
+logsource:
+    product: netguard
+    service: windows
+detection:
+    selection:
+        event_action: sysmon_state_change
+    condition: selection
+level: high
+tags:
+    - attack.defense_evasion
+    - attack.t1562.001

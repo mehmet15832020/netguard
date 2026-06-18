@@ -1,17 +1,22 @@
 """
 NetGuard Windows Agent — Multi-Channel Event Log Okuyucu
 
-5 kanaldan Windows event loglarını okur, NetGuard sunucusuna gönderir.
+7 kanaldan Windows event loglarını okur, NetGuard sunucusuna gönderir.
 Her kanal için ayrı pozisyon takibi yapılır.
 
 Kanallar ve EID'ler:
-  Security:   4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720, 4728,
-              4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
-              4741, 4614, 4703
-  Sysmon:     1, 3, 6, 7, 8, 9, 10, 11, 13, 15, 17, 18, 19, 21, 22, 25
-  PowerShell: 4103, 4104
-  System:     7045, 7034, 7040
-  AppLocker:  8004
+  Security:       4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720, 4728,
+                  4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
+                  4741, 4614, 4703,
+                  5152 (WFP bağlantı engellendi), 5154 (WFP dinleme izni)  [N1]
+                  4778 (RDP session reconnect), 4779 (RDP session disconnect) [N2]
+  Sysmon:         1, 3, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 22, 25
+                  4 (config changed — anti-tamper) [N3/N4]
+  PowerShell:     4103, 4104
+  System:         7045, 7034, 7040
+  AppLocker:      8004
+  TermServices:   1149 (RDP auth başarılı — 4624'ten önce gelir)  [N2]
+  Defender:       1116, 1117, 5001  [N5]
 
 Gereksinim: pywin32 (pip install pywin32)
 Yalnızca Windows'ta çalışır.
@@ -43,11 +48,16 @@ _CHANNELS: dict[str, tuple[str, frozenset[int]]] = {
             4624, 4625, 4648, 4672, 4688, 4698, 4702, 4720, 4728,
             4732, 4740, 4768, 4769, 4771, 4776, 5140, 1102,
             4741, 4614, 4703,
+            5152, 5154,          # N1 — WFP bağlantı engellendi / dinleme izni (T1562.004)
+            4778, 4779,          # N2 — RDP session reconnect / disconnect (T1021.001)
         }),
     ),
     "Sysmon": (
         "Microsoft-Windows-Sysmon/Operational",
-        frozenset({1, 3, 6, 7, 8, 9, 10, 11, 13, 15, 17, 18, 19, 21, 22, 25}),
+        frozenset({
+            1, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 18, 19, 21, 22, 25
+            # 4=config changed (N4), 12=registry create/delete (N3), 14=registry rename (N3)
+        }),
     ),
     "PowerShell": (
         "Microsoft-Windows-PowerShell/Operational",
@@ -60,6 +70,14 @@ _CHANNELS: dict[str, tuple[str, frozenset[int]]] = {
     "AppLocker": (
         "Microsoft-Windows-AppLocker/EXE and DLL",
         frozenset({8004}),
+    ),
+    "TermServices": (                                                # N2 — RDP erken uyarı
+        "Microsoft-Windows-TerminalServices-RemoteConnectionManager/Operational",
+        frozenset({1149}),
+    ),
+    "Defender": (                                                    # N5 — AV tespit + devre dışı
+        "Microsoft-Windows-Windows Defender/Operational",
+        frozenset({1116, 1117, 5001}),
     ),
 }
 
