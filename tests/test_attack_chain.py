@@ -175,6 +175,7 @@ class TestAutoBlock:
 
     def test_partial_chain_not_blocked(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         partial = {
             "chain_type": "PARTIAL_ATTACK_CHAIN",
             "severity": "warning",
@@ -194,6 +195,7 @@ class TestAutoBlock:
     ])
     def test_protected_networks_not_blocked(self, monkeypatch, protected_ip):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_manager = MagicMock()
         with patch("server.active_response.active_response_manager", mock_manager):
             _auto_block_full_chain(_full_trigger(protected_ip))
@@ -201,6 +203,7 @@ class TestAutoBlock:
 
     def test_protected_cidrs_env_not_blocked(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         monkeypatch.setenv("PROTECTED_CIDRS", "5.6.7.0/24")
         import importlib
         import server.attack_chain as ac
@@ -213,6 +216,7 @@ class TestAutoBlock:
 
     def test_fp_suppressed_not_blocked(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = "fp-rule-001"
         mock_manager = MagicMock()
@@ -228,6 +232,7 @@ class TestAutoBlock:
 
     def test_already_blocked_duplicate_skipped(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
@@ -242,10 +247,12 @@ class TestAutoBlock:
 
     def test_public_ip_blocked_when_enabled(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -266,10 +273,12 @@ class TestAutoBlock:
     def test_provider_failure_logged_as_error(self, monkeypatch, caplog):
         import logging
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": False, "error": "provider down"}
         with caplog.at_level(logging.ERROR, logger="server.attack_chain"):
@@ -281,10 +290,12 @@ class TestAutoBlock:
 
     def test_block_error_does_not_propagate(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.side_effect = RuntimeError("OPNsense bağlantı hatası")
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -300,6 +311,7 @@ class TestAutoBlock:
 
     def test_invalid_ip_does_not_raise(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         _auto_block_full_chain(_full_trigger("not-an-ip"))
 
 
@@ -320,10 +332,12 @@ class TestAutoBlockIntegration:
         assert trigger["chain_type"] == "FULL_ATTACK_CHAIN"
 
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -343,6 +357,7 @@ class TestAutoBlockIntegration:
         assert trigger["chain_type"] == "PARTIAL_ATTACK_CHAIN"
 
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_manager = MagicMock()
         with patch("server.active_response.active_response_manager", mock_manager):
             chain_trigger_to_correlated_event(trigger, db_save=False)
@@ -475,10 +490,12 @@ class TestQ4AutoBlockNotification:
 
     def test_block_reason_contains_stages(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -493,10 +510,12 @@ class TestQ4AutoBlockNotification:
 
     def test_block_reason_contains_triggering_action(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -509,10 +528,12 @@ class TestQ4AutoBlockNotification:
 
     def test_notify_auto_block_success_called_on_success(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense"}
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -528,10 +549,12 @@ class TestQ4AutoBlockNotification:
 
     def test_notify_auto_block_success_not_called_on_failure(self, monkeypatch):
         monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
         mock_fp = MagicMock()
         mock_fp.is_suppressed.return_value = None
         mock_db = MagicMock()
         mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
         mock_manager = MagicMock()
         mock_manager.block_ip.return_value = {"success": False, "error": "provider down"}
         with patch("server.fp_manager.fp_manager", mock_fp):
@@ -560,3 +583,122 @@ class TestQ4AutoBlockNotification:
         assert "8.8.8.8" in sent[0][0]
         assert "Keşif" in sent[0][1]
         assert "full_attack_chain_detected" in sent[0][1]
+
+
+class TestAutoBlockR1ThreatIntelGate:
+    """R1 — Threat intel eşiği olmadan otomatik blok atlanmalı."""
+
+    def test_low_intel_score_skips_block(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "30")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_manager = MagicMock()
+        with patch("server.threat_intel.lookup", return_value={"composite_score": 10}):
+            with patch("server.fp_manager.fp_manager", mock_fp):
+                with patch("server.database.db", mock_db):
+                    with patch("server.active_response.active_response_manager", mock_manager):
+                        _auto_block_full_chain(_full_trigger())
+        mock_manager.block_ip.assert_not_called()
+
+    def test_high_intel_score_allows_block(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "30")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense", "error": ""}
+        with patch("server.threat_intel.lookup", return_value={"composite_score": 75}):
+            with patch("server.fp_manager.fp_manager", mock_fp):
+                with patch("server.database.db", mock_db):
+                    with patch("server.active_response.active_response_manager", mock_manager):
+                        _auto_block_full_chain(_full_trigger())
+        mock_manager.block_ip.assert_called_once()
+
+    def test_zero_score_threshold_skips_intel_check(self, monkeypatch):
+        """AUTO_BLOCK_MIN_INTEL_SCORE=0 → threat intel gate devre dışı."""
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense", "error": ""}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    _auto_block_full_chain(_full_trigger())
+        mock_manager.block_ip.assert_called_once()
+
+
+class TestAutoBlockR4ActiveSession:
+    """R4 — Aktif oturum varsa otomatik blok atlanmalı."""
+
+    def test_active_session_skips_block(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_db.has_active_session.return_value = True
+        mock_manager = MagicMock()
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    _auto_block_full_chain(_full_trigger())
+        mock_manager.block_ip.assert_not_called()
+        mock_db.save_audit_event.assert_called_once()
+        detail = mock_db.save_audit_event.call_args[1]["detail"]
+        assert "aktif" in detail.lower() or "session" in detail.lower()
+
+    def test_no_active_session_allows_block(self, monkeypatch):
+        monkeypatch.setenv("AUTO_BLOCK_ON_FULL_CHAIN", "1")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
+        monkeypatch.setenv("AUTO_BLOCK_MIN_INTEL_SCORE", "0")
+        mock_fp = MagicMock()
+        mock_fp.is_suppressed.return_value = None
+        mock_db = MagicMock()
+        mock_db.is_ip_blocked.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_db.has_active_session.return_value = False
+        mock_manager = MagicMock()
+        mock_manager.block_ip.return_value = {"success": True, "provider": "opnsense", "error": ""}
+        with patch("server.fp_manager.fp_manager", mock_fp):
+            with patch("server.database.db", mock_db):
+                with patch("server.active_response.active_response_manager", mock_manager):
+                    _auto_block_full_chain(_full_trigger())
+        mock_manager.block_ip.assert_called_once()
+
+    def test_has_active_session_db_method(self, tmp_db):
+        """has_active_session() SQL doğruluğu — DB metodu test."""
+        from server.database import db
+        from datetime import datetime, timezone
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        import uuid
+        log = NormalizedLog(
+            log_id=str(uuid.uuid4()),
+            raw_id=str(uuid.uuid4()),
+            source_type=LogSourceType.AUTH_LOG,
+            observer_hostname="server",
+            timestamp=datetime.now(timezone.utc),
+            severity="info",
+            event_category=LogCategory.AUTHENTICATION,
+            event_action="ssh_login_success",
+            source_ip="10.0.0.50",
+            message="SSH login success",
+        )
+        db.save_normalized_log(log)
+        assert db.has_active_session("10.0.0.50", window_seconds=3600) is True
+        assert db.has_active_session("10.0.0.99", window_seconds=3600) is False

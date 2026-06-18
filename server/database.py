@@ -1745,6 +1745,22 @@ class DatabaseManager:
             ).fetchone()
         return row is not None
 
+    def has_active_session(self, ip: str, window_seconds: int = 3600, tenant_id: str = "default") -> bool:
+        """R4 — blok öncesi aktif oturum kontrolü. Son window_seconds içinde bu IP'den
+        SSH/RDP login_success varsa True döner (NIST SP 800-61 iş sürekliliği)."""
+        with self._connect() as conn:
+            row = conn.execute(
+                """SELECT 1 FROM normalized_logs
+                   WHERE source_ip = %s
+                     AND event_action IN ('ssh_login_success', 'rdp_session_reconnect', 'rdp_auth_success')
+                     AND received_at >= NOW() - INTERVAL '1 second' * %s
+                     AND timestamp  >= NOW() - INTERVAL '1 second' * %s
+                     AND tenant_id = %s
+                   LIMIT 1""",
+                (ip, window_seconds, window_seconds, tenant_id),
+            ).fetchone()
+        return row is not None
+
     def get_offense_count(self, ip: str, tenant_id: str = "default") -> int:
         """IP'nin tüm zamanlar bloklanma sayısını döndür (aktif + pasif)."""
         with self._connect() as conn:

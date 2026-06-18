@@ -544,6 +544,22 @@ def _auto_block_full_chain(trigger: dict) -> None:
         logger.info("AUTO_BLOCK atlandı (severity %s < %s): %s", severity, min_severity, source_ip)
         return
 
+    # R1 — Threat intel eşiği kontrolü (NIST SP 800-61, CrowdStrike 2025)
+    min_intel_score = int(os.getenv("AUTO_BLOCK_MIN_INTEL_SCORE", "30"))
+    if min_intel_score > 0:
+        try:
+            from server.threat_intel import lookup as _ti_lookup
+            intel_result = _ti_lookup(source_ip)
+            composite = intel_result.get("composite_score", 0) if isinstance(intel_result, dict) else 0
+            if composite < min_intel_score:
+                logger.info(
+                    "AUTO_BLOCK atlandı (threat intel skoru %d < eşik %d): %s",
+                    composite, min_intel_score, source_ip,
+                )
+                return
+        except Exception as exc:
+            logger.warning("AUTO_BLOCK threat intel kontrolü başarısız [%s]: %s", source_ip, exc)
+
     ip_lock = _get_block_lock(source_ip)
     with ip_lock:
         try:
@@ -564,6 +580,23 @@ def _auto_block_full_chain(trigger: dict) -> None:
                 return
             if db.is_ip_blocked(source_ip, tenant_id="default"):
                 logger.debug("AUTO_BLOCK atlandı (zaten bloklu): %s", source_ip)
+                return
+            # R4 — Aktif oturum kontrolü: meşru kullanıcı SSH/RDP bağlantısı kesilebilir
+            if db.has_active_session(source_ip, window_seconds=3600, tenant_id="default"):
+                logger.warning(
+                    "AUTO_BLOCK atlandı (aktif oturum tespit edildi — meşru kullanıcı riski): %s",
+                    source_ip,
+                )
+                db.save_audit_event(
+                    actor="system/kill_chain",
+                    action="auto_block_skipped_active_session",
+                    resource=f"ip:{source_ip}",
+                    detail=(
+                        f"Son 1 saatte {source_ip} kaynaklı aktif SSH/RDP oturumu var — "
+                        "otomatik bloklama atlandı (NIST SP 800-61)"
+                    ),
+                    ip_address=source_ip,
+                )
                 return
             from server.active_response import active_response_manager
             stages = trigger.get("stages") or ["unknown"]
