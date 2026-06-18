@@ -37,6 +37,10 @@ _RFC1918_NETWORKS = [
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("127.0.0.0/8"),
     ipaddress.ip_network("169.254.0.0/16"),
+    # IPv6 private/reserved (I7 — RFC 4291, RFC 4193)
+    ipaddress.ip_network("::1/128"),       # loopback
+    ipaddress.ip_network("fc00::/7"),      # ULA (Unique Local)
+    ipaddress.ip_network("fe80::/10"),     # link-local
 ]
 
 

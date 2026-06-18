@@ -179,6 +179,7 @@ _V9_HEADER = struct.Struct("!HHIIII")   # 2+2+4+4+4+4 = 20 bytes ✓
 _V9_FLOWSET_HDR = struct.Struct("!HH")  # flowset_id(2) + length(2)
 
 # Field type → (name, struct_fmt)
+# RFC 3954 §8 field types; "ipv4"/"ipv6" → custom inet_ntop path
 _V9_FIELD_TYPES: dict[int, tuple[str, str]] = {
     1:  ("in_bytes",    "!I"),
     2:  ("in_pkts",     "!I"),
@@ -195,6 +196,8 @@ _V9_FIELD_TYPES: dict[int, tuple[str, str]] = {
     22: ("first_sw",    "!I"),
     17: ("dst_as",      "!H"),
     16: ("src_as",      "!H"),
+    27: ("source_ip",      "ipv6"),   # IPV6_SRC_ADDR (RFC 3954 §8)
+    28: ("destination_ip", "ipv6"),   # IPV6_DST_ADDR (RFC 3954 §8)
 }
 
 # Template store: {(observer, source_id, template_id): [...]}
@@ -250,7 +253,12 @@ def _parse_v9_data_flowset(
             name, fmt = _V9_FIELD_TYPES.get(ftype, (str(ftype), None))
             if fmt == "ipv4" and len(chunk) == 4:
                 fields[name] = socket.inet_ntoa(chunk)
-            elif fmt and fmt != "ipv4":
+            elif fmt == "ipv6" and len(chunk) == 16:
+                try:
+                    fields[name] = socket.inet_ntop(socket.AF_INET6, chunk)
+                except Exception:
+                    pass
+            elif fmt and fmt not in ("ipv4", "ipv6"):
                 try:
                     fields[name] = struct.unpack(fmt, chunk[:struct.calcsize(fmt)])[0]
                 except struct.error:

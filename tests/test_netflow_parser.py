@@ -548,3 +548,131 @@ class TestSFlow:
         pkt = make_sflow_packet(flows)
         logs = parse_sflow(pkt, "sw")
         assert len(logs) == 3
+
+
+# ── I7 — IPv6 görünürlük testleri ───────────────────────────────────────────
+
+_GLOBAL_IPV6_SRC = "2606:4700::1111"   # Cloudflare IPv6 DNS — gerçek global unicast
+_GLOBAL_IPV6_DST = "2620:fe::fe"       # Hurricane Electric — gerçek global unicast
+
+
+def _make_v9_ipv6_packet(src_ipv6: str, dst_ipv6: str, src_port=12345, dst_port=80, proto=6) -> bytes:
+    """IPv6 adresleri içeren NetFlow v9 paketi (field type 27/28)."""
+    source_id   = 1
+    template_id = 512
+
+    fields = [
+        (27, 16),  # IPV6_SRC_ADDR
+        (28, 16),  # IPV6_DST_ADDR
+        (7,  2),   # L4_SRC_PORT
+        (11, 2),   # L4_DST_PORT
+        (4,  1),   # PROTOCOL
+        (1,  4),   # IN_BYTES
+    ]
+    record_size = sum(flen for _, flen in fields)
+
+    tpl_body = struct.pack("!HH", template_id, len(fields))
+    for ftype, flen in fields:
+        tpl_body += struct.pack("!HH", ftype, flen)
+    tpl_length = 4 + len(tpl_body)
+    template_fs = struct.pack("!HH", 0, tpl_length) + tpl_body
+
+    # Record: fields must match template exactly (no padding within record)
+    data_body  = socket.inet_pton(socket.AF_INET6, src_ipv6)   # 16
+    data_body += socket.inet_pton(socket.AF_INET6, dst_ipv6)   # 16
+    data_body += struct.pack("!H", src_port)                   # 2
+    data_body += struct.pack("!H", dst_port)                   # 2
+    data_body += struct.pack("!B", proto)                      # 1
+    data_body += struct.pack("!I", 1500)                       # 4  (= 41 bytes total)
+    # Pad FlowSet to 4-byte boundary (RFC 3954 §10.3)
+    pad = (4 - len(data_body) % 4) % 4
+    data_body += b"\x00" * pad
+
+    data_length = 4 + len(data_body)
+    data_fs = struct.pack("!HH", template_id, data_length) + data_body
+
+    # v9 header: version(2) count(2) uptime(4) secs(4) seq(4) src_id(4) = 20 bytes
+    header = struct.pack("!HHIIII", 9, 2, 60_000, 1_714_000_000, 1, source_id)
+    return header + template_fs + data_fs
+
+
+class TestNetFlowV9IPv6:
+    def setup_method(self):
+        _v9_templates.clear()
+
+    def test_ipv6_src_dst_parsed(self):
+        pkt = _make_v9_ipv6_packet(_GLOBAL_IPV6_SRC, _GLOBAL_IPV6_DST)
+        logs = parse_v9(pkt, "router1")
+        assert len(logs) == 1
+        assert logs[0].source_ip == _GLOBAL_IPV6_SRC
+        assert logs[0].destination_ip == _GLOBAL_IPV6_DST
+
+    def test_ipv6_ula_src_parsed(self):
+        pkt = _make_v9_ipv6_packet("fd00::cafe", _GLOBAL_IPV6_DST)
+        logs = parse_v9(pkt, "r1")
+        assert len(logs) == 1
+        assert logs[0].source_ip == "fd00::cafe"
+
+    def test_ipv6_flow_has_netflow_source_type(self):
+        pkt = _make_v9_ipv6_packet(_GLOBAL_IPV6_SRC, _GLOBAL_IPV6_DST)
+        logs = parse_v9(pkt, "r1")
+        assert logs[0].source_type == "netflow"
+
+    def test_ipv6_extra_version_is_9(self):
+        pkt = _make_v9_ipv6_packet(_GLOBAL_IPV6_SRC, _GLOBAL_IPV6_DST)
+        logs = parse_v9(pkt, "r1")
+        assert logs[0].extra["version"] == 9
+
+
+class TestIPv6ActiveResponseProtection:
+
+    def test_ipv6_loopback_is_protected(self):
+        from server.routes.active_response import _is_protected
+        assert _is_protected("::1") is True
+
+    def test_ipv6_ula_is_protected(self):
+        from server.routes.active_response import _is_protected
+        assert _is_protected("fd12:3456:789a::1") is True
+
+    def test_ipv6_link_local_is_protected(self):
+        from server.routes.active_response import _is_protected
+        assert _is_protected("fe80::1") is True
+
+    def test_ipv6_global_unicast_not_protected(self):
+        from server.routes.active_response import _is_protected
+        assert _is_protected(_GLOBAL_IPV6_SRC) is False
+
+    def test_ipv4_private_still_protected(self):
+        from server.routes.active_response import _is_protected
+        assert _is_protected("192.168.1.1") is True
+        assert _is_protected("10.0.0.1") is True
+
+    def test_attack_chain_ipv6_not_protected(self):
+        import ipaddress
+        from server.attack_chain import _PROTECTED_NETWORKS
+        addr = ipaddress.ip_address(_GLOBAL_IPV6_SRC)
+        assert not any(addr in net for net in _PROTECTED_NETWORKS)
+
+    def test_attack_chain_ipv6_loopback_protected(self):
+        import ipaddress
+        from server.attack_chain import _PROTECTED_NETWORKS
+        addr = ipaddress.ip_address("::1")
+        assert any(addr in net for net in _PROTECTED_NETWORKS)
+
+    def test_attack_chain_ipv6_ula_protected(self):
+        import ipaddress
+        from server.attack_chain import _PROTECTED_NETWORKS
+        addr = ipaddress.ip_address("fd00::1")
+        assert any(addr in net for net in _PROTECTED_NETWORKS)
+
+    def test_attack_chain_ipv6_link_local_protected(self):
+        import ipaddress
+        from server.attack_chain import _PROTECTED_NETWORKS
+        addr = ipaddress.ip_address("fe80::1")
+        assert any(addr in net for net in _PROTECTED_NETWORKS)
+
+    def test_threat_intel_ipv6_private_skipped(self):
+        from server.threat_intel import _is_private_ip
+        assert _is_private_ip("::1") is True
+        assert _is_private_ip("fe80::1") is True
+        assert _is_private_ip(_GLOBAL_IPV6_SRC) is False
