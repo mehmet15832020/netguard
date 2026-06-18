@@ -1,6 +1,7 @@
 """
-agent/log_shipper.py — _collect_suspicious_connections() testleri.
+agent/log_shipper.py — _collect_suspicious_connections() + M1/M2/M5 testleri.
 """
+import psutil
 from unittest.mock import MagicMock, patch
 
 
@@ -92,3 +93,118 @@ class TestCollectSuspiciousConnections:
         conn = _make_conn("ESTABLISHED", "99.88.77.66", 1337)
         events = self._run([conn])
         assert "99.88.77.66" in events[0]["message"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  M2 — su failure parse
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestParseLineSuFailure:
+    def _parse(self, line):
+        from agent.log_shipper import _parse_line
+        return _parse_line(line)
+
+    def test_su_failed_line_detected(self):
+        line = "su: FAILED SU (to root) mehmet on pts/0"
+        ev = self._parse(line)
+        assert ev is not None
+        assert ev["event_action"] == "su_failure"
+        assert "root" in ev["message"]
+        assert "mehmet" in ev["message"]
+
+    def test_pam_su_auth_failure_detected(self):
+        line = "pam_unix(su:auth): authentication failure; logname=user uid=1000 euid=0 tty=pts/0 ruser=user rhost=  user=root"
+        ev = self._parse(line)
+        assert ev is not None
+        assert ev["event_action"] == "su_failure"
+        assert "root" in ev["message"]
+
+    def test_pam_su_l_auth_failure_detected(self):
+        line = "pam_unix(su-l:auth): authentication failure; logname= uid=1000 euid=0 tty=pts/0 ruser=alice rhost=  user=root"
+        ev = self._parse(line)
+        assert ev is not None
+        assert ev["event_action"] == "su_failure"
+
+    def test_normal_ssh_not_affected(self):
+        line = "Failed password for root from 1.2.3.4 port 22 ssh2"
+        ev = self._parse(line)
+        assert ev is not None
+        assert ev["event_action"] == "ssh_failure"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  M5 — _collect_listening_ports
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestCollectListeningPorts:
+    def _make_listen_conn(self, port: int, pid: int = 1234, ip: str = "0.0.0.0"):
+        conn = MagicMock()
+        conn.status = "LISTEN"
+        conn.pid = pid
+        conn.raddr = None
+        conn.laddr = MagicMock()
+        conn.laddr.port = port
+        conn.laddr.ip = ip
+        return conn
+
+    def _run(self, conns, proc_name="test-proc"):
+        with (
+            patch("agent.log_shipper.psutil.net_connections", return_value=conns),
+            patch("agent.log_shipper.psutil.Process") as mock_proc,
+        ):
+            mock_proc.return_value.name.return_value = proc_name
+            from agent.log_shipper import _collect_listening_ports
+            return _collect_listening_ports()
+
+    def test_listen_port_reported(self):
+        conn = self._make_listen_conn(8080)
+        events = self._run([conn], proc_name="nginx")
+        assert len(events) == 1
+        assert events[0]["event_action"] == "listening_port"
+        assert "8080" in events[0]["message"]
+        assert "nginx" in events[0]["message"]
+
+    def test_established_not_included(self):
+        conn = MagicMock()
+        conn.status = "ESTABLISHED"
+        conn.laddr = MagicMock()
+        conn.laddr.port = 1234
+        conn.laddr.ip = "0.0.0.0"
+        conn.raddr = MagicMock()
+        events = self._run([conn])
+        assert events == []
+
+    def test_multiple_listen_ports(self):
+        conns = [self._make_listen_conn(p) for p in [22, 80, 443, 8080]]
+        events = self._run(conns)
+        assert len(events) == 4
+
+    def test_ipv6_listen_marked_tcp6(self):
+        conn = self._make_listen_conn(9000, ip="::1")
+        events = self._run([conn])
+        assert len(events) == 1
+        assert "tcp6" in events[0]["raw_data"]
+
+    def test_access_denied_returns_empty(self):
+        with patch("agent.log_shipper.psutil.net_connections", side_effect=psutil.AccessDenied(0)):
+            from agent.log_shipper import _collect_listening_ports
+            events = _collect_listening_ports()
+        assert events == []
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  M1 — Position file path
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestPositionFilePath:
+    def test_default_path_not_in_tmp(self):
+        from agent.log_shipper import POSITION_FILE
+        assert not POSITION_FILE.startswith("/tmp/"), \
+            f"POSITION_FILE /tmp'de olmamalı (reboot'ta silinir): {POSITION_FILE}"
+
+    def test_default_path_in_var_lib(self):
+        import os
+        # Env override yoksa /var/lib/netguard altında olmalı
+        if not os.getenv("LOG_POSITION_FILE") and not os.getenv("LOG_POSITION_DIR"):
+            from agent.log_shipper import POSITION_FILE
+            assert "/var/lib/" in POSITION_FILE

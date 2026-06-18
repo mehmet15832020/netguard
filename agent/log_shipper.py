@@ -25,7 +25,9 @@ from agent.tls_config import resolve_client_cert, resolve_tls_verify
 logger = logging.getLogger(__name__)
 
 AUTH_LOG_PATH  = os.getenv("AUTH_LOG_PATH", "/var/log/auth.log")
-POSITION_FILE  = os.getenv("LOG_POSITION_FILE", "/tmp/netguard_auth_pos")
+# M1 — Reboot-safe position file (Filebeat registry pattern — Elastic/Filebeat docs)
+_DEFAULT_POS_DIR = os.getenv("LOG_POSITION_DIR", "/var/lib/netguard")
+POSITION_FILE  = os.getenv("LOG_POSITION_FILE", os.path.join(_DEFAULT_POS_DIR, "auth_pos"))
 SHIP_INTERVAL  = 10   # saniye
 BATCH_SIZE     = 50   # tek seferde max kaç olay gönderilir
 CONN_SCAN_INTERVAL = 60  # saniye — bağlantı taraması aralığı
@@ -40,10 +42,17 @@ _RE_PAM_AUTH_FAILURE = re.compile(
 _RE_PAM_UNIX = re.compile(
     r"pam_unix\(\S+:auth\):\s+authentication failure;.*?user=(\S+)"
 )
+# M2 — su kullanıcı değiştirme başarısız (MITRE ATT&CK T1548.003)
+_RE_SU_FAIL = re.compile(
+    r"su:\s+FAILED\s+SU\s+\(to\s+(\S+)\)\s+(\S+)\s+on"
+)
+_RE_PAM_SU_FAIL = re.compile(
+    r"pam_unix\(su(?:-l)?:auth\):\s+authentication failure;.*\buser=(\S+)"
+)
 
-# Bilinen meşru portlar — bunları raporlama
-_TRUSTED_DPORTS = frozenset({22, 80, 443, 8000, 8080, 8443, 53, 123, 5140, 2055})
-# Şüpheli hedef portlar
+# M3/M4 — _TRUSTED_DPORTS kaldırıldı; 443/80 dahil tüm dış bağlantılar raporlanır.
+# CrowdStrike 2025: saldırıların %71'i HTTPS C2 (443/80) — filtrelemek kör nokta yaratır.
+# Şüpheli hedef portlar — bunlar için severity critical
 _SUSPICIOUS_DPORTS = frozenset({
     4444, 4445, 5555, 6666, 6667, 7777, 8888, 9999,    # C2 geleneksel
     1337, 31337,                                          # hacker kültürü
@@ -53,6 +62,8 @@ _SUSPICIOUS_DPORTS = frozenset({
     21,                                                   # FTP
     6379, 27017, 5432, 3306,                             # Veritabanı portları
 })
+# Düşük öncelikli bilinen servis portları — info severity
+_COMMON_DPORTS = frozenset({53, 123, 5140, 2055, 22, 8000})
 
 
 def _parse_line(line: str) -> Optional[dict]:
@@ -102,6 +113,18 @@ def _parse_line(line: str) -> Optional[dict]:
             "raw_data":   line.rstrip(),
             "occurred_at": _now_iso(),
         }
+    # M2 — su kullanıcı değiştirme başarısız (önce kontrol edilmeli — _RE_PAM_UNIX daha genel)
+    if m := _RE_PAM_SU_FAIL.search(line):
+        username = m.group(1)
+        return {
+            "event_action": "su_failure",
+            "severity":   "warning",
+            "username":   username,
+            "source_ip":  None,
+            "message":    f"PAM su kimlik doğrulama başarısız: kullanıcı={username}",
+            "raw_data":   line.rstrip(),
+            "occurred_at": _now_iso(),
+        }
     if m := _RE_PAM_UNIX.search(line):
         username = m.group(1)
         return {
@@ -113,11 +136,31 @@ def _parse_line(line: str) -> Optional[dict]:
             "raw_data":   line.rstrip(),
             "occurred_at": _now_iso(),
         }
+    # M2 — "su: FAILED SU (to root) user on pts/0"
+    if m := _RE_SU_FAIL.search(line):
+        target_user = m.group(1)
+        actor = m.group(2)
+        return {
+            "event_action": "su_failure",
+            "severity":   "warning",
+            "username":   actor,
+            "source_ip":  None,
+            "message":    f"su başarısız: {actor} → {target_user}",
+            "raw_data":   line.rstrip(),
+            "occurred_at": _now_iso(),
+        }
     return None
 
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _ensure_position_dir() -> None:
+    try:
+        Path(POSITION_FILE).parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
 
 
 def _read_position() -> int:
@@ -128,6 +171,7 @@ def _read_position() -> int:
 
 
 def _write_position(pos: int) -> None:
+    _ensure_position_dir()
     try:
         Path(POSITION_FILE).write_text(str(pos))
     except Exception:
@@ -164,8 +208,6 @@ def _collect_suspicious_connections() -> list[dict]:
 
         if remote_ip in ("127.0.0.1", "::1", local_ip):
             continue
-        if remote_port in _TRUSTED_DPORTS:
-            continue
 
         proc_name = ""
         try:
@@ -187,7 +229,8 @@ def _collect_suspicious_connections() -> list[dict]:
                 "raw_data": f"pid={conn.pid} proc={proc_name} raddr={remote_ip}:{remote_port}",
                 "occurred_at": now,
             })
-        elif remote_port >= 49152:
+        elif remote_port not in _COMMON_DPORTS:
+            # M3/M4 — 443 dahil tüm yüksek port bağlantıları raporla; eşik bazlı FP kontrolü
             ephemeral_remotes.add(f"{remote_ip}:{remote_port}")
 
     events = list(known_bad_events)
@@ -206,6 +249,44 @@ def _collect_suspicious_connections() -> list[dict]:
             "occurred_at": now,
         })
 
+    return events
+
+
+def _collect_listening_ports() -> list[dict]:
+    """M5 — LISTEN durumundaki portları process adıyla raporlar.
+
+    Yeni backdoor listener tespiti için: collector.py'daki count-only yaklaşımının aksine
+    hangi port + hangi process listesi döner. (MITRE ATT&CK T1571; CIS Controls v8 §4.5)
+    """
+    try:
+        conns = psutil.net_connections(kind="inet")
+    except psutil.AccessDenied:
+        return []
+
+    events = []
+    now = _now_iso()
+    for conn in conns:
+        if conn.status != "LISTEN":
+            continue
+        if not conn.laddr:
+            continue
+        port = conn.laddr.port
+        proto = "tcp6" if ":" in conn.laddr.ip else "tcp"
+        proc_name = ""
+        try:
+            if conn.pid:
+                proc_name = psutil.Process(conn.pid).name()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+        events.append({
+            "event_action": "listening_port",
+            "severity": "info",
+            "username": None,
+            "source_ip": None,
+            "message": f"Dinleyen port: {port}/{proto} [{proc_name}]",
+            "raw_data": f"pid={conn.pid} proc={proc_name} port={port} proto={proto}",
+            "occurred_at": now,
+        })
     return events
 
 
@@ -267,6 +348,7 @@ class LogShipper:
 
     def _loop(self) -> None:
         _last_conn_scan = 0.0
+        _last_port_scan = 0.0
         while not self._stop.is_set():
             try:
                 events = _collect_new_events()
@@ -284,6 +366,16 @@ class LogShipper:
                 except Exception as e:
                     logger.warning(f"Bağlantı taraması hatası: {e}")
                 _last_conn_scan = now
+
+            # M5 — Listening port snapshot (5 dakikada bir; günde 288 snapshot)
+            if now - _last_port_scan >= 300:
+                try:
+                    port_events = _collect_listening_ports()
+                    if port_events:
+                        self._ship(port_events)
+                except Exception as e:
+                    logger.warning(f"Port taraması hatası: {e}")
+                _last_port_scan = now
 
             self._stop.wait(SHIP_INTERVAL)
 
