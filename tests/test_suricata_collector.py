@@ -1044,3 +1044,121 @@ class TestU1ManagementIPFP:
         log = suri_mod.parse_ssh(row)
         assert log.event_action == "suricata_ssh_anomaly"
         importlib.reload(suri_mod)
+
+
+# ── O1 — Gerçek Zamanlı IDS Alert Dispatch ─────────────────────────────────────
+
+class TestO1RealtimeIDSAlert:
+    """O1: Suricata IDS alert'leri 60s döngüyü bypass eder — NIST SP 800-94 §4.3.1."""
+
+    def _alert_row(self, severity=1, src_ip="1.2.3.4", sid="1234567"):
+        return {
+            "event_type": "alert",
+            "timestamp": "2024-01-15T12:00:00.000000+0000",
+            "src_ip": src_ip,
+            "src_port": 54321,
+            "dest_ip": "10.0.0.5",
+            "dest_port": 80,
+            "proto": "TCP",
+            "alert": {
+                "signature": "ET MALWARE Test Signature",
+                "signature_id": int(sid),
+                "category": "Malware Command and Control Activity",
+                "severity": severity,
+                "action": "allowed",
+            },
+        }
+
+    def test_critical_alert_dispatches_correlated_event(self):
+        from server.suricata_collector import _dispatch_ids_alert
+        from server.parsers.suricata import parse_alert
+
+        row = self._alert_row(severity=1)  # priority 1 → critical
+        log_entry = parse_alert(row)
+        assert log_entry is not None
+
+        mock_db = MagicMock()
+        mock_db.save_correlated_event.return_value = MagicMock(corr_id="test-id")
+        mock_tracker = MagicMock()
+
+        with patch("server.suricata_collector._REALTIME_IDS_ALERT", True), \
+             patch("server.suricata_collector.db", mock_db), \
+             patch("server.attack_chain.attack_chain_tracker", mock_tracker):
+            _dispatch_ids_alert(row, log_entry)
+
+        mock_db.save_correlated_event.assert_called_once()
+        event = mock_db.save_correlated_event.call_args[0][0]
+        assert event.event_action == "suricata_ids_alert_detected"
+        assert event.severity == "critical"
+        assert event.group_value == "1.2.3.4"
+        assert "1234567" in event.rule_id
+
+    def test_high_severity_log_entry_dispatches(self):
+        """_dispatch_ids_alert severity kontrolü log_entry.severity üzerinden yapılır."""
+        from server.suricata_collector import _dispatch_ids_alert
+        from server.parsers.suricata import parse_alert
+        from shared.models import NormalizedLog, LogSourceType, LogCategory
+        import uuid as _uuid
+        from datetime import datetime, timezone as tz
+
+        row = self._alert_row(severity=1)  # critical
+        log_entry = parse_alert(row)
+        assert log_entry is not None
+
+        # log_entry.severity = "high" simüle et (gelecekte eşik değişirse)
+        log_entry_high = log_entry.model_copy(update={"severity": "high"})
+
+        mock_db = MagicMock()
+        mock_db.save_correlated_event.return_value = MagicMock(corr_id="test-id")
+
+        with patch("server.suricata_collector._REALTIME_IDS_ALERT", True), \
+             patch("server.suricata_collector.db", mock_db), \
+             patch("server.attack_chain.attack_chain_tracker", MagicMock()):
+            _dispatch_ids_alert(row, log_entry_high)
+
+        mock_db.save_correlated_event.assert_called_once()
+        event = mock_db.save_correlated_event.call_args[0][0]
+        assert event.severity == "high"
+
+    def test_low_severity_alert_not_dispatched(self):
+        from server.suricata_collector import _dispatch_ids_alert
+        from server.parsers.suricata import parse_alert
+
+        row = self._alert_row(severity=3)  # priority 3 → medium (not high/critical)
+        log_entry = parse_alert(row)
+        assert log_entry is not None
+        assert log_entry.severity not in ("critical", "high")
+
+        mock_db = MagicMock()
+        with patch("server.suricata_collector._REALTIME_IDS_ALERT", True), \
+             patch("server.suricata_collector.db", mock_db):
+            _dispatch_ids_alert(row, log_entry)
+
+        mock_db.save_correlated_event.assert_not_called()
+
+    def test_realtime_disabled_skips_dispatch(self):
+        from server.suricata_collector import _dispatch_ids_alert
+        from server.parsers.suricata import parse_alert
+
+        row = self._alert_row(severity=1)
+        log_entry = parse_alert(row)
+
+        mock_db = MagicMock()
+        with patch("server.suricata_collector._REALTIME_IDS_ALERT", False), \
+             patch("server.suricata_collector.db", mock_db):
+            _dispatch_ids_alert(row, log_entry)
+
+        mock_db.save_correlated_event.assert_not_called()
+
+    def test_dispatch_exception_does_not_crash_collector(self):
+        from server.suricata_collector import _dispatch_ids_alert
+        from server.parsers.suricata import parse_alert
+
+        row = self._alert_row(severity=1)
+        log_entry = parse_alert(row)
+
+        mock_db = MagicMock()
+        mock_db.save_correlated_event.side_effect = RuntimeError("DB down")
+        with patch("server.suricata_collector._REALTIME_IDS_ALERT", True), \
+             patch("server.suricata_collector.db", mock_db):
+            _dispatch_ids_alert(row, log_entry)  # no exception raised

@@ -13,11 +13,14 @@ import logging
 import os
 import tempfile
 import time
+import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from server.file_watch import DebouncedDirectoryWatcher
 from server.log_store import log_store
 from server.parsers.suricata import parse_eve_line
+from shared.models import CorrelatedEvent
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +73,56 @@ def _save_offset(offset: int, inode: int) -> None:
 _offset: int
 _inode: int
 _offset, _inode = _load_state()
+
+_REALTIME_IDS_ALERT = os.getenv("SURICATA_REALTIME_ALERT", "1") == "1"
+
+# Modül düzeyinde import — patch edilebilmesi için (test)
+from server.database import db
+
+
+def _dispatch_ids_alert(row: dict, log_entry) -> None:
+    """
+    O1 — Suricata IDS alert'leri için gerçek zamanlı CorrelatedEvent üret.
+    60s korelasyon döngüsünü bypass eder.
+    NIST SP 800-94 §4.3.1: single-event high/critical must be real-time.
+    """
+    if not _REALTIME_IDS_ALERT:
+        return
+    if log_entry.severity not in ("critical", "high"):
+        return
+    try:
+        alert_obj = row.get("alert", {})
+        sig = alert_obj.get("signature", "Suricata IDS Alert")
+        sid = str(alert_obj.get("signature_id", ""))
+        mitre = alert_obj.get("metadata", {}).get("attack_target", [])
+        ts = log_entry.timestamp or datetime.now(timezone.utc)
+        src_ip = log_entry.source_ip or "unknown"
+
+        event = CorrelatedEvent(
+            corr_id=str(uuid.uuid4()),
+            rule_id=f"suricata_ids_{sid}" if sid else "suricata_ids_realtime",
+            rule_name=sig,
+            event_action="suricata_ids_alert_detected",
+            severity=log_entry.severity,
+            group_value=src_ip,
+            group_by_field="source_ip",
+            matched_count=1,
+            window_seconds=0,
+            first_seen=ts,
+            last_seen=ts,
+            message=log_entry.message or sig,
+            mitre_techniques=mitre if isinstance(mitre, list) else [],
+        )
+        saved = db.save_correlated_event(event)
+        if saved:
+            logger.info(
+                "O1 realtime IDS alert: sid=%s src=%s sev=%s",
+                sid, src_ip, log_entry.severity,
+            )
+            from server.attack_chain import attack_chain_tracker
+            attack_chain_tracker.record(event)
+    except Exception as exc:
+        logger.warning("O1 realtime IDS alert gönderilemedi: %s", exc)
 
 
 def collect_once() -> int:
@@ -128,6 +181,10 @@ def collect_once() -> int:
                     # At-least-once: rollback offset so this line is retried
                     _offset -= len(raw_line)
                     break
+                # O1 — Suricata IDS alert: 60s döngüyü bypass eden gerçek zamanlı alert
+                # NIST SP 800-94 §4.3.1: single-event high/critical alerts must be real-time
+                if row.get("event_type") == "alert" and log_entry.severity in ("critical", "high"):
+                    _dispatch_ids_alert(row, log_entry)
     except OSError as exc:
         logger.error("Suricata EVE log okunamadı: %s", exc)
         _offset = start_offset
