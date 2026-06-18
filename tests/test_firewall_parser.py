@@ -39,6 +39,17 @@ FORTI_ALLOW = (
     'type=traffic subtype=forward level=notice srcip=10.0.0.1 srcport=54321 '
     'dstip=8.8.8.8 dstport=53 proto=17 action=accept policyid=1'
 )
+# Fortinet resmi dökümantasyon formatı — tüm değerler tırnaklı (T2)
+FORTI_DENY_QUOTED = (
+    'date="2024-04-24" time="10:00:01" devname="FGT-60E" logid="0000000013" '
+    'type="traffic" subtype="forward" level="notice" srcip=5.6.7.8 srcport=12345 '
+    'dstip=192.168.1.1 dstport=443 proto=6 action="deny" policyid=5'
+)
+FORTI_ALLOW_QUOTED = (
+    'date="2024-04-24" time="10:00:02" devname="FGT-60E" logid="0000000013" '
+    'type="traffic" subtype="forward" level="notice" srcip=10.0.0.1 srcport=54321 '
+    'dstip=8.8.8.8 dstport=53 proto=17 action="accept" policyid=1'
+)
 
 OPNSENSE_BLOCK = (
     '<134>Apr 26 10:00:01 OPNsense filterlog[12345]: '
@@ -132,6 +143,24 @@ class TestFortiGateParser:
     def test_non_forti_returns_none(self):
         assert parse_fortigate("random line") is None
 
+    def test_deny_parsed_quoted_format(self):
+        log = parse_fortigate(FORTI_DENY_QUOTED)
+        assert log is not None
+        assert log.event_action == "fw_block"
+        assert log.source_ip == "5.6.7.8"
+        assert log.destination_port == 443
+        assert log.observer_hostname == "FGT-60E"
+
+    def test_allow_parsed_quoted_format(self):
+        log = parse_fortigate(FORTI_ALLOW_QUOTED)
+        assert log is not None
+        assert log.event_action == "fw_allow"
+        assert log.source_ip == "10.0.0.1"
+
+    def test_quoted_source_type_is_fortigate(self):
+        log = parse_fortigate(FORTI_DENY_QUOTED)
+        assert log.source_type == "fortigate"
+
 
 class TestOPNsenseParser:
     def test_block_parsed(self):
@@ -212,6 +241,11 @@ class TestAutoDetect:
     def test_detects_fortigate(self):
         log = detect_and_parse(FORTI_DENY)
         assert log is not None and log.source_type == "fortigate"
+
+    def test_detects_fortigate_quoted_format(self):
+        log = detect_and_parse(FORTI_DENY_QUOTED)
+        assert log is not None and log.source_type == "fortigate"
+        assert log.event_action == "fw_block"
 
     def test_detects_vyos(self):
         log = detect_and_parse(VYOS_DROP)
