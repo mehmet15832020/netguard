@@ -336,12 +336,17 @@ class DatabaseManager:
         return list(row.values())[0] if row else 0
 
     def count_recent_failures(self, source_ip: str, since_iso: str) -> int:
+        """P6 — normalized_logs'dan SSH/auth failure sayısı.
+        security_events tablosuna bağımlı değil (P4 sonrası kırılırdı)."""
         since = _dt(since_iso)
         with self._connect() as conn:
             row = conn.execute(
-                """SELECT COUNT(*) AS cnt FROM security_events
-                   WHERE source_ip = %s AND event_action = %s AND occurred_at >= %s""",
-                (source_ip, SecurityEventType.SSH_FAILURE.value, since),
+                """SELECT COUNT(*) AS cnt FROM normalized_logs
+                   WHERE source_ip = %s
+                     AND event_action = 'ssh_login_failed'
+                     AND received_at >= %s
+                     AND timestamp >= %s""",
+                (source_ip, since, since),
             ).fetchone()
         return row["cnt"] if row else 0
 
