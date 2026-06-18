@@ -97,10 +97,17 @@ def _inject_time_window(sql: str, window_seconds: int) -> str:
     """
     pySigma'nın ürettiği SQL'e zaman penceresi filtresi ekler.
 
+    P3 — received_at filtresi: TimescaleDB chunk exclusion yalnızca partition key
+    (received_at) üzerinde çalışır. timestamp filtresi tek başına tüm chunk'ları tarar.
+    İkisi birlikte: doğruluk (timestamp) + chunk exclusion performansı (received_at).
+
     Korelasyon sorgusu için:  subquery WHERE ... → WHERE ... AND timestamp >= ...
     Basit detection sorgusu için: WHERE ... → WHERE ... AND timestamp >= ...
     """
-    time_filter = f" AND timestamp >= NOW() - INTERVAL '{window_seconds} seconds'"
+    ts_filter  = f" AND timestamp >= NOW() - INTERVAL '{window_seconds} seconds'"
+    # received_at için 10s tolerans — log transit gecikmesi (NIST SP 800-94 §3.4)
+    recv_filter = f" AND received_at >= NOW() - INTERVAL '{window_seconds + 10} seconds'"
+    time_filter = ts_filter + recv_filter
 
     # Korelasyon sorgusu: ... FROM (...WHERE...) AS subquery ...
     result = re.sub(
