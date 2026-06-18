@@ -14,6 +14,7 @@ Migration sırası: compression policy kaldır → decompress → alter → poli
 """
 
 from alembic import op
+from sqlalchemy import text
 
 revision = "027"
 down_revision = "026"
@@ -22,10 +23,11 @@ down_revision = "026"
 def upgrade():
     conn = op.get_bind()
 
-    # TimescaleDB compressed hypertable kontrolü
     is_compressed = conn.execute(
-        "SELECT compression_enabled FROM timescaledb_information.hypertables "
-        "WHERE hypertable_name = 'normalized_logs'"
+        text(
+            "SELECT compression_enabled FROM timescaledb_information.hypertables "
+            "WHERE hypertable_name = 'normalized_logs'"
+        )
     ).scalar()
 
     compress_segmentby = None
@@ -34,29 +36,35 @@ def upgrade():
 
     if is_compressed:
         row = conn.execute(
-            "SELECT segmentby, orderby "
-            "FROM timescaledb_information.compression_settings "
-            "WHERE hypertable_name = 'normalized_logs'"
+            text(
+                "SELECT segmentby, orderby "
+                "FROM timescaledb_information.compression_settings "
+                "WHERE hypertable_name = 'normalized_logs'"
+            )
         ).fetchone()
         if row:
             compress_segmentby = row[0]
             compress_orderby = row[1]
 
         pol = conn.execute(
-            "SELECT compress_after FROM timescaledb_information.jobs j "
-            "JOIN timescaledb_information.job_stats js ON j.job_id = js.job_id "
-            "WHERE j.application_name LIKE '%Compress%' "
-            "AND j.hypertable_name = 'normalized_logs'"
+            text(
+                "SELECT compress_after FROM timescaledb_information.jobs j "
+                "JOIN timescaledb_information.job_stats js ON j.job_id = js.job_id "
+                "WHERE j.application_name LIKE '%Compress%' "
+                "AND j.hypertable_name = 'normalized_logs'"
+            )
         ).fetchone()
         if pol:
             compress_policy_interval = pol[0]
 
         conn.execute(
-            "SELECT remove_compression_policy('normalized_logs', if_exists => true)"
+            text("SELECT remove_compression_policy('normalized_logs', if_exists => true)")
         )
         conn.execute(
-            "SELECT decompress_chunk(c, if_compressed => true) "
-            "FROM show_chunks('normalized_logs') c"
+            text(
+                "SELECT decompress_chunk(c, if_compressed => true) "
+                "FROM show_chunks('normalized_logs') c"
+            )
         )
 
     op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra DROP DEFAULT")
@@ -88,11 +96,13 @@ def upgrade():
             compress_opts += f", timescaledb.compress_segmentby = '{compress_segmentby}'"
         if compress_orderby:
             compress_opts += f", timescaledb.compress_orderby = '{compress_orderby}'"
-        conn.execute(f"ALTER TABLE normalized_logs SET ({compress_opts})")
+        conn.execute(text(f"ALTER TABLE normalized_logs SET ({compress_opts})"))
 
         interval = compress_policy_interval or "7 days"
         conn.execute(
-            f"SELECT add_compression_policy('normalized_logs', INTERVAL '{interval}', if_not_exists => true)"
+            text(
+                f"SELECT add_compression_policy('normalized_logs', INTERVAL '{interval}', if_not_exists => true)"
+            )
         )
 
 
