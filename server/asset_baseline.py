@@ -10,6 +10,7 @@ Sapma kontrolü: Her ~5 dakikada bir (_baseline_deviation_loop)
 """
 
 import logging
+import math
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -23,6 +24,11 @@ TOP_N                   = 5     # Kaç tipik değer saklanır
 MIN_EVENTS_FOR_BASELINE       = 10   # Profil oluşturmak için minimum olay sayısı
 MIN_SAMPLE_HOURS_FOR_DEVIATION = 24  # Sapma tespiti için minimum distinct saat — SANS NSM / RITA / Security Onion standardı
 TRAFFIC_SPIKE_FACTOR           = 3.0  # avg * 3x → uyarı
+
+# I1 — Temporal profil parametreleri (SANS NSM temporal analysis)
+UNUSUAL_HOUR_ZSCORE_THRESHOLD = -1.5  # Bu saat ortalamanın 1.5 stddev altındaysa "sessiz saat"
+MIN_EVENTS_FOR_UNUSUAL_HOUR   = 5     # Sessiz saatte en az bu kadar event → uyarı
+MIN_HOURS_COVERED_FOR_TEMPORAL = 48   # En az 48 saat verisi olmadan saatlik profil çıkartma
 
 _VALID_COLUMNS = frozenset({"destination_port", "destination_ip", "event_action", "network_protocol"})
 
@@ -46,7 +52,8 @@ def update_baselines(tenant_id: str = "default") -> int:
         ports     = _top_values(ip, "destination_port", since_dt, tenant_id)
         dests     = _top_values(ip, "destination_ip",   since_dt, tenant_id)
         actions   = _top_values(ip, "event_action",     since_dt, tenant_id)
-        protocols = _top_values(ip, "network_protocol", since_dt, tenant_id)
+        protocols    = _top_values(ip, "network_protocol", since_dt, tenant_id)
+        hour_profile = _compute_hourly_profile(ip, since_dt, tenant_id)
 
         db.upsert_asset_baseline(
             source_ip             = ip,
@@ -59,6 +66,7 @@ def update_baselines(tenant_id: str = "default") -> int:
             typical_event_actions = actions,
             typical_protocols     = protocols,
             sample_hours          = hours,
+            hour_of_day_profile   = hour_profile,
         )
         updated += 1
 
@@ -72,6 +80,23 @@ def _top_values(source_ip: str, column: str, since_dt: datetime, tenant_id: str)
         return []
     rows = db.get_top_values_by_ip(source_ip, column, since_dt, tenant_id, TOP_N)
     return [str(r["val"]) for r in rows]
+
+
+def _compute_hourly_profile(source_ip: str, since_dt: datetime, tenant_id: str) -> dict[str, int]:
+    """I1 — Son BASELINE_WINDOW_DAYS içindeki saat bazlı event dağılımı (0-23)."""
+    counts = db.get_hourly_event_counts_by_ip(source_ip, since_dt, tenant_id)
+    return {str(h): counts.get(str(h), 0) for h in range(24)}
+
+
+def _hour_zscore(profile: dict[str, int], hour: int) -> float:
+    """Verilen saatin profilindeki z-score'unu hesaplar (SANS NSM temporal scoring)."""
+    values = [profile.get(str(h), 0) for h in range(24)]
+    mean = sum(values) / 24
+    variance = sum((v - mean) ** 2 for v in values) / 24
+    stddev = math.sqrt(variance)
+    if stddev < 1.0:
+        return 0.0
+    return (profile.get(str(hour), 0) - mean) / stddev
 
 
 def check_deviations(tenant_id: str = "default") -> int:
@@ -149,6 +174,26 @@ def check_deviations(tenant_id: str = "default") -> int:
                         tenant_id = tenant_id,
                     )
                     detected += 1
+
+        # I1 — Sessiz saatte anormal aktivite (temporal profil)
+        profile = bl.get("hour_of_day_profile", {})
+        if profile and bl["sample_hours"] >= MIN_HOURS_COVERED_FOR_TEMPORAL and count >= MIN_EVENTS_FOR_UNUSUAL_HOUR:
+            current_hour = datetime.now(timezone.utc).hour
+            zscore = _hour_zscore(profile, current_hour)
+            if zscore <= UNUSUAL_HOUR_ZSCORE_THRESHOLD:
+                typical_for_hour = profile.get(str(current_hour), 0)
+                _write_anomaly(
+                    source_ip    = ip,
+                    event_action = "unusual_time_activity",
+                    message      = (
+                        f"Sessiz saatte aktivite: {ip} — saat {current_hour:02d}:xx'de "
+                        f"{count} olay (bu saatin tipik değeri: {typical_for_hour}, "
+                        f"z-score: {zscore:.2f})"
+                    ),
+                    severity  = "warning",
+                    tenant_id = tenant_id,
+                )
+                detected += 1
 
     if detected:
         logger.warning("Asset sapma tespit edildi: %d IP, tenant=%s", detected, tenant_id)

@@ -1392,14 +1392,16 @@ class DatabaseManager:
         typical_event_actions: list,
         sample_hours: int,
         typical_protocols: list | None = None,
+        hour_of_day_profile: dict | None = None,
     ) -> None:
         with self._connect() as conn:
             conn.execute(
                 """INSERT INTO asset_baselines
                    (source_ip, tenant_id, first_seen_at, last_seen_at,
                     avg_events_per_hour, typical_ports, typical_destinations,
-                    typical_event_actions, typical_protocols, sample_hours, updated_at)
-                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    typical_event_actions, typical_protocols, sample_hours,
+                    hour_of_day_profile, updated_at)
+                   VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
                    ON CONFLICT (source_ip, tenant_id) DO UPDATE SET
                        last_seen_at          = EXCLUDED.last_seen_at,
                        avg_events_per_hour   = EXCLUDED.avg_events_per_hour,
@@ -1408,6 +1410,7 @@ class DatabaseManager:
                        typical_event_actions = EXCLUDED.typical_event_actions,
                        typical_protocols     = EXCLUDED.typical_protocols,
                        sample_hours          = EXCLUDED.sample_hours,
+                       hour_of_day_profile   = EXCLUDED.hour_of_day_profile,
                        updated_at            = EXCLUDED.updated_at""",
                 (
                     source_ip, tenant_id, _dt(first_seen_at), _dt(last_seen_at),
@@ -1416,7 +1419,9 @@ class DatabaseManager:
                     json.dumps(typical_destinations),
                     json.dumps(typical_event_actions),
                     json.dumps(typical_protocols or []),
-                    sample_hours, _now(),
+                    sample_hours,
+                    json.dumps(hour_of_day_profile or {}),
+                    _now(),
                 ),
             )
 
@@ -1438,6 +1443,7 @@ class DatabaseManager:
                 "typical_event_actions": json.loads(r["typical_event_actions"] or "[]"),
                 "typical_protocols":     json.loads(r.get("typical_protocols") or "[]"),
                 "detected_software":     json.loads(r.get("detected_software") or "[]"),
+                "hour_of_day_profile":   json.loads(r.get("hour_of_day_profile") or "{}"),
                 "sample_hours":          r["sample_hours"],
                 "updated_at":            r["updated_at"].isoformat() if r["updated_at"] else None,
             }
@@ -1462,9 +1468,27 @@ class DatabaseManager:
             "typical_event_actions": json.loads(row["typical_event_actions"] or "[]"),
             "typical_protocols":     json.loads(row.get("typical_protocols") or "[]"),
             "detected_software":     json.loads(row.get("detected_software") or "[]"),
+            "hour_of_day_profile":   json.loads(row.get("hour_of_day_profile") or "{}"),
             "sample_hours":          row["sample_hours"],
             "updated_at":            row["updated_at"].isoformat() if row["updated_at"] else None,
         }
+
+    def get_hourly_event_counts_by_ip(
+        self, source_ip: str, since_dt: datetime, tenant_id: str
+    ) -> dict[str, int]:
+        """I1 — Son N günde saat bazlı event dağılımı: {hour_str: total_count}."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                """SELECT EXTRACT(HOUR FROM timestamp)::int AS hour,
+                          COUNT(*) AS cnt
+                   FROM normalized_logs
+                   WHERE source_ip = %s
+                     AND timestamp >= %s
+                     AND tenant_id  = %s
+                   GROUP BY 1""",
+                (source_ip, since_dt, tenant_id),
+            ).fetchall()
+        return {str(r["hour"]): int(r["cnt"]) for r in rows}
 
     _MAX_DETECTED_SOFTWARE = 50
 

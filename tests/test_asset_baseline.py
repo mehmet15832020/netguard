@@ -424,3 +424,243 @@ class TestDbMethodWhitelist:
             baseline_db.delete_table_rows_before(
                 "db_users", "created_at", datetime.now(timezone.utc)
             )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  I1 — Temporal Profil (Saatlik Baseline)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class TestHourZscore:
+
+    def test_flat_profile_returns_zero(self):
+        from server.asset_baseline import _hour_zscore
+        profile = {str(h): 10 for h in range(24)}
+        assert _hour_zscore(profile, 3) == 0.0
+
+    def test_night_hour_is_negative(self):
+        from server.asset_baseline import _hour_zscore
+        # 18 meşgul saat (6-23), 6 sessiz saat (0-5) → z(sessiz) ≈ -1.73 < -1.5
+        profile = {str(h): (200 if h >= 6 else 0) for h in range(24)}
+        z = _hour_zscore(profile, 3)
+        assert z < -1.5
+
+    def test_busy_hour_is_positive(self):
+        from server.asset_baseline import _hour_zscore
+        profile = {str(h): (200 if h >= 6 else 0) for h in range(24)}
+        z = _hour_zscore(profile, 14)
+        assert z > 0
+
+    def test_missing_hour_treated_as_zero(self):
+        from server.asset_baseline import _hour_zscore
+        profile = {str(h): 50 for h in range(1, 24)}  # saat 0 yok
+        z = _hour_zscore(profile, 0)
+        assert z < 0
+
+    def test_all_zero_returns_zero(self):
+        from server.asset_baseline import _hour_zscore
+        profile = {str(h): 0 for h in range(24)}
+        assert _hour_zscore(profile, 5) == 0.0
+
+
+class TestComputeHourlyProfile:
+
+    def test_profile_has_24_hours(self, baseline_db):
+        from server.asset_baseline import _compute_hourly_profile
+        ip = "10.1.1.1"
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+        # Veri olmasa da 24 saat dönmeli
+        profile = _compute_hourly_profile(ip, since_dt, "default")
+        assert len(profile) == 24
+        assert all(str(h) in profile for h in range(24))
+
+    def test_profile_counts_events(self, baseline_db):
+        from server.asset_baseline import _compute_hourly_profile, update_baselines
+        ip = "10.1.1.2"
+        # Saatlik farklı timestamp'lere sahip loglar ekle
+        for h in [2, 2, 2, 14, 14]:
+            ts = datetime.now(timezone.utc).replace(hour=h, minute=0, second=0, microsecond=0)
+            ts = ts - timedelta(days=1)
+            baseline_db.save_normalized_log(_norm(ip, timestamp=ts))
+
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+        profile = _compute_hourly_profile(ip, since_dt, "default")
+        assert profile["2"] == 3
+        assert profile["14"] == 2
+        assert profile["0"] == 0
+
+    def test_profile_stored_in_baseline(self, baseline_db):
+        from server.asset_baseline import update_baselines, MIN_EVENTS_FOR_BASELINE
+        ip = "10.1.1.3"
+        # Yeterli event yaz (farklı saatler)
+        for i in range(MIN_EVENTS_FOR_BASELINE + 2):
+            hour = i % 24
+            ts = datetime.now(timezone.utc).replace(hour=hour) - timedelta(days=1)
+            baseline_db.save_normalized_log(_norm(ip, timestamp=ts))
+
+        update_baselines()
+        bl = baseline_db.get_asset_baseline(ip)
+        assert bl is not None
+        profile = bl.get("hour_of_day_profile", {})
+        assert isinstance(profile, dict)
+        assert len(profile) == 24
+
+
+class TestUnusualTimeActivity:
+
+    def _make_baseline_with_night_profile(self, baseline_db, ip: str, current_hour: int) -> None:
+        """18 meşgul (6-23) / 6 sessiz (0-5) profil → gece z-score < -1.5."""
+        profile = {str(h): (200 if h >= 6 else 0) for h in range(24)}
+        baseline_db.upsert_asset_baseline(
+            source_ip             = ip,
+            tenant_id             = "default",
+            first_seen_at         = datetime.now(timezone.utc) - timedelta(days=7),
+            last_seen_at          = datetime.now(timezone.utc),
+            avg_events_per_hour   = 50.0,
+            typical_ports         = ["22"],
+            typical_destinations  = ["10.0.0.1"],
+            typical_event_actions = ["ssh_failure"],
+            typical_protocols     = ["TCP"],
+            sample_hours          = 60,
+            hour_of_day_profile   = profile,
+        )
+
+    def test_unusual_time_detected_when_night_active(self, baseline_db, monkeypatch):
+        from server.asset_baseline import (
+            check_deviations, MIN_EVENTS_FOR_UNUSUAL_HOUR,
+            MIN_HOURS_COVERED_FOR_TEMPORAL, UNUSUAL_HOUR_ZSCORE_THRESHOLD,
+        )
+        ip = "10.2.2.1"
+        self._make_baseline_with_night_profile(baseline_db, ip, current_hour=3)
+
+        # Gece 3'te yeterli aktivite ekle
+        for _ in range(MIN_EVENTS_FOR_UNUSUAL_HOUR + 5):
+            baseline_db.save_normalized_log(_norm(ip))
+
+        # datetime.now().hour → gece saati olan bir saate zorla
+        night_dt = datetime.now(timezone.utc).replace(hour=3)
+        monkeypatch.setattr(
+            "server.asset_baseline.datetime",
+            type("FakeDT", (), {
+                "now": staticmethod(lambda tz=None: night_dt),
+                "fromtimestamp": datetime.fromtimestamp,
+            })(),
+        )
+        result = check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        unusual = [l for l in logs if l.get("event_action") == "unusual_time_activity"]
+        assert len(unusual) >= 1
+
+    def test_no_unusual_time_during_busy_hour(self, baseline_db, monkeypatch):
+        from server.asset_baseline import check_deviations, MIN_EVENTS_FOR_UNUSUAL_HOUR
+        ip = "10.2.2.2"
+        self._make_baseline_with_night_profile(baseline_db, ip, current_hour=14)
+
+        for _ in range(MIN_EVENTS_FOR_UNUSUAL_HOUR + 5):
+            baseline_db.save_normalized_log(_norm(ip))
+
+        busy_dt = datetime.now(timezone.utc).replace(hour=14)
+        monkeypatch.setattr(
+            "server.asset_baseline.datetime",
+            type("FakeDT", (), {
+                "now": staticmethod(lambda tz=None: busy_dt),
+                "fromtimestamp": datetime.fromtimestamp,
+            })(),
+        )
+        result = check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        unusual = [l for l in logs if l.get("event_action") == "unusual_time_activity"
+                   and l.get("source_ip") == ip]
+        assert len(unusual) == 0
+
+    def test_unusual_time_skipped_if_too_few_events(self, baseline_db, monkeypatch):
+        from server.asset_baseline import check_deviations, MIN_EVENTS_FOR_UNUSUAL_HOUR
+        ip = "10.2.2.3"
+        self._make_baseline_with_night_profile(baseline_db, ip, current_hour=3)
+
+        # Eşiğin altında event yaz
+        for _ in range(MIN_EVENTS_FOR_UNUSUAL_HOUR - 1):
+            baseline_db.save_normalized_log(_norm(ip))
+
+        night_dt = datetime.now(timezone.utc).replace(hour=3)
+        monkeypatch.setattr(
+            "server.asset_baseline.datetime",
+            type("FakeDT", (), {
+                "now": staticmethod(lambda tz=None: night_dt),
+                "fromtimestamp": datetime.fromtimestamp,
+            })(),
+        )
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        unusual = [l for l in logs if l.get("event_action") == "unusual_time_activity"
+                   and l.get("source_ip") == ip]
+        assert len(unusual) == 0
+
+    def test_unusual_time_skipped_if_flat_profile(self, baseline_db, monkeypatch):
+        from server.asset_baseline import check_deviations, MIN_EVENTS_FOR_UNUSUAL_HOUR
+        ip = "10.2.2.4"
+        # Tamamen düz profil → stddev 0 → z-score 0 → eşik geçilmez
+        flat_profile = {str(h): 50 for h in range(24)}
+        baseline_db.upsert_asset_baseline(
+            source_ip             = ip,
+            tenant_id             = "default",
+            first_seen_at         = datetime.now(timezone.utc) - timedelta(days=7),
+            last_seen_at          = datetime.now(timezone.utc),
+            avg_events_per_hour   = 50.0,
+            typical_ports         = ["22"],
+            typical_destinations  = ["10.0.0.1"],
+            typical_event_actions = ["ssh_failure"],
+            typical_protocols     = ["TCP"],
+            sample_hours          = 60,
+            hour_of_day_profile   = flat_profile,
+        )
+        for _ in range(MIN_EVENTS_FOR_UNUSUAL_HOUR + 5):
+            baseline_db.save_normalized_log(_norm(ip))
+
+        night_dt = datetime.now(timezone.utc).replace(hour=3)
+        monkeypatch.setattr(
+            "server.asset_baseline.datetime",
+            type("FakeDT", (), {
+                "now": staticmethod(lambda tz=None: night_dt),
+                "fromtimestamp": datetime.fromtimestamp,
+            })(),
+        )
+        check_deviations()
+        logs = [vars(l) for l in baseline_db.get_normalized_logs(limit=100)]
+        unusual = [l for l in logs if l.get("event_action") == "unusual_time_activity"
+                   and l.get("source_ip") == ip]
+        assert len(unusual) == 0
+
+    def test_get_hourly_event_counts_db_method(self, baseline_db):
+        ip = "10.2.2.5"
+        ts_2 = datetime.now(timezone.utc).replace(hour=2, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        ts_14 = datetime.now(timezone.utc).replace(hour=14, minute=0, second=0, microsecond=0) - timedelta(days=1)
+        baseline_db.save_normalized_log(_norm(ip, timestamp=ts_2))
+        baseline_db.save_normalized_log(_norm(ip, timestamp=ts_2))
+        baseline_db.save_normalized_log(_norm(ip, timestamp=ts_14))
+
+        since_dt = datetime.now(timezone.utc) - timedelta(days=7)
+        result = baseline_db.get_hourly_event_counts_by_ip(ip, since_dt, "default")
+        assert result.get("2") == 2
+        assert result.get("14") == 1
+
+    def test_hour_of_day_profile_in_get_all_baselines(self, baseline_db):
+        ip = "10.2.2.6"
+        profile = {str(h): h * 5 for h in range(24)}
+        baseline_db.upsert_asset_baseline(
+            source_ip             = ip,
+            tenant_id             = "default",
+            first_seen_at         = datetime.now(timezone.utc) - timedelta(days=1),
+            last_seen_at          = datetime.now(timezone.utc),
+            avg_events_per_hour   = 30.0,
+            typical_ports         = [],
+            typical_destinations  = [],
+            typical_event_actions = [],
+            typical_protocols     = [],
+            sample_hours          = 50,
+            hour_of_day_profile   = profile,
+        )
+        all_bl = baseline_db.get_all_asset_baselines()
+        assert ip in all_bl
+        stored = all_bl[ip]["hour_of_day_profile"]
+        assert stored["0"] == 0
+        assert stored["23"] == 23 * 5
