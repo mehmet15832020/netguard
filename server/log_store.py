@@ -86,13 +86,16 @@ class PostgreSQLLogStore:
             pass
 
     def save_batch(self, logs: list[NormalizedLog], tenant_id: str = "default") -> None:
-        for log in logs:
-            _db.save_normalized_log(log, tenant_id=tenant_id)
-            try:
-                from server.ws_manager import ws_manager
+        if not logs:
+            return
+        # P1 — tek executemany round-trip (TimescaleDB Best Practices)
+        _db.save_batch(logs, tenant_id=tenant_id)
+        try:
+            from server.ws_manager import ws_manager
+            for log in logs:
                 ws_manager.broadcast_from_thread("log", {**log.model_dump(mode="json"), "tenant_id": tenant_id})
-            except Exception:
-                pass
+        except Exception:
+            pass
 
     def search(
         self,
