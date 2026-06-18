@@ -57,6 +57,18 @@ _AUDIT_CHAIN_GENESIS = "0" * 64
 _AUDIT_CHAIN_LOCK_ID = 0x41554443  # "AUDC" — audit chain serialization lock
 
 
+def _parse_json(value, default):
+    """TEXT veya JSONB kolonundan güvenli okuma — production TEXT, test JSONB olabilir."""
+    if value is None:
+        return default
+    if isinstance(value, (dict, list)):
+        return value
+    try:
+        return json.loads(value)
+    except (json.JSONDecodeError, TypeError):
+        return default
+
+
 def _audit_content(
     event_id: str, actor: str, action: str, resource: str,
     detail: str, ip_address: str, timestamp_str: str, previous_hash: str,
@@ -990,8 +1002,8 @@ class DatabaseManager:
             network_protocol     = row.get("network_protocol"),
             username             = row.get("username"),
             message              = row["message"],
-            tags                 = row.get("tags") or [],
-            extra                = row.get("extra") or {},
+            tags                 = _parse_json(row.get("tags"), []),
+            extra                = _parse_json(row.get("extra"), {}),
             network_bytes        = row.get("network_bytes"),
             community_id         = row.get("community_id"),
             processed_at         = _dt(row["processed_at"]),

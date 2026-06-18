@@ -10,8 +10,9 @@ Kaynak: PostgreSQL JSONB Best Practices; TimescaleDB ile uyumlu;
 OWASP A3 — format() ile string concat kaldırılıyor, tip güvenli.
 
 TimescaleDB notu: compressed chunks ALTER COLUMN TYPE'ı desteklemiyor.
-Migration sırası: policy kaldır → decompress → alter → policy yeniden ekle.
-Sıkıştırma ayarları Migration 013'teki değerler korunarak yeniden uygulanıyor.
+Decompress tüm veriyi RAM'e alır — VM belleği yetersizse OOM riski var.
+Bu migration compressed chunk varsa ALTER COLUMN'u atlar;
+database._parse_json() her iki tiple (TEXT/JSONB) uyumludur.
 """
 
 from alembic import op
@@ -24,90 +25,57 @@ down_revision = "026"
 def upgrade():
     conn = op.get_bind()
 
-    is_hypertable = conn.execute(
+    compressed_count = conn.execute(
         text(
-            "SELECT count(*) FROM timescaledb_information.hypertables "
-            "WHERE hypertable_name = 'normalized_logs'"
+            "SELECT count(*) FROM timescaledb_information.chunks "
+            "WHERE hypertable_name = 'normalized_logs' AND is_compressed = true"
         )
-    ).scalar()
+    ).scalar() or 0
 
-    is_compressed = False
-    if is_hypertable:
-        is_compressed = bool(
-            conn.execute(
-                text(
-                    "SELECT compression_enabled FROM timescaledb_information.hypertables "
-                    "WHERE hypertable_name = 'normalized_logs'"
-                )
-            ).scalar()
+    if compressed_count == 0:
+        op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra DROP DEFAULT")
+        op.execute(
+            "ALTER TABLE normalized_logs "
+            "ALTER COLUMN extra TYPE JSONB USING extra::jsonb"
         )
-
-    if is_compressed:
-        conn.execute(
-            text("SELECT remove_compression_policy('normalized_logs', if_exists => true)")
+        op.execute(
+            "ALTER TABLE normalized_logs ALTER COLUMN extra SET DEFAULT '{}'::jsonb"
         )
-        conn.execute(
-            text(
-                "SELECT decompress_chunk(c, if_compressed => true) "
-                "FROM show_chunks('normalized_logs') c"
-            )
+        op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags DROP DEFAULT")
+        op.execute(
+            "ALTER TABLE normalized_logs "
+            "ALTER COLUMN tags TYPE JSONB USING tags::jsonb"
         )
-
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra DROP DEFAULT")
-    op.execute(
-        "ALTER TABLE normalized_logs "
-        "ALTER COLUMN extra TYPE JSONB USING extra::jsonb"
-    )
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra SET DEFAULT '{}'::jsonb")
-
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags DROP DEFAULT")
-    op.execute(
-        "ALTER TABLE normalized_logs "
-        "ALTER COLUMN tags TYPE JSONB USING tags::jsonb"
-    )
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags SET DEFAULT '[]'::jsonb")
-
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_normalized_logs_extra_gin "
-        "ON normalized_logs USING GIN (extra jsonb_path_ops)"
-    )
-    op.execute(
-        "CREATE INDEX IF NOT EXISTS idx_normalized_logs_tags_gin "
-        "ON normalized_logs USING GIN (tags)"
-    )
-
-    if is_compressed:
-        # Migration 013'teki sıkıştırma ayarlarını yeniden uygula
-        conn.execute(
-            text(
-                "ALTER TABLE normalized_logs SET ("
-                "timescaledb.compress, "
-                "timescaledb.compress_segmentby = 'source_type', "
-                "timescaledb.compress_orderby = 'received_at DESC'"
-                ")"
-            )
+        op.execute(
+            "ALTER TABLE normalized_logs ALTER COLUMN tags SET DEFAULT '[]'::jsonb"
         )
-        conn.execute(
-            text(
-                "SELECT add_compression_policy("
-                "'normalized_logs', INTERVAL '7 days', if_not_exists => true"
-                ")"
-            )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_normalized_logs_extra_gin "
+            "ON normalized_logs USING GIN (extra jsonb_path_ops)"
+        )
+        op.execute(
+            "CREATE INDEX IF NOT EXISTS idx_normalized_logs_tags_gin "
+            "ON normalized_logs USING GIN (tags)"
         )
 
 
 def downgrade():
     op.execute("DROP INDEX IF EXISTS idx_normalized_logs_extra_gin")
     op.execute("DROP INDEX IF EXISTS idx_normalized_logs_tags_gin")
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra DROP DEFAULT")
-    op.execute(
-        "ALTER TABLE normalized_logs "
-        "ALTER COLUMN extra TYPE TEXT USING extra::text"
-    )
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra SET DEFAULT '{}'")
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags DROP DEFAULT")
-    op.execute(
-        "ALTER TABLE normalized_logs "
-        "ALTER COLUMN tags TYPE TEXT USING tags::text"
-    )
-    op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags SET DEFAULT '[]'")
+    col_type = op.get_bind().execute(
+        text(
+            "SELECT data_type FROM information_schema.columns "
+            "WHERE table_name='normalized_logs' AND column_name='extra'"
+        )
+    ).scalar()
+    if col_type and "json" in col_type:
+        op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra DROP DEFAULT")
+        op.execute(
+            "ALTER TABLE normalized_logs ALTER COLUMN extra TYPE TEXT USING extra::text"
+        )
+        op.execute("ALTER TABLE normalized_logs ALTER COLUMN extra SET DEFAULT '{}'")
+        op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags DROP DEFAULT")
+        op.execute(
+            "ALTER TABLE normalized_logs ALTER COLUMN tags TYPE TEXT USING tags::text"
+        )
+        op.execute("ALTER TABLE normalized_logs ALTER COLUMN tags SET DEFAULT '[]'")
