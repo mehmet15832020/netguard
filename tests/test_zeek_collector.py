@@ -1695,6 +1695,67 @@ class TestSoftwareCollectorWiring:
         assert len(software) == 1
 
 
+class TestParseNoticeI5:
+    """I5 — Zeek notice.log ek notice türleri ve STAGE_MAP bug fix."""
+
+    def _row(self, note: str, src="192.168.1.10", dst="10.0.0.1"):
+        return {
+            "ts": 1700000000.0,
+            "note": note,
+            "msg": f"Notice: {note}",
+            "src": src,
+            "dst": dst,
+            "proto": "tcp",
+        }
+
+    def test_address_scan_action(self):
+        log = parse_notice(self._row("Scan::Address_Scan"))
+        assert log is not None
+        assert log.event_action == "zeek_scan_address_scan"
+
+    def test_ssh_password_guessing_action(self):
+        log = parse_notice(self._row("SSH::Password_Guessing"))
+        assert log is not None
+        assert log.event_action == "zeek_ssh_password_guessing"
+
+    def test_http_sql_injection_action(self):
+        log = parse_notice(self._row("HTTP::SQL_Injection_Attacker"))
+        assert log is not None
+        assert log.event_action == "zeek_http_sql_injection_attacker"
+
+    def test_ssl_self_signed_cert_action(self):
+        log = parse_notice(self._row("SSL::Self_Signed_Cert"))
+        assert log is not None
+        assert log.event_action == "zeek_ssl_self_signed_cert"
+
+    def test_stage_map_port_scan(self):
+        from server.attack_chain import STAGE_MAP
+        assert "zeek_scan_port_scan" in STAGE_MAP
+        assert STAGE_MAP["zeek_scan_port_scan"] == "recon"
+        assert "zeek_port" not in STAGE_MAP, "Eski yanlış key kaldırılmadı"
+
+    def test_stage_map_address_scan(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("zeek_scan_address_scan") == "recon"
+
+    def test_stage_map_ssh_password_guessing(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("zeek_ssh_password_guessing") == "weaponize"
+
+    def test_stage_map_sql_injection(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("zeek_http_sql_injection_attacker") == "weaponize"
+
+    def test_stage_map_self_signed_cert(self):
+        from server.attack_chain import STAGE_MAP
+        assert STAGE_MAP.get("zeek_ssl_self_signed_cert") == "lateral"
+
+    def test_unknown_notice_still_parses(self):
+        log = parse_notice(self._row("Custom::Some_Notice"))
+        assert log is not None
+        assert log.event_action == "zeek_custom_some_notice"
+
+
 class TestNtpCollectorWiring:
     def test_ntp_log_processed_via_collect_once(self, tmp_path, monkeypatch):
         import server.zeek_collector as zc

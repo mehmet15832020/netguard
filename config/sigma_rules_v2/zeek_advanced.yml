@@ -105,6 +105,65 @@ tags:
     - attack.reconnaissance
     - attack.t1046
 ---
+title: Zeek Address Scan Notice
+id: b7c2f3a4-5d6e-7f8a-9b0c-1d2e3f4a5b6c
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_scan_address_scan
+    condition: selection
+level: high
+tags:
+    - attack.reconnaissance
+    - attack.t1018
+---
+title: Zeek SSH Password Guessing Notice
+id: c8d3f4a5-6e7f-8a9b-0c1d-2e3f4a5b6c7d
+status: stable
+logsource:
+    category: authentication
+detection:
+    selection:
+        event_action: zeek_ssh_password_guessing
+    condition: selection
+level: high
+tags:
+    - attack.credential_access
+    - attack.t1110.001
+---
+title: Zeek HTTP SQL Injection Notice
+id: d9e4f5a6-7f8a-9b0c-1d2e-3f4a5b6c7d8e
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_http_sql_injection_attacker
+    condition: selection
+level: high
+tags:
+    - attack.initial_access
+    - attack.t1190
+---
+title: Zeek Self-Signed TLS Certificate
+id: e0f5a6b7-8a9b-0c1d-2e3f-4a5b6c7d8e9f
+status: stable
+logsource:
+    category: network
+detection:
+    selection:
+        event_action: zeek_ssl_self_signed_cert
+    condition: selection
+level: medium
+falsepositives:
+    - Internal services with self-signed certs
+    - Development environments
+tags:
+    - attack.command_and_control
+    - attack.t1071.001
+---
 title: SSH Targeted Attack (Base)
 name: ng_ssh_targeted_base
 status: stable
