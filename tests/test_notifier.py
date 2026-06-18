@@ -151,6 +151,38 @@ class TestNotifierAnomaly:
 
         mock_post.assert_called_once()  # Cooldown geçti — gönderilmeli
 
+    def test_anomaly_expired_cooldown_entries_purged(self):
+        """Q5 — Süresi dolmuş _anomaly_cooldown entry'leri her çağrıda temizlenmeli."""
+        n = Notifier()
+        n.email.enabled = True
+        n.webhook.enabled = False
+        old_time = datetime.now(timezone.utc) - timedelta(hours=3)
+        stale_key = "old-host:cpu"
+        n._anomaly_cooldown[stale_key] = old_time
+        smtp = MagicMock()
+        smtp.__enter__ = lambda s: s
+        smtp.__exit__ = MagicMock(return_value=False)
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_anomaly(_make_anomaly(severity="critical"))
+        assert stale_key not in n._anomaly_cooldown
+
+    def test_anomaly_active_cooldown_entries_preserved(self):
+        """Q5 — Süresi dolmamış _anomaly_cooldown entry'leri korunmalı."""
+        n = Notifier()
+        n.email.enabled = True
+        n.webhook.enabled = False
+        recent_time = datetime.now(timezone.utc) - timedelta(minutes=30)
+        active_key = "active-host:memory"
+        n._anomaly_cooldown[active_key] = recent_time
+        smtp = MagicMock()
+        smtp.__enter__ = lambda s: s
+        smtp.__exit__ = MagicMock(return_value=False)
+        with patch("smtplib.SMTP", return_value=smtp):
+            with patch.object(n, "_get_min_severity", return_value="warning"):
+                n.notify_anomaly(_make_anomaly(severity="critical"))
+        assert active_key in n._anomaly_cooldown
+
     def test_notify_anomaly_slack_format(self):
         n = Notifier()
         n.webhook.enabled = True

@@ -310,6 +310,10 @@ class Notifier:
         cooldown_key = f"{result.entity_id}:{result.metric}"
         now = datetime.now(timezone.utc)
         with self._cooldown_lock:
+            self._anomaly_cooldown = {
+                k: v for k, v in self._anomaly_cooldown.items()
+                if (now - v).total_seconds() < _ANOMALY_COOLDOWN_SECS
+            }
             last = self._anomaly_cooldown.get(cooldown_key)
             if last and (now - last).total_seconds() < _ANOMALY_COOLDOWN_SECS:
                 return
