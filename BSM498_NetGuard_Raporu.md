@@ -14,7 +14,7 @@
 
 **Öğrenci:** Mehmet Çapar  
 **Öğrenci E-posta:** 20mehmetcapar02@gmail.com  
-**Danışman:** [Danışman Adı]  
+**Danışman:** Prof. Dr. İbrahim Özçelik  
 **Teslim Tarihi:** Mayıs 2026
 
 ---
