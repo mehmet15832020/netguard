@@ -244,7 +244,7 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [x] **U6** — Multi-tenant PostgreSQL RLS — Alembic 021, 11 tablo, `_connect_as_tenant()`, 15 test ✓
 - [x] **U1** — East-West görünürlük (L3 switch NetFlow) — VyOS NetFlow v9 aktif, 146.490+ kayıt ✓
 - [ ] **T1** — Hukuki altyapı (şirket, KVKK DPA, Tech E&O sigortası)
-- [ ] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme ✓, T2-3 MFA ✓T2-3, T2-4 RLS ✓U6, T2-5 rate limiting ✓T2-5)
+- [x] **T2** — Teknik ticari (T2-1 tamperproof ✓U3, T2-2 at-rest şifreleme ✓, T2-3 MFA ✓T2-3, T2-4 RLS ✓U6, T2-5 rate limiting ✓T2-5)
 - [ ] **T3** — Sertifikasyon (pentest + SOC 2 Type I) — Bağımlılık: T2
 - [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
 - [x] **T2-5** — Sistematik rate limiting middleware — SlowAPI `default_limits=["60/minute"]`; 27 test ✓
