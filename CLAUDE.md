@@ -249,6 +249,46 @@ Araştırma kaynakları: CrowdStrike 2025, Verizon DBIR 2025, MITRE ATT&CK v17, 
 - [ ] **T4** — Pazar hazırlığı (3 pilot müşteri, MSSP ortaklığı) — Bağımlılık: T1+T2+T3
 - [x] **T2-5** — Sistematik rate limiting middleware — SlowAPI `default_limits=["60/minute"]`; 27 test ✓
 
+---
+
+### AŞAMA 6 — Mimari Borç + Kurumsal Olgunluk (1 Temmuz 2026 — Analiz Tamamlandı, Onay Bekliyor)
+
+> Kaynak: Kod okuyarak yapılan refactoring analizi (god object/DIP ihlali tespiti) + ticari mimari değerlendirmesi. Aşağıdaki sayılar gerçek kod sayımıyla doğrulandı — orijinal analizdeki bazı rakamlar abartılıydı, düzeltilmiş haliyle yazıldı. Hiçbiri henüz implement edilmedi; "Araştırma Önce, Kodlama Sonra" kuralı gereği önce bu listeden hangilerinin yapılacağına karar verilmeli.
+
+**Doğrulama notları (orijinal iddia → kod okunarak doğrulanan gerçek):**
+- `database.py` 2732 satır / 159 method → gerçek **152 method**, tek `DatabaseManager` sınıfı (doğru yönde, küçük fark)
+- `analytics.py`'de 16× doğrudan `db._connect()` çağrısı → ✓ tam isabetli, 16
+- 44 yerde `from server.database import db` → gerçek **50 dosya**
+- `tenant_id="default"` 76 yerde hardcoded iddiası → gerçek **10 yer** (7 kat abartılmış)
+- "Rate limiting Redis olmadan kâğıt üzerinde kalır" iddiası → **yanlış**: `server/limiter.py:17` zaten `RATELIMIT_STORAGE_URI` env'ini destekliyor, sadece prod'da Redis'e set edilmemiş — yeniden tasarım değil, config eksikliği
+- "Full PCAP eksik" → zaten bilinçli kapsam dışı kararı (N11, Kırmızı Çizgiler); yeni olan tek nüans **selective/triggered PCAP** (M14)
+- U5 (SOAR/TheHive) zaten roadmap'te bekliyor — yeni bir keşif değil
+
+#### Kovay 1 — Ucuz, Güvenlik/Doğruluk Etkili (günler)
+
+- [ ] **M1** — Auth dual-store bug: `server/auth.py` `_USERS` dict (2 hardcoded kullanıcı: admin/viewer) ile PostgreSQL `db_users` tablosu arasında sessiz gölgeleme var (`authenticate_user()` önce `_USERS`'a bakıyor, `db_users`'da aynı adda kullanıcı varsa sessizce yok sayılıyor). `_USERS`'ı kaldır veya DB'yi öncelikli yap.
+- [ ] **M2** — Rate limiting prod'da Redis'e bağla — `RATELIMIT_STORAGE_URI=redis://...` kod tarafında zaten destekleniyor; docker-compose'a Redis servisi eklenip prod `.env`'e set edilmesi yeterli.
+- [ ] **M3** — `tenant_id="default"` hardcoded 10 yeri gerçek tenant scope'a bağla (RLS/U6 ile tutarlılık).
+
+#### Kovay 2 — Orta, Pilot Müşteri İçin Değerli (1-3 hafta)
+
+- [ ] **M4** — Yönetici özet raporu (PDF/e-posta) — haftalık/aylık otomatik gönderim, grafik + trend analizi. `routes/reports.py` şu an yalnızca CSV/JSON; weasyprint/reportlab ile genişletilmeli.
+- [ ] **M5** — Prometheus `/metrics` exporter — correlator throughput, queue depth, DB pool durumu. NetGuard'ın kendi backend sağlığı şu an görünmüyor (C4 sensor health yalnızca Zeek/Suricata'yı kapsıyor, backend'in kendisini değil).
+- [ ] **M6** — `database.py` Repository Pattern refactor — 2732 satır/152 method tek `DatabaseManager` sınıfı; alert/log/incident/user/SNMP/audit/topology/tenant/anomaly/KEV/hunt/attack-chain sorumlulukları ayrı repository'lere bölünmeli (test edilebilirlik — DB şu an mock'lanamıyor, 50 dosya doğrudan singleton import ediyor).
+- [ ] **M7** — `analytics.py` → Service katmanına taşı — 1983 satır, route katmanında 16× doğrudan `db._connect()` + ham SQL.
+- [ ] **M8** — `correlator.py` parçalama — `Correlator` sınıfı 8 sorumluluğu (rule loading, sigma execution, incident creation, kill chain check, FP filter, alert creation, notify, WS broadcast) tek sınıfta topluyor.
+
+#### Kovay 3 — Pahalı, Yalnızca Lisanslı/Çok-Müşterili Ürün Moduna Geçilirse Öncelikli (aylar)
+
+- [ ] **M9** — HA — PostgreSQL streaming replication + çoklu backend instance + nginx upstream pool (`docker-compose.yml` şu an her serviste yalnızca `deploy.resources.limits`, replica yok)
+- [ ] **M10** — SSO/SAML/OIDC (Azure AD/Okta) — kod genelinde hiç yok
+- [ ] **M11** — Agent fleet management — uzaktan yeniden yapılandırma, sürüm takibi, toplu komut, otomatik güncelleme
+- [ ] **M12** — Redis Streams ile correlator'ı yatay ölçeklenebilir hale getir — şu an process-local tek instance; ikinci backend açılırsa çift korelasyon üretir
+- [ ] **M13** — Gerçek SOAR connector'ları (Jira, PagerDuty native) — `notifier.py` webhook yalnızca Discord/Slack destekliyor (bkz. U5 — TheHive zaten roadmap'te)
+- [ ] **M14** — Selective/triggered PCAP — yalnızca alert tetikleyen akışın kısa süreli paket yakalaması; full Arkime PCAP'tan (N11, kapsam dışı) çok daha ucuz, kırmızı çizgiyi bozmaz
+
+**Karar gerekçesi:** Kovay 3 yalnızca "lisanslı ürün satıyoruz" senaryosunda öncelikli; MSSP modelinde (tek node, kendin host ediyorsun) çoğu gereksiz. Önce Kovay 1+2 tamamlanmalı; pilot müşteri bulunup gerçek ihtiyaç doğrulanmadan Kovay 3'e girilmemeli.
+
 ### Küçük Kod Sorunları (Herhangi Bir Anda)
 
 - [x] `correlator.py:178` — Yanıltıcı yorum düzeltildi ✓
