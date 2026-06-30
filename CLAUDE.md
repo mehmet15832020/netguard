@@ -703,10 +703,10 @@ ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.134        # server (birincil)
 ssh -i ~/.ssh/id_ed25519 netguard@172.18.0.134           # server (yedek MGMT)
 ssh -i ~/.ssh/id_ed25519 netguard@192.168.203.142        # agent
 ssh windows-vm                                            # Windows Server 2022
-ssh vyos@192.168.203.200                                  # VyOS (vyos/vyos)
-ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense (root/netguard123)
+ssh vyos@192.168.203.200                                  # VyOS (kimlik bilgisi .env/parola yöneticisinde)
+ssh -J netguard@192.168.203.134,vyos@192.168.203.200 root@10.0.30.1  # OPNsense (kimlik bilgisi .env/parola yöneticisinde)
 ssh -J netguard@192.168.203.134 root@10.0.10.2           # Alpine WebServer
-# VNC konsol: localhost:5901 (şifre: netguard123)
+# VNC konsol: localhost:5901 (şifre parola yöneticisinde)
 ```
 
 ### GNS3 Lab Ağ Mimarisi (QEMU/KVM)

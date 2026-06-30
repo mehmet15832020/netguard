@@ -1183,9 +1183,9 @@ pytest tests/ -k "auth"   # Pattern ile filtre
 | Değişken | Varsayılan | Açıklama |
 |---|---|---|
 | `ADMIN_USERNAME` | admin | Admin kullanıcı adı |
-| `ADMIN_PASSWORD` | netguard123 | Admin şifresi (mutlaka değiştirin) |
+| `ADMIN_PASSWORD` | *(zorunlu, .env'de tanımlanır)* | Admin şifresi — production'da mutlaka güçlü bir değerle ayarlanmalı |
 | `VIEWER_USERNAME` | viewer | Viewer kullanıcı adı |
-| `VIEWER_PASSWORD` | view123 | Viewer şifresi |
+| `VIEWER_PASSWORD` | *(zorunlu, .env'de tanımlanır)* | Viewer şifresi |
 | `JWT_EXPIRE_MINUTES` | 60 | Token ömrü |
 
 ### Agent (agent/main.py)

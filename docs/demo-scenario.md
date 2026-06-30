@@ -21,7 +21,7 @@ ping -c 1 192.168.203.142   # Agent VM
 ### 2. NetGuard Dashboard'u Aç
 
 Tarayıcıda: `https://192.168.203.134`  
-Giriş: `admin` / `netguard123`
+Giriş: `admin` / `.env` dosyasındaki `ADMIN_PASSWORD`
 
 Kontrol et:
 - Overview sayfasında kill chain tüm aşamalar boş (gri)
